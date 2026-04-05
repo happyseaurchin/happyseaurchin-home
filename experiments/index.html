@@ -14,10 +14,26 @@
     <h1 style="font-family: var(--font-heading); font-weight: 300; font-size: 2rem; color: var(--torus-ice); margin: 1.5rem 0 0.5rem;">
       experiments
     </h1>
-    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 3rem;">
-      Interactive tools and works in progress. Some require an Anthropic API key &mdash;
-      <a href="/#vault">save one via the vault</a> or enter it directly in the experiment.
+    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 1.5rem;">
+      Interactive tools and works in progress. Some require an Anthropic API key.
     </p>
+
+    <div style="margin-bottom: 3rem;">
+      <p style="color: var(--text-secondary); font-size: 0.9rem; margin-bottom: 1rem;">
+        Enter your key once here &mdash; it&rsquo;s stored as a secure httpOnly cookie that
+        JavaScript cannot access. Only sent to Anthropic via our server proxy.
+      </p>
+      <button class="vault-toggle" onclick="toggleVault()">manage key</button>
+      <div class="vault-panel" id="vault-panel">
+        <label for="vault-key">Anthropic API key</label>
+        <input type="password" id="vault-key" placeholder="sk-ant-api03-..." autocomplete="off">
+        <div class="vault-actions">
+          <button class="primary" onclick="saveKey()">save</button>
+          <button onclick="clearKey()">clear</button>
+        </div>
+        <div class="vault-status" id="vault-status"></div>
+      </div>
+    </div>
 
     <div class="section-label">mindflow</div>
     <div class="card-grid" style="margin-bottom: 3rem;">
@@ -71,6 +87,74 @@
     <span><a href="/">&larr; home</a></span>
     <span>david pinto &middot; 2025</span>
   </footer>
+
+  <script>
+    function toggleVault() {
+      const p = document.getElementById('vault-panel');
+      p.classList.toggle('open');
+      if (p.classList.contains('open')) checkKey();
+    }
+
+    async function checkKey() {
+      try {
+        const r = await fetch('/api/vault', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ service: 'check-keys' })
+        });
+        const d = await r.json();
+        const el = document.getElementById('vault-status');
+        if (d.available && d.available.length > 0) {
+          el.textContent = 'key stored: ' + d.available.join(', ');
+          el.className = 'vault-status has-key';
+        } else {
+          el.textContent = 'no key stored';
+          el.className = 'vault-status';
+        }
+      } catch (e) {
+        document.getElementById('vault-status').textContent = 'could not check key status';
+      }
+    }
+
+    async function saveKey() {
+      const key = document.getElementById('vault-key').value.trim();
+      if (!key) return;
+      try {
+        const r = await fetch('/api/vault', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ service: 'set-keys', claude: key })
+        });
+        const d = await r.json();
+        document.getElementById('vault-key').value = '';
+        if (d.success) {
+          const el = document.getElementById('vault-status');
+          el.textContent = 'key saved securely';
+          el.className = 'vault-status has-key';
+        }
+      } catch (e) {
+        document.getElementById('vault-status').textContent = 'error saving key';
+      }
+    }
+
+    async function clearKey() {
+      try {
+        await fetch('/api/vault', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ service: 'clear-keys' })
+        });
+        const el = document.getElementById('vault-status');
+        el.textContent = 'key cleared';
+        el.className = 'vault-status';
+      } catch (e) {
+        document.getElementById('vault-status').textContent = 'error clearing key';
+      }
+    }
+  </script>
 
 </body>
 </html>
