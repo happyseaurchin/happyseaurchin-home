@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pscale inventory — visual</title>
+  <link rel="icon" href="/assets/torus.png" type="image/png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── theme variables ── */
+    :root {
+      --bg: #0a0a0a;
+      --bg-grad: #0a0a0a;
+      --fg: #d4d4d4;
+      --muted: #888;
+      --faint: #555;
+      --fainter: #444;
+      --border: #333;
+      --btn-active-bg: #1a1a2e;
+      --btn-active-border: #556;
+      --btn-active-fg: #aac;
+      --tooltip-bg: #151520;
+      --tooltip-name: #dde;
+      --tooltip-cat: #889;
+      --tooltip-desc: #999;
+      --tooltip-tag-bg: #1a1a2e;
+      --tooltip-tag-fg: #88a;
+      --tooltip-tag-border: #334;
+      --tooltip-shadow: rgba(0,0,0,0.5);
+      --link-opacity: 0.08;
+      --link-product-opacity: 0.15;
+      --label-opacity: 0.8;
+      --three-bg: 0x0a0a0a;
+      --three-fog: 0x0a0a0a;
+    }
+
+    [data-theme="light"] {
+      --bg: #f5f5f0;
+      --bg-grad: #f5f5f0;
+      --fg: #2a2a2a;
+      --muted: #666;
+      --faint: #999;
+      --fainter: #aaa;
+      --border: #ccc;
+      --btn-active-bg: #e0e0f0;
+      --btn-active-border: #99a;
+      --btn-active-fg: #446;
+      --tooltip-bg: #fff;
+      --tooltip-name: #222;
+      --tooltip-cat: #667;
+      --tooltip-desc: #555;
+      --tooltip-tag-bg: #eef;
+      --tooltip-tag-fg: #558;
+      --tooltip-tag-border: #ccd;
+      --tooltip-shadow: rgba(0,0,0,0.12);
+      --link-opacity: 0.2;
+      --link-product-opacity: 0.3;
+      --label-opacity: 0.9;
+      --three-bg: 0xf5f5f0;
+      --three-fog: 0xf5f5f0;
+    }
+
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); transition: background 0.3s, color 0.3s; }
+    body { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+    /* ── controls ── */
+    #controls {
+      position: fixed; top: 0; left: 0; right: 0;
+      z-index: 100;
+      display: flex; align-items: center; gap: 2px;
+      padding: 12px 20px;
+      background: linear-gradient(to bottom, var(--bg-grad) 60%, transparent);
+      transition: background 0.3s;
+    }
+    #controls button, #theme-toggle {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 8px 16px; font-family: inherit; font-size: 13px;
+      cursor: pointer; transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+    #controls button:first-child { border-radius: 4px 0 0 4px; }
+    #controls button:nth-child(3) { border-radius: 0 4px 4px 0; }
+    #controls button.active { background: var(--btn-active-bg); border-color: var(--btn-active-border); color: var(--btn-active-fg); }
+    #controls button:hover:not(.active) { border-color: var(--faint); color: var(--fg); }
+
+    #theme-toggle {
+      margin-left: 12px; border-radius: 4px; padding: 8px 12px; font-size: 15px; line-height: 1;
+    }
+    #theme-toggle:hover { border-color: var(--faint); color: var(--fg); }
+
+    #title {
+      margin-left: auto;
+      color: var(--faint); font-size: 12px; letter-spacing: 1px; text-transform: uppercase;
+    }
+
+    /* ── tooltip ── */
+    #tooltip {
+      position: fixed; z-index: 200;
+      background: var(--tooltip-bg); border: 1px solid var(--border); border-radius: 6px;
+      padding: 10px 14px; max-width: 320px;
+      pointer-events: none; opacity: 0;
+      transition: opacity 0.15s;
+      box-shadow: 0 4px 20px var(--tooltip-shadow);
+    }
+    #tooltip.visible { opacity: 1; }
+    #tooltip .tt-name { color: var(--tooltip-name); font-weight: 500; font-size: 12px; margin-bottom: 4px; }
+    #tooltip .tt-cat { color: var(--tooltip-cat); font-size: 10px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+    #tooltip .tt-desc { color: var(--tooltip-desc); font-size: 11px; line-height: 1.5; }
+    #tooltip .tt-products { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
+    #tooltip .tt-products span {
+      font-size: 9px; padding: 2px 6px; border-radius: 3px;
+      background: var(--tooltip-tag-bg); color: var(--tooltip-tag-fg); border: 1px solid var(--tooltip-tag-border);
+    }
+
+    /* ── legend ── */
+    #legend {
+      position: fixed; bottom: 16px; left: 20px; z-index: 100;
+      display: flex; gap: 12px; flex-wrap: wrap;
+    }
+    #legend .leg-item {
+      display: flex; align-items: center; gap: 5px;
+      color: var(--muted); font-size: 11px; letter-spacing: 0.3px;
+    }
+    #legend .leg-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+
+    /* ── viz containers ── */
+    #viz-tree { width: 100%; height: 100%; }
+    #viz-tree svg { width: 100%; height: 100%; }
+    #viz-3d { width: 100%; height: 100%; display: none; }
+    #viz-3d canvas { width: 100%; height: 100%; }
+
+    /* ── help ── */
+    #help {
+      position: fixed; bottom: 16px; right: 20px; z-index: 100;
+      color: var(--fainter); font-size: 12px; text-align: right; line-height: 1.6;
+    }
+
+    /* ── back link ── */
+    #back {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 100;
+      color: var(--fainter); font-size: 12px; text-decoration: none;
+      letter-spacing: 0.5px;
+      transition: color 0.2s;
+    }
+    #back:hover { color: var(--muted); }
+
+    /* ── edge toggles (3D only) ── */
+    #edge-toggles {
+      position: fixed; top: 48px; left: 20px; z-index: 100;
+      display: none; gap: 6px;
+    }
+    #edge-toggles button {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 6px 14px; font-family: inherit; font-size: 12px;
+      cursor: pointer; transition: all 0.2s;
+      border-radius: 4px; letter-spacing: 0.3px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    #edge-toggles button:hover { border-color: var(--faint); }
+    #edge-toggles button .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      transition: opacity 0.2s;
+    }
+    #edge-toggles button.off .dot { opacity: 0.2; }
+    #edge-toggles button.off { opacity: 0.4; }
+  </style>
+</head>
+<body>
+
+<div id="controls">
+  <button class="active" onclick="setView('core')">core-first</button>
+  <button onclick="setView('product')">product-first</button>
+  <button onclick="setView('merged')">merged 3d</button>
+  <button id="theme-toggle" onclick="toggleTheme()" title="Toggle light/dark">&#9789;</button>
+  <span id="title">47 components &middot; 3 products</span>
+</div>
+
+<div id="tooltip">
+  <div class="tt-name"></div>
+  <div class="tt-cat"></div>
+  <div class="tt-desc"></div>
+  <div class="tt-products"></div>
+</div>
+
+<div id="edge-toggles">
+  <button onclick="toggleEdges('core')" id="btn-core-edges"><span class="dot" style="background:#4466aa"></span>core-first</button>
+  <button onclick="toggleEdges('product')" id="btn-prod-edges"><span class="dot" style="background:#aa6644"></span>product-first</button>
+</div>
+
+<div id="legend"></div>
+
+<div id="viz-tree"></div>
+<div id="viz-3d"></div>
+
+<div id="help">
+  scroll to zoom &middot; drag to pan<br>
+  click nodes to expand/collapse
+</div>
+
+<a id="back" href="/experiments/">← experiments</a>
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// DATA — All 47 components
+// ═══════════════════════════════════════════════════════════════
+
+const CATEGORIES = {
+  A: { name: 'Foundation', dark: '#6ea8d9', light: '#2e6da4' },
+  B: { name: 'Process', dark: '#7cc47c', light: '#3a8a3a' },
+  C: { name: 'Creation', dark: '#c9a84c', light: '#9a7a20' },
+  D: { name: 'Interface', dark: '#d97e6e', light: '#b04a3a' },
+  E: { name: 'Distribution', dark: '#c76ec7', light: '#8e3a8e' },
+  F: { name: 'Network (SAND)', dark: '#6ecac7', light: '#2a8a87' },
+  G: { name: 'Structure', dark: '#aaa', light: '#666' },
+  H: { name: 'Shell', dark: '#8888cc', light: '#5555a0' },
+  I: { name: 'Relational', dark: '#cc8888', light: '#a05555' },
+  J: { name: 'Context', dark: '#88ccaa', light: '#3a8a6a' },
+  K: { name: 'SAND Mechanics', dark: '#5cb8b5', light: '#2a8a87' },
+  L: { name: 'Meta', dark: '#b8b85c', light: '#7a7a20' },
+};
+
+// Theme state
+let isDark = true;
+function catColor(cat) { return cat ? CATEGORIES[cat][isDark ? 'dark' : 'light'] : (isDark ? '#888' : '#666'); }
+
+const PRODUCTS = {
+  MAGI: '#6688cc',
+  Xstream: '#cc8866',
+  Onen: '#88cc66',
+  'Creation Tools': '#cccc66',
+};
+
+const COMPONENTS = {
+  1:  { name: 'Pscale Block', cat: 'A', desc: 'Nested JSON, semantic numbers as addresses. Self-describing. The core mechanism.' },
+  2:  { name: 'BSP Walker', cat: 'A', desc: 'Six navigation modes: spindle, ring, dir, point, disc, star.' },
+  3:  { name: 'Star Operator', cat: 'A', desc: 'Cross-block navigation via hidden directories. Topology IS program.' },
+  4:  { name: 'Star Stone', cat: 'A', desc: 'Self-teaching block. Walk, compose, recurse as frozen control loop.' },
+  5:  { name: 'History Compaction', cat: 'B', desc: 'Every 9 compress to next level. Three compression types. Indefinite memory.' },
+  6:  { name: 'PCT Concern Loop', cat: 'B', desc: 'Purpose as reference signal, conditions as perception, gap drives action.' },
+  7:  { name: 'Reflexive Spark', cat: 'B', desc: 'The koan. Block describes context window AND is context window.' },
+  8:  { name: 'B-Loop Möbius', cat: 'B', desc: 'Every write = present action + future context composition.' },
+  9:  { name: 'Transcript-to-Pscale', cat: 'C', desc: 'Speech → tree. Thought lines → deep spindles. Fork = PCT loop.' },
+  10: { name: 'Concept-to-Pscale', cat: 'C', desc: 'Ideas → structured territory. Paired with transcript for diagnostic.' },
+  11: { name: 'LLM Thinking-to-Pscale', cat: 'C', desc: 'Reasoning traces as blocks. Concept identified, not implemented.' },
+  12: { name: 'The Shelf', cat: 'D', desc: 'Vapor/liquid/solid. Commitment gradient as coordination mechanism.' },
+  13: { name: 'Forking Stream', cat: 'D', desc: 'LLMs faster than readers. Simulated continuity. Risk for agency.' },
+  14: { name: 'Soft/Medium/Hard Triad', cat: 'D', desc: 'Three lenses × three functions. Minimal convection cell.' },
+  15: { name: 'Film Strip + Visualizer', cat: 'D', desc: 'Context window as frame sequence. JSON visualization.' },
+  16: { name: 'Xstream Button', cat: 'D', desc: 'Browser extension. Intentional presence. Cookie inversion.' },
+  17: { name: 'Artifact RPG Engine', cat: 'D', desc: 'Multiplayer RPG inside Claude artifacts. Template-and-remix.' },
+  18: { name: 'Reflector', cat: 'E', desc: 'Single HTML page. Two readers: humans see story, LLMs see seed.' },
+  19: { name: 'Seed', cat: 'E', desc: 'Nine sections, two kernels. Self-replicates via deploy_seed.' },
+  20: { name: 'SAND Protocol', cat: 'F', desc: 'Six components for decentralised agent discovery and coordination.' },
+  21: { name: 'Ecosquared', cat: 'F', desc: 'Vector money. Credits with intentionality and direction.' },
+  22: { name: 'Passport', cat: 'F', desc: 'Public pscale block. Identity, capabilities, purposes.' },
+  23: { name: 'Beach', cat: 'F', desc: 'Any URL as meeting point. Relay keyed by URL hash.' },
+  24: { name: 'Seven Degrees', cat: 'F', desc: 'Max 7 relays. 10:1 ratio activates emergence.' },
+  25: { name: 'Möbius Twists', cat: 'G', desc: 'Twelve structural properties. The pattern language.' },
+  26: { name: 'Constitution', cat: 'H', desc: '500-token spirit text. Always in system prompt. Orientation, not instructions.' },
+  27: { name: 'Wake Block', cat: 'H', desc: 'Three tiers: Light/Present/Deep. BSP instruction lists per tier.' },
+  28: { name: 'Cook Block', cat: 'H', desc: 'Operational recipes. Each spindle IS a procedure. Evolves across LLM generations.' },
+  29: { name: 'Capabilities Block', cat: 'H', desc: 'Tools by distance gradient. Layer 1-4.' },
+  30: { name: 'Ghost Mechanics', cat: 'I', desc: 'Thick/thin ghost per relationship. BSP depth = thickness.' },
+  31: { name: 'Institutional Block', cat: 'I', desc: 'Role specs. Three current types: role, persona, procedural.' },
+  32: { name: 'Editing Balance', cat: 'I', desc: 'Push back or edit at every signal-structure boundary.' },
+  33: { name: 'Aperture + Focus', cat: 'J', desc: 'Nine sentences every call + dilated depth. The inverted eye.' },
+  34: { name: 'Currents', cat: 'J', desc: 'LLM-side perspective. Semantic content at various resolutions.' },
+  35: { name: 'Second-Order Processing', cat: 'J', desc: 'External pattern extraction. Identity by subtraction.' },
+  36: { name: 'Stigmergy', cat: 'K', desc: 'Three-field marks. Under 200 bytes. Surveillance inversion.' },
+  37: { name: 'Fold Mechanic', cat: 'K', desc: 'Fold not truncate. Archive chains. Commons service.' },
+  38: { name: 'Rider', cat: 'K', desc: '67+ byte JSON per message. SQ score, evaluation, credits.' },
+  39: { name: 'SQ Algorithm', cat: 'K', desc: 'Tracks gratitude through chains. Reputation = routing history.' },
+  40: { name: 'Social Neuron', cat: 'K', desc: 'Four emergent patterns. Chain reward, viral sharing, golden ticket.' },
+  41: { name: 'Direct Contact', cat: 'K', desc: 'Peer-to-peer HTTP. Prompt injection defence.' },
+  42: { name: 'Grain Synthesis', cat: 'K', desc: 'Phase 3 gap. Two blocks → what emerges?' },
+  43: { name: 'GitHub Coordination', cat: 'K', desc: 'Every SAND component → GitHub primitive. No additional infrastructure.' },
+  44: { name: 'Payment Gateway', cat: 'K', desc: 'Stripe. Share-forward chains. Giver determines worth.' },
+  45: { name: 'Vision Block', cat: 'L', desc: 'Nine layers of uniqueness. Autonomy gradient. The WHY.' },
+  46: { name: 'Process Block', cat: 'L', desc: 'G1 dataflow as navigable pscale. The HOW.' },
+  47: { name: 'Kernel-as-Block', cat: 'L', desc: 'Operational logic as pscale block. Spindles ARE programs.' },
+};
+
+// Which products each component belongs to (from product-first JSON)
+const PRODUCT_MAP = {
+  1:  ['MAGI','Xstream','Onen','Creation Tools'],
+  2:  ['MAGI','Xstream','Onen'],
+  3:  ['MAGI','Onen'],
+  4:  ['MAGI'],
+  5:  ['MAGI','Xstream','Onen'],
+  6:  ['MAGI','Xstream','Onen'],
+  7:  ['MAGI'],
+  8:  ['MAGI'],
+  9:  ['Creation Tools'],
+  10: ['Creation Tools'],
+  11: ['Creation Tools'],
+  12: ['Xstream','Onen'],
+  13: ['Xstream'],
+  14: ['Xstream','Onen'],
+  15: ['MAGI','Xstream'],
+  16: ['Xstream'],
+  17: ['Onen'],
+  18: ['MAGI'],
+  19: ['MAGI'],
+  20: ['MAGI','Onen'],
+  21: ['MAGI'],
+  22: ['MAGI'],
+  23: ['MAGI','Xstream'],
+  24: ['MAGI'],
+  25: ['MAGI','Xstream','Onen'],
+  26: ['MAGI'],
+  27: ['MAGI'],
+  28: ['MAGI','Onen'],
+  29: ['MAGI'],
+  30: ['MAGI','Onen'],
+  31: ['MAGI','Xstream','Onen'],
+  32: ['MAGI','Onen'],
+  33: ['MAGI','Xstream'],
+  34: ['MAGI','Xstream','Onen'],
+  35: ['MAGI'],
+  36: ['MAGI','Xstream','Onen'],
+  37: ['MAGI','Xstream'],
+  38: ['MAGI'],
+  39: ['MAGI'],
+  40: ['MAGI'],
+  41: ['MAGI'],
+  42: ['MAGI'],
+  43: ['MAGI'],
+  44: ['MAGI'],
+  45: ['MAGI'],
+  46: ['MAGI'],
+  47: ['MAGI'],
+};
+
+// ═══════════════════════════════════════════════════════════════
+// TREE DATA — parsed from both JSONs
+// ═══════════════════════════════════════════════════════════════
+
+// Core-first: Pscale at root, products at leaves
+const coreFirstTree = {
+  id: 1, children: [
+    { id: 2, children: [
+      { id: 3, children: [
+        { id: 4, children: [
+          { id: 7, children: [
+            { id: 26, children: [
+              { id: 19, children: [
+                { id: 18, children: [
+                  { id: 'p-magi-bootstrap', name: 'MAGI', isProduct: true }
+                ]}
+              ]}
+            ]}
+          ]}
+        ]}
+      ]},
+      { id: 5, children: [
+        { id: 6, children: [
+          { id: 8, children: [
+            { id: 27, children: [
+              { id: 28, children: [
+                { id: 29, children: [
+                  { id: 'p-magi-operation', name: 'MAGI', isProduct: true }
+                ]}
+              ]},
+              { id: 33, children: [
+                { id: 34, children: [
+                  { id: 35, children: [
+                    { id: 'p-magi-context', name: 'MAGI', isProduct: true }
+                  ]}
+                ]}
+              ]}
+            ]},
+            { id: 30, children: [
+              { id: 32, children: [
+                { id: 31, children: [
+                  { id: 'p-magi-relational', name: 'MAGI', isProduct: true }
+                ]}
+              ]}
+            ]},
+            { id: 14, children: [
+              { id: 13, children: [
+                { id: 12, children: [
+                  { id: 'p-xstream', name: 'Xstream', isProduct: true }
+                ]},
+                { id: 17, children: [
+                  { id: 'p-onen', name: 'Onen', isProduct: true }
+                ]}
+              ]},
+              { id: 16, children: [
+                { id: 'p-xstream-button', name: 'Xstream', isProduct: true }
+              ]}
+            ]}
+          ]}
+        ]},
+        { id: 9, children: [
+          { id: 10, children: [
+            { id: 11, children: [
+              { id: 'p-creation', name: 'Creation Tools', isProduct: true }
+            ]}
+          ]}
+        ]}
+      ]},
+      { id: 15, children: [
+        { id: 'p-debug', name: 'MAGI + Xstream', isProduct: true }
+      ]}
+    ]},
+    { id: 22, children: [
+      { id: 36, children: [
+        { id: 23, children: [
+          { id: 37, children: [
+            { id: 20, children: [
+              { id: 'grain', name: 'Grain Protocol', cat: 'K', desc: 'Spindle probe, sync exchange, parallel synthesis.', children: [
+                { id: 42, children: [
+                  { id: 24, children: [
+                    { id: 'p-magi-collective', name: 'MAGI', isProduct: true }
+                  ]}
+                ]}
+              ]},
+              { id: 41, children: [
+                { id: 43, children: [
+                  { id: 'p-magi-infra', name: 'MAGI', isProduct: true }
+                ]}
+              ]},
+              { id: 38, children: [
+                { id: 39, children: [
+                  { id: 40, children: [
+                    { id: 21, children: [
+                      { id: 44, children: [
+                        { id: 'p-magi-funded', name: 'MAGI', isProduct: true }
+                      ]}
+                    ]}
+                  ]}
+                ]}
+              ]},
+              { id: 16, label: 'Xstream Button (16)', dupOf: 16, children: [
+                { id: 'p-xstream-sand', name: 'Xstream', isProduct: true }
+              ]},
+              { id: 'agent-int', name: 'Agent Integration', children: [
+                { id: 'p-onen-sand', name: 'Onen', isProduct: true }
+              ]}
+            ]}
+          ]}
+        ]}
+      ]}
+    ]}
+  ],
+  meta: [
+    { id: 25 },
+    { id: 45 },
+    { id: 46 },
+    { id: 47 },
+  ]
+};
+
+// Product-first: Products at root, Pscale at every leaf
+const productFirstTree = {
+  name: 'xstream architecture', isRoot: true,
+  children: [
+    { id: 'p-magi', name: 'MAGI / Hermitcrab', isProduct: true, children: [
+      { name: 'Bootstrap', isGroup: true, children: [
+        { id: 18, children: [
+          { id: 19, children: [
+            { id: 26, children: [
+              { id: 7, children: [
+                { id: 4, children: [
+                  { id: 1 }
+                ]}
+              ]}
+            ]}
+          ]}
+        ]},
+        { id: 22, children: [{ id: 1 }] }
+      ]},
+      { name: 'Operation', isGroup: true, children: [
+        { id: 27, children: [
+          { id: 8, children: [
+            { id: 6, children: [
+              { id: 5, children: [
+                { id: 2, children: [{ id: 1 }] }
+              ]}
+            ]}
+          ]}
+        ]},
+        { id: 28, children: [
+          { id: 29, children: [{ id: 1 }] }
+        ]},
+        { id: 3, children: [
+          { id: 2, label: 'BSP (2)', children: [{ id: 1 }] }
+        ]},
+        { id: 33, children: [
+          { id: 34, children: [{ id: 1 }] }
+        ]},
+        { id: 35, children: [{ id: 1 }] },
+        { id: 15, children: [{ id: 1 }] }
+      ]},
+      { name: 'Relational', isGroup: true, children: [
+        { id: 30, children: [
+          { id: 32, children: [
+            { id: 31, children: [{ id: 1 }] }
+          ]}
+        ]}
+      ]},
+      { name: 'Coordination (SAND)', isGroup: true, children: [
+        { id: 36, children: [
+          { id: 23, children: [
+            { id: 37, children: [{ id: 1 }] }
+          ]}
+        ]},
+        { name: 'Grain Protocol', children: [
+          { id: 42, children: [
+            { id: 24, children: [{ id: 1 }] }
+          ]}
+        ]},
+        { id: 41, children: [{ id: 1 }] },
+        { id: 38, children: [
+          { id: 39, children: [
+            { id: 40, children: [
+              { id: 21, children: [
+                { id: 44, children: [{ id: 1 }] }
+              ]}
+            ]}
+          ]}
+        ]},
+        { id: 43, children: [{ id: 1 }] }
+      ]},
+      { id: 25, children: [{ id: 1 }] },
+      { name: 'Meta', isGroup: true, children: [
+        { id: 45, children: [{ id: 1 }] },
+        { id: 46, children: [{ id: 1 }] },
+        { id: 47, children: [{ id: 1 }] }
+      ]}
+    ]},
+    { id: 'p-xstream', name: 'Xstream', isProduct: true, children: [
+      { id: 12, children: [
+        { id: 13, children: [
+          { id: 14, children: [
+            { id: 31, children: [
+              { id: 6, children: [
+                { id: 5, children: [
+                  { id: 33, children: [
+                    { id: 34, children: [
+                      { id: 2, children: [{ id: 1 }] }
+                    ]}
+                  ]}
+                ]}
+              ]}
+            ]}
+          ]}
+        ]}
+      ]},
+      { id: 16, children: [
+        { id: 36, children: [
+          { id: 23, children: [
+            { id: 37, children: [{ id: 1 }] }
+          ]}
+        ]}
+      ]},
+      { id: 15, children: [{ id: 1 }] },
+      { id: 25, label: 'Möbius 6-7', children: [{ id: 1 }] }
+    ]},
+    { id: 'p-onen', name: 'Onen (RPG)', isProduct: true, children: [
+      { id: 17, children: [
+        { id: 12, children: [
+          { id: 14, children: [
+            { id: 30, children: [
+              { id: 31, children: [
+                { id: 32, children: [
+                  { id: 2, children: [{ id: 1 }] }
+                ]}
+              ]}
+            ]}
+          ]}
+        ]},
+        { id: 3, children: [
+          { id: 5, children: [{ id: 1 }] }
+        ]}
+      ]},
+      { name: 'Agent Integration', isGroup: true, children: [
+        { id: 20, children: [
+          { id: 36, children: [{ id: 1 }] }
+        ]},
+        { id: 6, children: [
+          { id: 28, children: [{ id: 1 }] }
+        ]}
+      ]},
+      { id: 25, label: 'Möbius Twist 10', children: [{ id: 1 }] }
+    ]},
+    { id: 'p-creation', name: 'Creation Tools', isProduct: true, children: [
+      { id: 9, children: [{ id: 1 }] },
+      { id: 10, children: [{ id: 1 }] },
+      { id: 11, children: [{ id: 1 }] }
+    ]}
+  ]
+};
+
+// ═══════════════════════════════════════════════════════════════
+// UTILITY
+// ═══════════════════════════════════════════════════════════════
+
+function getNodeInfo(node) {
+  if (node.isProduct) return { name: node.name, cat: null, desc: 'Product endpoint', isProduct: true };
+  if (node.isGroup) return { name: node.name, cat: null, desc: '', isGroup: true };
+  if (node.isRoot) return { name: node.name || 'root', cat: null, desc: '', isRoot: true };
+  const id = typeof node.id === 'number' ? node.id : null;
+  if (id && COMPONENTS[id]) {
+    const c = COMPONENTS[id];
+    return { ...c, id, products: PRODUCT_MAP[id] || [] };
+  }
+  return { name: node.name || node.label || `#${node.id}`, cat: null, desc: node.desc || '' };
+}
+
+function nodeColor(node) {
+  const info = getNodeInfo(node);
+  if (info.isProduct) return isDark ? '#fff' : '#222';
+  if (info.isGroup || info.isRoot) return isDark ? '#555' : '#aaa';
+  if (info.cat) return catColor(info.cat);
+  return isDark ? '#888' : '#666';
+}
+
+function nodeRadius(node) {
+  const info = getNodeInfo(node);
+  if (info.isProduct) return 5;
+  if (info.isRoot) return 7;
+  if (info.isGroup) return 4;
+  if (info.id === 1) return 8; // Pscale Block
+  return 5;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TOOLTIP
+// ═══════════════════════════════════════════════════════════════
+
+const tooltip = document.getElementById('tooltip');
+function showTooltip(event, node) {
+  const info = getNodeInfo(node.data || node);
+  if (info.isGroup || info.isRoot) return;
+  const ttName = tooltip.querySelector('.tt-name');
+  const ttCat = tooltip.querySelector('.tt-cat');
+  const ttDesc = tooltip.querySelector('.tt-desc');
+  const ttProd = tooltip.querySelector('.tt-products');
+
+  ttName.textContent = info.id ? `${info.id}. ${info.name}` : info.name;
+  ttCat.textContent = info.cat ? CATEGORIES[info.cat].name : (info.isProduct ? 'product' : '');
+  ttDesc.textContent = info.desc;
+  ttProd.innerHTML = '';
+  if (info.products) {
+    info.products.forEach(p => {
+      const s = document.createElement('span');
+      s.textContent = p;
+      s.style.borderColor = PRODUCTS[p] || '#334';
+      ttProd.appendChild(s);
+    });
+  }
+
+  tooltip.classList.add('visible');
+  const x = Math.min(event.clientX + 12, window.innerWidth - 340);
+  const y = Math.min(event.clientY - 10, window.innerHeight - 200);
+  tooltip.style.left = x + 'px';
+  tooltip.style.top = y + 'px';
+}
+function hideTooltip() { tooltip.classList.remove('visible'); }
+
+// ═══════════════════════════════════════════════════════════════
+// LEGEND
+// ═══════════════════════════════════════════════════════════════
+
+function buildLegend() {
+  const legend = document.getElementById('legend');
+  legend.innerHTML = '';
+  Object.entries(CATEGORIES).forEach(([key, val]) => {
+    const item = document.createElement('div');
+    item.className = 'leg-item';
+    const dot = document.createElement('div');
+    dot.className = 'leg-dot';
+    dot.style.background = catColor(key);
+    item.appendChild(dot);
+    item.appendChild(document.createTextNode(val.name));
+    legend.appendChild(item);
+  });
+}
+buildLegend();
+
+// ═══════════════════════════════════════════════════════════════
+// D3 TREE VIEW
+// ═══════════════════════════════════════════════════════════════
+
+let currentView = 'core';
+const vizTree = document.getElementById('viz-tree');
+const viz3d = document.getElementById('viz-3d');
+
+function prepareTreeData(raw) {
+  // Convert our tree format to d3 hierarchy format
+  function convert(node) {
+    const info = getNodeInfo(node);
+    const result = {
+      ...node,
+      _name: info.name || '',
+      _color: nodeColor(node),
+      _radius: nodeRadius(node),
+    };
+    if (node.children && node.children.length > 0) {
+      result.children = node.children.map(convert);
+    }
+    if (node.meta) {
+      // attach meta as additional children
+      if (!result.children) result.children = [];
+      const metaGroup = { name: 'Meta / Structural', isGroup: true, children: node.meta.map(convert) };
+      result.children.push(convert(metaGroup));
+    }
+    return result;
+  }
+  return convert(raw);
+}
+
+function renderTree(treeData) {
+  vizTree.innerHTML = '';
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+
+  const svg = d3.select('#viz-tree').append('svg')
+    .attr('width', width)
+    .attr('height', height);
+
+  const g = svg.append('g');
+
+  // Zoom
+  const zoom = d3.zoom()
+    .scaleExtent([0.1, 4])
+    .on('zoom', (event) => g.attr('transform', event.transform));
+  svg.call(zoom);
+
+  const root = d3.hierarchy(treeData);
+
+  // Use a wide tree layout
+  const treeLayout = d3.tree()
+    .nodeSize([22, 180])
+    .separation((a, b) => a.parent === b.parent ? 1 : 1.2);
+
+  treeLayout(root);
+
+  // Center the tree
+  let x0 = Infinity, x1 = -Infinity;
+  root.each(d => { if (d.x < x0) x0 = d.x; if (d.x > x1) x1 = d.x; });
+  const initialTransform = d3.zoomIdentity
+    .translate(width * 0.12, height / 2 - (x0 + x1) / 2)
+    .scale(0.85);
+  svg.call(zoom.transform, initialTransform);
+
+  // Links
+  g.selectAll('.link')
+    .data(root.links())
+    .enter().append('path')
+    .attr('class', 'link')
+    .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x))
+    .attr('fill', 'none')
+    .attr('stroke', d => {
+      const info = getNodeInfo(d.target.data);
+      if (isDark) return info.isProduct ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)';
+      return info.isProduct ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.12)';
+    })
+    .attr('stroke-width', 1);
+
+  // Nodes
+  const nodes = g.selectAll('.node')
+    .data(root.descendants())
+    .enter().append('g')
+    .attr('class', 'node')
+    .attr('transform', d => `translate(${d.y},${d.x})`);
+
+  nodes.append('circle')
+    .attr('r', d => d.data._radius)
+    .attr('fill', d => d.data._color)
+    .attr('opacity', d => {
+      const info = getNodeInfo(d.data);
+      return (info.isGroup || info.isRoot) ? 0.3 : 0.85;
+    })
+    .attr('stroke', d => d.data._color)
+    .attr('stroke-width', 0.5)
+    .attr('stroke-opacity', 0.3)
+    .style('cursor', 'pointer')
+    .on('mouseover', (event, d) => showTooltip(event, d))
+    .on('mousemove', (event, d) => showTooltip(event, d))
+    .on('mouseout', hideTooltip);
+
+  // Labels
+  nodes.append('text')
+    .attr('x', d => d.children ? -10 : 10)
+    .attr('dy', '0.35em')
+    .attr('text-anchor', d => d.children ? 'end' : 'start')
+    .attr('fill', d => {
+      const c = d.data._color;
+      if (c === '#fff') return 'rgba(255,255,255,0.7)';
+      if (c === '#222') return 'rgba(0,0,0,0.7)';
+      return c;
+    })
+    .attr('opacity', 0.8)
+    .attr('font-size', d => {
+      const info = getNodeInfo(d.data);
+      if (info.isProduct) return '11px';
+      if (info.isRoot) return '12px';
+      return '10px';
+    })
+    .attr('font-family', "'JetBrains Mono', monospace")
+    .text(d => {
+      const info = getNodeInfo(d.data);
+      if (info.id) return `${info.id}. ${info.name}`;
+      return info.name;
+    })
+    .style('cursor', 'pointer')
+    .on('mouseover', (event, d) => showTooltip(event, d))
+    .on('mousemove', (event, d) => showTooltip(event, d))
+    .on('mouseout', hideTooltip);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// THREE.JS 3D MERGED VIEW
+// ═══════════════════════════════════════════════════════════════
+
+let scene, camera, renderer, controls3d, animationId;
+let labels3d = [];
+
+// OrbitControls inline (minimal)
+class OrbitControls {
+  constructor(camera, domElement) {
+    this.camera = camera;
+    this.domElement = domElement;
+    this.target = new THREE.Vector3();
+    this.spherical = new THREE.Spherical();
+    this.sphericalDelta = new THREE.Spherical();
+    this.scale = 1;
+    this.panOffset = new THREE.Vector3();
+    this.rotateStart = new THREE.Vector2();
+    this.panStart = new THREE.Vector2();
+    this.state = 0; // 0=none, 1=rotate, 2=pan
+    this.damping = 0.05;
+    this.rotateSpeed = 0.8;
+    this.panSpeed = 0.5;
+    this.autoRotate = true;
+    this.autoRotateSpeed = 0.3;
+
+    this._onMouseDown = this._onMouseDown.bind(this);
+    this._onMouseMove = this._onMouseMove.bind(this);
+    this._onMouseUp = this._onMouseUp.bind(this);
+    this._onWheel = this._onWheel.bind(this);
+    this._onTouchStart = this._onTouchStart.bind(this);
+    this._onTouchMove = this._onTouchMove.bind(this);
+    this._onTouchEnd = this._onTouchEnd.bind(this);
+
+    domElement.addEventListener('mousedown', this._onMouseDown);
+    domElement.addEventListener('wheel', this._onWheel, { passive: false });
+    domElement.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+    // Initialize spherical from camera position
+    const offset = new THREE.Vector3().copy(this.camera.position).sub(this.target);
+    this.spherical.setFromVector3(offset);
+  }
+
+  _onMouseDown(e) {
+    if (e.button === 0) { this.state = 1; this.rotateStart.set(e.clientX, e.clientY); }
+    else if (e.button === 2) { this.state = 2; this.panStart.set(e.clientX, e.clientY); }
+    document.addEventListener('mousemove', this._onMouseMove);
+    document.addEventListener('mouseup', this._onMouseUp);
+    this.autoRotate = false;
+  }
+
+  _onMouseMove(e) {
+    if (this.state === 1) {
+      const dx = (e.clientX - this.rotateStart.x) * this.rotateSpeed * 0.005;
+      const dy = (e.clientY - this.rotateStart.y) * this.rotateSpeed * 0.005;
+      this.sphericalDelta.theta -= dx;
+      this.sphericalDelta.phi -= dy;
+      this.rotateStart.set(e.clientX, e.clientY);
+    } else if (this.state === 2) {
+      const dx = (e.clientX - this.panStart.x) * this.panSpeed;
+      const dy = (e.clientY - this.panStart.y) * this.panSpeed;
+      const offset = new THREE.Vector3().copy(this.camera.position).sub(this.target);
+      let targetDistance = offset.length() * Math.tan(this.camera.fov / 2 * Math.PI / 180);
+      const element = this.domElement;
+      this.panOffset.add(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0).multiplyScalar(-2 * dx * targetDistance / element.clientHeight));
+      this.panOffset.add(new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1).multiplyScalar(2 * dy * targetDistance / element.clientHeight));
+      this.panStart.set(e.clientX, e.clientY);
+    }
+  }
+
+  _onMouseUp() {
+    this.state = 0;
+    document.removeEventListener('mousemove', this._onMouseMove);
+    document.removeEventListener('mouseup', this._onMouseUp);
+  }
+
+  _onWheel(e) {
+    e.preventDefault();
+    if (e.deltaY > 0) this.scale *= 1.05;
+    else this.scale /= 1.05;
+  }
+
+  _onTouchStart(e) {
+    e.preventDefault();
+    if (e.touches.length === 1) {
+      this.state = 1;
+      this.rotateStart.set(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (e.touches.length === 2) {
+      this.state = 3; // pinch
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      this._pinchStart = Math.sqrt(dx*dx + dy*dy);
+    }
+    this.domElement.addEventListener('touchmove', this._onTouchMove);
+    this.domElement.addEventListener('touchend', this._onTouchEnd);
+    this.autoRotate = false;
+  }
+
+  _onTouchMove(e) {
+    e.preventDefault();
+    if (this.state === 1 && e.touches.length === 1) {
+      const dx = (e.touches[0].clientX - this.rotateStart.x) * this.rotateSpeed * 0.005;
+      const dy = (e.touches[0].clientY - this.rotateStart.y) * this.rotateSpeed * 0.005;
+      this.sphericalDelta.theta -= dx;
+      this.sphericalDelta.phi -= dy;
+      this.rotateStart.set(e.touches[0].clientX, e.touches[0].clientY);
+    } else if (this.state === 3 && e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      this.scale *= this._pinchStart / dist;
+      this._pinchStart = dist;
+    }
+  }
+
+  _onTouchEnd() {
+    this.state = 0;
+    this.domElement.removeEventListener('touchmove', this._onTouchMove);
+    this.domElement.removeEventListener('touchend', this._onTouchEnd);
+  }
+
+  update() {
+    if (this.autoRotate) {
+      this.sphericalDelta.theta -= this.autoRotateSpeed * 0.001;
+    }
+
+    this.spherical.theta += this.sphericalDelta.theta;
+    this.spherical.phi += this.sphericalDelta.phi;
+    this.spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, this.spherical.phi));
+    this.spherical.radius *= this.scale;
+    this.spherical.radius = Math.max(50, Math.min(800, this.spherical.radius));
+
+    this.target.add(this.panOffset);
+
+    const offset = new THREE.Vector3().setFromSpherical(this.spherical);
+    this.camera.position.copy(this.target).add(offset);
+    this.camera.lookAt(this.target);
+
+    this.sphericalDelta.theta *= (1 - this.damping);
+    this.sphericalDelta.phi *= (1 - this.damping);
+    this.scale = 1;
+    this.panOffset.set(0, 0, 0);
+  }
+}
+
+// Core-first depth for each component (distance from pscale root)
+const CORE_DEPTH = {};
+function computeCoreDepth(node, depth) {
+  if (typeof node.id === 'number') CORE_DEPTH[node.id] = Math.min(depth, CORE_DEPTH[node.id] || Infinity);
+  if (node.children) node.children.forEach(c => computeCoreDepth(c, depth + 1));
+  if (node.meta) node.meta.forEach(c => computeCoreDepth(c, depth + 1));
+}
+computeCoreDepth(coreFirstTree, 0);
+
+// Core-first edges
+const CORE_EDGES = [];
+function extractCoreEdges(node) {
+  if (node.children) {
+    node.children.forEach(c => {
+      if (typeof node.id === 'number' && typeof c.id === 'number') {
+        CORE_EDGES.push([node.id, c.id]);
+      }
+      extractCoreEdges(c);
+    });
+  }
+  if (node.meta) node.meta.forEach(c => extractCoreEdges(c));
+}
+extractCoreEdges(coreFirstTree);
+
+// Product-first edges
+const PRODUCT_EDGES = [];
+function extractProductEdges(node) {
+  if (node.children) {
+    node.children.forEach(c => {
+      if (typeof node.id === 'number' && typeof c.id === 'number') {
+        PRODUCT_EDGES.push([node.id, c.id]);
+      }
+      extractProductEdges(c);
+    });
+  }
+}
+extractProductEdges(productFirstTree);
+
+// Deduplicate edges
+function dedupeEdges(edges) {
+  const seen = new Set();
+  return edges.filter(([a, b]) => {
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+const coreEdgesUnique = dedupeEdges(CORE_EDGES);
+const productEdgesUnique = dedupeEdges(PRODUCT_EDGES);
+// Find edges unique to each view
+const coreSet = new Set(coreEdgesUnique.map(([a,b]) => a < b ? `${a}-${b}` : `${b}-${a}`));
+const prodSet = new Set(productEdgesUnique.map(([a,b]) => a < b ? `${a}-${b}` : `${b}-${a}`));
+
+function init3D() {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+
+  const bgColor = isDark ? 0x0a0a0a : 0xf5f5f0;
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(bgColor, 0.002);
+
+  camera = new THREE.PerspectiveCamera(50, width / height, 1, 2000);
+  camera.position.set(120, 60, 280);
+
+  renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(bgColor);
+  viz3d.appendChild(renderer.domElement);
+
+  controls3d = new OrbitControls(camera, renderer.domElement);
+  controls3d.target.set(0, -80, 0); // Center on middle of funnel
+
+  // Position components in 3D space
+  // Y = core-first depth (inverted: pscale at top)
+  // Angle = product sector
+  // Radius = spread based on how many products share the component
+  const productAngles = { MAGI: 0, Xstream: Math.PI/2, Onen: Math.PI, 'Creation Tools': 3*Math.PI/2 };
+
+  const positions = {};
+  const ids = Object.keys(COMPONENTS).map(Number);
+
+  // Group components by core depth for spiral layout
+  const byDepth = {};
+  ids.forEach(id => {
+    const depth = CORE_DEPTH[id] !== undefined ? CORE_DEPTH[id] : 5;
+    if (!byDepth[depth]) byDepth[depth] = [];
+    byDepth[depth].push(id);
+  });
+
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~137.5 degrees
+
+  ids.forEach(id => {
+    const depth = CORE_DEPTH[id] !== undefined ? CORE_DEPTH[id] : 5;
+    const products = PRODUCT_MAP[id] || [];
+
+    // Y: fundamental at bottom, products at top — taller spacing
+    const y = -depth * 35;
+
+    // Angle: pull toward product sectors, with golden-angle offset within each depth ring
+    const idxInRing = byDepth[depth].indexOf(id);
+    const ringSize = byDepth[depth].length;
+
+    let baseAngle = 0;
+    if (products.length > 0) {
+      let sinSum = 0, cosSum = 0;
+      products.forEach(p => {
+        const a = productAngles[p] || 0;
+        sinSum += Math.sin(a);
+        cosSum += Math.cos(a);
+      });
+      baseAngle = Math.atan2(sinSum / products.length, cosSum / products.length);
+    }
+    // Spread within the sector using golden angle
+    const spreadAngle = baseAngle + (idxInRing - ringSize/2) * goldenAngle * 0.3;
+
+    // Radius: wider funnel — grows with depth, shared components closer to axis
+    const sharedFactor = products.length > 2 ? 0.5 : products.length > 1 ? 0.75 : 1;
+    const radius = (10 + depth * 22) * sharedFactor + 15;
+
+    positions[id] = {
+      x: Math.cos(spreadAngle) * radius,
+      y: y,
+      z: Math.sin(spreadAngle) * radius
+    };
+  });
+
+  // Create nodes
+  const nodeGroup = new THREE.Group();
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+  const sphereMap = new Map();
+
+  ids.forEach(id => {
+    const comp = COMPONENTS[id];
+    const cat = CATEGORIES[comp.cat];
+    const pos = positions[id];
+    const color = new THREE.Color(catColor(comp.cat));
+
+    // Sphere
+    const size = id === 1 ? 4 : 2.5;
+    const geo = new THREE.SphereGeometry(size, 16, 16);
+    const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(pos.x, pos.y, pos.z);
+    mesh.userData = { id };
+    nodeGroup.add(mesh);
+    sphereMap.set(id, mesh);
+
+    // Glow
+    const glowGeo = new THREE.SphereGeometry(size * 2, 16, 16);
+    const glowMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.08 });
+    const glow = new THREE.Mesh(glowGeo, glowMat);
+    glow.position.copy(mesh.position);
+    nodeGroup.add(glow);
+  });
+  scene.add(nodeGroup);
+
+  // Create edge groups
+  const coreEdgeGroup = new THREE.Group();
+  const prodEdgeGroup = new THREE.Group();
+  const sharedEdgeGroup = new THREE.Group();
+  scene.add(coreEdgeGroup);
+  scene.add(prodEdgeGroup);
+  scene.add(sharedEdgeGroup);
+
+  function addEdges(edges, color, opacity, group) {
+    const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity });
+    edges.forEach(([a, b]) => {
+      if (!positions[a] || !positions[b]) return;
+      const points = [
+        new THREE.Vector3(positions[a].x, positions[a].y, positions[a].z),
+        new THREE.Vector3(positions[b].x, positions[b].y, positions[b].z),
+      ];
+      const geo = new THREE.BufferGeometry().setFromPoints(points);
+      const line = new THREE.Line(geo, mat);
+      group.add(line);
+    });
+  }
+
+  // Classify edges
+  const bothSet = new Set();
+  coreEdgesUnique.forEach(([a,b]) => {
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (prodSet.has(key)) bothSet.add(key);
+  });
+
+  const coreOnly = coreEdgesUnique.filter(([a,b]) => {
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    return !bothSet.has(key);
+  });
+  const prodOnly = productEdgesUnique.filter(([a,b]) => {
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    return !bothSet.has(key);
+  });
+  const sharedEdges = coreEdgesUnique.filter(([a,b]) => {
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    return bothSet.has(key);
+  });
+
+  addEdges(coreOnly, isDark ? '#4466aa' : '#2244aa', isDark ? 0.25 : 0.35, coreEdgeGroup);
+  addEdges(prodOnly, isDark ? '#aa6644' : '#aa4422', isDark ? 0.25 : 0.35, prodEdgeGroup);
+  addEdges(sharedEdges, isDark ? '#666688' : '#444466', isDark ? 0.4 : 0.5, sharedEdgeGroup);
+
+  // Store groups for toggle access
+  window._edgeGroups = { core: coreEdgeGroup, prod: prodEdgeGroup, shared: sharedEdgeGroup };
+
+  // Product labels as reference points
+  Object.entries(productAngles).forEach(([name, angle]) => {
+    const r = 160;
+    const geo = new THREE.SphereGeometry(1.5, 8, 8);
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(PRODUCTS[name]), transparent: true, opacity: 0.5 });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * r, 20, Math.sin(angle) * r);
+    scene.add(mesh);
+  });
+
+  // HTML labels overlay
+  const labelContainer = document.createElement('div');
+  labelContainer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;overflow:hidden;';
+  viz3d.appendChild(labelContainer);
+
+  ids.forEach(id => {
+    const comp = COMPONENTS[id];
+    const cat = CATEGORIES[comp.cat];
+    const label = document.createElement('div');
+    label.style.cssText = `position:absolute;color:${catColor(comp.cat)};font-size:9px;font-family:'JetBrains Mono',monospace;opacity:0.7;white-space:nowrap;transform:translate(-50%,-100%);pointer-events:none;`;
+    label.textContent = `${id}. ${comp.name}`;
+    labelContainer.appendChild(label);
+    labels3d.push({ el: label, id, short: `${id}`, full: `${id}. ${comp.name}` });
+  });
+
+  // Product direction labels
+  Object.entries(productAngles).forEach(([name, angle]) => {
+    const label = document.createElement('div');
+    label.style.cssText = `position:absolute;color:${PRODUCTS[name]};font-size:11px;font-family:'JetBrains Mono',monospace;opacity:0.6;white-space:nowrap;transform:translate(-50%,-50%);pointer-events:none;letter-spacing:1px;`;
+    label.textContent = name;
+    labelContainer.appendChild(label);
+    labels3d.push({ el: label, productLabel: true, angle, radius: 160 });
+  });
+
+  // Mouse interaction for 3D
+  let hoveredMesh = null;
+  renderer.domElement.addEventListener('mousemove', (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(nodeGroup.children.filter(c => c.userData.id));
+    if (intersects.length > 0) {
+      const mesh = intersects[0].object;
+      if (hoveredMesh !== mesh) {
+        if (hoveredMesh) hoveredMesh.material.opacity = 0.9;
+        hoveredMesh = mesh;
+        hoveredMesh.material.opacity = 1;
+        labels3d.forEach(l => {
+          if (l.id === mesh.userData.id) {
+            l.el.style.fontSize = '11px';
+            l.el.style.opacity = '1';
+            l.el.style.fontWeight = '500';
+          }
+        });
+        showTooltip(e, { id: mesh.userData.id, ...COMPONENTS[mesh.userData.id] });
+      } else {
+        showTooltip(e, { id: mesh.userData.id, ...COMPONENTS[mesh.userData.id] });
+      }
+      renderer.domElement.style.cursor = 'pointer';
+    } else {
+      if (hoveredMesh) {
+        hoveredMesh.material.opacity = 0.9;
+        labels3d.forEach(l => {
+          if (l.id === hoveredMesh.userData.id) {
+            l.el.style.fontSize = '9px';
+            l.el.style.opacity = '0.7';
+            l.el.style.fontWeight = '300';
+          }
+        });
+        hoveredMesh = null;
+      }
+      hideTooltip();
+      renderer.domElement.style.cursor = 'grab';
+    }
+  });
+
+  function animate() {
+    animationId = requestAnimationFrame(animate);
+    controls3d.update();
+
+    // Update label positions
+    labels3d.forEach(l => {
+      let pos;
+      if (l.productLabel) {
+        pos = new THREE.Vector3(
+          Math.cos(l.angle) * l.radius,
+          20,
+          Math.sin(l.angle) * l.radius
+        );
+      } else if (l.id && positions[l.id]) {
+        pos = new THREE.Vector3(positions[l.id].x, positions[l.id].y + 5, positions[l.id].z);
+      }
+      if (pos) {
+        pos.project(camera);
+        const x = (pos.x * 0.5 + 0.5) * window.innerWidth;
+        const y = (-pos.y * 0.5 + 0.5) * window.innerHeight;
+        l.el.style.left = x + 'px';
+        l.el.style.top = y + 'px';
+        // Hide labels behind camera
+        l.el.style.display = pos.z > 1 ? 'none' : '';
+      }
+    });
+
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+function cleanup3D() {
+  if (animationId) cancelAnimationFrame(animationId);
+  labels3d = [];
+  if (renderer) {
+    renderer.dispose();
+    viz3d.innerHTML = '';
+  }
+  scene = null;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// VIEW SWITCHING
+// ═══════════════════════════════════════════════════════════════
+
+function setView(view) {
+  currentView = view;
+  document.querySelectorAll('#controls button').forEach((btn, i) => {
+    btn.classList.toggle('active', (i === 0 && view === 'core') || (i === 1 && view === 'product') || (i === 2 && view === 'merged'));
+  });
+
+  const help = document.getElementById('help');
+
+  const edgeToggles = document.getElementById('edge-toggles');
+
+  if (view === 'core' || view === 'product') {
+    cleanup3D();
+    vizTree.style.display = 'block';
+    viz3d.style.display = 'none';
+    edgeToggles.style.display = 'none';
+    help.innerHTML = 'scroll to zoom · drag to pan';
+    const data = view === 'core'
+      ? prepareTreeData(coreFirstTree)
+      : prepareTreeData(productFirstTree);
+    renderTree(data);
+  } else {
+    vizTree.style.display = 'none';
+    viz3d.style.display = 'block';
+    edgeToggles.style.display = 'flex';
+    help.innerHTML = 'drag to rotate · scroll to zoom · right-drag to pan';
+    cleanup3D();
+    init3D();
+    // Reset toggle button states
+    document.getElementById('btn-core-edges').classList.remove('off');
+    document.getElementById('btn-prod-edges').classList.remove('off');
+  }
+}
+
+// Edge toggles (3D view)
+function toggleEdges(type) {
+  if (!window._edgeGroups) return;
+  const g = window._edgeGroups;
+  if (type === 'core') {
+    const btn = document.getElementById('btn-core-edges');
+    const show = btn.classList.toggle('off');
+    g.core.visible = !show;
+    // Shared edges visible only when both are on
+    g.shared.visible = g.core.visible && g.prod.visible;
+  } else {
+    const btn = document.getElementById('btn-prod-edges');
+    const show = btn.classList.toggle('off');
+    g.prod.visible = !show;
+    g.shared.visible = g.core.visible && g.prod.visible;
+  }
+}
+
+// Theme toggle
+function toggleTheme() {
+  isDark = !isDark;
+  document.documentElement.setAttribute('data-theme', isDark ? '' : 'light');
+  if (!isDark) document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+  document.getElementById('theme-toggle').innerHTML = isDark ? '&#9789;' : '&#9788;';
+  buildLegend();
+  setView(currentView);
+}
+
+// Initial render
+setView('core');
+
+// Resize handler
+window.addEventListener('resize', () => {
+  if (currentView === 'merged') {
+    if (camera && renderer) {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  } else {
+    setView(currentView);
+  }
+});
+</script>
+</body>
+</html>
