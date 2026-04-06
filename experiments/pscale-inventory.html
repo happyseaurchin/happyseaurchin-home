@@ -112,6 +112,8 @@
     #tooltip .tt-name { color: var(--tooltip-name); font-weight: 500; font-size: 12px; margin-bottom: 4px; }
     #tooltip .tt-cat { color: var(--tooltip-cat); font-size: 10px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
     #tooltip .tt-desc { color: var(--tooltip-desc); font-size: 11px; line-height: 1.5; }
+    #tooltip .tt-status { font-size: 10px; margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
+    #tooltip .tt-status .status-dot { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
     #tooltip .tt-products { margin-top: 6px; display: flex; gap: 4px; flex-wrap: wrap; }
     #tooltip .tt-products span {
       font-size: 9px; padding: 2px 6px; border-radius: 3px;
@@ -172,6 +174,25 @@
     }
     #edge-toggles button.off .dot { opacity: 0.2; }
     #edge-toggles button.off { opacity: 0.4; }
+
+    /* ── status filter toggles ── */
+    #status-filters {
+      position: fixed; top: 48px; right: 20px; z-index: 100;
+      display: flex; gap: 6px;
+    }
+    #status-filters button {
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 6px 14px; font-family: inherit; font-size: 12px;
+      cursor: pointer; transition: all 0.2s;
+      border-radius: 4px; letter-spacing: 0.3px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    #status-filters button:hover { border-color: var(--faint); }
+    #status-filters button .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      transition: opacity 0.2s;
+    }
+    #status-filters button.active { border-color: var(--btn-active-border); color: var(--btn-active-fg); }
   </style>
 </head>
 <body>
@@ -188,7 +209,14 @@
   <div class="tt-name"></div>
   <div class="tt-cat"></div>
   <div class="tt-desc"></div>
+  <div class="tt-status"></div>
   <div class="tt-products"></div>
+</div>
+
+<div id="status-filters">
+  <button onclick="toggleStatus('code')" id="btn-status-code"><span class="dot" style="background:#4ade80"></span>coded</button>
+  <button onclick="toggleStatus('spec')" id="btn-status-spec"><span class="dot" style="background:#fbbf24"></span>specced</button>
+  <button onclick="toggleStatus('concept')" id="btn-status-concept"><span class="dot" style="background:#888"></span>concept</button>
 </div>
 
 <div id="edge-toggles">
@@ -339,6 +367,34 @@ const PRODUCT_MAP = {
   46: ['MAGI'],
   47: ['MAGI'],
 };
+
+// Component status from extraction analysis
+const STATUS = {
+  1:'code',2:'code',3:'spec',4:'code',5:'spec',6:'spec',7:'code',8:'concept',
+  9:'concept',10:'concept',11:'concept',12:'code',13:'concept',14:'concept',
+  15:'code',16:'code',17:'spec',18:'code',19:'code',20:'spec',21:'spec',
+  22:'concept',23:'code',24:'concept',25:'spec',26:'spec',27:'code',28:'code',
+  29:'code',30:'spec',31:'spec',32:'spec',33:'concept',34:'spec',35:'concept',
+  36:'spec',37:'concept',38:'spec',39:'spec',40:'concept',41:'concept',
+  42:'concept',43:'concept',44:'spec',45:'code',46:'code',47:'spec'
+};
+
+const STATUS_COLORS = {
+  code:    { dark: '#4ade80', light: '#16a34a' }, // green
+  spec:    { dark: '#fbbf24', light: '#d97706' }, // amber
+  concept: { dark: '#888',    light: '#999' },     // grey
+};
+
+function statusColor(s) { return STATUS_COLORS[s] ? STATUS_COLORS[s][isDark ? 'dark' : 'light'] : '#888'; }
+
+// Active status filters (empty = show all)
+const activeStatusFilters = new Set();
+
+function isFiltered(id) {
+  if (activeStatusFilters.size === 0) return false; // no filter = nothing faded
+  const s = STATUS[id];
+  return s ? !activeStatusFilters.has(s) : true;
+}
 
 // ═══════════════════════════════════════════════════════════════
 // TREE DATA — parsed from both JSONs
@@ -647,9 +703,18 @@ function showTooltip(event, node) {
   const ttDesc = tooltip.querySelector('.tt-desc');
   const ttProd = tooltip.querySelector('.tt-products');
 
+  const ttStatus = tooltip.querySelector('.tt-status');
   ttName.textContent = info.id ? `${info.id}. ${info.name}` : info.name;
   ttCat.textContent = info.cat ? CATEGORIES[info.cat].name : (info.isProduct ? 'product' : '');
   ttDesc.textContent = info.desc;
+  // Status
+  const st = info.id ? STATUS[info.id] : null;
+  if (st) {
+    ttStatus.innerHTML = `<span class="status-dot" style="background:${statusColor(st)}"></span>${st}`;
+    ttStatus.style.display = 'flex';
+  } else {
+    ttStatus.style.display = 'none';
+  }
   ttProd.innerHTML = '';
   if (info.products) {
     info.products.forEach(p => {
@@ -763,6 +828,9 @@ function renderTree(treeData) {
     .attr('fill', 'none')
     .attr('stroke', d => {
       const info = getNodeInfo(d.target.data);
+      const srcInfo = getNodeInfo(d.source.data);
+      const faded = (info.id && isFiltered(info.id)) || (srcInfo.id && isFiltered(srcInfo.id));
+      if (faded) return isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
       if (isDark) return info.isProduct ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)';
       return info.isProduct ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.12)';
     })
@@ -780,7 +848,9 @@ function renderTree(treeData) {
     .attr('fill', d => d.data._color)
     .attr('opacity', d => {
       const info = getNodeInfo(d.data);
-      return (info.isGroup || info.isRoot) ? 0.3 : 0.85;
+      if (info.isGroup || info.isRoot) return 0.3;
+      if (info.id && isFiltered(info.id)) return 0.12;
+      return 0.85;
     })
     .attr('stroke', d => d.data._color)
     .attr('stroke-width', 0.5)
@@ -801,7 +871,11 @@ function renderTree(treeData) {
       if (c === '#222') return 'rgba(0,0,0,0.7)';
       return c;
     })
-    .attr('opacity', 0.8)
+    .attr('opacity', d => {
+      const info = getNodeInfo(d.data);
+      if (info.id && isFiltered(info.id)) return 0.1;
+      return 0.8;
+    })
     .attr('font-size', d => {
       const info = getNodeInfo(d.data);
       if (info.isProduct) return '11px';
@@ -1099,6 +1173,7 @@ function init3D() {
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
   const sphereMap = new Map();
+  const glowMap = new Map();
 
   ids.forEach(id => {
     const comp = COMPONENTS[id];
@@ -1122,6 +1197,7 @@ function init3D() {
     const glow = new THREE.Mesh(glowGeo, glowMat);
     glow.position.copy(mesh.position);
     nodeGroup.add(glow);
+    glowMap.set(id, glow);
   });
   scene.add(nodeGroup);
 
@@ -1133,17 +1209,20 @@ function init3D() {
   scene.add(prodEdgeGroup);
   scene.add(sharedEdgeGroup);
 
+  const allEdgeLines = []; // { line, a, b, baseOpacity }
   function addEdges(edges, color, opacity, group) {
-    const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color), transparent: true, opacity });
+    const c = new THREE.Color(color);
     edges.forEach(([a, b]) => {
       if (!positions[a] || !positions[b]) return;
       const points = [
         new THREE.Vector3(positions[a].x, positions[a].y, positions[a].z),
         new THREE.Vector3(positions[b].x, positions[b].y, positions[b].z),
       ];
+      const mat = new THREE.LineBasicMaterial({ color: c, transparent: true, opacity });
       const geo = new THREE.BufferGeometry().setFromPoints(points);
       const line = new THREE.Line(geo, mat);
       group.add(line);
+      allEdgeLines.push({ line, a, b, baseOpacity: opacity });
     });
   }
 
@@ -1173,6 +1252,7 @@ function init3D() {
 
   // Store groups for toggle access
   window._edgeGroups = { core: coreEdgeGroup, prod: prodEdgeGroup, shared: sharedEdgeGroup };
+  window._3dRefs = { sphereMap, glowMap, allEdgeLines };
 
   // Product labels as reference points
   Object.entries(productAngles).forEach(([name, angle]) => {
@@ -1219,7 +1299,7 @@ function init3D() {
     if (intersects.length > 0) {
       const mesh = intersects[0].object;
       if (hoveredMesh !== mesh) {
-        if (hoveredMesh) hoveredMesh.material.opacity = 0.9;
+        if (hoveredMesh) hoveredMesh.material.opacity = isFiltered(hoveredMesh.userData.id) ? 0.08 : 0.9;
         hoveredMesh = mesh;
         hoveredMesh.material.opacity = 1;
         labels3d.forEach(l => {
@@ -1236,11 +1316,11 @@ function init3D() {
       renderer.domElement.style.cursor = 'pointer';
     } else {
       if (hoveredMesh) {
-        hoveredMesh.material.opacity = 0.9;
+        hoveredMesh.material.opacity = isFiltered(hoveredMesh.userData.id) ? 0.08 : 0.9;
         labels3d.forEach(l => {
           if (l.id === hoveredMesh.userData.id) {
             l.el.style.fontSize = '9px';
-            l.el.style.opacity = '0.7';
+            l.el.style.opacity = isFiltered(l.id) ? '0.1' : '0.7';
             l.el.style.fontWeight = '300';
           }
         });
@@ -1328,6 +1408,60 @@ function setView(view) {
     document.getElementById('btn-core-edges').classList.remove('off');
     document.getElementById('btn-prod-edges').classList.remove('off');
   }
+}
+
+// Status filter toggles
+function toggleStatus(status) {
+  const btn = document.getElementById('btn-status-' + status);
+  if (activeStatusFilters.has(status)) {
+    activeStatusFilters.delete(status);
+    btn.classList.remove('active');
+  } else {
+    activeStatusFilters.add(status);
+    btn.classList.add('active');
+  }
+  // Update status filter dot colors for theme
+  document.querySelector('#btn-status-code .dot').style.background = statusColor('code');
+  document.querySelector('#btn-status-spec .dot').style.background = statusColor('spec');
+  document.querySelector('#btn-status-concept .dot').style.background = statusColor('concept');
+
+  if (currentView === 'merged') {
+    applyStatusFilter3D();
+  } else {
+    // Re-render tree
+    const data = currentView === 'core'
+      ? prepareTreeData(coreFirstTree)
+      : prepareTreeData(productFirstTree);
+    renderTree(data);
+  }
+}
+
+function applyStatusFilter3D() {
+  const refs = window._3dRefs;
+  if (!refs) return;
+  const { sphereMap, glowMap, allEdgeLines } = refs;
+
+  // Update nodes
+  sphereMap.forEach((mesh, id) => {
+    const faded = isFiltered(id);
+    mesh.material.opacity = faded ? 0.08 : 0.9;
+    const glow = glowMap.get(id);
+    if (glow) glow.material.opacity = faded ? 0 : 0.08;
+  });
+
+  // Update labels
+  labels3d.forEach(l => {
+    if (l.id && !l.productLabel) {
+      const faded = isFiltered(l.id);
+      l.el.style.opacity = faded ? '0.1' : '0.7';
+    }
+  });
+
+  // Update edges
+  allEdgeLines.forEach(({ line, a, b, baseOpacity }) => {
+    const faded = isFiltered(a) || isFiltered(b);
+    line.material.opacity = faded ? 0.03 : baseOpacity;
+  });
 }
 
 // Edge toggles (3D view)
