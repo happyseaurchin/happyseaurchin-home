@@ -669,11 +669,29 @@ function showRawModal(frame) {
   header.className = 'modal-header';
   header.textContent = `${frame.concern || 'Frame'} — ${frame.tier} — ${frame.ts}`;
 
+  const headerButtons = document.createElement('div');
+  headerButtons.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
+  const remove = document.createElement('button');
+  remove.className = 'modal-remove';
+  remove.textContent = 'Remove';
+  remove.addEventListener('click', () => {
+    const idx = frames.indexOf(frame);
+    if (idx !== -1) frames.splice(idx, 1);
+    if (selectedIdx >= frames.length) selectedIdx = frames.length - 1;
+    if (selectedIdx < 0) selectedIdx = -1;
+    overlay.remove();
+    renderFrameList();
+    showCurrentView();
+  });
+
   const close = document.createElement('button');
   close.className = 'modal-close';
-  close.textContent = 'x';
+  close.textContent = '\u2715';
   close.addEventListener('click', () => overlay.remove());
-  header.appendChild(close);
+
+  headerButtons.append(remove, close);
+  header.appendChild(headerButtons);
 
   const content = document.createElement('pre');
   content.className = 'modal-content';
