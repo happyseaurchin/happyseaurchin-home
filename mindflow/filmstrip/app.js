@@ -695,5 +695,21 @@ function showRawModal(frame) {
   document.addEventListener('keydown', escHandler);
 }
 
+// ── Load example on startup ─────────────────────────────────────────────────
+
+async function loadExample() {
+  try {
+    const resp = await fetch('examples/birth-first-awakening.json');
+    if (resp.ok) {
+      const data = await resp.json();
+      ingestFile(data, 'birth-first-awakening.json');
+    }
+  } catch (e) {
+    console.log('No example file loaded:', e.message);
+  }
+}
+
+loadExample();
+
 // Expose for testing / programmatic loading
 window.filmstrip = { ingestFile, frames, logs };
