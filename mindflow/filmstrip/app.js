@@ -28,7 +28,24 @@ const toggleRaw = document.getElementById('toggle-raw');
 const viewTabs = document.querySelectorAll('.view-tab');
 const emptyView = document.getElementById('empty-view');
 const wsStatus = document.getElementById('ws-status');
+const toggleTheme = document.getElementById('toggle-theme');
 let rawMode = false;
+
+// ── Theme ────────────────────────────────────────────────────────────────────
+
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  toggleTheme.textContent = theme === 'dark' ? 'Light' : 'Dark';
+  localStorage.setItem('filmstrip-theme', theme);
+}
+
+// Restore saved preference, default to light
+applyTheme(localStorage.getItem('filmstrip-theme') || 'light');
+
+toggleTheme.addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme') || 'light';
+  applyTheme(current === 'dark' ? 'light' : 'dark');
+});
 
 // View panels
 const cView = document.getElementById('c-view');
