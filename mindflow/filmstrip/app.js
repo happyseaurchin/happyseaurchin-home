@@ -1,14 +1,15 @@
 /**
- * filmstrip/app.js — Filmstrip viewer for hermitcrab kernel logs.
+ * filmstrip/app.js — Filmstrip viewer for LLM kernel logs.
  *
  * Loads filmstrip frames (C-loop) and optional LOG files (B-loop detail).
  * Three views: C-loop (context window + output), B-loop (HTTP round-trips),
  * A-loop (content blocks within a single response).
  *
- * Reuses ColumnRenderer from ../explorer/column-renderer.js for pscale sections.
+ * Connects to filmstrip-server.mjs via WebSocket for live updates,
+ * or works standalone with manual file upload / drag-drop.
  */
 
-import { ColumnRenderer } from '../explorer/column-renderer.js';
+import { ColumnRenderer } from './column-renderer.js';
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ const fileUpload = document.getElementById('file-upload');
 const toggleRaw = document.getElementById('toggle-raw');
 const viewTabs = document.querySelectorAll('.view-tab');
 const emptyView = document.getElementById('empty-view');
+const wsStatus = document.getElementById('ws-status');
 let rawMode = false;
 
 // View panels
@@ -713,7 +715,67 @@ function showRawModal(frame) {
   document.addEventListener('keydown', escHandler);
 }
 
-// ── Load example on startup ─────────────────────────────────────────────────
+// ── WebSocket live connection ────────────────────────────────────────────────
+
+function setWsStatus(state) {
+  if (!wsStatus) return;
+  wsStatus.className = 'ws-indicator ws-' + state;
+  wsStatus.title = state === 'connected' ? 'Live' : state === 'connecting' ? 'Connecting...' : '';
+}
+
+let wsRetries = 0;
+const WS_MAX_RETRIES = 3;
+
+function connectWebSocket() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${proto}//${location.host}/ws`;
+  setWsStatus('connecting');
+
+  let ws;
+  try {
+    ws = new WebSocket(wsUrl);
+  } catch {
+    setWsStatus('disconnected');
+    loadExample();
+    return;
+  }
+
+  ws.onopen = () => {
+    setWsStatus('connected');
+    wsRetries = 0; // reset on success
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data);
+      if (msg.type === 'frame' || msg.type === 'log') {
+        ingestFile(msg.data, msg.filename || 'ws-frame.json');
+        // Auto-select the newest frame when a new frame arrives
+        if (msg.type === 'frame' && frames.length > 0) {
+          selectFrame(frames.length - 1);
+        }
+      }
+      // batch-start / batch-end are informational, no action needed
+    } catch (e) {
+      console.error('WebSocket message parse error:', e);
+    }
+  };
+
+  ws.onclose = () => {
+    setWsStatus('disconnected');
+    wsRetries++;
+    if (wsRetries <= WS_MAX_RETRIES) {
+      setTimeout(connectWebSocket, 3000);
+    } else {
+      // No server — fall back to example + manual upload
+      loadExample();
+    }
+  };
+
+  ws.onerror = () => {
+    // Will trigger onclose
+  };
+}
 
 async function loadExample() {
   try {
@@ -727,7 +789,17 @@ async function loadExample() {
   }
 }
 
-loadExample();
+// ── Startup ──────────────────────────────────────────────────────────────────
+
+// Try WebSocket first (works when filmstrip-server is running).
+// On static sites (happyseaurchin.com etc), WS fails after 3 retries
+// and falls back to loading the example file + manual upload.
+if (location.protocol === 'http:' || location.protocol === 'https:') {
+  connectWebSocket();
+} else {
+  // file:// mode — load example directly
+  loadExample();
+}
 
 // Expose for testing / programmatic loading
 window.filmstrip = { ingestFile, frames, logs };
