@@ -395,6 +395,40 @@ const STATUS_COLORS = {
 
 function statusColor(s) { return STATUS_COLORS[s] ? STATUS_COLORS[s][isDark ? 'dark' : 'light'] : '#888'; }
 
+// Component documentation slugs (maps id → filename slug)
+const DOC_SLUGS = {
+  1: 'pscale-block', 2: 'bsp-walker', 3: 'star-operator', 4: 'star-stone',
+  5: 'history-compaction', 6: 'pct-concern-loop', 7: 'reflexive-spark',
+  8: 'b-loop-mobius-twist', 9: 'transcript-to-pscale', 10: 'concept-to-pscale',
+  11: 'llm-thinking-to-pscale', 12: 'the-shelf', 13: 'the-forking-stream',
+  14: 'soft-medium-hard-triad', 15: 'film-strip-visualizer', 16: 'xstream-button',
+  17: 'claude-artifact-rpg-engine', 18: 'reflector', 19: 'the-seed',
+  20: 'sand-protocol', 21: 'ecosquared-vector-money', 22: 'the-passport',
+  23: 'the-beach', 24: 'seven-degrees-convergence', 25: 'mobius-twists',
+  26: 'constitution', 27: 'wake-block', 28: 'cook-block',
+  29: 'capabilities-block', 30: 'ghost-mechanics', 31: 'institutional-block',
+  32: 'editing-balance', 33: 'aperture-focus', 34: 'currents',
+  35: 'second-order-processing', 36: 'stigmergy', 37: 'fold-mechanic',
+  38: 'rider', 39: 'sq-algorithm', 40: 'social-neuron',
+  41: 'direct-contact-transport', 42: 'grain-synthesis',
+  43: 'github-coordination-layer', 44: 'ecosquared-payment-gateway',
+  45: 'vision-block', 46: 'process-block', 47: 'kernel-as-block',
+};
+
+function docUrl(id) {
+  const slug = DOC_SLUGS[id];
+  if (!slug) return null;
+  const num = String(id).padStart(2, '0');
+  return `/docs/components/${num}-${slug}.md`;
+}
+
+function openDoc(id) {
+  const url = docUrl(id);
+  if (url) window.open(url, '_blank');
+}
+
+function hasDoc(id) { return typeof id === 'number' && !!DOC_SLUGS[id]; }
+
 // Visible statuses — all ON by default. Toggle OFF to fade.
 const activeStatusFilters = new Set(['code', 'spec', 'concept']);
 
@@ -732,6 +766,16 @@ function showTooltip(event, node) {
     });
   }
 
+  // Doc hint
+  let ttDoc = tooltip.querySelector('.tt-doc');
+  if (!ttDoc) {
+    ttDoc = document.createElement('div');
+    ttDoc.className = 'tt-doc';
+    ttDoc.style.cssText = 'font-size:10px;margin-top:6px;opacity:0.6;';
+    tooltip.appendChild(ttDoc);
+  }
+  ttDoc.textContent = hasDoc(info.id) ? 'click to view doc \u2197' : '';
+
   tooltip.classList.add('visible');
   const x = Math.min(event.clientX + 12, window.innerWidth - 340);
   const y = Math.min(event.clientY - 10, window.innerHeight - 200);
@@ -862,10 +906,11 @@ function renderTree(treeData) {
     .attr('stroke', d => d.data._color)
     .attr('stroke-width', 0.5)
     .attr('stroke-opacity', 0.3)
-    .style('cursor', 'pointer')
+    .style('cursor', d => hasDoc(d.data.id) ? 'pointer' : 'default')
     .on('mouseover', (event, d) => showTooltip(event, d))
     .on('mousemove', (event, d) => showTooltip(event, d))
-    .on('mouseout', hideTooltip);
+    .on('mouseout', hideTooltip)
+    .on('click', (event, d) => { if (hasDoc(d.data.id)) openDoc(d.data.id); });
 
   // Labels
   nodes.append('text')
@@ -892,13 +937,14 @@ function renderTree(treeData) {
     .attr('font-family', "'JetBrains Mono', monospace")
     .text(d => {
       const info = getNodeInfo(d.data);
-      if (info.id) return `${info.id}. ${info.name}`;
+      if (info.id) return `${info.id}. ${info.name}${hasDoc(info.id) ? ' \u2197' : ''}`;
       return info.name;
     })
-    .style('cursor', 'pointer')
+    .style('cursor', d => hasDoc(d.data.id) ? 'pointer' : 'default')
     .on('mouseover', (event, d) => showTooltip(event, d))
     .on('mousemove', (event, d) => showTooltip(event, d))
-    .on('mouseout', hideTooltip);
+    .on('mouseout', hideTooltip)
+    .on('click', (event, d) => { if (hasDoc(d.data.id)) openDoc(d.data.id); });
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1281,9 +1327,15 @@ function init3D() {
     const cat = CATEGORIES[comp.cat];
     const label = document.createElement('div');
     label.style.cssText = `position:absolute;color:${catColor(comp.cat)};font-size:9px;font-family:'JetBrains Mono',monospace;opacity:0.7;white-space:nowrap;transform:translate(-50%,-100%);pointer-events:none;`;
-    label.textContent = `${id}. ${comp.name}`;
+    const docSuffix = hasDoc(id) ? ' \u2197' : '';
+    label.textContent = `${id}. ${comp.name}${docSuffix}`;
+    if (hasDoc(id)) {
+      label.style.pointerEvents = 'auto';
+      label.style.cursor = 'pointer';
+      label.addEventListener('click', () => openDoc(id));
+    }
     labelContainer.appendChild(label);
-    labels3d.push({ el: label, id, short: `${id}`, full: `${id}. ${comp.name}` });
+    labels3d.push({ el: label, id, short: `${id}`, full: `${id}. ${comp.name}${docSuffix}` });
   });
 
   // Product direction labels
@@ -1335,6 +1387,19 @@ function init3D() {
       }
       hideTooltip();
       renderer.domElement.style.cursor = 'grab';
+    }
+  });
+
+  // Click to open doc in 3D view
+  renderer.domElement.addEventListener('click', (e) => {
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(nodeGroup.children.filter(c => c.userData.id));
+    if (intersects.length > 0) {
+      const id = intersects[0].object.userData.id;
+      if (hasDoc(id)) openDoc(id);
     }
   });
 
