@@ -1004,6 +1004,10 @@ const LINKS = {
     "live": "https://happyseaurchin.com/mindflow/filmstrip/",
     "source": "https://github.com/happyseaurchin/happyseaurchin-home/tree/main/mindflow/filmstrip"
   },
+  "53": {
+    "live": "https://pscale-mcp-server-production.up.railway.app/mcp/v2",
+    "source": "https://github.com/pscale-commons/pscale-mcp-server"
+  },
   "56": {
     "live": "https://happyseaurchin.com/mindflow/editor/",
     "source": "https://github.com/happyseaurchin/happyseaurchin-home/tree/main/mindflow/editor"
@@ -1060,6 +1064,18 @@ function isFiltered(id) {
   if (activePackageSet && !activePackageSet.has(Number(id))) return true;
   const s = STATUS[id];
   return s ? !activeStatusFilters.has(s) : false;
+}
+
+// True when a package filter is active and this id is a member.
+function inActivePackage(id) {
+  return !!(activePackageSet && id != null && activePackageSet.has(Number(id)));
+}
+
+// True when a package filter is active. Callers use this to pick stronger
+// fade values — non-member nodes should nearly vanish so the member nodes
+// dominate visually while structure stays navigable for curious explorers.
+function packageFocusMode() {
+  return activePackageSet !== null;
 }
 
 function renderPackageFilters() {
@@ -2312,6 +2328,13 @@ function renderTree(treeData) {
       const info = getNodeInfo(d.target.data);
       const srcInfo = getNodeInfo(d.source.data);
       const faded = (info.id && isFiltered(info.id)) || (srcInfo.id && isFiltered(srcInfo.id));
+      if (packageFocusMode()) {
+        // Edge between two package members — keep visible; any other edge
+        // fades to near-invisible so member connections stand out.
+        const bothIn = inActivePackage(info.id) && inActivePackage(srcInfo.id);
+        if (bothIn) return isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.35)';
+        return isDark ? 'rgba(255,255,255,0.015)' : 'rgba(0,0,0,0.02)';
+      }
       if (faded) return isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)';
       if (isDark) return info.isProduct ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)';
       return info.isProduct ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.12)';
@@ -2330,6 +2353,10 @@ function renderTree(treeData) {
     .attr('fill', d => d.data._color)
     .attr('opacity', d => {
       const info = getNodeInfo(d.data);
+      if (packageFocusMode()) {
+        if (inActivePackage(info.id)) return 0.95;
+        return 0.04;
+      }
       if (info.isGroup || info.isRoot) return 0.3;
       if (info.id && isFiltered(info.id)) return 0.12;
       return 0.85;
@@ -2356,6 +2383,10 @@ function renderTree(treeData) {
     })
     .attr('opacity', d => {
       const info = getNodeInfo(d.data);
+      if (packageFocusMode()) {
+        if (inActivePackage(info.id)) return 0.95;
+        return 0.04;
+      }
       if (info.id && isFiltered(info.id)) return 0.1;
       return 0.8;
     })
@@ -2910,6 +2941,8 @@ function setView(view) {
     // Reset toggle button states
     document.getElementById('btn-core-edges').classList.remove('off');
     document.getElementById('btn-prod-edges').classList.remove('off');
+    // Re-apply current filter state (status + package) after rebuild
+    applyStatusFilter3D();
   }
 }
 
@@ -2938,18 +2971,31 @@ function applyStatusFilter3D() {
   const refs = window._3dRefs;
   if (!refs) return;
   const { sphereMap, glowMap, allEdgeLines } = refs;
+  const pkgMode = packageFocusMode();
 
   // Update nodes
   sphereMap.forEach((mesh, id) => {
+    if (pkgMode) {
+      const inPkg = inActivePackage(id);
+      mesh.material.opacity = inPkg ? 0.95 : 0.03;
+      const glow = glowMap.get(id);
+      if (glow) glow.material.opacity = inPkg ? 0.12 : 0;
+      return;
+    }
     const faded = isFiltered(id);
     mesh.material.opacity = faded ? 0.08 : 0.9;
     const glow = glowMap.get(id);
     if (glow) glow.material.opacity = faded ? 0 : 0.08;
   });
 
-  // Update labels
+  // Update labels (including product labels in package mode)
   labels3d.forEach(l => {
-    if (l.id && !l.productLabel) {
+    if (!l.id) return;
+    if (pkgMode) {
+      l.el.style.opacity = inActivePackage(l.id) ? '0.95' : '0.04';
+      return;
+    }
+    if (!l.productLabel) {
       const faded = isFiltered(l.id);
       l.el.style.opacity = faded ? '0.1' : '0.7';
     }
@@ -2957,6 +3003,11 @@ function applyStatusFilter3D() {
 
   // Update edges
   allEdgeLines.forEach(({ line, a, b, baseOpacity }) => {
+    if (pkgMode) {
+      const both = inActivePackage(a) && inActivePackage(b);
+      line.material.opacity = both ? Math.max(baseOpacity, 0.35) : 0.015;
+      return;
+    }
     const faded = isFiltered(a) || isFiltered(b);
     line.material.opacity = faded ? 0.03 : baseOpacity;
   });
