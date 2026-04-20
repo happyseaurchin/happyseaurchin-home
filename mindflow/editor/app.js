@@ -1055,6 +1055,24 @@ async function boot() {
   }
   document.getElementById('filename-input').value = state.filename;
   refresh();
+
+  // Cross-tab sync: the filmstrip-3d viewer writes back to LS_SHELF when
+  // user updates text there. Pick up those changes so the editor stays in
+  // step (and a subsequent "save file" serialises the latest shelf).
+  window.addEventListener('storage', (e) => {
+    if (e.key !== LS_SHELF && e.key !== LS_VIEWS) return;
+    try {
+      if (e.key === LS_SHELF) {
+        const raw = localStorage.getItem(LS_SHELF);
+        if (raw) state.shelf = new Map(Object.entries(JSON.parse(raw)));
+      }
+      if (e.key === LS_VIEWS) {
+        const raw = localStorage.getItem(LS_VIEWS);
+        state.slices = raw ? new Map(Object.entries(JSON.parse(raw))) : new Map();
+      }
+      refresh();
+    } catch (err) { console.warn('cross-tab sync failed:', err); }
+  });
 }
 
 boot();

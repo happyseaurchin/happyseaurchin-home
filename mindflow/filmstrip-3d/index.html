@@ -71,14 +71,20 @@
   }
   #editor footer {
     padding: 6px 10px 8px; border-top: 1px solid #ddd;
-    display: flex; gap: 6px; align-items: center;
+    display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
   }
   #editor footer button {
     font-family: inherit; font-size: 10px; padding: 3px 9px;
     background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer;
   }
   #editor footer button.primary { background: #222; color: #fff; border-color: #222; }
+  #editor footer button:disabled { opacity: 0.4; cursor: not-allowed; }
   #editor footer .dirty { color: #c06020; font-size: 10px; margin-left: auto; }
+  #editor .disclaimer {
+    padding: 6px 10px 8px; border-top: 1px solid #eee;
+    font-size: 10px; color: #667; font-style: italic; line-height: 1.4;
+  }
+  #editor .disclaimer strong { color: #335; font-style: normal; }
 </style>
 </head>
 <body>
@@ -90,7 +96,9 @@
     input:
     <button data-input="frame" class="active">frame</button>
     <button data-input="editor">editor</button>
+    <button data-input="upload">upload</button>
     <button id="input-reload" title="Reload current input">↻</button>
+    <input type="file" id="upload-file" accept=".json,application/json" style="display:none;">
   </div>
   <div class="row">
     <button id="btn-root-toggle" class="active" title="Show/hide root cubes (on-floor)">root</button>
@@ -131,8 +139,20 @@
   </header>
   <textarea id="edit-text" spellcheck="false" placeholder="Click a cube to edit its semantic…"></textarea>
   <footer>
+    <button id="edit-update" class="primary" style="display:none;">update</button>
+    <button id="edit-revert" style="display:none;">revert</button>
+    <button id="edit-download" style="display:none;">download</button>
     <button id="edit-close">close</button>
+    <span class="dirty" id="edit-dirty"></span>
   </footer>
+  <div class="disclaimer" id="edit-disclaimer" style="display:none;">
+    <strong>editor mode:</strong> update writes to the shared shelf (in-memory
+    across tabs). To save to file, go to the editor tab and click <em>save file</em>.
+  </div>
+  <div class="disclaimer" id="edit-disclaimer-upload" style="display:none;">
+    <strong>upload mode:</strong> update mutates the block in memory. Use
+    <em>download</em> to save a copy of the edited JSON.
+  </div>
 </div>
 
 <div id="scrubber">
@@ -749,16 +769,40 @@ function getSemanticAt(block, addr) {
   return semanticOf(ref.parent[ref.key]);
 }
 
+function setSemanticAt(block, addr, newStr) {
+  const ref = walkToNode(block, addr);
+  if (!ref) return false;
+  const node = ref.parent[ref.key];
+  if (typeof node === 'string') {
+    ref.parent[ref.key] = newStr;
+  } else if (node && typeof node === 'object') {
+    let host = node;
+    while (host['_'] && typeof host['_'] === 'object') host = host['_'];
+    host['_'] = newStr;
+  } else {
+    ref.parent[ref.key] = newStr;
+  }
+  return true;
+}
+
 // ---------------------------------------------------------------------------
-// Text peek panel — view the semantic at the clicked cube. In-memory only,
-// not a persistent editor.
+// Text peek panel — view the semantic at the clicked cube. In frame mode
+// the panel is view/scratch-only. In editor mode it exposes update/revert
+// that mutate the editor's shared shelf in localStorage; the user must still
+// click "save file" in the editor tab to write to disk.
 // ---------------------------------------------------------------------------
 
 const editEl = document.getElementById('editor');
 const editAddrEl = document.getElementById('edit-addr');
 const editMetaEl = document.getElementById('edit-meta');
 const editTextEl = document.getElementById('edit-text');
-const editState = { blockId: null, addr: null };
+const editState = { blockId: null, addr: null, original: '' };
+const editDirtyEl = document.getElementById('edit-dirty');
+const editUpdateBtn = document.getElementById('edit-update');
+const editRevertBtn = document.getElementById('edit-revert');
+const editDisclaimerEl = document.getElementById('edit-disclaimer');
+const editDisclaimerUploadEl = document.getElementById('edit-disclaimer-upload');
+const editDownloadBtn = document.getElementById('edit-download');
 
 function openEditorFor(node) {
   if (!loadedBlocks) return;
@@ -767,9 +811,21 @@ function openEditorFor(node) {
   const sem = getSemanticAt(sec.block, node.addr) ?? '';
   editState.blockId = node.blockId;
   editState.addr = node.addr;
+  editState.original = sem;
   editAddrEl.textContent = `${node.blockId}:${node.addr || '(root)'}`;
   editMetaEl.textContent = `depth ${node.depth} · ${sem.length} chars`;
   editTextEl.value = sem;
+  editDirtyEl.textContent = '';
+  // Editor mode: update writes to the shared shelf. Upload mode: update
+  // mutates in-memory and exposes a download button. Frame mode: view-only.
+  const editable = inputMode === 'editor' || inputMode === 'upload';
+  editUpdateBtn.style.display = editable ? '' : 'none';
+  editRevertBtn.style.display = editable ? '' : 'none';
+  editDownloadBtn.style.display = inputMode === 'upload' ? '' : 'none';
+  editDisclaimerEl.style.display = inputMode === 'editor' ? '' : 'none';
+  editDisclaimerUploadEl.style.display = inputMode === 'upload' ? '' : 'none';
+  editUpdateBtn.disabled = true;
+  editRevertBtn.disabled = true;
   editEl.classList.add('open');
 }
 
@@ -777,6 +833,68 @@ function closeEditor() {
   editEl.classList.remove('open');
   editState.blockId = null; editState.addr = null;
 }
+
+editTextEl.addEventListener('input', () => {
+  const dirty = editTextEl.value !== editState.original;
+  editDirtyEl.textContent = dirty ? 'unsaved' : '';
+  if (inputMode === 'editor' || inputMode === 'upload') {
+    editUpdateBtn.disabled = !dirty;
+    editRevertBtn.disabled = !dirty;
+  }
+});
+
+editUpdateBtn.addEventListener('click', () => {
+  if (!editState.blockId || !loadedBlocks) return;
+  if (inputMode !== 'editor' && inputMode !== 'upload') return;
+  const sec = loadedBlocks.find(b => b.id === editState.blockId);
+  if (!sec) return;
+  if (!setSemanticAt(sec.block, editState.addr, editTextEl.value)) return;
+  editState.original = editTextEl.value;
+  editDirtyEl.textContent = 'updated';
+  editUpdateBtn.disabled = true;
+  editRevertBtn.disabled = true;
+  if (inputMode === 'editor') {
+    // Write back to the shared editor shelf in localStorage. The editor
+    // tab picks up the change via `storage` event.
+    try {
+      const shelfRaw = localStorage.getItem(LS_SHELF);
+      const shelf = shelfRaw ? JSON.parse(shelfRaw) : {};
+      shelf[editState.blockId] = sec.block;
+      localStorage.setItem(LS_SHELF, JSON.stringify(shelf));
+    } catch (e) { console.warn('shelf write failed:', e); }
+  }
+  // In upload mode the mutation stays in-memory until the user clicks download.
+  const keepFocus = focusAddr;
+  renderBlocks(loadedBlocks);
+  focusAddr = keepFocus;
+  applyHighlight();
+  editMetaEl.textContent = editMetaEl.textContent.replace(/\d+ chars/, `${editTextEl.value.length} chars`);
+});
+
+editDownloadBtn.addEventListener('click', () => {
+  if (inputMode !== 'upload' || !loadedBlocks?.length) return;
+  // Re-serialise preserving the uploaded shape: single-block stays single,
+  // multi-block stays an id->block object.
+  const payload = loadedBlocks.length === 1
+    ? loadedBlocks[0].block
+    : Object.fromEntries(loadedBlocks.map(b => [b.id, b.block]));
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = uploadedFilename || 'block.json';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+});
+
+editRevertBtn.addEventListener('click', () => {
+  editTextEl.value = editState.original;
+  editDirtyEl.textContent = '';
+  editUpdateBtn.disabled = true;
+  editRevertBtn.disabled = true;
+});
 
 document.getElementById('edit-close').addEventListener('click', closeEditor);
 
@@ -790,7 +908,9 @@ const FRAME_URL = '../filmstrip/examples/birth-first-awakening.json';
 const LS_SHELF = 'mindflow-editor:shelf';
 const LS_VIEWS = 'mindflow-editor:views';
 
-let inputMode = 'frame';  // 'frame' | 'editor'
+let inputMode = 'frame';  // 'frame' | 'editor' | 'upload'
+let uploadedBlocks = null;   // last-loaded upload parsed into renderable blocks
+let uploadedFilename = null; // preserved for the download filename
 let filmstripOn = false;  // frame scrubber visible?
 let frameSeq = [];        // loaded frames when in filmstrip mode
 let frameIdx = 0;
@@ -882,6 +1002,49 @@ async function loadFrameInput() {
   return loadFrameAt(frameIdx);
 }
 
+// Detect the shape of an uploaded JSON and turn it into a blocks[] array.
+// Accepted shapes:
+//   - Single pscale block:   { _: "...", 1: ..., 2: ... }
+//   - Multi-block shelf:     { id1: {...}, id2: {...} }
+//   - Filmstrip frame:       { system, message, output, tools, ... }
+//   - Array of frames:       [ frame1, frame2, ... ]
+function parseUploadedJson(data, filename) {
+  const base = (filename || 'upload').replace(/\.json$/i, '');
+  // Filmstrip frame (single or array) → route via parseFrame for consistency.
+  if (Array.isArray(data) && data.length && data[0] && typeof data[0] === 'object'
+      && ('system' in data[0] || 'message' in data[0])) {
+    return parseFrame(data[0]);
+  }
+  if (data && typeof data === 'object' && ('system' in data || 'message' in data)) {
+    return parseFrame(data);
+  }
+  // Pscale block heuristic: top-level has `_` or any digit-key.
+  const isPscaleBlock = (v) => v && typeof v === 'object' && !Array.isArray(v)
+    && ('_' in v || '1' in v || '2' in v || '3' in v || '4' in v || '5' in v
+        || '6' in v || '7' in v || '8' in v || '9' in v);
+  if (isPscaleBlock(data)) {
+    return [{ id: base, name: base, block: data, touched: [] }];
+  }
+  // Multi-block shelf: object whose values are all pscale blocks.
+  if (data && typeof data === 'object' && !Array.isArray(data)) {
+    const entries = Object.entries(data).filter(([, v]) => isPscaleBlock(v));
+    if (entries.length) {
+      return entries.map(([id, block]) => ({ id, name: id, block, touched: [] }));
+    }
+  }
+  return [];
+}
+
+async function loadUploadInput() {
+  const parsed = uploadedBlocks || [];
+  if (parsed.length) {
+    parsed.__label = `upload: ${uploadedFilename || 'block'} · ${parsed.length} block${parsed.length === 1 ? '' : 's'}`;
+  } else {
+    parsed.__label = 'upload: choose a JSON file via the ↻ button';
+  }
+  return parsed;
+}
+
 async function loadEditorInput() {
   const parsed = buildEditorBlocks();
   const totalSlices = parsed.reduce((n, b) => n + (b.slices?.length || 0), 0);
@@ -893,7 +1056,10 @@ async function loadEditorInput() {
 
 async function loadInput() {
   try {
-    const parsed = await (inputMode === 'editor' ? loadEditorInput() : loadFrameInput());
+    const loader = inputMode === 'editor' ? loadEditorInput
+                 : inputMode === 'upload' ? loadUploadInput
+                 : loadFrameInput;
+    const parsed = await loader();
     loadedBlocks = parsed;
     touchedSet.clear();
     for (const b of parsed) {
@@ -915,6 +1081,11 @@ async function loadInput() {
 
 document.querySelectorAll('#panel button[data-input]').forEach(btn => {
   btn.addEventListener('click', () => {
+    // Upload button always opens the file picker; mode switches on file load.
+    if (btn.dataset.input === 'upload') {
+      document.getElementById('upload-file').click();
+      return;
+    }
     document.querySelectorAll('#panel button[data-input]').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
     inputMode = btn.dataset.input;
@@ -926,7 +1097,34 @@ document.querySelectorAll('#panel button[data-input]').forEach(btn => {
 });
 
 document.getElementById('input-reload').addEventListener('click', () => {
+  if (inputMode === 'upload') {
+    // In upload mode the reload button doubles as "pick another file".
+    document.getElementById('upload-file').click();
+    return;
+  }
   frameSeq = [];
+  loadInput().then(syncScrubberUI);
+});
+
+document.getElementById('upload-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    uploadedBlocks = parseUploadedJson(data, file.name);
+    uploadedFilename = file.name;
+  } catch (err) {
+    alert(`Failed to parse ${file.name}: ${err.message}`);
+    return;
+  }
+  e.target.value = '';
+  // Switch to upload mode and render.
+  inputMode = 'upload';
+  document.querySelectorAll('#panel button[data-input]').forEach(b =>
+    b.classList.toggle('active', b.dataset.input === 'upload'));
+  closeEditor();
+  exitMatryoshka({ fade: false });
   loadInput().then(syncScrubberUI);
 });
 
