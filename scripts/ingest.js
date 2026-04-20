@@ -50,9 +50,10 @@ function paddedId(id) {
 // Mutate tree structures in-place to attach a newly ingested component.
 //
 //  coreFirst: new node { id: N } appended to children of coreParent
-//             (or appended to tree.meta if coreParent === "meta").
-//             No product leaf — keeps the auto-attachment simple; humans
-//             can refine into chains that terminate at product leaves.
+//             (or appended to tree.meta if coreParent === "meta", OR
+//             if coreParent is itself a meta floater with no children
+//             — in which case the new component also becomes a meta
+//             floater, since meta entries don't form hierarchies).
 //
 //  productFirst: for each product the component belongs to, append
 //                { id: N, children: [{ id: 1 }] } to that product's root
@@ -68,10 +69,20 @@ function attachToTrees(trees, newId, coreParent, products) {
     trees.coreFirst.meta = trees.coreFirst.meta || [];
     trees.coreFirst.meta.push({ id: newId });
   } else {
-    const parent = findNodeById(trees.coreFirst, Number(coreParent));
-    if (!parent) throw new Error(`core-first parent id ${coreParent} not found in tree`);
-    parent.children = parent.children || [];
-    parent.children.push({ id: newId });
+    const pid = Number(coreParent);
+    const parent = findNodeById(trees.coreFirst, pid);
+    if (parent) {
+      parent.children = parent.children || [];
+      parent.children.push({ id: newId });
+    } else if (isInMeta(trees.coreFirst, pid)) {
+      // Parent is a floating meta entry — meta doesn't support hierarchy,
+      // so the new component becomes another meta floater too.
+      trees.coreFirst.meta = trees.coreFirst.meta || [];
+      trees.coreFirst.meta.push({ id: newId });
+      console.log(`[attach] parent #${pid} is in meta — placing #${newId} in meta as well`);
+    } else {
+      throw new Error(`core-first parent id ${coreParent} not found in tree`);
+    }
   }
 
   // --- product-first
@@ -102,6 +113,10 @@ function findNodeById(node, targetId) {
     if (hit) return hit;
   }
   return null;
+}
+
+function isInMeta(tree, targetId) {
+  return Array.isArray(tree.meta) && tree.meta.some(m => m.id === targetId);
 }
 
 function run(cmd, args, opts = {}) {
@@ -165,13 +180,14 @@ function ingest(filePath, { dryRun = false, commit = true, push = true } = {}) {
     throw new Error(`destination already exists: ${destPath}`);
   }
 
-  // 1. Copy file
-  fs.copyFileSync(filePath, destPath);
-
-  // 2. Append to JSON + attach to trees
+  // 1. Mutate data in memory — do this FIRST. If attach throws, we haven't
+  //    touched the filesystem yet and the retry is idempotent.
   const { coreFirstParent, ...entryForStore } = entry;
   data.components[id] = entryForStore;
   attachToTrees(data.trees, Number(id), coreFirstParent, entry.products);
+
+  // 2. Now do filesystem writes (copy doc, persist JSON)
+  fs.copyFileSync(filePath, destPath);
   fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2) + '\n');
 
   // 3. Regenerate HTML data block + zip
