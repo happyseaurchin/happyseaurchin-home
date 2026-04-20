@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Filmstrip 3D — block view</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f5f5f0; font-family: 'JetBrains Mono', ui-monospace, monospace; color: #222; overflow: hidden; }
+  #viz { position: fixed; inset: 0; }
+  #panel {
+    position: fixed; top: 12px; left: 12px; padding: 10px 12px;
+    background: rgba(255,255,255,0.85); border: 1px solid #ccc; border-radius: 4px;
+    font-size: 11px; line-height: 1.5; max-width: 280px;
+  }
+  #panel h1 { margin: 0 0 6px; font-size: 12px; font-weight: 600; }
+  #panel .row { margin-top: 6px; }
+  #panel button {
+    font-family: inherit; font-size: 10px; padding: 3px 7px; margin: 2px 2px 0 0;
+    background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer;
+  }
+  #panel button.active { background: #222; color: #fff; border-color: #222; }
+  #panel button#btn-back {
+    background: #b96a3e; color: #fff; border-color: #b96a3e;
+    padding: 4px 10px; font-size: 11px; font-weight: 600;
+  }
+  #panel button#btn-back:hover { background: #d07a4a; }
+  #panel .filter-row { display: flex; align-items: center; gap: 4px; margin-top: 4px; }
+  #panel .filter-row input[type="range"] { width: 70px; }
+  #panel .filter-row .d-label { color: #557; min-width: 42px; font-variant-numeric: tabular-nums; }
+  #panel input[type="text"] {
+    font-family: inherit; font-size: 10px; padding: 2px 5px; width: 70px;
+    border: 1px solid #aaa; border-radius: 3px;
+  }
+  #tip {
+    position: fixed; pointer-events: none; padding: 6px 8px;
+    background: rgba(20,20,20,0.92); color: #f0f0e8; font-size: 10px;
+    border-radius: 3px; max-width: 320px; line-height: 1.4; display: none; z-index: 10;
+  }
+  #tip .addr { color: #aaccff; font-weight: 600; }
+  #legend { position: fixed; bottom: 12px; left: 12px; font-size: 10px; color: #666; line-height: 1.5; }
+  #scrubber {
+    position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    display: none; align-items: center; gap: 8px;
+    padding: 8px 14px; background: rgba(255,255,255,0.92);
+    border: 1px solid #ccc; border-radius: 4px; font-size: 11px;
+  }
+  #scrubber.open { display: flex; }
+  #scrubber button {
+    font-family: inherit; font-size: 10px; padding: 3px 7px;
+    background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer;
+  }
+  #scrubber button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #scrubber input[type="range"] { width: 220px; }
+  #scrubber .idx { color: #557; min-width: 60px; font-variant-numeric: tabular-nums; }
+  #scrubber .concern { color: #445; max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #editor {
+    position: fixed; top: 12px; right: 12px; width: 340px;
+    background: rgba(255,255,255,0.92); border: 1px solid #ccc; border-radius: 4px;
+    font-size: 11px; line-height: 1.5; display: none;
+  }
+  #editor.open { display: block; }
+  #editor header {
+    padding: 8px 10px 6px; border-bottom: 1px solid #ddd;
+    display: flex; align-items: baseline; gap: 8px;
+  }
+  #editor header .addr { color: #335; font-weight: 600; font-family: inherit; }
+  #editor header .meta { color: #888; font-size: 10px; margin-left: auto; }
+  #editor textarea {
+    width: 100%; min-height: 200px; box-sizing: border-box; border: none; outline: none;
+    padding: 10px; font-family: inherit; font-size: 11px; line-height: 1.5;
+    background: transparent; color: #222; resize: vertical;
+  }
+  #editor footer {
+    padding: 6px 10px 8px; border-top: 1px solid #ddd;
+    display: flex; gap: 6px; align-items: center;
+  }
+  #editor footer button {
+    font-family: inherit; font-size: 10px; padding: 3px 9px;
+    background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer;
+  }
+  #editor footer button.primary { background: #222; color: #fff; border-color: #222; }
+  #editor footer .dirty { color: #c06020; font-size: 10px; margin-left: auto; }
+</style>
+</head>
+<body>
+<div id="viz"></div>
+
+<div id="panel">
+  <h1>filmstrip-3d · v1</h1>
+  <div class="row">
+    input:
+    <button data-input="frame" class="active">frame</button>
+    <button data-input="editor">editor</button>
+    <button id="input-reload" title="Reload current input">↻</button>
+  </div>
+  <div class="row">
+    <button id="btn-root-toggle" class="active" title="Show/hide root cubes (on-floor)">root</button>
+    <button id="btn-text-toggle" title="Show block titles on the floor tiles">text</button>
+    <button id="btn-filmstrip-toggle" title="Enable frame scrubber">filmstrip</button>
+    <button id="btn-back" title="Pop out of matryoshka (Esc)" style="display:none;">← back · esc</button>
+  </div>
+  <div class="row">
+    <button id="btn-filter-toggle" title="Enable pscale depth filter">filter</button>
+    <span class="filter-row" id="filter-controls" style="display:none;">
+      <input type="range" id="filter-min" min="0" max="6" value="0" step="1">
+      <span class="d-label" id="filter-label">d 0–6</span>
+      <input type="range" id="filter-max" min="0" max="6" value="6" step="1">
+    </span>
+  </div>
+  <div>blocks: <code id="block-name">…</code></div>
+  <div id="breadcrumb" class="row" style="color:#557; display:none;"></div>
+  <div class="row">
+    highlight:
+    <button data-mode="all" class="active">all</button>
+    <button data-mode="touched">touched</button>
+    <button data-mode="point">point</button>
+    <button data-mode="spindle">spindle</button>
+    <button data-mode="ring">ring</button>
+    <button data-mode="disc">disc</button>
+  </div>
+  <div class="row">
+    addr: <input id="addr-input" type="text" placeholder="e.g. 12 or 1.2">
+    <button id="addr-go">go</button>
+  </div>
+  <div class="row" style="color:#888;">drag to orbit · scroll to zoom · right-drag to pan</div>
+</div>
+
+<div id="editor">
+  <header>
+    <span class="addr" id="edit-addr">—</span>
+    <span class="meta" id="edit-meta"></span>
+  </header>
+  <textarea id="edit-text" spellcheck="false" placeholder="Click a cube to edit its semantic…"></textarea>
+  <footer>
+    <button id="edit-close">close</button>
+  </footer>
+</div>
+
+<div id="scrubber">
+  <button id="sc-prev" title="Previous frame">◀</button>
+  <button id="sc-play" title="Play / pause">▶</button>
+  <button id="sc-next" title="Next frame">▶</button>
+  <input id="sc-range" type="range" min="0" max="0" value="0" step="1">
+  <span class="idx" id="sc-idx">0 / 0</span>
+  <span class="concern" id="sc-concern"></span>
+</div>
+
+<div id="tip"></div>
+<div id="legend">
+  cube = one <code>_</code> · 1=center, 2-9 spiral CW from N · root on floor · depth 1 above · depth ≥2 below · glowing cube = hidden content (shift-click to dive in)
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/controls/OrbitControls.js"></script>
+<script>
+window.__bootErrs = [];
+window.addEventListener('error', e => window.__bootErrs.push((e.message || String(e)) + ' @ ' + (e.filename || '?') + ':' + (e.lineno || '?')));
+</script>
+<script>
+// ---------------------------------------------------------------------------
+// Filmstrip 3D — v1
+//
+// Renders ONE pscale block as a 3D pyramid sitting on a shared floor plane.
+// Each "_" semantic = one cube. Children (keys 1-9) sit in a 3x3 keypad grid
+// directly above their parent cube. Recurses through the whole pscale tree.
+//
+// Highlight modes (point / spindle / ring / disc) match pscale walk modes.
+// ---------------------------------------------------------------------------
+
+// v3 layout — fixed CUBE_SIZE globally; tile size grows per block.
+//   - Cube = one `_` semantic entry, one global size. A spindle of 5 cubes in
+//     block A is visually equivalent to a spindle of 5 in block B.
+//   - Each pscale digit subdivides the parent cell 3:1, so leaf-layer cells
+//     equal CUBE_SIZE and every ancestor cell is 3× its children's cell.
+//   - Root cell (= block footprint on the floor) = CUBE_SIZE * 3^maxDepth.
+//     Deep blocks therefore occupy a larger floor tile than shallow ones.
+//   - Y (unchanged): root on floor, depth-1 above, depth >= 2 below.
+const CUBE_SIZE = 1.6;
+const FLOOR_SIZE = 600;
+const TILE_GAP = CUBE_SIZE * 0.8;  // gap between adjacent block tiles
+
+// Palette cycled per-block to demarcate tiles with different hues.
+const TILE_HUES = [0xb8b3a4, 0xa8b8b0, 0xb8a8a0, 0xa0b0c0, 0xc0b0a0, 0xa8a0b8, 0xb0c0a8];
+
+function tileFootprintFor(depth) {
+  return CUBE_SIZE * Math.pow(3, Math.max(depth, 1));
+}
+function layerYFor(d) {
+  if (d === 0) return 0;
+  if (d === 1) return CUBE_SIZE;
+  return -(d - 1) * CUBE_SIZE;
+}
+
+// Spiral keypad: digit -> (col, row) offset within parent's 3x3 grid.
+// (-z is north so the spiral reads cleanly from above.)
+const SPIRAL = {
+  '1': [ 0,  0],   // center
+  '2': [ 0, -1],   // N
+  '3': [ 1, -1],   // NE
+  '4': [ 1,  0],   // E
+  '5': [ 1,  1],   // SE
+  '6': [ 0,  1],   // S
+  '7': [-1,  1],   // SW
+  '8': [-1,  0],   // W
+  '9': [-1, -1],   // NW
+};
+
+// ---------------------------------------------------------------------------
+// Pscale tree -> nodes + shells
+// Each NODE is one semantic cube (root or child string).
+// Each SHELL is one of the 9 keypad slots at a parent's child layer — drawn
+// as a faint wireframe so empty positions are still visible.
+// ---------------------------------------------------------------------------
+
+function semanticOf(node) {
+  if (typeof node === 'string') return node;
+  if (node && typeof node === 'object') {
+    let cur = node['_'];
+    while (cur && typeof cur === 'object') cur = cur['_'];
+    if (typeof cur === 'string') return cur;
+  }
+  return null;
+}
+
+function maxDepth(node) {
+  if (!node || typeof node !== 'object') return 0;
+  let d = 0;
+  for (const k of '123456789') {
+    if (node[k] !== undefined) d = Math.max(d, 1 + maxDepth(node[k]));
+  }
+  return d;
+}
+
+// True if this node carries hidden zero-position digit children — i.e. an
+// "_" object somewhere along the chain has its own 1-9 keys. We surface this
+// as a small dot on top of the cube; the actual zero-position content is not
+// rendered in v2 (matryoshka deferred).
+function hasZeroPosition(node) {
+  if (!node || typeof node !== 'object') return false;
+  let cur = node['_'];
+  while (cur && typeof cur === 'object') {
+    for (const k of '123456789') if (cur[k] !== undefined) return true;
+    cur = cur['_'];
+  }
+  return false;
+}
+
+// Fractal/centroid layout: each digit refines the parent cell 3:1; child sits
+// at the spiral slot of the parent's cell. Parent floats over the centroid of
+// its children's macro-cell. Layers touch face-to-face on Y.
+//
+// Per-block CUBE_SIZE is derived from TILE_SIZE so every block fits the
+// standard floor tile regardless of its depth.
+function buildLayout(block) {
+  const nodes = [];
+  const depth = Math.max(maxDepth(block), 1);
+  const cubeSize = CUBE_SIZE;
+  const C0 = tileFootprintFor(depth);  // root cell width = CUBE_SIZE * 3^depth
+
+  function visit(node, addr, parentAddr, d, cx, cz, cellSize) {
+    nodes.push({
+      addr, parentAddr, depth: d,
+      semantic: semanticOf(node),
+      hidden: hasZeroPosition(node),
+      x: cx, y: layerYFor(d), z: cz,
+    });
+    if (!node || typeof node !== 'object') return;
+    for (const k of '123456789') {
+      if (node[k] === undefined) continue;
+      const slot = SPIRAL[k];
+      const childX = cx + slot[0] * cellSize / 3;
+      const childZ = cz + slot[1] * cellSize / 3;
+      visit(node[k], addr + k, addr, d + 1, childX, childZ, cellSize / 3);
+    }
+  }
+
+  visit(block, '', null, 0, 0, 0, C0);
+  return { nodes, maxDepth: depth, C0, cubeSize };
+}
+
+// ---------------------------------------------------------------------------
+// Three.js setup
+// ---------------------------------------------------------------------------
+
+const viz = document.getElementById('viz');
+const tip = document.getElementById('tip');
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf5f5f0);
+scene.fog = new THREE.FogExp2(0xf5f5f0, 0.0035);
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(40, 38, 60);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+viz.appendChild(renderer.domElement);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 14, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const sun = new THREE.DirectionalLight(0xffffff, 0.85);
+sun.position.set(40, 80, 30);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xb0c0e0, 0.25);
+fill.position.set(-40, 30, -20);
+scene.add(fill);
+
+// Shared floor plane — semi-transparent so below-floor cubes (depth >= 2) stay
+// visible even when the camera is above the floor. The structure intersects
+// the floor; the floor is reference, not a wall.
+const floorGeo = new THREE.PlaneGeometry(FLOOR_SIZE, FLOOR_SIZE);
+const floorMat = new THREE.MeshStandardMaterial({
+  color: 0xe8e6dc, roughness: 0.95, metalness: 0,
+  transparent: true, opacity: 0.28, side: THREE.DoubleSide,
+});
+const floor = new THREE.Mesh(floorGeo, floorMat);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+const grid = new THREE.GridHelper(FLOOR_SIZE, 40, 0xc0bcae, 0xd8d4c4);
+grid.position.y = 0.01;
+grid.material.transparent = true;
+grid.material.opacity = 0.55;
+scene.add(grid);
+
+// Block tiles are created per-block inside buildBlock; collected here for cleanup.
+const tileGeo = new THREE.PlaneGeometry(1, 1);
+const tileMeshes = [];
+
+// ---------------------------------------------------------------------------
+// Build cubes from pscale tree
+// ---------------------------------------------------------------------------
+
+const cubeMeshes = [];   // { mesh, node, baseColor, dot? }
+const nodesByAddr = new Map();
+let allNodes = [];
+
+function colorForDepth(d) {
+  // Depth 0 (root) = warm; deeper = cooler. Distinct, readable hues.
+  const palette = [0xd97757, 0xe0a050, 0x8aab55, 0x4a9a8c, 0x4a78a8, 0x6a5acd];
+  return palette[Math.min(d, palette.length - 1)];
+}
+
+function clearBlocks() {
+  for (const c of cubeMeshes) {
+    scene.remove(c.mesh);
+    if (c.dot) scene.remove(c.dot);
+  }
+  for (const t of tileMeshes) scene.remove(t);
+  cubeMeshes.length = 0;
+  tileMeshes.length = 0;
+  nodesByAddr.clear();
+  allNodes = [];
+}
+
+function addBlock(block, tileX, tileZ, blockId, tileIdx) {
+  const { nodes, maxDepth: maxD, C0, cubeSize } = buildLayout(block);
+
+  // Per-block tile on the floor — size = block's root cell footprint
+  // (CUBE_SIZE * 3^depth). Tile is tinted per-block so adjacent blocks
+  // are visually distinguishable; a darker outline makes the border clean.
+  const hue = TILE_HUES[(tileIdx ?? 0) % TILE_HUES.length];
+  const tileMat = new THREE.MeshStandardMaterial({
+    color: hue, roughness: 0.9,
+    transparent: true, opacity: 0.55, side: THREE.DoubleSide,
+  });
+  const tile = new THREE.Mesh(tileGeo, tileMat);
+  tile.rotation.x = -Math.PI / 2;
+  tile.position.set(tileX, 0.015, tileZ);
+  tile.scale.set(C0, 1, C0);
+  scene.add(tile);
+  tileMeshes.push(tile);
+
+  // Tile border: edge wireframe for clear demarcation.
+  const borderGeo = new THREE.EdgesGeometry(
+    new THREE.PlaneGeometry(C0, C0).rotateX(-Math.PI / 2)
+  );
+  const borderMat = new THREE.LineBasicMaterial({
+    color: 0x7a7668, transparent: true, opacity: 0.7,
+  });
+  const border = new THREE.LineSegments(borderGeo, borderMat);
+  border.position.set(tileX, 0.02, tileZ);
+  scene.add(border);
+  tileMeshes.push(border);
+
+  // Floor label for this tile — canvas-textured plane lying flat on floor.
+  // Visibility controlled globally by `showText` via applyTextLabels().
+  const canvas = document.createElement('canvas');
+  canvas.width = 512; canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 512, 128);
+  ctx.fillStyle = '#2a2a2a';
+  ctx.font = 'bold 72px "JetBrains Mono", ui-monospace, monospace';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText(blockId, 256, 64);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.anisotropy = 4;
+  const labelSize = Math.min(C0 * 0.7, 8);
+  const labelMat = new THREE.MeshBasicMaterial({
+    map: texture, transparent: true, opacity: 0.85, depthWrite: false,
+  });
+  const labelGeo = new THREE.PlaneGeometry(labelSize, labelSize / 4);
+  const label = new THREE.Mesh(labelGeo, labelMat);
+  label.rotation.x = -Math.PI / 2;
+  // Sit just above the tile, offset north a touch so it doesn't collide with root.
+  label.position.set(tileX, 0.03, tileZ - C0 * 0.35);
+  label.visible = showText;
+  label.userData.isLabel = true;
+  scene.add(label);
+  tileMeshes.push(label);
+
+  // Reuse one geometry per block (all cubes share the same cube size).
+  const cubeGeo = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+
+  // Hidden-content cubes carry zero-position (matryoshka) children. Rather
+  // than render a marker on top, we make the cube self-glow via emissive —
+  // cheap (no extra geometry), and reads as "there's more inside".
+  const HIDDEN_EMISSIVE = 0xfff4c0;
+  const HIDDEN_EMISSIVE_INTENSITY = 0.55;
+
+  for (const n of nodes) {
+    const fullAddr = blockId + ':' + n.addr;
+    const nn = { ...n, fullAddr, blockId, cubeSize, x: n.x + tileX, z: n.z + tileZ };
+    nodesByAddr.set(fullAddr, nn);
+    allNodes.push(nn);
+    if (!nn.semantic) continue;
+
+    const baseColor = new THREE.Color(colorForDepth(nn.depth));
+    const mat = new THREE.MeshStandardMaterial({
+      color: baseColor, roughness: 0.45, metalness: 0.1,
+      transparent: true, opacity: 0.95,
+      emissive: nn.hidden ? new THREE.Color(HIDDEN_EMISSIVE) : new THREE.Color(0x000000),
+      emissiveIntensity: nn.hidden ? HIDDEN_EMISSIVE_INTENSITY : 0,
+    });
+    const mesh = new THREE.Mesh(cubeGeo, mat);
+    mesh.position.set(nn.x, nn.y, nn.z);
+    mesh.userData.node = nn;
+    scene.add(mesh);
+
+    cubeMeshes.push({ mesh, node: nn, baseColor, dot: null });
+  }
+
+  return { C0, maxD, cubeSize };
+}
+
+// Render all blocks on a grid. Tile size varies per block (CUBE_SIZE * 3^depth),
+// so pitch = max-block-footprint keeps things non-overlapping without packing
+// logic. Inter-block proximity isn't semantically meaningful, so a regular
+// grid is fine.
+function renderBlocks(blocks) {
+  clearBlocks();
+
+  const footprints = blocks.map(b => tileFootprintFor(Math.max(maxDepth(b.block), 1)));
+  const maxFoot = footprints.length ? Math.max(...footprints) : CUBE_SIZE;
+  const pitch = maxFoot + TILE_GAP;
+
+  // Square-ish grid centered on origin.
+  const cols = Math.max(1, Math.ceil(Math.sqrt(blocks.length)));
+  const rows = Math.max(1, Math.ceil(blocks.length / cols));
+  const originX = -((cols - 1) / 2) * pitch;
+  const originZ = -((rows - 1) / 2) * pitch;
+
+  const placed = blocks.map((b, i) => {
+    const r = Math.floor(i / cols);
+    const c = i % cols;
+    const tx = originX + c * pitch;
+    const tz = originZ + r * pitch;
+    return { ...addBlock(b.block, tx, tz, b.id, i), tx, tz };
+  });
+
+  // Vertical span: deepest block dominates. Depth-d block spans
+  // (d-1)*CUBE_SIZE below to +CUBE_SIZE above; plus a cube thickness each side.
+  const maxD = placed.length ? Math.max(...placed.map(p => p.maxD)) : 1;
+  const aboveSpan = 2 * CUBE_SIZE;
+  const belowSpan = (maxD >= 2 ? (maxD - 1) : 0) * CUBE_SIZE + CUBE_SIZE;
+  const verticalSpan = aboveSpan + belowSpan;
+
+  const lateralExtent = Math.max(cols * pitch, rows * pitch) * 0.6;
+
+  const aspect = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
+  const aspectBoost = aspect < 1 ? (1 / aspect) : 1;
+  const dist = (lateralExtent * 1.4 + verticalSpan * 0.6) * aspectBoost;
+  controls.target.set(0, (aboveSpan - belowSpan) / 2, 0);
+  camera.position.set(dist * 0.55, dist * 0.55 + aboveSpan * 0.5, dist * 0.85);
+}
+
+// ---------------------------------------------------------------------------
+// Highlight modes
+// ---------------------------------------------------------------------------
+
+let mode = 'all';
+let focusAddr = '';
+
+let showRoot = true;
+let showText = false;
+let filterOn = false;
+let filterMin = 0;
+let filterMax = 6;
+
+function applyTextLabels() {
+  for (const t of tileMeshes) {
+    if (t.userData?.isLabel) t.visible = showText;
+  }
+}
+
+function currentMaxDepth() {
+  if (!loadedBlocks?.length) return 6;
+  return Math.max(...loadedBlocks.map(b => maxDepth(b.block) || 0));
+}
+
+function syncFilterUI() {
+  const maxD = currentMaxDepth();
+  const minEl = document.getElementById('filter-min');
+  const maxEl = document.getElementById('filter-max');
+  const lbl = document.getElementById('filter-label');
+  minEl.max = String(maxD); maxEl.max = String(maxD);
+  if (filterMin > maxD) filterMin = 0;
+  if (filterMax > maxD) filterMax = maxD;
+  if (filterMin > filterMax) filterMin = filterMax;
+  minEl.value = String(filterMin);
+  maxEl.value = String(filterMax);
+  lbl.textContent = `d ${filterMin}–${filterMax}`;
+  document.getElementById('filter-controls').style.display = filterOn ? '' : 'none';
+}
+
+function applyHighlight() {
+  for (const c of cubeMeshes) {
+    const rootHidden = !showRoot && c.node.depth === 0;
+    const filtered = filterOn && (c.node.depth < filterMin || c.node.depth > filterMax);
+    const inFocus = isInFocus(c.node, mode, focusAddr);
+    c.mesh.visible = !rootHidden && !filtered;
+    c.mesh.material.opacity = inFocus ? 0.95 : 0.08;
+    c.mesh.material.color.copy(c.baseColor).multiplyScalar(inFocus ? 1 : 0.6);
+    if (c.dot) c.dot.material.opacity = inFocus ? 0.95 : 0.08;
+  }
+}
+
+function isInFocus(node, mode, focus) {
+  if (mode === 'all') return true;
+  if (mode === 'touched') return touchedSet.has(node.fullAddr);
+  // focus is "blockId:digits" — split for per-block scoping
+  const colon = focus.indexOf(':');
+  const focusBlock = colon >= 0 ? focus.slice(0, colon) : null;
+  const focusAddrStr = colon >= 0 ? focus.slice(colon + 1) : focus;
+  if (focusBlock !== null && node.blockId !== focusBlock) return false;
+  if (mode === 'point') return node.addr === focusAddrStr;
+  if (mode === 'spindle') return focusAddrStr.startsWith(node.addr);
+  if (mode === 'ring') {
+    if (focusAddrStr.length === 0) return node.addr.length === 0;
+    const parent = focusAddrStr.slice(0, -1);
+    return node.parentAddr === parent;
+  }
+  if (mode === 'disc') return node.depth === focusAddrStr.length;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Hover tooltip + mouse picking
+// ---------------------------------------------------------------------------
+
+const raycaster = new THREE.Raycaster();
+const mouseV = new THREE.Vector2();
+
+renderer.domElement.addEventListener('mousemove', (e) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouseV.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseV.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouseV, camera);
+  const hits = raycaster.intersectObjects(cubeMeshes.map(c => c.mesh));
+  if (hits.length > 0) {
+    const n = hits[0].object.userData.node;
+    const addr = n.addr === '' ? '(root)' : n.addr;
+    tip.style.display = 'block';
+    tip.style.left = (e.clientX + 12) + 'px';
+    tip.style.top = (e.clientY + 12) + 'px';
+    tip.innerHTML = `<div class="addr">${addr} · depth ${n.depth} · ${n.semantic.length} chars</div>` +
+                    `<div>${escapeHtml(n.semantic.slice(0, 240))}${n.semantic.length > 240 ? '…' : ''}</div>`;
+  } else {
+    tip.style.display = 'none';
+  }
+});
+
+renderer.domElement.addEventListener('click', (e) => {
+  const rect = renderer.domElement.getBoundingClientRect();
+  mouseV.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouseV.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouseV, camera);
+  const hits = raycaster.intersectObjects(cubeMeshes.map(c => c.mesh));
+  if (hits.length > 0) {
+    const n = hits[0].object.userData.node;
+    focusAddr = n.fullAddr;
+    document.getElementById('addr-input').value = `${n.blockId}:${n.addr}`;
+    applyHighlight();
+    // Shift-click on a glowing (hidden-content) cube → dive into matryoshka.
+    // Plain click opens the inline text peek editor.
+    if (e.shiftKey && n.hidden) diveInto(n);
+    else openEditorFor(n);
+  }
+});
+
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+// ---------------------------------------------------------------------------
+// Panel controls
+// ---------------------------------------------------------------------------
+
+document.querySelectorAll('#panel button[data-mode]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#panel button[data-mode]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+    applyHighlight();
+  });
+});
+
+document.getElementById('addr-go').addEventListener('click', () => {
+  // Accept "block:1.2.3" or "block:123" or just "123" (defaults to first block)
+  let v = document.getElementById('addr-input').value.trim();
+  if (!v.includes(':')) v = (allNodes[0]?.blockId || '0') + ':' + v;
+  const colon = v.indexOf(':');
+  focusAddr = v.slice(0, colon + 1) + v.slice(colon + 1).replace(/\./g, '');
+  applyHighlight();
+});
+
+// ---------------------------------------------------------------------------
+// Resize + animate
+// ---------------------------------------------------------------------------
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+window.__three = { scene, camera, renderer, controls };
+let __renderErr = null;
+function animate() {
+  requestAnimationFrame(animate);
+  try {
+    controls.update();
+    renderer.render(scene, camera);
+  } catch (e) {
+    if (!__renderErr) {
+      __renderErr = String(e.message);
+      window.__lastRenderErr = __renderErr;
+      console.error('render err:', e);
+    }
+  }
+}
+animate();
+
+// ---------------------------------------------------------------------------
+// Frame parser — turn one C-loop filmstrip frame into a list of blocks
+// (with touched-address annotations) for renderBlocks().
+// ---------------------------------------------------------------------------
+
+function parseFrame(frame) {
+  const blocks = [];
+  const text = (frame.system || '') + '\n' + (frame.message || '');
+  // Match sections like "=== STARSTONE ===\n<body>" up to the next "=== " or EOF.
+  const re = /=== ([A-Z][A-Z0-9 ]*) ===\n([\s\S]*?)(?=\n=== |$)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1].trim();
+    const id = name.toLowerCase().replace(/\s+/g, '_');
+    const body = m[2].trim();
+    let block;
+    try {
+      block = JSON.parse(body);
+    } catch {
+      // Plain text → render as a single-cube depth-0 block (just the underscore).
+      block = { _: body };
+    }
+    blocks.push({ id, name, block, touched: [] });
+  }
+
+  // BSP tool reads → touched. Tool input is a Python-ish dict literal.
+  for (const tool of frame.tools || []) {
+    if (tool.name !== 'bsp') continue;
+    const blockMatch = tool.input.match(/'block':\s*'([^']+)'/);
+    if (!blockMatch) continue;
+    const blockId = blockMatch[1].toLowerCase();
+    const addrMatch = tool.input.match(/'addr(?:ess)?':\s*'([^']*)'/);
+    const addr = (addrMatch?.[1] || '').replace(/[._]/g, '');
+    const sec = blocks.find(b => b.id === blockId);
+    if (sec) sec.touched.push({ addr, kind: 'read' });
+  }
+
+  // Writes from the output JSON → touched (kind: 'write').
+  try {
+    const fenced = frame.output && frame.output.match(/```json\s*([\s\S]*?)\s*```/);
+    if (fenced) {
+      const out = JSON.parse(fenced[1]);
+      for (const writeKey of Object.keys(out.writes || {})) {
+        const [blockId, addrRaw] = writeKey.split(':');
+        const addr = (addrRaw || '').replace(/[._]/g, '');
+        const sec = blocks.find(b => b.id === blockId.toLowerCase());
+        if (sec) sec.touched.push({ addr, kind: 'write' });
+      }
+    }
+  } catch (e) {
+    console.warn('output write parse failed:', e);
+  }
+
+  return blocks;
+}
+
+// Set of full addresses (`blockId:addr`) touched by the loaded frame.
+const touchedSet = new Set();
+
+// Loaded frame blocks, kept in scope so edits can mutate + re-render.
+let loadedBlocks = null;
+
+// ---------------------------------------------------------------------------
+// Edit: walk the pscale tree to get / set the semantic at a digit address.
+// A node is either a string (leaf) or an object; the object's '_' key holds
+// the node's own semantic (string or nested { _: ..., digits... }).
+// ---------------------------------------------------------------------------
+
+function walkToNode(block, addr) {
+  // Returns { parent, key } where parent[key] is the node at addr, or null.
+  // For addr '' (root), parent is a synthetic wrapper so we can replace the
+  // whole block's root semantic consistently.
+  if (addr === '') return { parent: { _root_: block }, key: '_root_' };
+  let cur = block;
+  for (let i = 0; i < addr.length - 1; i++) {
+    const d = addr[i];
+    if (!cur || typeof cur !== 'object' || cur[d] === undefined) return null;
+    cur = cur[d];
+  }
+  const last = addr[addr.length - 1];
+  if (!cur || typeof cur !== 'object' || cur[last] === undefined) return null;
+  return { parent: cur, key: last };
+}
+
+function getSemanticAt(block, addr) {
+  const ref = walkToNode(block, addr);
+  if (!ref) return null;
+  return semanticOf(ref.parent[ref.key]);
+}
+
+// ---------------------------------------------------------------------------
+// Text peek panel — view the semantic at the clicked cube. In-memory only,
+// not a persistent editor.
+// ---------------------------------------------------------------------------
+
+const editEl = document.getElementById('editor');
+const editAddrEl = document.getElementById('edit-addr');
+const editMetaEl = document.getElementById('edit-meta');
+const editTextEl = document.getElementById('edit-text');
+const editState = { blockId: null, addr: null };
+
+function openEditorFor(node) {
+  if (!loadedBlocks) return;
+  const sec = loadedBlocks.find(b => b.id === node.blockId);
+  if (!sec) return;
+  const sem = getSemanticAt(sec.block, node.addr) ?? '';
+  editState.blockId = node.blockId;
+  editState.addr = node.addr;
+  editAddrEl.textContent = `${node.blockId}:${node.addr || '(root)'}`;
+  editMetaEl.textContent = `depth ${node.depth} · ${sem.length} chars`;
+  editTextEl.value = sem;
+  editEl.classList.add('open');
+}
+
+function closeEditor() {
+  editEl.classList.remove('open');
+  editState.blockId = null; editState.addr = null;
+}
+
+document.getElementById('edit-close').addEventListener('click', closeEditor);
+
+// ---------------------------------------------------------------------------
+// Input modes: frame (load filmstrip example JSON) vs editor (read shelf +
+// slices from localStorage). Both feed the same renderBlocks pipeline; they
+// differ only in what populates `touchedSet` (the "highlight set").
+// ---------------------------------------------------------------------------
+
+const FRAME_URL = '../filmstrip/examples/birth-first-awakening.json';
+const LS_SHELF = 'mindflow-editor:shelf';
+const LS_VIEWS = 'mindflow-editor:views';
+
+let inputMode = 'frame';  // 'frame' | 'editor'
+let filmstripOn = false;  // frame scrubber visible?
+let frameSeq = [];        // loaded frames when in filmstrip mode
+let frameIdx = 0;
+let playTimer = null;
+
+// Matryoshka dive stack. Each entry is a snapshot we can pop back to.
+// { blocks, label, touchedSet }
+const diveStack = [];
+
+// Flatten an editor slice path [{digit, via}, ...] to a visualiser address
+// (digit string). Star entries (hidden-dir traversals) are not representable
+// in the v2 layout — they're dropped, so a `1*2` slice visualises as `1`.
+function slicePathToAddr(path) {
+  return path.filter(p => p.via !== 'star').map(p => p.digit).join('');
+}
+
+// For every node in a block, does the slice (walkMode + focus addr) light it?
+// Mirrors isInFocus for point/spindle/ring/disc; 'free' and 'star' degrade
+// to point (the focus cube only); unknown modes fall through to point.
+function sliceMatches(nodeAddr, slice) {
+  const focus = slicePathToAddr(slice.path);
+  const w = slice.walkMode;
+  if (w === 'spindle') return focus.startsWith(nodeAddr);
+  if (w === 'ring') {
+    if (focus.length === 0) return nodeAddr.length === 0;
+    const parent = focus.slice(0, -1);
+    // Parent-match via prefix: the addr must start with parent and be one digit longer.
+    return nodeAddr.length === focus.length && nodeAddr.startsWith(parent);
+  }
+  if (w === 'disc') return nodeAddr.length === focus.length;
+  // point / free / star / anything else
+  return nodeAddr === focus;
+}
+
+// Build a synthetic "parsed" array from the editor's shelf+views. One entry
+// per block; the `touched` list is computed from slice matches against every
+// addressable node in the block.
+function buildEditorBlocks() {
+  const shelfRaw = localStorage.getItem(LS_SHELF);
+  if (!shelfRaw) return [];
+  let shelf;
+  try { shelf = JSON.parse(shelfRaw); } catch { return []; }
+  const viewsRaw = localStorage.getItem(LS_VIEWS);
+  let views = {};
+  try { views = viewsRaw ? JSON.parse(viewsRaw) : {}; } catch {}
+
+  const out = [];
+  for (const [id, block] of Object.entries(shelf)) {
+    const slices = views[id] || [];
+    // Enumerate every addressable node in the block so sliceMatches can tag them.
+    const addrs = [];
+    (function walk(n, addr) {
+      addrs.push(addr);
+      if (!n || typeof n !== 'object') return;
+      for (const k of '123456789') if (n[k] !== undefined) walk(n[k], addr + k);
+    })(block, '');
+    const touched = [];
+    for (const s of slices) {
+      for (const a of addrs) {
+        if (sliceMatches(a, s)) touched.push({ addr: a, kind: 'slice' });
+      }
+    }
+    out.push({ id, name: id, block, touched, slices });
+  }
+  return out;
+}
+
+// Frame source may be a single frame object OR an array of frame objects
+// (a filmstrip sequence). Normalise to frameSeq[]; frame-mode single-slide
+// uses frameSeq[0].
+async function fetchFrameSource() {
+  const r = await fetch(FRAME_URL);
+  const data = await r.json();
+  frameSeq = Array.isArray(data) ? data : [data];
+  frameIdx = Math.min(frameIdx, frameSeq.length - 1);
+}
+
+function loadFrameAt(idx) {
+  const frame = frameSeq[idx];
+  if (!frame) return [];
+  const parsed = parseFrame(frame);
+  parsed.__label = `frame ${idx + 1}/${frameSeq.length} · ${parsed.length} block${parsed.length === 1 ? '' : 's'}`;
+  parsed.__concern = frame.concern || '';
+  return parsed;
+}
+
+async function loadFrameInput() {
+  if (!frameSeq.length) await fetchFrameSource();
+  return loadFrameAt(frameIdx);
+}
+
+async function loadEditorInput() {
+  const parsed = buildEditorBlocks();
+  const totalSlices = parsed.reduce((n, b) => n + (b.slices?.length || 0), 0);
+  parsed.__label = parsed.length
+    ? `editor: ${parsed.length} block${parsed.length === 1 ? '' : 's'} · ${totalSlices} slice${totalSlices === 1 ? '' : 's'}`
+    : 'editor: shelf empty — open the editor and load/create blocks';
+  return parsed;
+}
+
+async function loadInput() {
+  try {
+    const parsed = await (inputMode === 'editor' ? loadEditorInput() : loadFrameInput());
+    loadedBlocks = parsed;
+    touchedSet.clear();
+    for (const b of parsed) {
+      for (const t of (b.touched || [])) touchedSet.add(`${b.id}:${t.addr}`);
+    }
+    if (parsed.length) renderBlocks(parsed);
+    else clearBlocks();
+    mode = 'all';
+    document.querySelectorAll('#panel button[data-mode]').forEach(b =>
+      b.classList.toggle('active', b.dataset.mode === 'all'));
+    syncFilterUI();
+    applyHighlight();
+    document.getElementById('block-name').textContent = parsed.__label || '—';
+  } catch (err) {
+    console.error('input load failed:', err);
+    document.getElementById('block-name').textContent = '(load failed — see console)';
+  }
+}
+
+document.querySelectorAll('#panel button[data-input]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#panel button[data-input]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    inputMode = btn.dataset.input;
+    closeEditor();
+    exitMatryoshka({ fade: false });
+    frameSeq = [];  // force reload of frame source next time
+    loadInput().then(syncScrubberUI);
+  });
+});
+
+document.getElementById('input-reload').addEventListener('click', () => {
+  frameSeq = [];
+  loadInput().then(syncScrubberUI);
+});
+
+// ---------------------------------------------------------------------------
+// Root toggle — globally show/hide root-depth cubes.
+// ---------------------------------------------------------------------------
+document.getElementById('btn-root-toggle').addEventListener('click', () => {
+  showRoot = !showRoot;
+  document.getElementById('btn-root-toggle').classList.toggle('active', showRoot);
+  applyHighlight();
+});
+
+document.getElementById('btn-text-toggle').addEventListener('click', () => {
+  showText = !showText;
+  document.getElementById('btn-text-toggle').classList.toggle('active', showText);
+  applyTextLabels();
+});
+
+document.getElementById('btn-filter-toggle').addEventListener('click', () => {
+  filterOn = !filterOn;
+  document.getElementById('btn-filter-toggle').classList.toggle('active', filterOn);
+  syncFilterUI();
+  applyHighlight();
+});
+
+document.getElementById('filter-min').addEventListener('input', (e) => {
+  filterMin = parseInt(e.target.value, 10);
+  if (filterMin > filterMax) { filterMax = filterMin; document.getElementById('filter-max').value = String(filterMax); }
+  document.getElementById('filter-label').textContent = `d ${filterMin}–${filterMax}`;
+  applyHighlight();
+});
+document.getElementById('filter-max').addEventListener('input', (e) => {
+  filterMax = parseInt(e.target.value, 10);
+  if (filterMax < filterMin) { filterMin = filterMax; document.getElementById('filter-min').value = String(filterMin); }
+  document.getElementById('filter-label').textContent = `d ${filterMin}–${filterMax}`;
+  applyHighlight();
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (diveStack.length) { exitMatryoshka(); e.preventDefault(); }
+    else if (editEl.classList.contains('open')) { closeEditor(); e.preventDefault(); }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Filmstrip scrubber
+// ---------------------------------------------------------------------------
+const scrubberEl = document.getElementById('scrubber');
+const scRange = document.getElementById('sc-range');
+const scIdx = document.getElementById('sc-idx');
+const scConcern = document.getElementById('sc-concern');
+const scPlayBtn = document.getElementById('sc-play');
+
+function syncScrubberUI() {
+  const show = filmstripOn && inputMode === 'frame';
+  scrubberEl.classList.toggle('open', show);
+  if (!show) { stopPlay(); return; }
+  const n = frameSeq.length;
+  scRange.max = String(Math.max(0, n - 1));
+  scRange.value = String(frameIdx);
+  scIdx.textContent = `${n ? frameIdx + 1 : 0} / ${n}`;
+  scConcern.textContent = frameSeq[frameIdx]?.concern || '';
+  const disabled = n < 2;
+  scRange.disabled = disabled;
+  document.getElementById('sc-prev').disabled = disabled || frameIdx === 0;
+  document.getElementById('sc-next').disabled = disabled || frameIdx >= n - 1;
+  scPlayBtn.disabled = disabled;
+  if (disabled) scConcern.textContent = n === 1 ? '(single-frame source)' : '(no frames)';
+}
+
+function setFrame(idx) {
+  if (!frameSeq.length) return;
+  frameIdx = Math.max(0, Math.min(frameSeq.length - 1, idx));
+  const parsed = loadFrameAt(frameIdx);
+  loadedBlocks = parsed;
+  touchedSet.clear();
+  for (const b of parsed) for (const t of (b.touched || [])) touchedSet.add(`${b.id}:${t.addr}`);
+  renderBlocks(parsed);
+  applyHighlight();
+  document.getElementById('block-name').textContent = parsed.__label || '—';
+  syncScrubberUI();
+}
+
+function stopPlay() {
+  if (playTimer) { clearInterval(playTimer); playTimer = null; }
+  scPlayBtn.textContent = '▶';
+}
+function startPlay() {
+  if (playTimer || frameSeq.length < 2) return;
+  scPlayBtn.textContent = '⏸';
+  playTimer = setInterval(() => {
+    if (frameIdx >= frameSeq.length - 1) { stopPlay(); return; }
+    setFrame(frameIdx + 1);
+  }, 1200);
+}
+
+document.getElementById('btn-filmstrip-toggle').addEventListener('click', () => {
+  filmstripOn = !filmstripOn;
+  document.getElementById('btn-filmstrip-toggle').classList.toggle('active', filmstripOn);
+  syncScrubberUI();
+});
+document.getElementById('sc-prev').addEventListener('click', () => setFrame(frameIdx - 1));
+document.getElementById('sc-next').addEventListener('click', () => setFrame(frameIdx + 1));
+scRange.addEventListener('input', () => setFrame(parseInt(scRange.value, 10)));
+scPlayBtn.addEventListener('click', () => playTimer ? stopPlay() : startPlay());
+
+// ---------------------------------------------------------------------------
+// Matryoshka phase-change dive.
+// Click a hidden (glowing) cube -> fade everything, swap scene for the `_`
+// subtree rendered as a fresh block, fade in. Breadcrumb + back button to
+// pop back up the dive stack.
+// ---------------------------------------------------------------------------
+
+function matryoshkaInnerOf(node) {
+  // Returns the deepest chained `_` object that still has digit children,
+  // or null if no matryoshka interior exists.
+  if (!node || typeof node !== 'object') return null;
+  let cur = node['_'];
+  let last = null;
+  while (cur && typeof cur === 'object') {
+    for (const k of '123456789') {
+      if (cur[k] !== undefined) { last = cur; break; }
+    }
+    cur = cur['_'];
+  }
+  return last;
+}
+
+function renderBreadcrumb() {
+  const el = document.getElementById('breadcrumb');
+  const back = document.getElementById('btn-back');
+  if (!diveStack.length) {
+    el.style.display = 'none';
+    el.textContent = '';
+    back.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  back.style.display = '';
+  el.textContent = 'dive: ' + diveStack.map(d => d.label).join(' / ');
+}
+
+function fadeAll(toOpacity, ms) {
+  return new Promise(resolve => {
+    const startOps = cubeMeshes.map(c => c.mesh.material.opacity);
+    const t0 = performance.now();
+    const handle = setInterval(() => {
+      const p = Math.min(1, (performance.now() - t0) / ms);
+      for (let i = 0; i < cubeMeshes.length; i++) {
+        const start = startOps[i];
+        cubeMeshes[i].mesh.material.opacity = start + (toOpacity - start) * p;
+      }
+      if (p >= 1) { clearInterval(handle); resolve(); }
+    }, 16);
+  });
+}
+
+async function diveInto(node) {
+  const block = loadedBlocks?.find(b => b.id === node.blockId);
+  if (!block) return;
+  const inner = matryoshkaInnerOf(
+    // Re-walk to the node in the raw block tree by its digit address.
+    (function walk(n, addr) {
+      if (addr === '') return n;
+      let cur = n;
+      for (const d of addr) cur = cur && typeof cur === 'object' ? cur[d] : null;
+      return cur;
+    })(block.block, node.addr)
+  );
+  if (!inner) return;
+
+  diveStack.push({
+    blocks: loadedBlocks,
+    label: `${node.blockId}:${node.addr || '∅'}`,
+    touchedSet: new Set(touchedSet),
+    inputMode, filmstripOn,
+  });
+
+  await fadeAll(0, 350);
+
+  const innerId = `${node.blockId}:${node.addr}·_`;
+  const newBlocks = [{ id: innerId, name: innerId, block: inner, touched: [] }];
+  loadedBlocks = newBlocks;
+  touchedSet.clear();
+  renderBlocks(newBlocks);
+  // Start faded, fade in.
+  for (const c of cubeMeshes) c.mesh.material.opacity = 0;
+  applyHighlight();  // sets target values but we just zeroed — re-fade up.
+  for (const c of cubeMeshes) c.mesh.material.opacity = 0;
+  await fadeAll(0.95, 350);
+  applyHighlight();
+
+  document.getElementById('block-name').textContent = `↳ inside ${innerId}`;
+  renderBreadcrumb();
+}
+
+async function exitMatryoshka({ fade = true } = {}) {
+  if (!diveStack.length) return;
+  if (fade) await fadeAll(0, 300);
+  // Pop the whole stack back to surface for simplicity — user can click
+  // again to re-dive. Could also pop one level at a time.
+  diveStack.length = 0;
+  renderBreadcrumb();
+  await loadInput();
+  if (fade) {
+    for (const c of cubeMeshes) c.mesh.material.opacity = 0;
+    await fadeAll(0.95, 300);
+  }
+  applyHighlight();
+}
+
+document.getElementById('btn-back').addEventListener('click', () => exitMatryoshka());
+
+// Cross-tab sync: when editor saves slices in another tab, reload if we're
+// currently in editor mode.
+window.addEventListener('storage', (e) => {
+  if (inputMode === 'editor' && (e.key === LS_VIEWS || e.key === LS_SHELF)) {
+    loadInput();
+  }
+});
+
+loadInput().then(syncScrubberUI);
+</script>
+</body>
+</html>

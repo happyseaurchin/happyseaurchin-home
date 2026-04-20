@@ -85,6 +85,13 @@ const currentBlock = () => state.currentId ? state.shelf.get(state.currentId) : 
 const LS_SHELF = 'mindflow-editor:shelf';
 const LS_FILENAME = 'mindflow-editor:filename';
 const LS_THEME = 'mindflow-editor:theme';
+const LS_VIEWS = 'mindflow-editor:views';  // { [blockId]: slice[] }
+
+// slice = { view, walkMode, path: [{digit, via}] }
+// Each captures one "facet" / configured view the user has composed on a block.
+// These travel to the filmstrip-3d visualiser as highlight selections —
+// multiple slices per block union into the block's lit cubes.
+state.slices = new Map();  // blockId -> slice[]
 
 function saveLocal() {
   try {
@@ -92,6 +99,9 @@ function saveLocal() {
     state.shelf.forEach((v, k) => { obj[k] = v; });
     localStorage.setItem(LS_SHELF, JSON.stringify(obj));
     localStorage.setItem(LS_FILENAME, state.filename);
+    const slicesObj = {};
+    state.slices.forEach((v, k) => { if (v.length) slicesObj[k] = v; });
+    localStorage.setItem(LS_VIEWS, JSON.stringify(slicesObj));
   } catch (_) {}
 }
 
@@ -101,7 +111,98 @@ function loadLocal() {
     if (raw) state.shelf = new Map(Object.entries(JSON.parse(raw)));
     const fn = localStorage.getItem(LS_FILENAME);
     if (fn) state.filename = fn;
+    const vraw = localStorage.getItem(LS_VIEWS);
+    if (vraw) state.slices = new Map(Object.entries(JSON.parse(vraw)));
   } catch (_) {}
+}
+
+// ──── Slices ────────────────────────────────────────────────
+
+function pathToRawAddr(path) {
+  return path.map((p, i) =>
+    (i === 0 ? '' : (p.via === 'star' ? '*' : '.')) + p.digit
+  ).join('');
+}
+
+function pathsEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].digit !== b[i].digit || a[i].via !== b[i].via) return false;
+  }
+  return true;
+}
+
+function slicesForCurrent() {
+  if (!state.currentId) return [];
+  return state.slices.get(state.currentId) || [];
+}
+
+function currentSliceIndex() {
+  return slicesForCurrent().findIndex(s =>
+    s.view === state.view && s.walkMode === state.walkMode && pathsEqual(s.path, state.path)
+  );
+}
+
+function saveCurrentAsSlice() {
+  if (!state.currentId) return;
+  if (currentSliceIndex() >= 0) return;  // already saved
+  const slice = {
+    view: state.view,
+    walkMode: state.walkMode,
+    path: state.path.map(p => ({ digit: p.digit, via: p.via })),
+  };
+  const list = state.slices.get(state.currentId) || [];
+  list.push(slice);
+  state.slices.set(state.currentId, list);
+  refresh();
+}
+
+function activateSlice(idx) {
+  const list = slicesForCurrent();
+  const s = list[idx];
+  if (!s) return;
+  state.view = s.view;
+  state.walkMode = s.walkMode;
+  state.path = s.path.map(p => ({ digit: p.digit, via: p.via }));
+  syncViewUI();
+  refresh();
+}
+
+function deleteSlice(idx) {
+  const list = slicesForCurrent();
+  if (idx < 0 || idx >= list.length) return;
+  list.splice(idx, 1);
+  if (list.length === 0) state.slices.delete(state.currentId);
+  else state.slices.set(state.currentId, list);
+  refresh();
+}
+
+function syncViewUI() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === state.view));
+  document.querySelectorAll('.view-controls').forEach(c => { c.hidden = c.dataset.for !== state.view; });
+  document.querySelectorAll('.walk-btn').forEach(b => b.classList.toggle('active', b.dataset.walk === state.walkMode));
+}
+
+function renderSliceBar() {
+  const chipsEl = document.getElementById('slice-chips');
+  const hintEl = document.getElementById('slice-hint');
+  const btn = document.getElementById('btn-save-slice');
+  if (!chipsEl) return;
+  const list = slicesForCurrent();
+  const activeIdx = currentSliceIndex();
+  btn.disabled = !state.currentId || activeIdx >= 0;
+  btn.title = activeIdx >= 0
+    ? 'Current view is already a saved slice'
+    : 'Save current view+walk+path as a slice for this block';
+  chipsEl.innerHTML = list.map((s, i) => {
+    const addr = pathToRawAddr(s.path) || '∅';
+    const active = i === activeIdx ? ' active' : '';
+    const label = `${s.view}·${s.walkMode}${s.path.length ? ' @' + esc(addr) : ''}`;
+    return `<span class="slice-chip${active}" data-slice="${i}" title="Activate this slice">${label}<span class="slice-kill" data-kill="${i}" title="Delete">×</span></span>`;
+  }).join('');
+  hintEl.textContent = state.currentId
+    ? (list.length ? `${list.length} slice${list.length === 1 ? '' : 's'} on ${state.currentId}` : 'no slices yet — configure a view then + save')
+    : 'select a block';
 }
 
 // ──── Render: document view ──────────────────────────────────
@@ -602,6 +703,7 @@ function updateStatus() {
 function refresh() {
   renderBlockList();
   renderView();
+  renderSliceBar();
   attachDynamicHandlers();
   saveLocal();
 }
@@ -915,6 +1017,14 @@ function wireStaticUI() {
   document.getElementById('btn-theme').addEventListener('click', () => {
     const cur = document.documentElement.getAttribute('data-theme');
     setTheme(cur === 'light' ? 'dark' : 'light');
+  });
+
+  document.getElementById('btn-save-slice').addEventListener('click', saveCurrentAsSlice);
+  document.getElementById('slice-chips').addEventListener('click', (e) => {
+    const kill = e.target.closest('[data-kill]');
+    if (kill) { e.stopPropagation(); deleteSlice(parseInt(kill.dataset.kill, 10)); return; }
+    const chip = e.target.closest('[data-slice]');
+    if (chip) activateSlice(parseInt(chip.dataset.slice, 10));
   });
 
   document.getElementById('btn-new').addEventListener('click', newFile);
