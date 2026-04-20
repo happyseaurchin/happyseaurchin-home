@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pscale Render</title>
+<style>
+  :root {
+    --bg: #faf8f3;
+    --panel: #ffffff;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #e5e1d8;
+    --accent: #8b6f47;
+    --star: #a03e3e;
+    --hidden-bg: #f3efe5;
+    --hidden-border: #c9bfa8;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --serif: "Iowan Old Style", "Charter", Georgia, "Palatino", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: var(--serif); }
+  header { padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; font-size: 13px; color: var(--muted); font-style: italic; }
+  main { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); height: calc(100vh - 62px); }
+  @media (max-width: 720px) { main { grid-template-columns: 1fr; height: auto; } }
+  section { display: flex; flex-direction: column; background: var(--panel); min-height: 0; }
+  .toolbar { display: flex; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); align-items: center; flex-wrap: wrap; }
+  .toolbar label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--mono); margin-right: auto; }
+  button { font-family: var(--mono); font-size: 12px; padding: 4px 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; border-radius: 3px; }
+  button:hover { background: var(--hidden-bg); border-color: var(--hidden-border); }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button.primary:hover { background: var(--accent); border-color: var(--accent); }
+  textarea { flex: 1; width: 100%; border: none; padding: 16px; font-family: var(--mono); font-size: 12.5px; line-height: 1.5; color: var(--ink); background: var(--panel); resize: none; outline: none; }
+  #output { flex: 1; overflow-y: auto; padding: 24px 32px 48px; font-family: var(--serif); font-size: 15px; line-height: 1.6; }
+  #output.markdown { font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; padding: 16px; line-height: 1.5; }
+  .err { color: var(--star); padding: 16px; font-family: var(--mono); font-size: 13px; white-space: pre-wrap; }
+
+  /* Rendered block styles */
+  .block-root { }
+  .node { margin: 0 0 18px; }
+  .node-heading { display: flex; align-items: baseline; gap: 10px; margin: 0 0 4px; }
+  .addr { font-family: var(--mono); font-size: 0.78em; color: var(--muted); background: var(--hidden-bg); padding: 2px 6px; border-radius: 2px; white-space: nowrap; }
+  .sem { color: var(--ink); }
+  .sem-empty { color: var(--muted); font-style: italic; font-size: 0.9em; }
+  h1.node-heading .sem { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; }
+  h2.node-heading .sem { font-size: 18px; font-weight: 600; }
+  h3.node-heading .sem { font-size: 16px; font-weight: 600; color: var(--accent); }
+  h4.node-heading .sem { font-size: 15px; font-weight: 600; color: var(--accent); }
+  h5.node-heading .sem, h6.node-heading .sem { font-size: 14px; font-weight: 600; color: var(--muted); }
+  .leaf { color: var(--ink); }
+  .children { margin-left: 14px; padding-left: 14px; border-left: 1px dotted var(--line); }
+  .children .children { margin-left: 12px; padding-left: 12px; }
+
+  .hidden { background: var(--hidden-bg); border: 1px solid var(--hidden-border); border-radius: 4px; padding: 10px 14px; margin: 6px 0 10px; font-size: 0.92em; }
+  .hidden-label { font-family: var(--mono); font-size: 11px; color: var(--star); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+  .hidden-label::before { content: "✦"; color: var(--star); }
+  .hidden-entry { display: flex; gap: 10px; margin: 3px 0; align-items: baseline; }
+  .hidden-entry .addr { background: var(--panel); }
+  .ref { font-family: var(--mono); font-size: 0.9em; color: var(--star); word-break: break-all; }
+  .ref::before { content: "→ "; color: var(--muted); }
+  .ref-addr { color: var(--accent); }
+  .inline-block { margin-top: 6px; border-left: 2px solid var(--star); padding-left: 10px; }
+
+  h1.node-heading { margin: 0 0 12px; }
+  h2.node-heading { margin: 18px 0 6px; padding-top: 8px; border-top: 1px solid var(--line); }
+  h1.node-heading:first-child, h2.node-heading:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+
+  /* Mode toggle */
+  .mode-toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; margin-right: auto; }
+  .mode-btn { border: none; border-radius: 0; border-right: 1px solid var(--line); padding: 4px 10px; }
+  .mode-btn:last-child { border-right: none; }
+  .mode-btn.active { background: var(--ink); color: var(--bg); }
+  .walk-group { display: flex; gap: 2px; align-items: center; flex-wrap: wrap; }
+  .walk-label { font-family: var(--mono); font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-right: 4px; }
+  .walk-btn { padding: 3px 8px; font-size: 11px; }
+  .walk-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+
+  /* Column view */
+  #output.columns { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .col-path { font-family: var(--mono); font-size: 12px; padding: 8px 16px; border-bottom: 1px solid var(--line); color: var(--muted); background: var(--bg); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .col-path .path-piece { color: var(--ink); cursor: pointer; padding: 1px 4px; border-radius: 2px; }
+  .col-path .path-piece:hover { background: var(--hidden-bg); }
+  .col-path .path-piece.star { color: var(--star); }
+  .col-path .path-sep { color: var(--muted); }
+  .col-path .path-root { color: var(--muted); cursor: pointer; }
+  .col-path .path-root:hover { color: var(--ink); }
+  .columns-wrap { flex: 1; display: flex; overflow-x: auto; overflow-y: hidden; min-height: 0; }
+  .column { flex-shrink: 0; width: 240px; border-right: 1px solid var(--line); overflow-y: auto; display: flex; flex-direction: column; }
+  .column.star-col { background: var(--hidden-bg); border-right: 1px solid var(--hidden-border); }
+  .col-header { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; }
+  .column.star-col .col-header { color: var(--star); background: var(--hidden-bg); border-bottom-color: var(--hidden-border); }
+  .cell { padding: 10px 12px; border-bottom: 1px solid var(--line); cursor: pointer; display: flex; gap: 8px; align-items: flex-start; transition: background 0.08s; font-size: 13.5px; }
+  .cell:hover { background: var(--hidden-bg); }
+  .cell.selected { background: var(--ink); color: var(--bg); }
+  .cell.selected .cell-digit { color: var(--bg); opacity: 0.7; }
+  .cell.selected:hover { background: var(--ink); }
+  .cell.in-path { background: var(--hidden-bg); }
+  .cell.dimmed { opacity: 0.3; }
+  .cell.highlight { box-shadow: inset 3px 0 0 var(--accent); }
+  .cell.highlight-ring { box-shadow: inset 3px 0 0 var(--muted); }
+  .cell-digit { font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 600; min-width: 16px; flex-shrink: 0; padding-top: 2px; }
+  .cell-body { flex: 1; min-width: 0; }
+  .cell-text { line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; word-break: break-word; }
+  .cell-text.empty { color: var(--muted); font-style: italic; font-size: 0.9em; }
+  .cell-markers { display: flex; gap: 6px; margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .marker { display: inline-flex; align-items: center; gap: 2px; }
+  .marker-branch { color: var(--accent); }
+  .marker-hidden { color: var(--star); cursor: pointer; padding: 1px 5px; border-radius: 2px; border: 1px solid var(--star); }
+  .marker-hidden:hover { background: var(--star); color: var(--bg); }
+  .cell.selected .cell-digit, .cell.selected .marker { color: var(--bg); }
+  .cell.selected .marker-hidden { border-color: var(--bg); color: var(--bg); }
+  .cell.selected .marker-hidden:hover { background: var(--bg); color: var(--ink); }
+  .cell.ref-leaf { font-style: italic; }
+  .cell.addr-ref { color: var(--accent); font-family: var(--mono); }
+  .col-empty { padding: 16px; color: var(--muted); font-style: italic; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pscale Render</h1>
+  <p>Markdown-style rendering for pure-form pscale JSON blocks. Handles <code style="font-size:0.9em;font-family:var(--mono)">_._</code> chains and the hidden directories revealed by the star operator.</p>
+</header>
+<main>
+  <section>
+    <div class="toolbar">
+      <label>Source · pure pscale JSON</label>
+      <button onclick="loadSample('minimal')">minimal</button>
+      <button onclick="loadSample('nested')">nested</button>
+      <button onclick="loadSample('hidden')">hidden dir</button>
+      <button onclick="loadSample('starstone')">starstone</button>
+    </div>
+    <textarea id="input" spellcheck="false" placeholder='Paste a pure-form pscale JSON block here.
+
+Example:
+{
+  "_": "Block description.",
+  "1": "First branch.",
+  "2": {
+    "_": "Second branch.",
+    "1": "Child of second."
+  }
+}'></textarea>
+  </section>
+  <section>
+    <div class="toolbar">
+      <div class="mode-toggle">
+        <button class="mode-btn active" id="modeDoc" onclick="setViewMode('doc')">document</button>
+        <button class="mode-btn" id="modeCol" onclick="setViewMode('col')">column</button>
+      </div>
+      <div id="docControls" style="display:flex;gap:6px;">
+        <button id="viewToggle" onclick="toggleView()">show markdown</button>
+        <button onclick="copyMarkdown(this)">copy md</button>
+      </div>
+      <div id="colControls" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;">
+        <div class="walk-group">
+          <span class="walk-label">walk</span>
+          <button class="walk-btn active" data-walk="free" onclick="setWalkMode('free')">free</button>
+          <button class="walk-btn" data-walk="spindle" onclick="setWalkMode('spindle')">spindle</button>
+          <button class="walk-btn" data-walk="ring" onclick="setWalkMode('ring')">ring</button>
+          <button class="walk-btn" data-walk="disc" onclick="setWalkMode('disc')">disc</button>
+          <button class="walk-btn" data-walk="point" onclick="setWalkMode('point')">point</button>
+          <button class="walk-btn" data-walk="star" onclick="setWalkMode('star')">star</button>
+        </div>
+        <button onclick="resetPath()">reset</button>
+      </div>
+    </div>
+    <div id="output"></div>
+  </section>
+</main>
+
+<script>
+// ========================================================================
+// Core walker — pure form only. No tree wrapper, no tuning, no metadata.
+// ========================================================================
+
+/**
+ * Follow the _._ chain until a string is reached.
+ * Returns the deepest string, or null if the chain ends in a headless object
+ * (zero-position interior with digits but no semantic text).
+ */
+function collectUnderscore(node) {
+  if (typeof node !== 'object' || node === null || !('_' in node)) return null;
+  const val = node['_'];
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object' && val !== null) {
+    if ('_' in val) return collectUnderscore(val);
+    return null; // zero-position interior, no text
+  }
+  return null;
+}
+
+/**
+ * Follow the _._ chain and return the deepest object that carries digit
+ * children — i.e. the hidden directory level. Null if no hidden directory.
+ */
+function findHiddenLevel(node) {
+  if (typeof node !== 'object' || node === null || !('_' in node)) return null;
+  const val = node['_'];
+  if (typeof val !== 'object' || val === null) return null;
+  let current = val;
+  while (typeof current === 'object' && current !== null) {
+    if (Object.keys(current).some(k => '123456789'.includes(k))) return current;
+    if ('_' in current && typeof current['_'] === 'object' && current['_'] !== null) {
+      current = current['_'];
+    } else {
+      break;
+    }
+  }
+  return null;
+}
+
+/**
+ * Extract the hidden directory as { digit: content } — these are the entries
+ * a star operation at this address would reveal.
+ */
+function getHiddenDirectory(node) {
+  const level = findHiddenLevel(node);
+  if (!level) return null;
+  const result = {};
+  for (const d of '123456789') {
+    if (d in level) result[d] = level[d];
+  }
+  return Object.keys(result).length ? result : null;
+}
+
+function digitKeys(node) {
+  if (typeof node !== 'object' || node === null) return [];
+  return '123456789'.split('').filter(d => d in node);
+}
+
+/**
+ * Classify what a string in a hidden directory slot is pointing to.
+ * Returns one of: 'address' | 'blockref' | 'text'
+ *   - address: digits and dots (an address within this block or a known block)
+ *   - blockref: kebab/snake-case name that could resolve to another block
+ *   - text: inline prose
+ */
+function classifyRef(s) {
+  if (typeof s !== 'string') return 'text';
+  const t = s.trim();
+  if (!t) return 'text';
+  if (/^\d[\d.]*\d$|^\d$/.test(t)) return 'address';
+  if (t.length >= 2 && t.length <= 60 && !/\s/.test(t) && !/[.!?,;:"']/.test(t)
+      && /^[a-z0-9][a-z0-9_-]*[a-z0-9]$/i.test(t)) return 'blockref';
+  return 'text';
+}
+
+// ========================================================================
+// Rendering — two outputs from the same traversal:
+//   renderHTML(block)     → HTML string for the rendered view
+//   renderMarkdown(block) → markdown source for the copy button
+// ========================================================================
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function renderHTML(block) {
+  const out = [];
+
+  function recurse(node, addr, depth) {
+    const hLevel = Math.min(Math.max(depth + 1, 1), 6);
+    const addrLabel = addr || '∅';
+
+    // Leaf string
+    if (typeof node === 'string') {
+      out.push(`<div class="node">`);
+      out.push(`<h${hLevel} class="node-heading"><span class="addr">${esc(addrLabel)}</span><span class="sem leaf">${esc(node)}</span></h${hLevel}>`);
+      out.push(`</div>`);
+      return;
+    }
+
+    if (typeof node !== 'object' || node === null) return;
+
+    const sem = collectUnderscore(node);
+    const hd = getHiddenDirectory(node);
+    const children = digitKeys(node);
+
+    out.push(`<div class="node">`);
+    out.push(`<h${hLevel} class="node-heading"><span class="addr">${esc(addrLabel)}</span>`);
+    if (sem !== null) {
+      out.push(`<span class="sem">${esc(sem)}</span>`);
+    } else {
+      out.push(`<span class="sem-empty">(headless — zero-position interior)</span>`);
+    }
+    out.push(`</h${hLevel}>`);
+
+    // Hidden directory — revealed by star operation
+    if (hd) {
+      out.push(`<div class="hidden">`);
+      out.push(`<div class="hidden-label">hidden directory at <code>${esc(addrLabel)}</code> · star-accessible</div>`);
+      for (const [d, v] of Object.entries(hd)) {
+        const hAddr = `${addrLabel}*${d}`;
+        out.push(`<div class="hidden-entry"><span class="addr">${esc(hAddr)}</span>`);
+        if (typeof v === 'string') {
+          const kind = classifyRef(v);
+          if (kind === 'address') {
+            out.push(`<span class="ref ref-addr">@${esc(v)}</span>`);
+          } else if (kind === 'blockref') {
+            out.push(`<span class="ref">${esc(v)}</span>`);
+          } else {
+            out.push(`<span class="sem">${esc(v)}</span>`);
+          }
+        } else if (typeof v === 'object' && v !== null) {
+          const subSem = collectUnderscore(v);
+          out.push(`<span class="sem-empty">inline block</span>`);
+          out.push(`</div>`);
+          out.push(`<div class="inline-block">`);
+          recurse(v, hAddr, depth + 1);
+          out.push(`</div>`);
+          continue;
+        }
+        out.push(`</div>`);
+      }
+      out.push(`</div>`);
+    }
+
+    if (children.length) {
+      out.push(`<div class="children">`);
+      for (const d of children) {
+        const childAddr = addr ? `${addr}.${d}` : d;
+        recurse(node[d], childAddr, depth + 1);
+      }
+      out.push(`</div>`);
+    }
+
+    out.push(`</div>`);
+  }
+
+  out.push(`<div class="block-root">`);
+  recurse(block, '', 0);
+  out.push(`</div>`);
+  return out.join('');
+}
+
+function renderMarkdown(block) {
+  const lines = [];
+
+  function recurse(node, addr, depth) {
+    const hLevel = Math.min(Math.max(depth + 1, 1), 6);
+    const hash = '#'.repeat(hLevel);
+    const addrLabel = addr || '∅';
+
+    if (typeof node === 'string') {
+      lines.push(`${hash} \`${addrLabel}\` · ${node}`);
+      lines.push('');
+      return;
+    }
+
+    if (typeof node !== 'object' || node === null) return;
+
+    const sem = collectUnderscore(node);
+    const hd = getHiddenDirectory(node);
+    const children = digitKeys(node);
+
+    if (sem !== null) {
+      lines.push(`${hash} \`${addrLabel}\` · ${sem}`);
+    } else {
+      lines.push(`${hash} \`${addrLabel}\` · *(headless — zero-position interior)*`);
+    }
+    lines.push('');
+
+    if (hd) {
+      lines.push(`> **✦ hidden directory at \`${addrLabel}\`** — star-accessible`);
+      lines.push('>');
+      for (const [d, v] of Object.entries(hd)) {
+        const hAddr = `${addrLabel}*${d}`;
+        if (typeof v === 'string') {
+          const kind = classifyRef(v);
+          if (kind === 'address') {
+            lines.push(`> - \`${hAddr}\` → **address:** \`@${v}\``);
+          } else if (kind === 'blockref') {
+            lines.push(`> - \`${hAddr}\` → **block ref:** \`${v}\``);
+          } else {
+            lines.push(`> - \`${hAddr}\`: ${v}`);
+          }
+        } else if (typeof v === 'object' && v !== null) {
+          const subSem = collectUnderscore(v);
+          lines.push(`> - \`${hAddr}\` — *inline block:* ${subSem || '(headless)'}`);
+        }
+      }
+      lines.push('');
+    }
+
+    for (const d of children) {
+      const childAddr = addr ? `${addr}.${d}` : d;
+      recurse(node[d], childAddr, depth + 1);
+    }
+  }
+
+  recurse(block, '', 0);
+  return lines.join('\n');
+}
+
+// ========================================================================
+// UI State
+// ========================================================================
+
+const state = {
+  block: null,          // parsed JSON, null if invalid
+  viewMode: 'doc',      // 'doc' | 'col'
+  docSubView: 'html',   // 'html' | 'md' (within doc mode)
+  walkMode: 'free',     // 'free' | 'spindle' | 'ring' | 'disc' | 'point' | 'star'
+  path: [],             // [{kind: 'normal'|'star', digit: '1'}, ...]
+};
+
+let lastMarkdown = '';
+
+function parseInput() {
+  const src = document.getElementById('input').value.trim();
+  if (!src) { state.block = null; return null; }
+  try {
+    const b = JSON.parse(src);
+    if (typeof b !== 'object' || b === null) {
+      showError('Root must be an object — the block itself. No tree wrapper.');
+      return null;
+    }
+    state.block = b;
+    return b;
+  } catch (e) {
+    showError(`JSON parse error:\n${e.message}`);
+    return null;
+  }
+}
+
+function showError(msg) {
+  const out = document.getElementById('output');
+  out.className = '';
+  out.innerHTML = `<div class="err">${esc(msg)}</div>`;
+  state.block = null;
+}
+
+function update() {
+  const block = parseInput();
+  const out = document.getElementById('output');
+  if (!block) { if (!out.querySelector('.err')) out.innerHTML = ''; return; }
+  lastMarkdown = renderMarkdown(block);
+  if (state.viewMode === 'doc') {
+    if (state.docSubView === 'html') {
+      out.className = '';
+      out.innerHTML = renderHTML(block);
+    } else {
+      out.className = 'markdown';
+      out.textContent = lastMarkdown;
+    }
+  } else {
+    out.className = 'columns';
+    out.innerHTML = renderColumns(block, state.path, state.walkMode);
+    attachColumnHandlers();
+  }
+}
+
+function setViewMode(mode) {
+  state.viewMode = mode;
+  document.getElementById('modeDoc').classList.toggle('active', mode === 'doc');
+  document.getElementById('modeCol').classList.toggle('active', mode === 'col');
+  document.getElementById('docControls').style.display = mode === 'doc' ? 'flex' : 'none';
+  document.getElementById('colControls').style.display = mode === 'col' ? 'flex' : 'none';
+  update();
+}
+
+function setWalkMode(mode) {
+  state.walkMode = mode;
+  document.querySelectorAll('.walk-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.walk === mode);
+  });
+  update();
+}
+
+function resetPath() {
+  state.path = [];
+  update();
+}
+
+function toggleView() {
+  state.docSubView = state.docSubView === 'html' ? 'md' : 'html';
+  document.getElementById('viewToggle').textContent = state.docSubView === 'html' ? 'show markdown' : 'show rendered';
+  update();
+}
+
+function copyMarkdown(btn) {
+  if (!lastMarkdown) return;
+  navigator.clipboard.writeText(lastMarkdown).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'copied ✓';
+    setTimeout(() => { btn.textContent = orig; }, 1200);
+  }).catch(() => {});
+}
+
+// ========================================================================
+// Column view
+// ========================================================================
+
+/**
+ * Walk the block following state.path and produce columns.
+ *
+ * Path semantics (interpretation B):
+ *   - path[i] = { digit, via } describes THE CLICK in column i
+ *   - Column 0 is always the block's normal digit children
+ *   - Column i+1 is opened from path[i]: advance into the selected cell's child,
+ *     then either show its normal children (via='normal') or its hidden directory
+ *     (via='star', accessible only through the star operator).
+ *
+ * A leaf click cannot open a next column (nothing to navigate into).
+ */
+function buildColumns(block, path) {
+  const columns = [];
+
+  function buildColumn(source, kind, selectedDigit, depth) {
+    const cells = [];
+    for (const d of '123456789') {
+      if (!(d in source)) continue;
+      const v = source[d];
+      const cell = { digit: d };
+      if (typeof v === 'string') {
+        cell.text = v;
+        cell.isLeaf = true;
+        cell.refKind = classifyRef(v);
+        cell.hasHidden = false;
+      } else if (typeof v === 'object' && v !== null) {
+        const sem = collectUnderscore(v);
+        cell.text = sem;
+        cell.isLeaf = false;
+        cell.isHeadless = sem === null;
+        cell.hasHidden = getHiddenDirectory(v) !== null;
+      }
+      cells.push(cell);
+    }
+    return { kind, cells, selectedDigit, depth };
+  }
+
+  // Column 0: root's normal digit children
+  let source = block;
+  let kind = 'normal';
+  columns.push(buildColumn(source, kind, path[0]?.digit || null, 0));
+
+  for (let i = 0; i < path.length; i++) {
+    const step = path[i];
+    // Advance into the cell clicked in column i
+    const child = source[step.digit];
+    if (typeof child !== 'object' || child === null) break; // leaf — no further columns
+
+    if (step.via === 'star') {
+      const hd = getHiddenDirectory(child);
+      if (!hd) break; // no hidden dir available
+      source = hd;
+      kind = 'star';
+    } else {
+      source = child;
+      kind = 'normal';
+    }
+
+    columns.push(buildColumn(source, kind, path[i + 1]?.digit || null, i + 1));
+  }
+
+  return columns;
+}
+
+function formatPath(path) {
+  if (!path.length) return '<span class="path-root" onclick="truncatePath(0)">∅ root</span>';
+  const parts = ['<span class="path-root" onclick="truncatePath(0)">∅</span>'];
+  for (let i = 0; i < path.length; i++) {
+    const p = path[i];
+    const sep = p.via === 'star' ? '*' : '.';
+    parts.push(`<span class="path-sep">${sep}</span>`);
+    parts.push(`<span class="path-piece${p.via === 'star' ? ' star' : ''}" onclick="truncatePath(${i + 1})">${esc(p.digit)}</span>`);
+  }
+  return parts.join('');
+}
+
+function renderColumns(block, path, walkMode) {
+  const columns = buildColumns(block, path);
+  const out = [];
+  out.push(`<div class="col-path">${formatPath(path)}</div>`);
+  out.push(`<div class="columns-wrap">`);
+
+  if (!columns.length) {
+    out.push(`<div class="col-empty">Block has no digit children.</div>`);
+  }
+
+  for (let ci = 0; ci < columns.length; ci++) {
+    const col = columns[ci];
+    const isTerminalCol = ci === columns.length - 1 && path.length === ci;
+    // The "terminal column" is where the cursor sits — the column that contains the last-selected cell.
+    // But if we've selected in column ci, the children open as column ci+1. So the column containing the
+    // current terminal is the one at depth = path.length - 1, i.e. the second-to-last built column.
+    const terminalColIdx = path.length - 1;
+    const isDiscTarget = ci === terminalColIdx;
+
+    out.push(`<div class="column${col.kind === 'star' ? ' star-col' : ''}">`);
+    const headerLabel = col.kind === 'star'
+      ? `★ hidden · depth ${ci}`
+      : `depth ${ci}`;
+    out.push(`<div class="col-header">${headerLabel}</div>`);
+
+    if (!col.cells.length) {
+      out.push(`<div class="col-empty">(no entries)</div>`);
+    }
+
+    for (const cell of col.cells) {
+      const classes = ['cell'];
+      const isSelected = cell.digit === col.selectedDigit;
+      const isTerminal = isSelected && ci === terminalColIdx;
+
+      if (isSelected) classes.push('in-path');
+      if (isTerminal) classes.push('selected');
+      if (cell.refKind === 'address') classes.push('addr-ref');
+      else if (cell.refKind === 'blockref') classes.push('ref-leaf');
+
+      // Walk mode highlighting
+      const highlight = applyWalkHighlight(walkMode, ci, cell, col, terminalColIdx, isDiscTarget);
+      if (highlight === 'lit') classes.push('highlight');
+      else if (highlight === 'ring') classes.push('highlight-ring');
+      else if (highlight === 'dim') classes.push('dimmed');
+
+      const dataAttr = `data-col="${ci}" data-digit="${esc(cell.digit)}"`;
+      out.push(`<div class="${classes.join(' ')}" ${dataAttr}>`);
+      out.push(`<span class="cell-digit">${cell.digit}</span>`);
+      out.push(`<div class="cell-body">`);
+      if (cell.text !== null && cell.text !== undefined) {
+        if (cell.refKind === 'address') {
+          out.push(`<div class="cell-text">@${esc(cell.text)}</div>`);
+        } else {
+          out.push(`<div class="cell-text">${esc(cell.text)}</div>`);
+        }
+      } else {
+        out.push(`<div class="cell-text empty">(headless)</div>`);
+      }
+      const markers = [];
+      if (!cell.isLeaf) markers.push(`<span class="marker marker-branch">▸ branch</span>`);
+      if (cell.hasHidden) markers.push(`<span class="marker marker-hidden" data-star="1" ${dataAttr}>✦ star</span>`);
+      if (cell.refKind === 'blockref') markers.push(`<span class="marker">→ ref</span>`);
+      if (markers.length) out.push(`<div class="cell-markers">${markers.join('')}</div>`);
+      out.push(`</div></div>`);
+    }
+    out.push(`</div>`);
+  }
+
+  out.push(`</div>`);
+  return out.join('');
+}
+
+/**
+ * Return one of 'lit' | 'ring' | 'dim' | null based on walk mode.
+ *   lit = emphasize with accent
+ *   ring = emphasize with muted stroke
+ *   dim = dim out
+ *   null = no change
+ */
+function applyWalkHighlight(mode, colIdx, cell, col, terminalColIdx, isDiscTarget) {
+  if (mode === 'free') return null;
+
+  const isInPathCell = cell.digit === col.selectedDigit;
+  const isTerminal = isInPathCell && colIdx === terminalColIdx;
+
+  if (mode === 'spindle') {
+    // Highlight cells along the path
+    return isInPathCell ? 'lit' : 'dim';
+  }
+  if (mode === 'point') {
+    return isTerminal ? 'lit' : 'dim';
+  }
+  if (mode === 'ring') {
+    // Siblings of terminal (in terminal's column, excluding terminal)
+    if (colIdx !== terminalColIdx) return 'dim';
+    return isTerminal ? null : 'ring';
+  }
+  if (mode === 'disc') {
+    // All cells in the terminal's column
+    if (colIdx !== terminalColIdx) return 'dim';
+    return 'lit';
+  }
+  if (mode === 'star') {
+    // Cells with hidden directories, everywhere
+    return cell.hasHidden ? 'lit' : 'dim';
+  }
+  return null;
+}
+
+function attachColumnHandlers() {
+  document.querySelectorAll('#output .cell').forEach(el => {
+    el.addEventListener('click', (e) => {
+      // Star marker click is handled below — don't propagate
+      if (e.target.closest('.marker-hidden')) return;
+      const col = parseInt(el.dataset.col, 10);
+      const digit = el.dataset.digit;
+      clickCell(col, digit, false);
+    });
+  });
+  document.querySelectorAll('#output .marker-hidden').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const col = parseInt(el.dataset.col, 10);
+      const digit = el.dataset.digit;
+      clickCell(col, digit, true);
+    });
+  });
+}
+
+function clickCell(colIdx, digit, viaStar) {
+  // Truncate path to colIdx, then push new entry describing this click.
+  // path[colIdx] = { digit, via } — the click in column colIdx, determining how column colIdx+1 opens.
+  state.path = state.path.slice(0, colIdx);
+  state.path.push({ digit, via: viaStar ? 'star' : 'normal' });
+  update();
+}
+
+function truncatePath(len) {
+  state.path = state.path.slice(0, len);
+  update();
+}
+
+// ========================================================================
+// Samples
+// ========================================================================
+
+const SAMPLES = {
+  minimal: {
+    "_": "A minimal pscale block. The underscore at root describes what the block is; digits 1–9 are its branches.",
+    "1": "First branch — a leaf. Strings at a digit key are terminal.",
+    "2": "Second branch — also a leaf.",
+    "3": "Third branch — also a leaf."
+  },
+  nested: {
+    "_": "A nested block. Branches become objects when they grow children.",
+    "1": {
+      "_": "First branch — now a subtree.",
+      "1": "First child of first.",
+      "2": "Second child of first."
+    },
+    "2": {
+      "_": "Second branch.",
+      "1": "Only child of second."
+    },
+    "3": "Third branch, still a leaf."
+  },
+  hidden: {
+    "_": "A block with hidden directories. The _._ chain at a node reveals star-accessible content between the node and its semantic text.",
+    "1": {
+      "_": {
+        "_": "First branch with hidden entries beneath it.",
+        "1": "hidden-entry-one",
+        "2": "A longer piece of inline text that lives in the hidden directory, visible only through the star operator at this address."
+      },
+      "1": "Normal child — visible via ordinary BSP walk."
+    },
+    "2": {
+      "_": {
+        "_": "Second branch referencing another block.",
+        "1": "other-block-name"
+      }
+    }
+  },
+  starstone: {
+    "_": "Starstone mini — a ring of three blocks where each branch's hidden directory points to the next. Walking any branch with the star operator enters a control loop.",
+    "1": {
+      "_": {
+        "_": "Branch 1 — first phase of the loop. Reference signal: observe.",
+        "1": "2"
+      },
+      "1": "Perception data for phase 1."
+    },
+    "2": {
+      "_": {
+        "_": "Branch 2 — second phase. Reference signal: assess.",
+        "1": "3"
+      },
+      "1": "Perception data for phase 2."
+    },
+    "3": {
+      "_": {
+        "_": "Branch 3 — third phase. Reference signal: act. Returns to 1.",
+        "1": "1"
+      },
+      "1": "Perception data for phase 3."
+    }
+  }
+};
+
+function loadSample(name) {
+  const s = SAMPLES[name];
+  if (!s) return;
+  document.getElementById('input').value = JSON.stringify(s, null, 2);
+  update();
+}
+
+document.getElementById('input').addEventListener('input', update);
+
+// Boot with the hidden-directory sample so the star behaviour is visible
+loadSample('hidden');
+</script>
+</body>
+</html>
