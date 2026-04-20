@@ -202,6 +202,44 @@
     [data-theme="light"] #status-filters button.active[data-status="spec"] { background: rgba(217,119,6,0.12); border-color: rgba(217,119,6,0.4); color: #d97706; }
     [data-theme="light"] #status-filters button.active[data-status="concept"] { background: rgba(100,100,100,0.12); border-color: rgba(100,100,100,0.4); color: #666; }
 
+    /* ── package filters ── */
+    #package-filters {
+      position: fixed; top: 80px; right: 20px;
+      z-index: 100;
+      display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+      max-width: calc(100vw - 40px); justify-content: flex-end;
+    }
+    #package-filters .lbl {
+      font-size: 10px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.05em;
+      margin-right: 4px;
+    }
+    #package-filters button, #package-filters a {
+      font-family: inherit; font-size: 11px;
+      background: transparent; border: 1px solid var(--border); color: var(--muted);
+      padding: 4px 10px; border-radius: 2px; cursor: pointer; text-decoration: none;
+    }
+    #package-filters button:hover, #package-filters a:hover { border-color: var(--faint); color: var(--fg); }
+    #package-filters button.active {
+      background: var(--btn-active-bg); border-color: var(--btn-active-border); color: var(--btn-active-fg);
+    }
+    #package-filters a.index-link { opacity: 0.7; }
+
+    #package-callout {
+      position: fixed; top: 118px; right: 20px;
+      z-index: 100;
+      font-size: 11px; color: var(--muted);
+      background: var(--btn-active-bg); border: 1px solid var(--btn-active-border);
+      padding: 6px 12px; border-radius: 2px;
+      display: none; gap: 12px; align-items: center;
+    }
+    #package-callout.visible { display: inline-flex; }
+    #package-callout .pkg-name { color: var(--btn-active-fg); }
+    #package-callout a {
+      color: var(--btn-active-fg); text-decoration: none;
+      border-bottom: 1px dashed var(--btn-active-border); padding-bottom: 1px;
+    }
+    #package-callout a:hover { border-bottom-style: solid; }
+
     .dl-btn {
       display: inline-block; margin-left: 8px;
       padding: 6px 12px; border: 1px solid var(--border); border-radius: 4px;
@@ -232,7 +270,13 @@
   <button onclick="toggleStatus('code')" id="btn-status-code" data-status="code" class="active">coded</button>
   <button onclick="toggleStatus('spec')" id="btn-status-spec" data-status="spec" class="active">specced</button>
   <button onclick="toggleStatus('concept')" id="btn-status-concept" data-status="concept" class="active">concept</button>
-  <a href="/docs/components.zip" download class="dl-btn" title="Download all 52 component docs (.zip)">&#8681; docs</a>
+  <a href="/docs/components.zip" download class="dl-btn" title="Download all component docs (.zip)">&#8681; docs</a>
+</div>
+
+<div id="package-filters"></div>
+<div id="package-callout">
+  <span>Viewing: <span class="pkg-name"></span></span>
+  <a class="open-page" href="#">open package page →</a>
 </div>
 
 <div id="edge-toggles">
@@ -954,6 +998,29 @@ const DOC_SLUGS = {
   "56": "mindflow-editor",
   "57": "two-block-pct"
 };
+
+const LINKS = {
+  "15": {
+    "live": "https://happyseaurchin.com/mindflow/filmstrip/",
+    "source": "https://github.com/happyseaurchin/happyseaurchin-home/tree/main/mindflow/filmstrip"
+  },
+  "56": {
+    "live": "https://happyseaurchin.com/mindflow/editor/",
+    "source": "https://github.com/happyseaurchin/happyseaurchin-home/tree/main/mindflow/editor"
+  }
+};
+
+const PACKAGES = {
+  "pscale-tools": {
+    "name": "Pscale Tools",
+    "desc": "Three tools to read, write, and serve pscale blocks — editor, filmstrip viewer, MCP server.",
+    "components": [
+      56,
+      15,
+      53
+    ]
+  }
+};
 // @@INVENTORY_DATA_END
 
 // Theme state + rendering helpers (kept outside the data region)
@@ -984,10 +1051,84 @@ function hasDoc(id) { return typeof id === 'number' && !!DOC_SLUGS[id]; }
 // Visible statuses — all ON by default. Toggle OFF to fade.
 const activeStatusFilters = new Set(['code', 'spec', 'concept']);
 
+// Active package filter — null = no filter, otherwise a slug from PACKAGES.
+let activePackage = null;
+let activePackageSet = null; // Set<number> of ids when activePackage is set
+
 function isFiltered(id) {
+  // Package filter — anything outside the active package is faded
+  if (activePackageSet && !activePackageSet.has(Number(id))) return true;
   const s = STATUS[id];
   return s ? !activeStatusFilters.has(s) : false;
 }
+
+function renderPackageFilters() {
+  const host = document.getElementById('package-filters');
+  if (!host) return;
+  const entries = Object.entries(PACKAGES || {});
+  if (entries.length === 0) { host.style.display = 'none'; return; }
+  const pills = entries.map(([slug, pkg]) => {
+    const cls = slug === activePackage ? 'active' : '';
+    return `<button class="${cls}" onclick="setPackageFilter('${slug}')">${pkg.name}</button>`;
+  }).join('');
+  const allCls = activePackage ? '' : 'active';
+  host.innerHTML = `
+    <span class="lbl">Packages</span>
+    <button class="${allCls}" onclick="setPackageFilter(null)">all</button>
+    ${pills}
+    <a class="index-link" href="/packages/" title="Packages index">≡</a>
+  `;
+}
+
+function renderPackageCallout() {
+  const el = document.getElementById('package-callout');
+  if (!el) return;
+  if (!activePackage || !PACKAGES[activePackage]) {
+    el.classList.remove('visible');
+    return;
+  }
+  const pkg = PACKAGES[activePackage];
+  el.querySelector('.pkg-name').textContent = pkg.name;
+  el.querySelector('.open-page').href = `/packages/${activePackage}`;
+  el.classList.add('visible');
+}
+
+function setPackageFilter(slug) {
+  if (slug && !PACKAGES[slug]) {
+    console.warn('Unknown package:', slug);
+    return;
+  }
+  activePackage = slug || null;
+  activePackageSet = slug ? new Set((PACKAGES[slug].components || []).map(Number)) : null;
+
+  // Update URL without reloading
+  const url = new URL(window.location);
+  if (activePackage) url.searchParams.set('pkg', activePackage);
+  else url.searchParams.delete('pkg');
+  history.replaceState({}, '', url);
+
+  renderPackageFilters();
+  renderPackageCallout();
+
+  // Re-render the current view using the same pattern as toggleStatus
+  if (currentView === 'merged') {
+    applyStatusFilter3D();
+  } else {
+    const data = currentView === 'core'
+      ? prepareTreeData(coreFirstTree)
+      : prepareTreeData(productFirstTree);
+    renderTree(data);
+  }
+}
+
+function initPackageFromURL() {
+  const slug = new URL(window.location).searchParams.get('pkg');
+  if (slug && PACKAGES[slug]) {
+    activePackage = slug;
+    activePackageSet = new Set((PACKAGES[slug].components || []).map(Number));
+  }
+}
+initPackageFromURL();
 
 // @@INVENTORY_TREES_START — auto-generated from pscale-inventory.data.json, do not edit by hand
 const coreFirstTree = {
@@ -2854,6 +2995,8 @@ function toggleTheme() {
 document.documentElement.setAttribute('data-theme', 'light');
 document.getElementById('title').textContent =
   `${Object.keys(COMPONENTS).length} components · ${Object.keys(PRODUCTS).length} products`;
+renderPackageFilters();
+renderPackageCallout();
 setView('core');
 
 // Resize handler
