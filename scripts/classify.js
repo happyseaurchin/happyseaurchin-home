@@ -15,15 +15,49 @@ const PROMPT_PATH = path.join(__dirname, 'prompts/classify-component.md');
 // "tool_use ids must be unique". Instead we instruct the model to emit pure
 // JSON in the prompt and tolerate stray fences in parseResponse.
 
+// Walk the core-first tree, record each numeric-id node's parent.
+// Returns a map { id -> parentId | "root" | "meta" }.
+function buildCoreParentMap(tree) {
+  const map = {};
+  function walk(node, parentId) {
+    if (node == null) return;
+    if (typeof node.id === 'number') {
+      map[node.id] = parentId;
+    }
+    const nextParent = typeof node.id === 'number' ? node.id : parentId;
+    for (const child of node.children || []) walk(child, nextParent);
+  }
+  // The root itself (id: 1) has parent "root"
+  map[tree.id] = 'root';
+  for (const child of tree.children || []) walk(child, tree.id);
+  for (const m of tree.meta || []) {
+    if (typeof m.id === 'number') map[m.id] = 'meta';
+  }
+  return map;
+}
+
 function buildPrompt(data) {
   const existing = Object.entries(data.components)
     .map(([id, c]) => `  ${id}. ${c.name} [${c.cat}/${c.status}] — ${c.desc}`)
     .join('\n');
   const slugs = Object.values(data.components).map(c => c.slug).sort().join(', ');
 
+  const parentMap = buildCoreParentMap(data.trees.coreFirst);
+  const parentLines = Object.entries(parentMap)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([id, parent]) => {
+      const cName = data.components[id]?.name || '(?)';
+      const pName = parent === 'root' || parent === 'meta'
+        ? parent
+        : `${parent}. ${data.components[parent]?.name || ''}`;
+      return `  ${id}. ${cName} → ${pName}`;
+    })
+    .join('\n');
+
   const tpl = fs.readFileSync(PROMPT_PATH, 'utf8');
   return tpl
     .replaceAll('{{EXISTING_COMPONENTS_LIST}}', existing)
+    .replaceAll('{{CORE_PARENT_MAP}}', parentLines)
     .replaceAll('{{EXISTING_SLUGS_LIST}}', slugs);
 }
 
@@ -77,8 +111,41 @@ function validate(entry, data) {
   if (existingSlugs.has(entry.slug)) errors.push(`slug collision: ${entry.slug}`);
   const existingNames = new Set(Object.values(data.components).map(c => c.name.toLowerCase()));
   if (existingNames.has((entry.name || '').toLowerCase())) errors.push(`name collision: ${entry.name}`);
+
+  // coreFirstParent: must be "meta" or an existing numeric id already in the tree
+  const p = entry.coreFirstParent;
+  if (p === undefined || p === null) {
+    errors.push('coreFirstParent is required (number id or "meta")');
+  } else if (p !== 'meta') {
+    const pid = Number(p);
+    if (!Number.isFinite(pid)) {
+      errors.push(`coreFirstParent must be a number or "meta", got ${JSON.stringify(p)}`);
+    } else if (!data.components[String(pid)]) {
+      errors.push(`coreFirstParent ${pid} is not a known component id`);
+    } else {
+      const tree = data.trees?.coreFirst;
+      if (tree && !idInCoreTree(tree, pid)) {
+        errors.push(`coreFirstParent ${pid} exists as a component but is not present in the core-first tree`);
+      }
+      entry.coreFirstParent = pid; // normalize to number
+    }
+  }
+
   if (errors.length) throw new ValidationError(errors.join('; '), entry);
   return entry;
+}
+
+function idInCoreTree(tree, targetId) {
+  let found = false;
+  (function walk(node) {
+    if (found || node == null) return;
+    if (node.id === targetId) { found = true; return; }
+    for (const child of node.children || []) walk(child);
+  })(tree);
+  if (!found) {
+    for (const m of tree.meta || []) if (m.id === targetId) { found = true; break; }
+  }
+  return found;
 }
 
 class ValidationError extends Error {
@@ -97,7 +164,7 @@ function classify(filePath, { validateEntry = true } = {}) {
   return entry;
 }
 
-module.exports = { classify, validate, ValidationError };
+module.exports = { classify, validate, ValidationError, buildCoreParentMap };
 
 if (require.main === module) {
   const filePath = process.argv[2];

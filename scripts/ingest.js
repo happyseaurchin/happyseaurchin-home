@@ -47,6 +47,63 @@ function paddedId(id) {
   return String(id).padStart(2, '0');
 }
 
+// Mutate tree structures in-place to attach a newly ingested component.
+//
+//  coreFirst: new node { id: N } appended to children of coreParent
+//             (or appended to tree.meta if coreParent === "meta").
+//             No product leaf — keeps the auto-attachment simple; humans
+//             can refine into chains that terminate at product leaves.
+//
+//  productFirst: for each product the component belongs to, append
+//                { id: N, children: [{ id: 1 }] } to that product's root
+//                children. This mirrors the existing Creation Tools
+//                handling of #9/#10/#11/#55/#56.
+function attachToTrees(trees, newId, coreParent, products) {
+  if (!trees || !trees.coreFirst || !trees.productFirst) {
+    throw new Error('data.trees.coreFirst and data.trees.productFirst are required');
+  }
+
+  // --- core-first
+  if (coreParent === 'meta') {
+    trees.coreFirst.meta = trees.coreFirst.meta || [];
+    trees.coreFirst.meta.push({ id: newId });
+  } else {
+    const parent = findNodeById(trees.coreFirst, Number(coreParent));
+    if (!parent) throw new Error(`core-first parent id ${coreParent} not found in tree`);
+    parent.children = parent.children || [];
+    parent.children.push({ id: newId });
+  }
+
+  // --- product-first
+  const productIdMap = {
+    'MAGI': 'p-magi',
+    'Xstream': 'p-xstream',
+    'Onen': 'p-onen',
+    'Creation Tools': 'p-creation',
+  };
+  for (const prod of products) {
+    const rootId = productIdMap[prod];
+    if (!rootId) continue;
+    const root = (trees.productFirst.children || []).find(c => c.id === rootId);
+    if (!root) {
+      console.warn(`[attach] product root ${rootId} not found in productFirstTree — skipping`);
+      continue;
+    }
+    root.children = root.children || [];
+    root.children.push({ id: newId, children: [{ id: 1 }] });
+  }
+}
+
+function findNodeById(node, targetId) {
+  if (node == null) return null;
+  if (node.id === targetId) return node;
+  for (const child of node.children || []) {
+    const hit = findNodeById(child, targetId);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 function run(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, { cwd: REPO_ROOT, stdio: 'inherit', ...opts });
   if (result.status !== 0) {
@@ -87,11 +144,17 @@ function ingest(filePath, { dryRun = false, commit = true, push = true } = {}) {
   const destName = `${paddedId(id)}-${entry.slug}${ext}`;
   const destPath = path.join(DOCS_DIR, destName);
 
+  const coreParentLabel = entry.coreFirstParent === 'meta'
+    ? 'meta (floating)'
+    : `#${entry.coreFirstParent} ${data.components[entry.coreFirstParent]?.name || ''}`;
+
   console.log(`[ingest] Classified as #${id}: ${entry.name} [${entry.cat}/${entry.status}]`);
   console.log(`[ingest] Slug: ${entry.slug}`);
   console.log(`[ingest] Products: ${entry.products.join(', ')}`);
   console.log(`[ingest] Desc: ${entry.desc}`);
   console.log(`[ingest] Dest: docs/components/${destName}`);
+  console.log(`[ingest] Core-first parent: ${coreParentLabel}`);
+  console.log(`[ingest] Product-first: ${entry.products.join(' + ')}`);
 
   if (dryRun) {
     console.log('[ingest] DRY RUN — no changes written');
@@ -105,8 +168,10 @@ function ingest(filePath, { dryRun = false, commit = true, push = true } = {}) {
   // 1. Copy file
   fs.copyFileSync(filePath, destPath);
 
-  // 2. Append to JSON
-  data.components[id] = entry;
+  // 2. Append to JSON + attach to trees
+  const { coreFirstParent, ...entryForStore } = entry;
+  data.components[id] = entryForStore;
+  attachToTrees(data.trees, Number(id), coreFirstParent, entry.products);
   fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2) + '\n');
 
   // 3. Regenerate HTML data block + zip

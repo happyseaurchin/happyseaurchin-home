@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Regenerates the inventory data block in experiments/pscale-inventory.html
-// from experiments/pscale-inventory.data.json. Also rebuilds docs/components.zip.
+// Regenerates two auto-generated regions in experiments/pscale-inventory.html
+// from experiments/pscale-inventory.data.json, and rebuilds docs/components.zip.
 //
-// The HTML data region is delimited by:
-//   // @@INVENTORY_DATA_START ... // @@INVENTORY_DATA_END
-// Anything inside that region is overwritten; everything else is untouched.
+// Regions:
+//   // @@INVENTORY_DATA_START  … // @@INVENTORY_DATA_END   (6 data consts)
+//   // @@INVENTORY_TREES_START … // @@INVENTORY_TREES_END  (core + product trees)
+// Anything inside those regions is overwritten; everything else is untouched.
 
 const fs = require('fs');
 const path = require('path');
@@ -18,8 +19,12 @@ const DOCS_PARENT = path.dirname(DOCS_DIR);
 const ZIP_NAME = 'components.zip';
 const ZIP_PATH = path.join(DOCS_PARENT, ZIP_NAME);
 
-const START_MARK = '// @@INVENTORY_DATA_START';
-const END_MARK = '// @@INVENTORY_DATA_END';
+const DATA_START = '// @@INVENTORY_DATA_START';
+const DATA_END   = '// @@INVENTORY_DATA_END';
+const TREES_START = '// @@INVENTORY_TREES_START';
+const TREES_END   = '// @@INVENTORY_TREES_END';
+
+const j = (obj) => JSON.stringify(obj, null, 2);
 
 function buildDataBlock(data) {
   const { categories, products, components } = data;
@@ -36,10 +41,8 @@ function buildDataBlock(data) {
     DOC_SLUGS[id] = c.slug;
   }
 
-  const j = (obj) => JSON.stringify(obj, null, 2);
-
   return [
-    `${START_MARK} — auto-generated from pscale-inventory.data.json, do not edit by hand`,
+    `${DATA_START} — auto-generated from pscale-inventory.data.json, do not edit by hand`,
     `const CATEGORIES = ${j(categories)};`,
     '',
     `const PRODUCTS = ${j(products)};`,
@@ -51,18 +54,32 @@ function buildDataBlock(data) {
     `const STATUS = ${j(STATUS)};`,
     '',
     `const DOC_SLUGS = ${j(DOC_SLUGS)};`,
-    END_MARK,
+    DATA_END,
   ].join('\n');
 }
 
-function replaceRegion(html, block) {
-  const startIdx = html.indexOf(START_MARK);
-  const endIdx = html.indexOf(END_MARK);
+function buildTreesBlock(data) {
+  const { trees } = data;
+  if (!trees || !trees.coreFirst || !trees.productFirst) {
+    throw new Error('data.trees.coreFirst and data.trees.productFirst are required');
+  }
+  return [
+    `${TREES_START} — auto-generated from pscale-inventory.data.json, do not edit by hand`,
+    `const coreFirstTree = ${j(trees.coreFirst)};`,
+    '',
+    `const productFirstTree = ${j(trees.productFirst)};`,
+    TREES_END,
+  ].join('\n');
+}
+
+function replaceRegion(html, startMark, endMark, block) {
+  const startIdx = html.indexOf(startMark);
+  const endIdx = html.indexOf(endMark);
   if (startIdx === -1 || endIdx === -1) {
-    throw new Error(`Sentinel markers not found. Expected ${START_MARK} and ${END_MARK} in ${HTML_PATH}`);
+    throw new Error(`Sentinel markers not found: ${startMark} / ${endMark}`);
   }
   if (startIdx >= endIdx) {
-    throw new Error('Sentinel markers out of order');
+    throw new Error(`Sentinel markers out of order: ${startMark} / ${endMark}`);
   }
   const endOfEndLine = html.indexOf('\n', endIdx);
   const tail = endOfEndLine === -1 ? '' : html.slice(endOfEndLine);
@@ -83,13 +100,11 @@ function main() {
   const data = JSON.parse(fs.readFileSync(DATA_PATH, 'utf8'));
   const html = fs.readFileSync(HTML_PATH, 'utf8');
 
-  const block = buildDataBlock(data);
-  const newHtml = replaceRegion(html, block);
+  let out = replaceRegion(html, DATA_START, DATA_END, buildDataBlock(data));
+  out = replaceRegion(out, TREES_START, TREES_END, buildTreesBlock(data));
 
-  const changed = newHtml !== html;
-  if (changed) {
-    fs.writeFileSync(HTML_PATH, newHtml);
-  }
+  const changed = out !== html;
+  if (changed) fs.writeFileSync(HTML_PATH, out);
 
   rebuildZip();
 
