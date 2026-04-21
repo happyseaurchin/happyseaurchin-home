@@ -1572,17 +1572,34 @@ async function applyUrlParams() {
   const source = params.get('source');
   const wantMode = params.get('mode');
   if (shelf) {
+    // Bookmarkable shelves resolve live first (via /api/pscale-walk if the
+    // shelf has an owner+names mapping) and fall back to ./data/<name>.json
+    // static snapshots. The mapping lives in ./data/<name>.manifest.json if
+    // present: { owner, names: [...] }.
+    let resolved = null;
+    let resolvedVia = null;
     try {
-      const r = await fetch(`./data/${shelf}.json`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = await r.json();
-      shelfSnapshot = parseUploadedJson(data, `${shelf}.json`);
-      shelfSnapshotName = shelf;
+      const manifest = await fetch(`./data/${shelf}.manifest.json`);
+      if (manifest.ok) {
+        const m = await manifest.json();
+        const q = new URLSearchParams({ owner: m.owner });
+        if (Array.isArray(m.names)) q.set('shelf', m.names.join(','));
+        const live = await fetch(`/api/pscale-walk?${q}`);
+        if (live.ok) { resolved = await live.json(); resolvedVia = 'live'; }
+      }
+    } catch (e) { console.warn('live shelf fetch failed:', e); }
+    if (!resolved) {
+      try {
+        const r = await fetch(`./data/${shelf}.json`);
+        if (r.ok) { resolved = await r.json(); resolvedVia = 'snapshot'; }
+      } catch (e) { console.warn(`shelf snapshot ./data/${shelf}.json failed:`, e); }
+    }
+    if (resolved) {
+      shelfSnapshot = parseUploadedJson(resolved, `${shelf}.json`);
+      shelfSnapshotName = `${shelf}${resolvedVia === 'live' ? ' (live)' : ''}`;
       uploadedBlocks = shelfSnapshot;
       uploadedFilename = `${shelf}.json`;
       inputMode = 'upload';
-    } catch (e) {
-      console.warn(`shelf snapshot ./data/${shelf}.json failed:`, e);
     }
   } else if (source) {
     try {
