@@ -97,8 +97,12 @@
     <button data-input="frame" class="active">frame</button>
     <button data-input="editor">editor</button>
     <button data-input="upload">upload</button>
+    <button data-input="beach" title="Overlay happyseaurchin.com beach marks onto the current blocks">beach</button>
     <button id="input-reload" title="Reload current input">↻</button>
     <input type="file" id="upload-file" accept=".json,application/json" style="display:none;">
+  </div>
+  <div class="row">
+    <button id="btn-events-filmstrip" title="Turn an append-only chronicle block in the shelf into a filmstrip sequence">events→film</button>
   </div>
   <div class="row">
     <button id="btn-root-toggle" class="active" title="Show/hide root cubes (on-floor)">root</button>
@@ -908,9 +912,17 @@ const FRAME_URL = '../filmstrip/examples/birth-first-awakening.json';
 const LS_SHELF = 'mindflow-editor:shelf';
 const LS_VIEWS = 'mindflow-editor:views';
 
-let inputMode = 'frame';  // 'frame' | 'editor' | 'upload'
+let inputMode = 'frame';  // 'frame' | 'editor' | 'upload' | 'beach'
 let uploadedBlocks = null;   // last-loaded upload parsed into renderable blocks
 let uploadedFilename = null; // preserved for the download filename
+let shelfSnapshot = null;    // bookmarkable shelf loaded via ?shelf=<name>
+let shelfSnapshotName = null;
+
+// Beach overlay: happyseaurchin.com visitor marks filtered to pscale-shaped
+// purposes, rendered as a touched-set on the currently-loaded shelf.
+const BEACH_URL = 'https://happyseaurchin.com/.well-known/pscale-beach';
+// Pscale address regex: optional leading _/* then digits with . _ * separators.
+const PSCALE_ADDR_RE = /^([_*]?\d+(?:[._*]\d+)*)/;
 let filmstripOn = false;  // frame scrubber visible?
 let frameSeq = [];        // loaded frames when in filmstrip mode
 let frameIdx = 0;
@@ -1036,13 +1048,61 @@ function parseUploadedJson(data, filename) {
 }
 
 async function loadUploadInput() {
+  // If a bookmarkable shelf snapshot was requested via ?shelf=<name>, honour
+  // that on first upload-mode entry so reload gives the same data.
+  if (shelfSnapshot && !uploadedBlocks) {
+    uploadedBlocks = shelfSnapshot;
+    uploadedFilename = shelfSnapshotName ? `${shelfSnapshotName}.json` : 'shelf.json';
+  }
   const parsed = uploadedBlocks || [];
   if (parsed.length) {
-    parsed.__label = `upload: ${uploadedFilename || 'block'} · ${parsed.length} block${parsed.length === 1 ? '' : 's'}`;
+    const src = shelfSnapshotName ? `shelf:${shelfSnapshotName}` : `upload:${uploadedFilename || 'block'}`;
+    parsed.__label = `${src} · ${parsed.length} block${parsed.length === 1 ? '' : 's'}`;
   } else {
     parsed.__label = 'upload: choose a JSON file via the ↻ button';
   }
   return parsed;
+}
+
+// Beach mode: overlay happyseaurchin.com marks onto the blocks currently
+// loaded from whichever input was last active (frame/editor/upload). Requires
+// a shelf to be present to have something to overlay onto.
+async function loadBeachInput() {
+  // Preserve existing blocks — beach overlays on top of whatever's loaded.
+  const base = loadedBlocks && loadedBlocks.length ? loadedBlocks : [];
+  if (!base.length) {
+    const empty = [];
+    empty.__label = 'beach: load a shelf first (frame/editor/upload), then toggle beach to overlay';
+    return empty;
+  }
+  let marks = [];
+  try {
+    const r = await fetch(BEACH_URL);
+    const data = await r.json();
+    marks = Array.isArray(data?.marks) ? data.marks : [];
+  } catch (e) {
+    console.warn('beach fetch failed:', e);
+  }
+  // Filter to pscale-shaped purposes; normalise (strip separators so they
+  // match the visualiser's digit-string address format).
+  const hits = [];
+  for (const m of marks) {
+    const p = String(m.purpose || '');
+    const mtch = p.match(PSCALE_ADDR_RE);
+    if (!mtch) continue;
+    const addr = mtch[1].replace(/[._*]/g, '');
+    hits.push({ ...m, addr });
+  }
+  // Hits aren't scoped to any particular block in the marks — happyseaurchin
+  // marks are site-wide. Fan the hit set across every loaded block so any
+  // matching cube lights up. This is the interpretation that makes sense
+  // given one central beach per domain.
+  const out = base.map(b => ({
+    ...b,
+    touched: hits.map(h => ({ addr: h.addr, kind: 'beach', agent: h.agent_id, ts: h.timestamp })),
+  }));
+  out.__label = `beach: ${hits.length}/${marks.length} pscale-shaped marks overlaid on ${base.length} block${base.length === 1 ? '' : 's'}`;
+  return out;
 }
 
 async function loadEditorInput() {
@@ -1058,6 +1118,7 @@ async function loadInput() {
   try {
     const loader = inputMode === 'editor' ? loadEditorInput
                  : inputMode === 'upload' ? loadUploadInput
+                 : inputMode === 'beach' ? loadBeachInput
                  : loadFrameInput;
     const parsed = await loader();
     loadedBlocks = parsed;
@@ -1347,7 +1408,201 @@ window.addEventListener('storage', (e) => {
   }
 });
 
-loadInput().then(syncScrubberUI);
+// ---------------------------------------------------------------------------
+// Events → filmstrip transformer.
+// Takes a chronicle-shaped block (append-only: each digit 1..9 holds one
+// event's narration + optionally addresses it touched). Splits it into a
+// filmstrip sequence: one frame per event. Each frame's touched set is the
+// union of pscale addresses mentioned in the event text (regex-matched).
+// ---------------------------------------------------------------------------
+
+function eventsBlockToFrames(chronicleBlock, siblingShelf) {
+  // Enumerate event entries: digit children 1..9 at the top level, then
+  // recursively (when position 9 fills, compaction folds down a level —
+  // captured here with a light prefix walk).
+  const events = [];
+  function collect(node, addrPrefix) {
+    if (!node || typeof node !== 'object') return;
+    for (const k of '123456789') {
+      if (node[k] === undefined) continue;
+      const child = node[k];
+      const label = addrPrefix + k;
+      const text = typeof child === 'string'
+        ? child
+        : (typeof child === 'object' && typeof child['_'] === 'string' ? child['_'] : '');
+      if (text) events.push({ addr: label, text });
+      if (typeof child === 'object') collect(child, label);
+    }
+  }
+  collect(chronicleBlock, '');
+  if (!events.length) return null;
+
+  // Regex that catches pscale-ish addresses embedded in event narration
+  // (e.g. "ROOM_1 to ROOM_2", "walked thornkeep-world:1", "at 1.2").
+  const ADDR_EMBEDDED = /(?:^|[^A-Za-z0-9_])((?:[a-z][\w-]+:)?\d+(?:[._]\d+)*)(?=$|[^A-Za-z0-9._])/g;
+
+  return events.map((ev, i) => {
+    const touchedByBlock = new Map(); // blockId -> Set<addr>
+    for (const m of ev.text.matchAll(ADDR_EMBEDDED)) {
+      const raw = m[1];
+      let blockId = null;
+      let addr = raw;
+      if (raw.includes(':')) [blockId, addr] = raw.split(':');
+      addr = addr.replace(/[._]/g, '');
+      const targetIds = blockId ? [blockId] : siblingShelf.map(b => b.id);
+      for (const id of targetIds) {
+        if (!touchedByBlock.has(id)) touchedByBlock.set(id, new Set());
+        touchedByBlock.get(id).add(addr);
+      }
+    }
+    return {
+      concern: ev.text.slice(0, 80),
+      eventAddr: ev.addr,
+      touchedByBlock,
+      frameText: ev.text,
+    };
+  });
+}
+
+// Build a synthetic filmstrip sequence from a chronicle block in the current
+// shelf; swap the viewer into frame mode so the scrubber works.
+function enterEventsFilmstrip() {
+  if (!loadedBlocks?.length) {
+    alert('Load a shelf first (upload / editor mode), then pick a chronicle.');
+    return;
+  }
+  // Heuristic: the chronicle is the block whose root text mentions
+  // "chronicle" or "append-only", else the one named "*-events".
+  const candidate = loadedBlocks.find(b => /events|chronicle/i.test(b.id))
+                 || loadedBlocks.find(b => typeof b.block === 'object'
+                    && typeof b.block['_'] === 'string'
+                    && /append-only|chronicle/i.test(b.block['_']));
+  if (!candidate) {
+    alert('No chronicle-like block found in shelf. Expected id containing "events" or root text mentioning "chronicle".');
+    return;
+  }
+  const others = loadedBlocks.filter(b => b.id !== candidate.id);
+  const frames = eventsBlockToFrames(candidate.block, others);
+  if (!frames || !frames.length) {
+    alert(`Chronicle "${candidate.id}" has no events yet. Resolvers will append here; try again when play has happened.`);
+    return;
+  }
+  // Turn frames into a pseudo-filmstrip: each frame re-renders the SAME
+  // shelf (excluding the chronicle) but with different touchedSet per event.
+  const pseudoFrames = frames.map(f => ({
+    concern: f.concern,
+    system: '',
+    message: '',
+    tools: [],
+    output: '',
+    __touchedByBlock: f.touchedByBlock,
+    __referenceShelf: others,
+  }));
+  frameSeq = pseudoFrames.map(pf => ({ ...pf, system: '', message: '' }));
+  // Override parseFrame path: we'll render others[] directly and compute
+  // touched from pf.__touchedByBlock. Hook a minimal wrapper:
+  window.__eventsFrames = { frames, others };
+  inputMode = 'frame';
+  document.querySelectorAll('#panel button[data-input]').forEach(b =>
+    b.classList.toggle('active', b.dataset.input === 'frame'));
+  // Directly render first event:
+  applyEventsFrame(0);
+  // Enable scrubber.
+  filmstripOn = true;
+  document.getElementById('btn-filmstrip-toggle').classList.add('active');
+  syncScrubberUI();
+}
+
+function applyEventsFrame(idx) {
+  const ef = window.__eventsFrames;
+  if (!ef) return;
+  const frame = frameSeq[idx] || frameSeq[0];
+  const blocks = ef.others.map(b => ({
+    ...b,
+    touched: [...(frame.__touchedByBlock.get(b.id) || [])].map(addr => ({ addr, kind: 'event' })),
+  }));
+  blocks.__label = `events ${idx + 1}/${frameSeq.length} · ${frame.concern}`;
+  loadedBlocks = blocks;
+  touchedSet.clear();
+  for (const b of blocks) for (const t of (b.touched || [])) touchedSet.add(`${b.id}:${t.addr}`);
+  renderBlocks(blocks);
+  applyHighlight();
+  document.getElementById('block-name').textContent = blocks.__label;
+  document.getElementById('sc-concern').textContent = frame.concern;
+  document.getElementById('sc-idx').textContent = `${idx + 1} / ${frameSeq.length}`;
+  document.getElementById('sc-range').value = String(idx);
+}
+
+// Hook setFrame so when we're in events-filmstrip mode, scrubbing re-applies.
+const _origSetFrame = setFrame;
+setFrame = function(idx) {
+  if (window.__eventsFrames) {
+    frameIdx = Math.max(0, Math.min(frameSeq.length - 1, idx));
+    applyEventsFrame(frameIdx);
+    syncScrubberUI();
+    return;
+  }
+  _origSetFrame(idx);
+};
+
+document.getElementById('btn-events-filmstrip').addEventListener('click', () => {
+  // Toggle: entering clears any previous events-frame run; exiting leaves
+  // the scene on the last event (user can switch input mode to re-load).
+  if (window.__eventsFrames) {
+    window.__eventsFrames = null;
+    frameSeq = [];
+    document.getElementById('btn-events-filmstrip').classList.remove('active');
+    loadInput().then(syncScrubberUI);
+    return;
+  }
+  enterEventsFilmstrip();
+  document.getElementById('btn-events-filmstrip').classList.add('active');
+});
+
+// ---------------------------------------------------------------------------
+// URL-param dispatcher — bookmarkable links.
+//   ?shelf=<name>        load ./data/<name>.json as an upload-mode snapshot
+//   ?source=<url>        load arbitrary JSON (relative or same-origin)
+//   ?mode=frame|editor|upload|beach   initial mode
+// ---------------------------------------------------------------------------
+
+async function applyUrlParams() {
+  const params = new URLSearchParams(window.location.search);
+  const shelf = params.get('shelf');
+  const source = params.get('source');
+  const wantMode = params.get('mode');
+  if (shelf) {
+    try {
+      const r = await fetch(`./data/${shelf}.json`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      shelfSnapshot = parseUploadedJson(data, `${shelf}.json`);
+      shelfSnapshotName = shelf;
+      uploadedBlocks = shelfSnapshot;
+      uploadedFilename = `${shelf}.json`;
+      inputMode = 'upload';
+    } catch (e) {
+      console.warn(`shelf snapshot ./data/${shelf}.json failed:`, e);
+    }
+  } else if (source) {
+    try {
+      const r = await fetch(source);
+      const data = await r.json();
+      uploadedBlocks = parseUploadedJson(data, source.split('/').pop() || 'source.json');
+      uploadedFilename = source.split('/').pop() || 'source.json';
+      inputMode = 'upload';
+    } catch (e) {
+      console.warn(`source ${source} failed:`, e);
+    }
+  }
+  if (wantMode && ['frame', 'editor', 'upload', 'beach'].includes(wantMode)) {
+    inputMode = wantMode;
+  }
+  document.querySelectorAll('#panel button[data-input]').forEach(b =>
+    b.classList.toggle('active', b.dataset.input === inputMode));
+}
+
+applyUrlParams().then(() => loadInput()).then(syncScrubberUI);
 </script>
 </body>
 </html>
