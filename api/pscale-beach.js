@@ -44,7 +44,11 @@ const LEGACY_LOCKS_KEY = 'pscale-beach-v2:locks';
 function defaultBeach() {
   return {
     _: `Beach at ${ORIGIN} — public commons. Open by default. Marks may clear with the tide.`,
-    '1': { _: 'Marks — random stigmergy traces. Each digit is one mark.' }
+    '1': { _: 'Marks — random stigmergy traces. Each digit is one mark.' },
+    '2': { _: 'Pools — multi-party deliberation slots.' },
+    '3': { _: 'Reaches — bilateral grain bootstraps.' },
+    '8': { _: "Local conventions for this beach. Substrate-wide rules at bsp(agent_id='pscale', block='block-conventions')." },
+    '9': { _: 'Beach metadata.', '1': 'v2' }
   };
 }
 
@@ -283,7 +287,13 @@ async function handleGrainReach(pairId, body) {
 // ── Standard bsp-mcp write shape (any block) ──
 
 async function handleStandardWrite(blockName, body) {
-  const { spindle = '', content, secret, new_lock } = body || {};
+  const { spindle = '', content, secret, new_lock, confirm } = body || {};
+
+  // Whole-block replace is destructive — require explicit confirm:true.
+  // Prevents accidental wipes from "no-op probes" like {spindle:"", content:{}}.
+  if (content !== undefined && !spindle && confirm !== true) {
+    return { status: 400, body: { error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' } };
+  }
   // Sibling blocks that don't exist yet are created on first write — the
   // handler is permissive about block creation. The default beach already
   // has a seed; sibling blocks start from {} unless content is whole-block.
