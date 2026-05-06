@@ -175,6 +175,13 @@ function blockParam(q) {
   return b || DEFAULT_BLOCK_NAME;
 }
 
+function blockParamFromBody(body) {
+  const b = body?.block;
+  if (Array.isArray(b)) return b[0] || null;
+  if (typeof b === 'string' && b) return b;
+  return null;
+}
+
 // ── Sed: substrate — atomic position allocation ──
 //
 // Floor-2 minimum. Valid positions contain digits 1-9 only (no 0). Sequence:
@@ -360,7 +367,7 @@ export default async function handler(req, res) {
     return res.status(204).end();
   }
 
-  const blockName = blockParam(req.query);
+  const blockName = (req.method === 'POST' && blockParamFromBody(req.body)) || blockParam(req.query);
 
   if (req.method === 'GET') {
     const block = await loadBlock(blockName);
