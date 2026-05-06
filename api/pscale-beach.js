@@ -72,15 +72,20 @@ function hashGrain(secret, pairId, side) {
   return createHash('sha256').update(salt).digest('hex');
 }
 
-// Lock-key derivation by substrate. For sed:/grain: the spindle's first digit
-// names the position; for ordinary blocks the whole-block lock lives at '_'.
+// Lock-key derivation. Whole-block writes (no spindle) gate on the root
+// underscore. Sub-position writes derive a per-branch lock key from the
+// spindle's first digit — same model for sed:/grain: and ordinary blocks.
+// For ordinary beach-style blocks this realises the open-billboard semantic:
+// by default no per-branch lock exists, so visitor writes to sub-positions
+// (presence at 1.x, marks at any path, pools at 2.x, liquid at 7.x.y) flow
+// without a secret. Owner retains whole-block authority via the '_' lock and
+// the {confirm:true} requirement on whole-block replace.
+// Spindle '0' addresses the underscore — gated as if whole-block.
 function lockKeyForWrite(blockName, spindle) {
-  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
-    if (!spindle) return '_';
-    const firstDigit = String(spindle).replace(/\*$/, '').split('.')[0];
-    return firstDigit || '_';
-  }
-  return '_';
+  if (!spindle) return '_';
+  const firstDigit = String(spindle).replace(/\*$/, '').split('.')[0];
+  if (!firstDigit || firstDigit === '0') return '_';
+  return firstDigit;
 }
 
 function hashByBlockName(blockName, position, secret) {
