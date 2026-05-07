@@ -147,7 +147,15 @@ function writeAt(block, address, value) {
   let node = block;
   for (let i = 0; i < digits.length - 1; i++) {
     const key = digits[i] === '0' ? '_' : digits[i];
-    if (typeof node[key] !== 'object' || node[key] === null) node[key] = {};
+    const existing = node[key];
+    if (typeof existing === 'string') {
+      // Subnest-on-growth: preserve the parent's existing semantic at the
+      // underscore of the new sub-block before descending. The string moves
+      // to _ instead of being silently nuked. Mirrors bsp-mcp's writeAt.
+      node[key] = { _: existing };
+    } else if (typeof existing !== 'object' || existing === null) {
+      node[key] = {};
+    }
     node = node[key];
   }
   const lastDigit = digits[digits.length - 1];
