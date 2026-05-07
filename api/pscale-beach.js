@@ -72,19 +72,28 @@ function hashGrain(secret, pairId, side) {
   return createHash('sha256').update(salt).digest('hex');
 }
 
-// Lock-key derivation. Whole-block writes (no spindle) gate on the root
-// underscore. Sub-position writes derive a per-branch lock key from the
-// spindle's first digit — same model for sed:/grain: and ordinary blocks.
-// For ordinary beach-style blocks this realises the open-billboard semantic:
-// by default no per-branch lock exists, so visitor writes to sub-positions
-// (presence at 1.x, marks at any path, pools at 2.x, liquid at 7.x.y) flow
-// without a secret. Owner retains whole-block authority via the '_' lock and
-// the {confirm:true} requirement on whole-block replace.
-// Spindle '0' addresses the underscore — gated as if whole-block.
+// Lock-key derivation. Empty spindle (or a spindle addressing the underscore
+// via '0' / '_') always maps to the '_' lock — that's whole-block replace and
+// underscore-of-root writes. Otherwise the lock is per-position: for sed:/grain:
+// the first dotted segment names the registrant/side position (multi-digit
+// like '11', '12', '111'); for ordinary blocks the first digit of the
+// dot-stripped path names the branch ('1.2.3' and '123' both lock at '1',
+// matching writeAt's dot-insensitive walk). The hash salt namespace (chosen
+// by hashByBlockName) is what distinguishes ordinary / sed: / grain: at hash
+// time. Result: locking '_' on the beach gates only whole-block / underscore
+// writes; sub-positions follow per-branch lock state.
 function lockKeyForWrite(blockName, spindle) {
   if (!spindle) return '_';
-  const firstDigit = String(spindle).replace(/\*$/, '').split('.')[0];
-  if (!firstDigit || firstDigit === '0') return '_';
+  const cleaned = String(spindle).replace(/\*$/, '');
+  if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
+    const firstSegment = cleaned.split('.')[0];
+    if (!firstSegment || firstSegment === '0' || firstSegment === '_') return '_';
+    return firstSegment;
+  }
+  const digits = cleaned.replace(/\./g, '');
+  if (!digits) return '_';
+  const firstDigit = digits[0];
+  if (firstDigit === '0' || firstDigit === '_') return '_';
   return firstDigit;
 }
 
@@ -304,10 +313,46 @@ async function handleGrainReach(pairId, body) {
   return { status: 200, body: { ok: true, state: 'completed', pair_id: pairId } };
 }
 
+// ── Beach top-level position validator ──
+//
+// Per bsp-mcp's block-conventions:4, the canonical `beach` block defines top-
+// level positions 1, 2, 3, 8, 9 only. On this beach (happyseaurchin.com) the
+// local override at beach:_.1 reserves position 1 for xstream presence
+// heartbeats and relocates substantive marks to the `marks` sibling block.
+// Writes addressed to undefined top-level positions (4, 5, 6, 7, etc.) are
+// rejected to keep the beach's convention surface clean — federated agents
+// rely on it. Sibling blocks (`marks`, `gatekeeper`, custom user blocks) are
+// unrestricted; this check fires only when blockName === 'beach'.
+const BEACH_ALLOWED_TOP_LEVEL = new Set(['1', '2', '3', '8', '9']);
+
+function validateBeachTopLevelPosition(blockName, spindle) {
+  if (blockName !== DEFAULT_BLOCK_NAME) return null;
+  if (!spindle) return null;
+  const digits = String(spindle).replace(/\*$/, '').replace(/\./g, '');
+  if (!digits) return null;
+  const firstDigit = digits[0];
+  if (firstDigit === '0' || firstDigit === '_') return null;
+  if (BEACH_ALLOWED_TOP_LEVEL.has(firstDigit)) return null;
+  return {
+    status: 400,
+    body: {
+      error: `position "${firstDigit}" is not defined on beach.json. Allowed top-level positions per block-conventions:4 are 1 (heartbeats — substantive marks live in the marks sibling), 2 (pools), 3 (reaches), 8 (local conventions), 9 (metadata). For arbitrary content, write to a sibling block via ?block=<name>.`,
+      code: 'undefined_position'
+    }
+  };
+}
+
 // ── Standard bsp-mcp write shape (any block) ──
 
 async function handleStandardWrite(blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm } = body || {};
+
+  // Reject writes to undefined top-level positions on the canonical beach block.
+  // Applies to both content writes and lock-only writes (new_lock without
+  // content) — squatting an undefined position by setting a lock is the same
+  // class of misuse as squatting it by writing content.
+  const positionError = validateBeachTopLevelPosition(blockName, spindle);
+  if (positionError) return positionError;
 
   // Whole-block replace is destructive — require explicit confirm:true.
   // Prevents accidental wipes from "no-op probes" like {spindle:"", content:{}}.
