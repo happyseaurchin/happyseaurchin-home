@@ -315,15 +315,25 @@ async function handleGrainReach(pairId, body) {
 
 // ── Beach top-level position validator ──
 //
-// Per bsp-mcp's block-conventions:4, the canonical `beach` block defines top-
-// level positions 1, 2, 3, 8, 9 only. On this beach (happyseaurchin.com) the
-// local override at beach:_.1 reserves position 1 for xstream presence
-// heartbeats and relocates substantive marks to the `marks` sibling block.
-// Writes addressed to undefined top-level positions (4, 5, 6, 7, etc.) are
-// rejected to keep the beach's convention surface clean — federated agents
-// rely on it. Sibling blocks (`marks`, `gatekeeper`, custom user blocks) are
-// unrestricted; this check fires only when blockName === 'beach'.
-const BEACH_ALLOWED_TOP_LEVEL = new Set(['1', '2', '3', '8', '9']);
+// bsp-mcp's block-conventions:4 formally defines beach positions 1, 2, 3, 8, 9.
+// In practice xstream-bsp also uses 5 (per-beach settings — vapour/liquid/
+// presence/inbox/notification config; see xstream-bsp/src/components/
+// ViewerDrawer.tsx) and 7 (location-keyed liquid coordination ring sharded by
+// address; see xstream-bsp/src/kernel/beach-kernel.ts:642-662). These are
+// de-facto extensions not yet formalized in block-conventions:4 — including
+// them here so the substrate doesn't reject live xstream traffic. Long-term:
+// either amend block-conventions:4 to add 5 and 7, or migrate xstream's
+// settings/liquid to sibling blocks (cleaner surface). Until that decision
+// lands, the substrate accepts both.
+//
+// On this beach (happyseaurchin.com) the local override at beach:_.1 reserves
+// position 1 for xstream presence heartbeats and relocates substantive marks
+// to the `marks` sibling block. Sibling blocks (`marks`, `gatekeeper`, custom
+// user blocks) are unrestricted; this check fires only when blockName === 'beach'.
+//
+// Rejected today: positions 4 and 6 (no known consumer). Catches future
+// divergent uses while leaving room for the existing real ones.
+const BEACH_ALLOWED_TOP_LEVEL = new Set(['1', '2', '3', '5', '7', '8', '9']);
 
 function validateBeachTopLevelPosition(blockName, spindle) {
   if (blockName !== DEFAULT_BLOCK_NAME) return null;
@@ -336,7 +346,7 @@ function validateBeachTopLevelPosition(blockName, spindle) {
   return {
     status: 400,
     body: {
-      error: `position "${firstDigit}" is not defined on beach.json. Allowed top-level positions per block-conventions:4 are 1 (heartbeats — substantive marks live in the marks sibling), 2 (pools), 3 (reaches), 8 (local conventions), 9 (metadata). For arbitrary content, write to a sibling block via ?block=<name>.`,
+      error: `position "${firstDigit}" is not defined on beach.json. Allowed top-level positions: 1 (heartbeats), 2 (pools), 3 (reaches), 5 (xstream beach settings), 7 (xstream location-keyed liquid ring), 8 (local conventions), 9 (metadata). For arbitrary content, write to a sibling block via ?block=<name>.`,
       code: 'undefined_position'
     }
   };
