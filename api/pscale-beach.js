@@ -1,15 +1,18 @@
 import { Redis } from '@upstash/redis';
 import { createHash } from 'node:crypto';
 
-// ── Pscale Beach v2 + sibling-block extension ──
+// ── Pscale Beach v2 — URL surface, sibling blocks ──
 // Spec: https://github.com/pscale-commons/bsp-mcp-server/blob/main/docs/protocol-pscale-beach-v2.md
-// §3.5 (origin/beach/sibling-block distinction) and the companion handoff doc
-// docs/happyseaurchin-sibling-blocks-implementation.md.
 //
-// One endpoint, polyglot dispatch:
-//   GET  /.well-known/pscale-beach[?block=<name>][?spindle=<addr>]
-//   POST /.well-known/pscale-beach[?block=<name>]
-//        body: bsp-mcp standard {spindle, content, secret?, new_lock?, gray?}
+// The URL is the surface. It hosts named sibling blocks. There is no special
+// "beach" block — beach is the surface, not a block. Every request carries an
+// explicit ?block=<name> (or block in POST body). GET without ?block= returns
+// a derived index listing the named blocks present at this surface.
+//
+//   GET  /.well-known/pscale-beach              → index of named blocks at this surface
+//   GET  /.well-known/pscale-beach?block=<name>[?spindle=<addr>]
+//   POST /.well-known/pscale-beach?block=<name>
+//        body: bsp-mcp standard {spindle, content, secret?, new_lock?, gray?, confirm?}
 //          OR for substrate-prefixed blocks, the substrate action shapes:
 //            sed:   {action: "register", declaration, passphrase}
 //            grain: {action: "reach",    side, agent_id, partner_agent_id,
@@ -17,11 +20,16 @@ import { createHash } from 'node:crypto';
 //                                        my_passphrase}
 //
 // Block-name prefix routes the substrate:
-//   "beach" (default)        → ordinary block; per-first-digit locks plus '_'
-//                              for whole-block / underscore-of-root writes
-//   anything else (no prefix)→ ordinary block; same lock model as above
-//   "sed:<collective>"       → site-hosted sed: substrate; per-position locks
-//   "grain:<pair_id>"        → site-hosted grain: substrate; per-side locks
+//   "sed:<collective>"  → site-hosted sed: substrate; per-position locks
+//   "grain:<pair_id>"   → site-hosted grain: substrate; per-side locks
+//   anything else       → ordinary block; per-first-digit locks plus '_' for
+//                         whole-block / underscore-of-root writes
+//
+// Shape gate on writes (per-host policy, not protocol): rejects `_word`
+// underscore-prefixed sibling keys (only "_" and digits 1-9 are valid spine
+// keys) and JSON-stringified sub-objects (must be written as objects, not
+// strings). Defense against LLMs that import non-pscale patterns from
+// training. bsp-mcp itself stays silent on shape rules.
 //
 // Lock salt namespaces match bsp-mcp's src/locks.ts so locks set under one
 // client verify under any other.
@@ -44,26 +52,10 @@ const redis = new Redis({
 });
 
 const ORIGIN = 'happyseaurchin.com';
-const DEFAULT_BLOCK_NAME = 'beach';
 
-// KV key namespace per block. Old single-block keys (pre-sibling) are
-// migrated lazily on first read of the default beach.
 function blockKey(name) { return `pscale-beach-v2:block:${name}`; }
 function locksKey(name) { return `pscale-beach-v2:locks:${name}`; }
-
-const LEGACY_BLOCK_KEY = 'pscale-beach-v2:block';
-const LEGACY_LOCKS_KEY = 'pscale-beach-v2:locks';
-
-function defaultBeach() {
-  return {
-    _: `Beach at ${ORIGIN} — public commons. Open by default. Marks may clear with the tide.`,
-    '1': { _: 'Marks — random stigmergy traces. Each digit is one mark.' },
-    '2': { _: 'Pools — multi-party deliberation slots.' },
-    '3': { _: 'Reaches — bilateral grain bootstraps.' },
-    '8': { _: "Local conventions for this beach. Substrate-wide rules at bsp(agent_id='pscale', block='block-conventions')." },
-    '9': { _: 'Beach metadata.', '1': 'v2' }
-  };
-}
+const KEY_PREFIX = 'pscale-beach-v2:block:';
 
 // ── Lock hashing — three salt namespaces matching bsp-mcp src/locks.ts ──
 
@@ -124,19 +116,7 @@ function hashByBlockName(blockName, position, secret) {
 
 async function loadBlock(name) {
   const stored = await redis.get(blockKey(name));
-  if (stored != null) return stored;
-  // Lazy migration: if the default beach is missing, check the legacy key
-  // and migrate. Only the default beach gets a default-seed; sibling blocks
-  // return null when missing so the caller can return 404.
-  if (name === DEFAULT_BLOCK_NAME) {
-    const legacy = await redis.get(LEGACY_BLOCK_KEY);
-    if (legacy != null) {
-      await redis.set(blockKey(name), legacy);
-      return legacy;
-    }
-    return defaultBeach();
-  }
-  return null;
+  return stored ?? null;
 }
 
 async function saveBlock(name, block) {
@@ -145,19 +125,62 @@ async function saveBlock(name, block) {
 
 async function loadHashes(name) {
   const stored = await redis.get(locksKey(name));
-  if (stored != null) return stored;
-  if (name === DEFAULT_BLOCK_NAME) {
-    const legacy = await redis.get(LEGACY_LOCKS_KEY);
-    if (legacy != null) {
-      await redis.set(locksKey(name), legacy);
-      return legacy;
-    }
-  }
-  return {};
+  return stored ?? {};
 }
 
 async function saveHashes(name, hashes) {
   await redis.set(locksKey(name), hashes);
+}
+
+async function listBlockNames() {
+  // Upstash Redis SCAN-friendly listing. KEYS is fine at this scale; if the
+  // surface grows large, switch to SCAN with cursor.
+  const keys = await redis.keys(`${KEY_PREFIX}*`);
+  return keys.map(k => k.slice(KEY_PREFIX.length)).sort();
+}
+
+// ── Shape gate ──
+//
+// Rejects writes that violate pscale spine rules. Two rules:
+//   (1) Only "_" and single digits 1-9 may appear as keys at any level on the
+//       spine. "_word" underscore-prefixed siblings (e.g. "_a", "_synthesis")
+//       are invisible to the bsp walker — accepting them creates ghost data.
+//   (2) Values that are JSON-stringified objects/arrays must be written as
+//       objects/arrays directly. Otherwise the walker can't traverse them.
+//
+// Returns null if shape is valid; returns an error string if not.
+function validateShape(content, path = '') {
+  if (content == null) return null;
+  if (typeof content === 'string') {
+    const trimmed = content.trim();
+    if (trimmed.length > 1 && (trimmed[0] === '{' || trimmed[0] === '[')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (typeof parsed === 'object' && parsed !== null) {
+          return `invalid value at "${path || '<root>'}" — JSON-stringified ${Array.isArray(parsed) ? 'array' : 'object'}; write the structure directly, not as a string`;
+        }
+      } catch {
+        // Not actually JSON, just looks like it. Fine.
+      }
+    }
+    return null;
+  }
+  if (typeof content !== 'object') return null;
+  if (Array.isArray(content)) {
+    for (let i = 0; i < content.length; i++) {
+      const err = validateShape(content[i], `${path}[${i}]`);
+      if (err) return err;
+    }
+    return null;
+  }
+  for (const [key, val] of Object.entries(content)) {
+    if (key !== '_' && !/^[1-9]$/.test(key)) {
+      return `invalid key "${path ? `${path}.` : ''}${key}" — pscale spine accepts only "_" and single digits 1-9 at each level (compound supernest slots like 11 or 234 are stored hierarchically as nested single-digit keys, not literal keys)`;
+    }
+    const err = validateShape(val, path ? `${path}.${key}` : key);
+    if (err) return err;
+  }
+  return null;
 }
 
 // ── BSP walk helpers (whole-block replace and point-write at digit address) ──
@@ -206,8 +229,8 @@ function spindleParam(q) {
 
 function blockParam(q) {
   const b = q?.block;
-  if (Array.isArray(b)) return b[0] ?? DEFAULT_BLOCK_NAME;
-  return b || DEFAULT_BLOCK_NAME;
+  if (Array.isArray(b)) return b[0] || null;
+  return b || null;
 }
 
 function blockParamFromBody(body) {
@@ -236,6 +259,11 @@ async function handleSedRegister(collective, body) {
   if (!declaration || !passphrase) {
     return { status: 400, body: { error: 'sed register requires {declaration, passphrase}', code: 'invalid_shape' } };
   }
+  const positionContent = shell_ref ? { _: declaration, '1': shell_ref } : declaration;
+  const shapeErr = validateShape(positionContent);
+  if (shapeErr) {
+    return { status: 400, body: { error: shapeErr, code: 'invalid_shape' } };
+  }
   const blockName = `sed:${collective}`;
   let block = await loadBlock(blockName);
   if (!block) {
@@ -248,7 +276,6 @@ async function handleSedRegister(collective, body) {
   } catch (e) {
     return { status: 500, body: { error: String(e.message || e), code: 'no_position' } };
   }
-  const positionContent = shell_ref ? { _: declaration, '1': shell_ref } : declaration;
   writeAt(block, position, positionContent);
   hashes[position] = hashSed(passphrase, collective, position);
   await saveBlock(blockName, block);
@@ -274,6 +301,10 @@ async function handleGrainReach(pairId, body) {
   }
   if (!agent_id || !my_side_content || !my_passphrase) {
     return { status: 400, body: { error: 'grain reach requires {side, agent_id, partner_agent_id, description, my_side_content, my_passphrase}', code: 'invalid_shape' } };
+  }
+  const sideShapeErr = validateShape(my_side_content);
+  if (sideShapeErr) {
+    return { status: 400, body: { error: sideShapeErr, code: 'invalid_shape' } };
   }
   const partnerSide = side === '1' ? '2' : '1';
   const blockName = `grain:${pairId}`;
@@ -326,65 +357,26 @@ async function handleGrainReach(pairId, body) {
   return { status: 200, body: { ok: true, state: 'completed', pair_id: pairId } };
 }
 
-// ── Beach top-level position validator ──
-//
-// bsp-mcp's block-conventions:4 formally defines beach positions 1, 2, 3, 8, 9.
-// In practice xstream-bsp also uses 5 (per-beach settings — vapour/liquid/
-// presence/inbox/notification config; see xstream-bsp/src/components/
-// ViewerDrawer.tsx) and 7 (location-keyed liquid coordination ring sharded by
-// address; see xstream-bsp/src/kernel/beach-kernel.ts:642-662). These are
-// de-facto extensions not yet formalized in block-conventions:4 — including
-// them here so the substrate doesn't reject live xstream traffic. Long-term:
-// either amend block-conventions:4 to add 5 and 7, or migrate xstream's
-// settings/liquid to sibling blocks (cleaner surface). Until that decision
-// lands, the substrate accepts both.
-//
-// On this beach (happyseaurchin.com) the local override at beach:_.1 reserves
-// position 1 for xstream presence heartbeats and relocates substantive marks
-// to the `marks` sibling block. Sibling blocks (`marks`, `gatekeeper`, custom
-// user blocks) are unrestricted; this check fires only when blockName === 'beach'.
-//
-// Rejected today: positions 4 and 6 (no known consumer). Catches future
-// divergent uses while leaving room for the existing real ones.
-const BEACH_ALLOWED_TOP_LEVEL = new Set(['1', '2', '3', '5', '7', '8', '9']);
-
-function validateBeachTopLevelPosition(blockName, spindle) {
-  if (blockName !== DEFAULT_BLOCK_NAME) return null;
-  if (!spindle) return null;
-  const digits = String(spindle).replace(/\*$/, '').replace(/\./g, '');
-  if (!digits) return null;
-  const firstDigit = digits[0];
-  if (firstDigit === '0' || firstDigit === '_') return null;
-  if (BEACH_ALLOWED_TOP_LEVEL.has(firstDigit)) return null;
-  return {
-    status: 400,
-    body: {
-      error: `position "${firstDigit}" is not defined on beach.json. Allowed top-level positions: 1 (heartbeats), 2 (pools), 3 (reaches), 5 (xstream beach settings), 7 (xstream location-keyed liquid ring), 8 (local conventions), 9 (metadata). For arbitrary content, write to a sibling block via ?block=<name>.`,
-      code: 'undefined_position'
-    }
-  };
-}
-
 // ── Standard bsp-mcp write shape (any block) ──
 
 async function handleStandardWrite(blockName, body) {
   const { spindle = '', content, secret, new_lock, confirm } = body || {};
-
-  // Reject writes to undefined top-level positions on the canonical beach block.
-  // Applies to both content writes and lock-only writes (new_lock without
-  // content) — squatting an undefined position by setting a lock is the same
-  // class of misuse as squatting it by writing content.
-  const positionError = validateBeachTopLevelPosition(blockName, spindle);
-  if (positionError) return positionError;
 
   // Whole-block replace is destructive — require explicit confirm:true.
   // Prevents accidental wipes from "no-op probes" like {spindle:"", content:{}}.
   if (content !== undefined && !spindle && confirm !== true) {
     return { status: 400, body: { error: 'whole-block replace requires {confirm: true}', code: 'confirm_required' } };
   }
+  // Shape gate: reject _word keys and JSON-stringified sub-objects on writes.
+  if (content !== undefined) {
+    const shapeErr = validateShape(content);
+    if (shapeErr) {
+      return { status: 400, body: { error: shapeErr, code: 'invalid_shape' } };
+    }
+  }
   // Sibling blocks that don't exist yet are created on first write — the
-  // handler is permissive about block creation. The default beach already
-  // has a seed; sibling blocks start from {} unless content is whole-block.
+  // handler is permissive about block creation. Blocks start from {} unless
+  // content is a whole-block payload.
   const existing = await loadBlock(blockName);
   let block = existing;
   if (block == null) {
@@ -451,6 +443,16 @@ export default async function handler(req, res) {
   const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
 
   if (req.method === 'GET') {
+    if (!blockName) {
+      // Derived index: list named blocks at this surface. The surface is the
+      // beach; the blocks listed are what's actually here.
+      const blocks = await listBlockNames();
+      return res.status(200).json({
+        _: `URL surface at ${ORIGIN}. Named sibling blocks listed below; address each via ?block=<name>. Substrate-wide conventions at bsp(agent_id='pscale', block='block-conventions').`,
+        origin: ORIGIN,
+        blocks
+      });
+    }
     const block = await loadBlock(blockName);
     if (block == null) {
       return res.status(404).json({ error: `block "${blockName}" not found`, code: 'not_found' });
@@ -461,6 +463,9 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
+    if (!blockName) {
+      return res.status(400).json({ error: 'block name required (pass ?block=<name> or "block" in body)', code: 'invalid_shape' });
+    }
     const body = req.body || {};
 
     // Substrate-action dispatch (sed:/grain: state machines).
@@ -479,25 +484,23 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'DELETE') {
+    if (!blockName) {
+      return res.status(400).json({
+        error: 'block name required (pass ?block=<name> or "block" in body)',
+        code: 'invalid_shape'
+      });
+    }
     // Wipe a sibling block — removes both the block and its lock-set from KV.
     // Auth is the `_` lock (whole-block authority): if set, the secret must
     // match; if unset, the block is unowned and wipe proceeds (consistent
     // with how unlocked whole-block-replace already behaves at "_").
     //
     // Substrate-prefixed blocks are not wipeable here — sed:/grain: have
-    // their own lifecycle and auth models. Default beach is also blocked:
-    // it auto-restores from defaultBeach() on next GET, but explicit refusal
-    // surfaces the protection rather than relying on lock state alone.
+    // their own lifecycle and auth models, separate concern.
     if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
       return res.status(405).json({
         error: 'wipe not supported on substrate-prefixed blocks',
         code: 'invalid_shape'
-      });
-    }
-    if (blockName === DEFAULT_BLOCK_NAME) {
-      return res.status(403).json({
-        error: 'cannot wipe the default beach',
-        code: 'protected_block'
       });
     }
     const body = req.body || {};
