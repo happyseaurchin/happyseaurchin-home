@@ -441,14 +441,14 @@ async function handleStandardWrite(blockName, body) {
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
 
   if (req.method === 'OPTIONS') {
     return res.status(204).end();
   }
 
-  const blockName = (req.method === 'POST' && blockParamFromBody(req.body)) || blockParam(req.query);
+  const blockName = ((req.method === 'POST' || req.method === 'DELETE') && blockParamFromBody(req.body)) || blockParam(req.query);
 
   if (req.method === 'GET') {
     const block = await loadBlock(blockName);
@@ -476,6 +476,64 @@ export default async function handler(req, res) {
       result = await handleStandardWrite(blockName, body);
     }
     return res.status(result.status).json(result.body);
+  }
+
+  if (req.method === 'DELETE') {
+    // Wipe a sibling block — removes both the block and its lock-set from KV.
+    // Auth is the `_` lock (whole-block authority): if set, the secret must
+    // match; if unset, the block is unowned and wipe proceeds (consistent
+    // with how unlocked whole-block-replace already behaves at "_").
+    //
+    // Substrate-prefixed blocks are not wipeable here — sed:/grain: have
+    // their own lifecycle and auth models. Default beach is also blocked:
+    // it auto-restores from defaultBeach() on next GET, but explicit refusal
+    // surfaces the protection rather than relying on lock state alone.
+    if (blockName.startsWith('sed:') || blockName.startsWith('grain:')) {
+      return res.status(405).json({
+        error: 'wipe not supported on substrate-prefixed blocks',
+        code: 'invalid_shape'
+      });
+    }
+    if (blockName === DEFAULT_BLOCK_NAME) {
+      return res.status(403).json({
+        error: 'cannot wipe the default beach',
+        code: 'protected_block'
+      });
+    }
+    const body = req.body || {};
+    if (body.confirm !== true) {
+      return res.status(400).json({
+        error: 'wipe requires {confirm: true}',
+        code: 'confirm_required'
+      });
+    }
+    const existing = await redis.get(blockKey(blockName));
+    if (existing == null) {
+      return res.status(404).json({
+        error: `block "${blockName}" not found`,
+        code: 'not_found'
+      });
+    }
+    const hashes = await loadHashes(blockName);
+    const stored = hashes._;
+    if (stored) {
+      const secret = body.secret;
+      if (!secret) {
+        return res.status(403).json({
+          error: `block "${blockName}" is locked at "_", secret required`,
+          code: 'lock_required'
+        });
+      }
+      if (hashByBlockName(blockName, '_', secret) !== stored) {
+        return res.status(403).json({
+          error: 'secret does not match',
+          code: 'lock_required'
+        });
+      }
+    }
+    await redis.del(blockKey(blockName));
+    await redis.del(locksKey(blockName));
+    return res.status(200).json({ ok: true, wiped: blockName });
   }
 
   return res.status(405).json({ error: 'Method not allowed', code: 'invalid_shape' });
