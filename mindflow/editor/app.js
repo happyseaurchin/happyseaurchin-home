@@ -12,6 +12,20 @@ import { collectUnderscore, findHiddenLevel, getHiddenDirectory, floorDepth } fr
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const digitKeys = (node) => isObj(node) ? '123456789'.split('').filter(d => d in node) : [];
 
+// Zero-form (sunztone v5) ↔ underscore-form key rewrite. Used at load/save
+// boundaries when state.zeroForm is on; in-memory shelf stays underscore-form
+// so the rest of the editor (bsp.js, renderers) works unchanged.
+function rewriteKeys(node, from, to) {
+  if (!isObj(node)) return node;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    out[k === from ? to : k] = rewriteKeys(v, from, to);
+  }
+  return out;
+}
+const zeroToUnderscore = (n) => rewriteKeys(n, '0', '_');
+const underscoreToZero = (n) => rewriteKeys(n, '_', '0');
+
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -74,6 +88,7 @@ const state = {
   docMode: 'html',     // 'html' | 'md'
   walkMode: 'free',
   path: [],            // [{ digit, via }] — column clicks
+  zeroForm: false,     // load/save in zero-form (sunztone v5): 0↔_ rewrite
 };
 
 let lastMd = '';
@@ -86,6 +101,7 @@ const LS_SHELF = 'mindflow-editor:shelf';
 const LS_FILENAME = 'mindflow-editor:filename';
 const LS_THEME = 'mindflow-editor:theme';
 const LS_VIEWS = 'mindflow-editor:views';  // { [blockId]: slice[] }
+const LS_ZERO_FORM = 'mindflow-editor:zero-form';
 
 // slice = { view, walkMode, path: [{digit, via}] }
 // Each captures one "facet" / configured view the user has composed on a block.
@@ -102,6 +118,7 @@ function saveLocal() {
     const slicesObj = {};
     state.slices.forEach((v, k) => { if (v.length) slicesObj[k] = v; });
     localStorage.setItem(LS_VIEWS, JSON.stringify(slicesObj));
+    localStorage.setItem(LS_ZERO_FORM, state.zeroForm ? '1' : '0');
   } catch (_) {}
 }
 
@@ -113,6 +130,7 @@ function loadLocal() {
     if (fn) state.filename = fn;
     const vraw = localStorage.getItem(LS_VIEWS);
     if (vraw) state.slices = new Map(Object.entries(JSON.parse(vraw)));
+    state.zeroForm = localStorage.getItem(LS_ZERO_FORM) === '1';
   } catch (_) {}
 }
 
@@ -898,8 +916,9 @@ function newFile() {
 async function loadFile(file) {
   try {
     const text = await file.text();
-    const data = JSON.parse(text);
+    let data = JSON.parse(text);
     if (!isObj(data)) { alert('File must be a JSON object.'); return; }
+    if (state.zeroForm) data = zeroToUnderscore(data);
 
     // Heuristic: a single block has "_" or digit keys at top.
     const keys = Object.keys(data);
@@ -930,7 +949,8 @@ function saveFile() {
   let filename = document.getElementById('filename-input').value.trim() || 'blocks.json';
   if (!filename.endsWith('.json')) filename += '.json';
   state.filename = filename;
-  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const out = state.zeroForm ? underscoreToZero(obj) : obj;
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -938,6 +958,13 @@ function saveFile() {
   a.click();
   URL.revokeObjectURL(url);
   saveLocal();
+}
+
+function syncZeroFormButton() {
+  const btn = document.getElementById('btn-zero-form');
+  if (!btn) return;
+  btn.textContent = `0-form: ${state.zeroForm ? 'on' : 'off'}`;
+  btn.classList.toggle('active', state.zeroForm);
 }
 
 async function loadSamples() {
@@ -1030,6 +1057,11 @@ function wireStaticUI() {
   document.getElementById('btn-new').addEventListener('click', newFile);
   document.getElementById('btn-save').addEventListener('click', saveFile);
   document.getElementById('btn-new-block').addEventListener('click', newBlock);
+  document.getElementById('btn-zero-form').addEventListener('click', () => {
+    state.zeroForm = !state.zeroForm;
+    syncZeroFormButton();
+    saveLocal();
+  });
   document.getElementById('file-input').addEventListener('change', (e) => {
     const f = e.target.files[0];
     if (f) loadFile(f);
@@ -1049,6 +1081,7 @@ async function boot() {
   initTheme();
   wireStaticUI();
   loadLocal();
+  syncZeroFormButton();
   if (state.shelf.size === 0) await loadSamples();
   if (!state.currentId && state.shelf.size) {
     state.currentId = state.shelf.keys().next().value;
