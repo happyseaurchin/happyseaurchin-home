@@ -1,0 +1,894 @@
+/**
+ * zand-editor — multi-block ztone file editor.
+ *
+ * Loads a { id: block, ... } JSON file of ztone blocks (digit '0' as voicing,
+ * digits '1'..'9' as lateral siblings), renders document / columns / dir
+ * views, and supports inline edits + saved view slices. Reference leaves
+ * (e.g. "sunztone:5.1") resolve by id within the loaded shelf.
+ *
+ * Walker and address logic come from ../zand.js, the canonical port of
+ * zand2.py.
+ */
+
+import {
+  collectZeroText,
+  floorDepth,
+  formatAddress,
+  parseReference,
+} from '../zand.js';
+
+// ──── Helpers ────────────────────────────────────────────────
+
+const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const digitKeys = (node) => isObj(node) ? '123456789'.split('').filter(d => d in node) : [];
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+/** Render a list of walk-digits as a pscale address string, floor-aware. */
+const addrOf = (digits, floor) => formatAddress(digits, Math.max(1, floor | 0));
+
+/**
+ * Parse a pscale address string like "2.11" into a digit-walk by removing
+ * the decimal. The editor stores walks as digit arrays; the decimal is a
+ * display convention reconstructed by addrOf at render time.
+ */
+function parseAddressDigits(addrStr) {
+  return String(addrStr).replace(/\./g, '').split('').filter(c => /\d/.test(c));
+}
+
+/**
+ * Classify a string leaf: 'address' (pure pscale number),
+ * 'blockref' (name or name:address, matching zand's reference regex),
+ * or 'text'.
+ */
+function classifyRef(s) {
+  if (typeof s !== 'string') return 'text';
+  const t = s.trim();
+  if (!t) return 'text';
+  if (/^\d+(?:\.\d+)?$/.test(t)) return 'address';
+  if (parseReference(t) && /^[A-Za-z]/.test(t) && !/\s/.test(t)) return 'blockref';
+  return 'text';
+}
+
+// ──── State ──────────────────────────────────────────────────
+
+const state = {
+  shelf: new Map(),    // id -> block
+  filename: 'ztone.json',
+  currentId: null,
+  view: 'doc',
+  docMode: 'html',
+  walkMode: 'free',
+  path: [],            // digit-string array, e.g. ['2', '1', '1']
+};
+
+let lastMd = '';
+
+const currentBlock = () => state.currentId ? state.shelf.get(state.currentId) : null;
+
+// ──── LocalStorage ───────────────────────────────────────────
+
+const LS_SHELF = 'zand-editor:shelf';
+const LS_FILENAME = 'zand-editor:filename';
+const LS_THEME = 'zand-editor:theme';
+const LS_VIEWS = 'zand-editor:views';
+
+state.slices = new Map();  // blockId -> slice[]
+
+function saveLocal() {
+  try {
+    const obj = {};
+    state.shelf.forEach((v, k) => { obj[k] = v; });
+    localStorage.setItem(LS_SHELF, JSON.stringify(obj));
+    localStorage.setItem(LS_FILENAME, state.filename);
+    const slicesObj = {};
+    state.slices.forEach((v, k) => { if (v.length) slicesObj[k] = v; });
+    localStorage.setItem(LS_VIEWS, JSON.stringify(slicesObj));
+  } catch (_) {}
+}
+
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(LS_SHELF);
+    if (raw) state.shelf = new Map(Object.entries(JSON.parse(raw)));
+    const fn = localStorage.getItem(LS_FILENAME);
+    if (fn) state.filename = fn;
+    const vraw = localStorage.getItem(LS_VIEWS);
+    if (vraw) state.slices = new Map(Object.entries(JSON.parse(vraw)));
+  } catch (_) {}
+}
+
+// ──── Slices ────────────────────────────────────────────────
+
+function pathsEqual(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function slicesForCurrent() {
+  if (!state.currentId) return [];
+  return state.slices.get(state.currentId) || [];
+}
+
+function currentSliceIndex() {
+  return slicesForCurrent().findIndex(s =>
+    s.view === state.view && s.walkMode === state.walkMode && pathsEqual(s.path, state.path)
+  );
+}
+
+function saveCurrentAsSlice() {
+  if (!state.currentId) return;
+  if (currentSliceIndex() >= 0) return;
+  const slice = {
+    view: state.view,
+    walkMode: state.walkMode,
+    path: [...state.path],
+  };
+  const list = state.slices.get(state.currentId) || [];
+  list.push(slice);
+  state.slices.set(state.currentId, list);
+  refresh();
+}
+
+function activateSlice(idx) {
+  const list = slicesForCurrent();
+  const s = list[idx];
+  if (!s) return;
+  state.view = s.view;
+  state.walkMode = s.walkMode;
+  state.path = [...s.path];
+  syncViewUI();
+  refresh();
+}
+
+function deleteSlice(idx) {
+  const list = slicesForCurrent();
+  if (idx < 0 || idx >= list.length) return;
+  list.splice(idx, 1);
+  if (list.length === 0) state.slices.delete(state.currentId);
+  else state.slices.set(state.currentId, list);
+  refresh();
+}
+
+function syncViewUI() {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === state.view));
+  document.querySelectorAll('.view-controls').forEach(c => { c.hidden = c.dataset.for !== state.view; });
+  document.querySelectorAll('.walk-btn').forEach(b => b.classList.toggle('active', b.dataset.walk === state.walkMode));
+}
+
+function renderSliceBar() {
+  const chipsEl = document.getElementById('slice-chips');
+  const hintEl = document.getElementById('slice-hint');
+  const btn = document.getElementById('btn-save-slice');
+  if (!chipsEl) return;
+  const list = slicesForCurrent();
+  const activeIdx = currentSliceIndex();
+  btn.disabled = !state.currentId || activeIdx >= 0;
+  btn.title = activeIdx >= 0
+    ? 'Current view is already a saved slice'
+    : 'Save current view+walk+path as a slice for this block';
+  const block = currentBlock();
+  const fl = block ? floorDepth(block) : 1;
+  chipsEl.innerHTML = list.map((s, i) => {
+    const addr = s.path.length ? addrOf(s.path, fl) : '∅';
+    const active = i === activeIdx ? ' active' : '';
+    const label = `${s.view}·${s.walkMode}${s.path.length ? ' @' + esc(addr) : ''}`;
+    return `<span class="slice-chip${active}" data-slice="${i}" title="Activate this slice">${label}<span class="slice-kill" data-kill="${i}" title="Delete">×</span></span>`;
+  }).join('');
+  hintEl.textContent = state.currentId
+    ? (list.length ? `${list.length} slice${list.length === 1 ? '' : 's'} on ${state.currentId}` : 'no slices yet — configure a view then + save')
+    : 'select a block';
+}
+
+// ──── Render: document view ──────────────────────────────────
+
+function renderDocHTML(block) {
+  const out = [];
+  const fl = floorDepth(block);
+  function recurse(node, digits, depth) {
+    const hLevel = Math.min(Math.max(depth + 1, 1), 6);
+    const addrDisplay = digits.length ? addrOf(digits, fl) : '∅';
+
+    if (typeof node === 'string') {
+      out.push(`<div class="node">`);
+      out.push(`<h${hLevel} class="node-heading"><span class="addr">${esc(addrDisplay)}</span><span class="sem leaf">${esc(node)}</span></h${hLevel}>`);
+      out.push(`</div>`);
+      return;
+    }
+    if (!isObj(node)) return;
+
+    const sem = collectZeroText(node);
+    const children = digitKeys(node);
+
+    out.push(`<div class="node">`);
+    out.push(`<h${hLevel} class="node-heading"><span class="addr">${esc(addrDisplay)}</span>`);
+    if (sem !== null) out.push(`<span class="sem">${esc(sem)}</span>`);
+    else out.push(`<span class="sem-empty">(no voicing at this position)</span>`);
+    out.push(`</h${hLevel}>`);
+
+    if (children.length) {
+      out.push(`<div class="children">`);
+      for (const d of children) {
+        recurse(node[d], digits.concat([d]), depth + 1);
+      }
+      out.push(`</div>`);
+    }
+    out.push(`</div>`);
+  }
+  recurse(block, [], 0);
+  return out.join('');
+}
+
+function renderDocMarkdown(block) {
+  const lines = [];
+  const fl = floorDepth(block);
+  function recurse(node, digits, depth) {
+    const h = '#'.repeat(Math.min(Math.max(depth + 1, 1), 6));
+    const addrDisplay = digits.length ? addrOf(digits, fl) : '∅';
+
+    if (typeof node === 'string') {
+      lines.push(`${h} \`${addrDisplay}\` · ${node}`);
+      lines.push('');
+      return;
+    }
+    if (!isObj(node)) return;
+
+    const sem = collectZeroText(node);
+    const children = digitKeys(node);
+
+    if (sem !== null) lines.push(`${h} \`${addrDisplay}\` · ${sem}`);
+    else lines.push(`${h} \`${addrDisplay}\` · *(no voicing)*`);
+    lines.push('');
+
+    for (const d of children) {
+      recurse(node[d], digits.concat([d]), depth + 1);
+    }
+  }
+  recurse(block, [], 0);
+  return lines.join('\n');
+}
+
+// ──── Render: dir view ───────────────────────────────────────
+
+/** Walk state.path inside a block to get the scoped node. */
+function resolvePath(block, path) {
+  let node = block;
+  for (const d of path) {
+    if (!isObj(node) || !(d in node)) return null;
+    node = node[d];
+  }
+  return node;
+}
+
+function renderDir(block) {
+  const node = resolvePath(block, state.path);
+  if (node === null || node === undefined) return `<div class="col-empty">Path not resolvable.</div>`;
+  const fl = floorDepth(block);
+
+  const out = [];
+  out.push(`<div class="dir-view">`);
+
+  function recurse(n, digits, depth) {
+    const indent = 12 + depth * 18;
+    const addrDisplay = digits.length ? addrOf(digits, fl) : '∅';
+    const navKey = digits.join('');
+
+    if (typeof n === 'string') {
+      out.push(`<div class="dir-row" data-nav="${esc(navKey)}" style="padding-left:${indent}px">`);
+      out.push(`<span class="dir-addr">${esc(addrDisplay)}</span>`);
+      out.push(`<span class="dir-text leaf">${esc(n)}</span>`);
+      out.push(`</div>`);
+      return;
+    }
+    if (!isObj(n)) return;
+
+    const sem = collectZeroText(n);
+    const children = digitKeys(n);
+
+    out.push(`<div class="dir-row${depth === 0 ? ' root' : ''}" data-nav="${esc(navKey)}" style="padding-left:${indent}px">`);
+    out.push(`<span class="dir-addr">${esc(addrDisplay)}</span>`);
+    if (sem !== null) out.push(`<span class="dir-text">${esc(sem)}</span>`);
+    else out.push(`<span class="dir-text empty">(no voicing)</span>`);
+    out.push(`</div>`);
+
+    for (const d of children) {
+      recurse(n[d], digits.concat([d]), depth + 1);
+    }
+  }
+
+  recurse(node, state.path, 0);
+  out.push(`</div>`);
+  return out.join('');
+}
+
+function renderDirScope() {
+  const el = document.getElementById('dir-scope');
+  if (!el) return;
+  const block = currentBlock();
+  const fl = block ? floorDepth(block) : 1;
+  const root = `<span class="bc-piece" data-trunc="0">${esc(state.currentId || '∅')}</span>`;
+  el.innerHTML = state.path.length
+    ? `${root}<span class="bc-number">${formatPathNumber(state.path, fl, 'bc-piece', 'bc-sep')}</span>`
+    : root;
+  el.querySelectorAll('[data-trunc]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.path = state.path.slice(0, parseInt(btn.dataset.trunc, 10));
+      refresh();
+    });
+  });
+}
+
+// ──── Render: column view ────────────────────────────────────
+
+function buildColumns(block, path) {
+  const columns = [];
+
+  function buildColumn(source, selectedDigit, depth) {
+    const cells = [];
+    for (const d of '123456789') {
+      if (!(d in source)) continue;
+      const v = source[d];
+      const cell = { digit: d };
+      if (typeof v === 'string') {
+        cell.text = v;
+        cell.isLeaf = true;
+        cell.refKind = classifyRef(v);
+      } else if (isObj(v)) {
+        cell.text = collectZeroText(v);
+        cell.isLeaf = false;
+      } else {
+        cell.text = String(v);
+        cell.isLeaf = true;
+      }
+      cells.push(cell);
+    }
+    return { cells, selectedDigit, depth };
+  }
+
+  let source = block;
+  columns.push(buildColumn(source, path[0] || null, 0));
+
+  for (let i = 0; i < path.length; i++) {
+    const d = path[i];
+    const child = source[d];
+    if (!isObj(child)) break;
+    source = child;
+    columns.push(buildColumn(source, path[i + 1] || null, i + 1));
+  }
+
+  return columns;
+}
+
+/** Format a path as a clickable pscale-number, decimal at floor boundary. */
+function formatPathNumber(path, floor, pieceClass, sepClass) {
+  const fl = Math.max(1, floor | 0);
+  const out = [];
+  for (let i = 0; i < path.length; i++) {
+    if (i === fl) out.push(`<span class="${sepClass}">.</span>`);
+    out.push(`<span class="${pieceClass}" data-trunc="${i + 1}">${esc(path[i])}</span>`);
+  }
+  return out.join('');
+}
+
+function formatColPath(path, rootId, floor) {
+  const root = `<span class="path-root" data-trunc="0">${esc(rootId || '∅')}</span>`;
+  if (!path.length) return root;
+  return `${root}<span class="path-sep"> · </span><span class="path-number">${formatPathNumber(path, floor, 'path-piece', 'path-sep')}</span>`;
+}
+
+function applyWalkHighlight(mode, colIdx, cell, col, terminalColIdx) {
+  if (mode === 'free') return null;
+  const inPath = cell.digit === col.selectedDigit;
+  const terminal = inPath && colIdx === terminalColIdx;
+  if (mode === 'spindle') return inPath ? 'lit' : 'dim';
+  if (mode === 'point') return terminal ? 'lit' : 'dim';
+  if (mode === 'ring') {
+    if (colIdx !== terminalColIdx) return 'dim';
+    return terminal ? null : 'ring';
+  }
+  if (mode === 'disc') {
+    if (colIdx !== terminalColIdx) return 'dim';
+    return 'lit';
+  }
+  return null;
+}
+
+function renderColumns(block) {
+  const columns = buildColumns(block, state.path);
+  const terminalColIdx = state.path.length - 1;
+  const fl = floorDepth(block);
+  const out = [];
+  out.push(`<div class="col-view">`);
+  out.push(`<div class="col-path">${formatColPath(state.path, state.currentId, fl)}</div>`);
+  out.push(`<div class="columns-wrap">`);
+
+  if (!columns.length) out.push(`<div class="col-empty">Block has no digit children.</div>`);
+
+  for (let ci = 0; ci < columns.length; ci++) {
+    const col = columns[ci];
+    out.push(`<div class="column">`);
+    out.push(`<div class="col-header">depth ${ci}</div>`);
+    if (!col.cells.length) out.push(`<div class="col-empty">(no entries)</div>`);
+
+    for (const cell of col.cells) {
+      const classes = ['cell'];
+      const isSelected = cell.digit === col.selectedDigit;
+      const isTerminal = isSelected && ci === terminalColIdx;
+      if (isSelected) classes.push('in-path');
+      if (isTerminal) classes.push('selected');
+      if (cell.refKind === 'address') classes.push('addr-ref');
+      else if (cell.refKind === 'blockref') classes.push('ref-leaf');
+
+      const hl = applyWalkHighlight(state.walkMode, ci, cell, col, terminalColIdx);
+      if (hl === 'lit') classes.push('highlight');
+      else if (hl === 'ring') classes.push('highlight-ring');
+      else if (hl === 'dim') classes.push('dimmed');
+
+      const data = `data-col="${ci}" data-digit="${esc(cell.digit)}"`;
+      out.push(`<div class="${classes.join(' ')}" ${data}>`);
+      out.push(`<span class="cell-digit">${cell.digit}</span>`);
+      out.push(`<div class="cell-body">`);
+      if (cell.text) {
+        if (cell.refKind === 'address') out.push(`<div class="cell-text">@${esc(cell.text)}</div>`);
+        else out.push(`<div class="cell-text">${esc(cell.text)}</div>`);
+      } else if (cell.isLeaf) {
+        out.push(`<div class="cell-text empty">(empty)</div>`);
+      } else {
+        out.push(`<div class="cell-text empty">(no voicing)</div>`);
+      }
+
+      const markers = [];
+      if (!cell.isLeaf) markers.push(`<span class="marker marker-branch">▸ branch</span>`);
+      if (cell.refKind === 'blockref') {
+        const refName = cell.text.split(':')[0];
+        const has = state.shelf.has(refName);
+        if (has) markers.push(`<span class="marker marker-jump" data-jump="${esc(refName)}">→ jump</span>`);
+        else markers.push(`<span class="marker marker-broken">→ missing</span>`);
+      }
+      if (markers.length) out.push(`<div class="cell-markers">${markers.join('')}</div>`);
+      out.push(`</div></div>`);
+    }
+    out.push(`</div>`);
+  }
+  out.push(`</div></div>`);
+  return out.join('');
+}
+
+// ──── Mutation ───────────────────────────────────────────────
+
+/**
+ * Replace the semantic text at path inside the current block.
+ * - string target → replace in place
+ * - object target → follow '0' chain, replace deepest string
+ */
+function mutateAtPath(block, path, newText) {
+  let source = block;
+  for (let i = 0; i < path.length - 1; i++) {
+    if (!isObj(source) || !(path[i] in source)) return false;
+    source = source[path[i]];
+  }
+  const last = path[path.length - 1];
+  if (!isObj(source) || !(last in source)) return false;
+  const target = source[last];
+
+  if (typeof target === 'string') {
+    source[last] = newText;
+    return true;
+  }
+  if (isObj(target)) {
+    let t = target;
+    while (isObj(t) && '0' in t) {
+      if (typeof t['0'] === 'string') { t['0'] = newText; return true; }
+      if (!isObj(t['0'])) break;
+      t = t['0'];
+    }
+    if (isObj(t) && !('0' in t)) { t['0'] = newText; return true; }
+  }
+  return false;
+}
+
+// ──── UI render ──────────────────────────────────────────────
+
+function renderBlockList() {
+  const el = document.getElementById('block-list-items');
+  if (state.shelf.size === 0) {
+    el.innerHTML = `<div class="empty-list">No blocks.<br>Load a file or click <em>+ new</em>.</div>`;
+    return;
+  }
+  const out = [];
+  for (const [id, block] of state.shelf) {
+    const preview = collectZeroText(block) || '(no voicing)';
+    const cur = id === state.currentId ? ' current' : '';
+    out.push(`<div class="block-item${cur}" data-id="${esc(id)}">`);
+    out.push(`<div class="block-item-id"><span>${esc(id)}</span>`);
+    out.push(`<span class="block-item-actions">`);
+    out.push(`<button class="item-btn" data-rename="${esc(id)}" title="Rename">✎</button>`);
+    out.push(`<button class="item-btn del" data-delete="${esc(id)}" title="Delete">×</button>`);
+    out.push(`</span></div>`);
+    out.push(`<div class="block-item-preview">${esc(preview.slice(0, 160))}</div>`);
+    out.push(`</div>`);
+  }
+  el.innerHTML = out.join('');
+}
+
+function renderView() {
+  const body = document.getElementById('view-body');
+  const block = currentBlock();
+  if (!block) {
+    body.innerHTML = `<div class="empty-state">Select a block from the left, or load a ztone file.</div>`;
+    updateStatus();
+    return;
+  }
+  lastMd = renderDocMarkdown(block);
+  if (state.view === 'doc') {
+    if (state.docMode === 'md') {
+      body.innerHTML = `<div class="doc-view markdown">${esc(lastMd)}</div>`;
+    } else {
+      body.innerHTML = `<div class="doc-view">${renderDocHTML(block)}</div>`;
+    }
+  } else if (state.view === 'dir') {
+    body.innerHTML = renderDir(block);
+    renderDirScope();
+  } else {
+    body.innerHTML = renderColumns(block);
+  }
+  updateStatus();
+}
+
+function updateStatus() {
+  document.getElementById('status-block').textContent = state.currentId || '—';
+  let addr = '';
+  if ((state.view === 'col' || state.view === 'dir') && state.path.length) {
+    const block = currentBlock();
+    const fl = block ? floorDepth(block) : 1;
+    addr = '@' + addrOf(state.path, fl);
+  }
+  document.getElementById('status-addr').textContent = addr;
+}
+
+function refresh() {
+  renderBlockList();
+  renderView();
+  renderSliceBar();
+  attachDynamicHandlers();
+  saveLocal();
+}
+
+// ──── Dynamic event handlers (re-attached after each render) ─
+
+function attachDynamicHandlers() {
+  document.querySelectorAll('.block-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.item-btn')) return;
+      selectBlock(el.dataset.id);
+    });
+  });
+  document.querySelectorAll('[data-rename]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      renameBlock(el.dataset.rename);
+    });
+  });
+  document.querySelectorAll('[data-delete]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteBlock(el.dataset.delete);
+    });
+  });
+
+  // Column view cells
+  document.querySelectorAll('#view-body .cell').forEach(el => {
+    let clickTimer = null;
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('.marker-jump')) return;
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => {
+        const col = parseInt(el.dataset.col, 10);
+        const digit = el.dataset.digit;
+        navCell(col, digit);
+      }, 240);
+    });
+    el.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.marker-jump')) return;
+      clearTimeout(clickTimer);
+      const col = parseInt(el.dataset.col, 10);
+      const digit = el.dataset.digit;
+      state.path = state.path.slice(0, col);
+      state.path.push(digit);
+      enterEdit(el);
+    });
+  });
+
+  document.querySelectorAll('.marker-jump').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const id = el.dataset.jump;
+      if (state.shelf.has(id)) selectBlock(id);
+    });
+  });
+
+  // dir-view rows: click to scope the dir view down to that subtree
+  document.querySelectorAll('.dir-row[data-nav]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.closest('[data-jump]')) return;
+      const navKey = el.dataset.nav;
+      state.path = navKey ? parseAddressDigits(navKey) : [];
+      refresh();
+    });
+  });
+
+  document.querySelectorAll('.col-path [data-trunc]').forEach(el => {
+    el.addEventListener('click', () => {
+      state.path = state.path.slice(0, parseInt(el.dataset.trunc, 10));
+      refresh();
+    });
+  });
+}
+
+function enterEdit(cellEl) {
+  const textEl = cellEl.querySelector('.cell-text');
+  if (!textEl || cellEl.querySelector('.col-edit')) return;
+  const original = textEl.textContent.replace(/^@/, '');
+  const body = cellEl.querySelector('.cell-body');
+
+  const ta = document.createElement('textarea');
+  ta.className = 'col-edit';
+  ta.value = original === '(empty)' || original === '(no voicing)' ? '' : original;
+  ta.rows = Math.max(3, Math.ceil(original.length / 40));
+  textEl.style.display = 'none';
+  body.appendChild(ta);
+  ta.focus();
+  ta.select();
+
+  const commit = () => {
+    const newText = ta.value.trim();
+    ta.remove();
+    textEl.style.display = '';
+    if (newText && newText !== original) {
+      const block = currentBlock();
+      if (block && mutateAtPath(block, state.path, newText)) {
+        refresh();
+      }
+    }
+  };
+  ta.addEventListener('blur', commit);
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { ta.value = original; ta.blur(); }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ta.blur();
+  });
+}
+
+// ──── Navigation / state mutators ────────────────────────────
+
+function navCell(colIdx, digit) {
+  state.path = state.path.slice(0, colIdx);
+  state.path.push(digit);
+  refresh();
+}
+
+function selectBlock(id) {
+  if (!state.shelf.has(id)) return;
+  state.currentId = id;
+  state.path = [];
+  refresh();
+}
+
+function renameBlock(oldId) {
+  const newId = prompt('Rename block:', oldId);
+  if (!newId || newId === oldId) return;
+  if (state.shelf.has(newId)) { alert(`Block "${newId}" already exists.`); return; }
+  const m = new Map();
+  state.shelf.forEach((v, k) => m.set(k === oldId ? newId : k, v));
+  state.shelf = m;
+  if (state.currentId === oldId) state.currentId = newId;
+  refresh();
+}
+
+function deleteBlock(id) {
+  if (!confirm(`Delete block "${id}"?`)) return;
+  state.shelf.delete(id);
+  if (state.currentId === id) {
+    state.currentId = state.shelf.size ? state.shelf.keys().next().value : null;
+    state.path = [];
+  }
+  refresh();
+}
+
+function newBlock() {
+  let base = 'new-block', id = base, i = 1;
+  while (state.shelf.has(id)) id = `${base}-${++i}`;
+  state.shelf.set(id, { '0': 'New block.' });
+  selectBlock(id);
+}
+
+function newFile() {
+  if (state.shelf.size > 0 && !confirm('Start a new file? Unsaved changes in this session will be lost.')) return;
+  state.shelf = new Map();
+  state.currentId = null;
+  state.path = [];
+  state.filename = 'ztone.json';
+  document.getElementById('filename-input').value = state.filename;
+  refresh();
+}
+
+async function loadFile(file) {
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if (!isObj(data)) { alert('File must be a JSON object.'); return; }
+
+    // Heuristic for single ztone block vs shelf: a single block has '0'
+    // or a digit (1-9) key at root.
+    const keys = Object.keys(data);
+    const looksLikeSingleBlock = keys.some(k => /^[0-9]$/.test(k));
+
+    if (looksLikeSingleBlock) {
+      const id = file.name.replace(/\.json$/, '') || 'block';
+      state.shelf = new Map([[id, data]]);
+    } else {
+      state.shelf = new Map();
+      for (const [id, block] of Object.entries(data)) {
+        if (isObj(block)) state.shelf.set(id, block);
+      }
+    }
+    state.filename = file.name || 'ztone.json';
+    document.getElementById('filename-input').value = state.filename;
+    state.currentId = state.shelf.size ? state.shelf.keys().next().value : null;
+    state.path = [];
+    refresh();
+  } catch (e) {
+    alert(`Failed to load: ${e.message}`);
+  }
+}
+
+function saveFile() {
+  const obj = {};
+  state.shelf.forEach((v, k) => { obj[k] = v; });
+  let filename = document.getElementById('filename-input').value.trim() || 'ztone.json';
+  if (!filename.endsWith('.json')) filename += '.json';
+  state.filename = filename;
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+  saveLocal();
+}
+
+async function loadSamples() {
+  try {
+    const [a, b] = await Promise.all([
+      fetch('./blocks/sunztone-v5.json').then(r => r.json()),
+      fetch('./blocks/whetztone-v3.json').then(r => r.json()),
+    ]);
+    state.shelf.set('sunztone', a);
+    state.shelf.set('whetztone', b);
+    if (!state.currentId) state.currentId = 'sunztone';
+  } catch (e) {
+    console.warn('Sample load failed:', e);
+  }
+}
+
+// ──── Theme ──────────────────────────────────────────────────
+
+function setTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  localStorage.setItem(LS_THEME, theme);
+  document.getElementById('btn-theme').textContent = theme === 'light' ? '☀' : '◐';
+  document.getElementById('btn-theme').title = theme === 'light' ? 'Switch to dark' : 'Switch to light';
+}
+
+function initTheme() {
+  const saved = localStorage.getItem(LS_THEME);
+  const theme = saved || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  setTheme(theme);
+}
+
+// ──── Static UI wiring (once) ────────────────────────────────
+
+function wireStaticUI() {
+  document.querySelectorAll('.tab').forEach(el => {
+    el.addEventListener('click', () => {
+      const v = el.dataset.view;
+      state.view = v;
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === v));
+      document.querySelectorAll('.view-controls').forEach(c => { c.hidden = c.dataset.for !== v; });
+      refresh();
+    });
+  });
+
+  document.querySelectorAll('.walk-btn').forEach(el => {
+    el.addEventListener('click', () => {
+      state.walkMode = el.dataset.walk;
+      document.querySelectorAll('.walk-btn').forEach(b => b.classList.toggle('active', b === el));
+      refresh();
+    });
+  });
+
+  document.getElementById('btn-reset-path').addEventListener('click', () => {
+    state.path = [];
+    refresh();
+  });
+
+  document.getElementById('btn-toggle-md').addEventListener('click', () => {
+    state.docMode = state.docMode === 'html' ? 'md' : 'html';
+    document.getElementById('btn-toggle-md').textContent = state.docMode === 'html' ? 'show markdown' : 'show rendered';
+    refresh();
+  });
+
+  document.getElementById('btn-copy-md').addEventListener('click', () => {
+    if (!lastMd) return;
+    navigator.clipboard?.writeText(lastMd).then(() => {
+      const b = document.getElementById('btn-copy-md');
+      const orig = b.textContent;
+      b.textContent = 'copied ✓';
+      setTimeout(() => { b.textContent = orig; }, 1200);
+    }).catch(() => {});
+  });
+
+  document.getElementById('btn-theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    setTheme(cur === 'light' ? 'dark' : 'light');
+  });
+
+  document.getElementById('btn-save-slice').addEventListener('click', saveCurrentAsSlice);
+  document.getElementById('slice-chips').addEventListener('click', (e) => {
+    const kill = e.target.closest('[data-kill]');
+    if (kill) { e.stopPropagation(); deleteSlice(parseInt(kill.dataset.kill, 10)); return; }
+    const chip = e.target.closest('[data-slice]');
+    if (chip) activateSlice(parseInt(chip.dataset.slice, 10));
+  });
+
+  document.getElementById('btn-new').addEventListener('click', newFile);
+  document.getElementById('btn-save').addEventListener('click', saveFile);
+  document.getElementById('btn-new-block').addEventListener('click', newBlock);
+  document.getElementById('file-input').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (f) loadFile(f);
+    e.target.value = '';
+  });
+
+  const fnInput = document.getElementById('filename-input');
+  fnInput.addEventListener('change', () => {
+    state.filename = fnInput.value.trim() || 'ztone.json';
+    saveLocal();
+  });
+}
+
+// ──── Boot ───────────────────────────────────────────────────
+
+async function boot() {
+  initTheme();
+  wireStaticUI();
+  loadLocal();
+  if (state.shelf.size === 0) await loadSamples();
+  if (!state.currentId && state.shelf.size) {
+    state.currentId = state.shelf.keys().next().value;
+  }
+  document.getElementById('filename-input').value = state.filename;
+  refresh();
+
+  window.addEventListener('storage', (e) => {
+    if (e.key !== LS_SHELF && e.key !== LS_VIEWS) return;
+    try {
+      if (e.key === LS_SHELF) {
+        const raw = localStorage.getItem(LS_SHELF);
+        if (raw) state.shelf = new Map(Object.entries(JSON.parse(raw)));
+      }
+      if (e.key === LS_VIEWS) {
+        const raw = localStorage.getItem(LS_VIEWS);
+        state.slices = raw ? new Map(Object.entries(JSON.parse(raw))) : new Map();
+      }
+      refresh();
+    } catch (err) { console.warn('cross-tab sync failed:', err); }
+  });
+}
+
+boot();
