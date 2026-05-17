@@ -236,8 +236,12 @@ function renderSliceBar() {
 function renderDocHTML(block) {
   const out = [];
   const fl = floorDepth(block);
-  function recurse(node, digits, depth) {
-    const hLevel = Math.min(Math.max(depth + 1, 1), 6);
+  function recurse(node, digits) {
+    // hLevel and indent track walk depth (digits.length), not recursion depth,
+    // so positions at the same pscale share an indent level even when they
+    // sit under different walk paths (e.g. bumph's `03` at depth 2 and `002`
+    // at depth 3 must not collapse to the same indent).
+    const hLevel = Math.min(Math.max(digits.length + 1, 1), 6);
     const addrDisplay = digits.length ? addrOf(digits, fl) : '∅';
 
     if (typeof node === 'string') {
@@ -258,23 +262,27 @@ function renderDocHTML(block) {
     out.push(`</h${hLevel}>`);
 
     if (children.length) {
-      out.push(`<div class="children">`);
+      // Each child gets one .children wrap per pathExtension digit, so a
+      // child reached via a multi-step zero-spine descent (e.g. [0,0,2])
+      // ends up correctly indented at walk depth, not at recursion depth.
       for (const child of children) {
-        recurse(child.value, digits.concat(child.pathExtension), depth + 1);
+        const wraps = child.pathExtension.length;
+        for (let i = 0; i < wraps; i++) out.push(`<div class="children">`);
+        recurse(child.value, digits.concat(child.pathExtension));
+        for (let i = 0; i < wraps; i++) out.push(`</div>`);
       }
-      out.push(`</div>`);
     }
     out.push(`</div>`);
   }
-  recurse(block, [], 0);
+  recurse(block, []);
   return out.join('');
 }
 
 function renderDocMarkdown(block) {
   const lines = [];
   const fl = floorDepth(block);
-  function recurse(node, digits, depth) {
-    const h = '#'.repeat(Math.min(Math.max(depth + 1, 1), 6));
+  function recurse(node, digits) {
+    const h = '#'.repeat(Math.min(Math.max(digits.length + 1, 1), 6));
     const addrDisplay = digits.length ? addrOf(digits, fl) : '∅';
 
     if (typeof node === 'string') {
@@ -292,10 +300,10 @@ function renderDocMarkdown(block) {
     lines.push('');
 
     for (const child of children) {
-      recurse(child.value, digits.concat(child.pathExtension), depth + 1);
+      recurse(child.value, digits.concat(child.pathExtension));
     }
   }
-  recurse(block, [], 0);
+  recurse(block, []);
   return lines.join('\n');
 }
 
@@ -319,8 +327,12 @@ function renderDir(block) {
   const out = [];
   out.push(`<div class="dir-view">`);
 
-  function recurse(n, digits, depth) {
-    const indent = 12 + depth * 18;
+  const baseDepth = state.path.length;
+  function recurse(n, digits) {
+    // Indent by walk depth relative to the scoped root, so same-pscale rows
+    // share an indent level even when their walks have different lengths.
+    const walkDepth = digits.length - baseDepth;
+    const indent = 12 + walkDepth * 18;
     const addrDisplay = digits.length ? addrOf(digits, fl) : '∅';
     const navKey = digits.join('');
 
@@ -336,18 +348,18 @@ function renderDir(block) {
     const sem = collectZeroText(n);
     const children = deepDigitChildren(n);
 
-    out.push(`<div class="dir-row${depth === 0 ? ' root' : ''}" data-nav="${esc(navKey)}" style="padding-left:${indent}px">`);
+    out.push(`<div class="dir-row${walkDepth === 0 ? ' root' : ''}" data-nav="${esc(navKey)}" style="padding-left:${indent}px">`);
     out.push(`<span class="dir-addr">${esc(addrDisplay)}</span>`);
     if (sem !== null) out.push(`<span class="dir-text">${esc(sem)}</span>`);
     else out.push(`<span class="dir-text empty">(no voicing)</span>`);
     out.push(`</div>`);
 
     for (const child of children) {
-      recurse(child.value, digits.concat(child.pathExtension), depth + 1);
+      recurse(child.value, digits.concat(child.pathExtension));
     }
   }
 
-  recurse(node, state.path, 0);
+  recurse(node, state.path);
   out.push(`</div>`);
   return out.join('');
 }
