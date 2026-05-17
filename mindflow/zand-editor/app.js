@@ -372,52 +372,59 @@ function renderDirScope() {
 // ──── Render: column view ────────────────────────────────────
 
 /**
- * Build the column stack. Each column shows the deep-digit children of the
- * current source (including those reached via zero-spine descent). A cell's
- * pathExtension may be multi-digit (e.g. ['0','3'] for a floor-3 block's
- * pscale-1 child); navigating it advances the walk by all those digits at
- * once. pathOffset on each column records how many walk-digits of state.path
- * have been consumed before this column — used by navCell to splice cleanly.
+ * Build the disc-stack columns. Each column is one pscale level (one disc
+ * cross-section); cells are all content positions at that pscale across the
+ * whole block, regardless of angular path. A "content position" is a walk
+ * that ends in digit 1-9 — pure zero-spine intermediates and voicing strings
+ * (walks ending in 0) are not separate cells; their text is collected as the
+ * voicing of the deepest ancestor whose walk ends in 1-9 (or the root).
+ *
+ * Columns are returned sorted high-pscale first (leftmost). The root sits in
+ * the highest-pscale column as a single cell carrying the floor voicing.
  */
-function buildColumns(block, path) {
-  const columns = [];
-  let source = block;
-  let pathOffset = 0;
+function buildColumns(block) {
+  const fl = floorDepth(block);
+  const byPscale = new Map();
+  const push = (pscale, cell) => {
+    if (!byPscale.has(pscale)) byPscale.set(pscale, []);
+    byPscale.get(pscale).push(cell);
+  };
 
-  while (isObj(source)) {
-    const cells = deepDigitChildren(source).map(c => {
-      const v = c.value;
-      const cell = { digit: c.digit, pathExtension: c.pathExtension };
-      if (typeof v === 'string') {
-        cell.text = v;
-        cell.isLeaf = true;
-        cell.refKind = classifyRef(v);
-      } else if (isObj(v)) {
-        cell.text = collectZeroText(v);
-        cell.isLeaf = false;
-      } else {
-        cell.text = String(v);
-        cell.isLeaf = true;
-      }
-      return cell;
+  if (isObj(block)) {
+    push(fl, {
+      path: [],
+      value: block,
+      isLeaf: false,
+      text: collectZeroText(block),
+      refKind: 'text',
     });
-    // Selected = the cell whose pathExtension is the longest prefix of the
-    // remaining walk (i.e. matches the next chunk of state.path).
-    const remaining = path.slice(pathOffset);
-    let selectedIdx = -1, consumed = 0;
-    for (let i = 0; i < cells.length; i++) {
-      const ext = cells[i].pathExtension;
-      if (ext.length <= remaining.length && ext.every((d, j) => d === remaining[j])) {
-        if (ext.length > consumed) { selectedIdx = i; consumed = ext.length; }
-      }
-    }
-    columns.push({ cells, selectedIdx, pathOffset });
-    if (selectedIdx < 0 || consumed === 0) break;
-    for (const d of cells[selectedIdx].pathExtension) source = source[d];
-    pathOffset += consumed;
   }
 
-  return columns;
+  function recurse(node, walked) {
+    if (!isObj(node)) return;
+    for (const d of '0123456789') {
+      if (!(d in node)) continue;
+      const newPath = walked.concat([d]);
+      if (d !== '0') {
+        const v = node[d];
+        const pscale = fl - newPath.length;
+        push(pscale, {
+          path: newPath,
+          value: v,
+          isLeaf: !isObj(v),
+          text: typeof v === 'string' ? v : collectZeroText(v),
+          refKind: typeof v === 'string' ? classifyRef(v) : 'text',
+        });
+      }
+      recurse(node[d], newPath);
+    }
+  }
+  recurse(block, []);
+
+  return [...byPscale.keys()].sort((a, b) => b - a).map(ps => ({
+    pscale: ps,
+    cells: byPscale.get(ps),
+  }));
 }
 
 /** Format a path as a clickable pscale-number, decimal at floor boundary. */
@@ -437,64 +444,79 @@ function formatColPath(path, rootId, floor) {
   return `${root}<span class="path-sep"> · </span><span class="path-number">${formatPathNumber(path, floor, 'path-piece', 'path-sep')}</span>`;
 }
 
-function applyWalkHighlight(mode, colIdx, cellIdx, col, terminalColIdx) {
+/**
+ * Classify a cell's relationship to the currently-selected walk:
+ *   isSelected — cell.path === sel
+ *   isAncestor — cell.path is a strict prefix of sel
+ *   isDescendant — sel is a strict prefix of cell.path
+ *   isSibling — same length as sel, sharing parent (last digit differs)
+ */
+function cellRelationToSel(cellPath, sel) {
+  const eq = cellPath.length === sel.length && cellPath.every((d, i) => d === sel[i]);
+  if (eq) return { isSelected: true };
+  const cellPrefixOfSel = cellPath.length < sel.length && cellPath.every((d, i) => d === sel[i]);
+  const selPrefixOfCell = sel.length < cellPath.length && sel.every((d, i) => d === cellPath[i]);
+  const sameLen = cellPath.length === sel.length && sel.length > 0;
+  const sameParent = sameLen && cellPath.slice(0, -1).every((d, i) => d === sel[i]);
+  return {
+    isSelected: false,
+    isAncestor: cellPrefixOfSel,
+    isDescendant: selPrefixOfCell,
+    isSibling: sameParent,
+  };
+}
+
+function applyWalkHighlight(mode, rel) {
   if (mode === 'free') return null;
-  const inPath = cellIdx === col.selectedIdx;
-  const terminal = inPath && colIdx === terminalColIdx;
-  if (mode === 'spindle') return inPath ? 'lit' : 'dim';
-  if (mode === 'point') return terminal ? 'lit' : 'dim';
+  if (mode === 'spindle') return rel.isSelected || rel.isAncestor ? 'lit' : 'dim';
+  if (mode === 'point') return rel.isSelected ? 'lit' : 'dim';
   if (mode === 'ring') {
-    if (colIdx !== terminalColIdx) return 'dim';
-    return terminal ? null : 'ring';
+    if (rel.isSelected) return null;
+    return rel.isSibling ? 'ring' : 'dim';
   }
   if (mode === 'disc') {
-    if (colIdx !== terminalColIdx) return 'dim';
-    return 'lit';
+    // Selected's disc = its column. We mark cells lit when they're at the
+    // selected's pscale; everything else dim. The cell-comparison happens
+    // in renderColumns by length-matching against sel.length.
+    return rel.sameDisc ? 'lit' : 'dim';
   }
   return null;
 }
 
 function renderColumns(block) {
-  const columns = buildColumns(block, state.path);
-  // The terminal column is the deepest one whose selected cell matches path.
-  // Walk from the end, find the last col with a positive selectedIdx.
-  let terminalColIdx = -1;
-  for (let i = columns.length - 1; i >= 0; i--) {
-    if (columns[i].selectedIdx >= 0) { terminalColIdx = i; break; }
-  }
+  const columns = buildColumns(block);
   const fl = floorDepth(block);
+  const sel = state.path;
   const out = [];
   out.push(`<div class="col-view">`);
-  out.push(`<div class="col-path">${formatColPath(state.path, state.currentId, fl)}</div>`);
+  out.push(`<div class="col-path">${formatColPath(sel, state.currentId, fl)}</div>`);
   out.push(`<div class="columns-wrap">`);
 
-  if (!columns.length) out.push(`<div class="col-empty">Block has no digit children.</div>`);
+  if (!columns.length) out.push(`<div class="col-empty">Block has no content positions.</div>`);
 
-  for (let ci = 0; ci < columns.length; ci++) {
-    const col = columns[ci];
+  for (const col of columns) {
     out.push(`<div class="column">`);
-    out.push(`<div class="col-header">depth ${ci}</div>`);
-    if (!col.cells.length) out.push(`<div class="col-empty">(no entries)</div>`);
+    out.push(`<div class="col-header">pscale ${col.pscale}</div>`);
 
-    for (let cidx = 0; cidx < col.cells.length; cidx++) {
-      const cell = col.cells[cidx];
+    for (const cell of col.cells) {
+      const rel = cellRelationToSel(cell.path, sel);
+      // sameDisc = cell is in the same column as the selected (same path length, sel non-empty)
+      rel.sameDisc = sel.length > 0 && cell.path.length === sel.length;
       const classes = ['cell'];
-      const isSelected = cidx === col.selectedIdx;
-      const isTerminal = isSelected && ci === terminalColIdx;
-      if (isSelected) classes.push('in-path');
-      if (isTerminal) classes.push('selected');
+      if (rel.isSelected) classes.push('selected');
+      else if (rel.isAncestor) classes.push('in-path');
       if (cell.refKind === 'address') classes.push('addr-ref');
       else if (cell.refKind === 'blockref') classes.push('ref-leaf');
 
-      const hl = applyWalkHighlight(state.walkMode, ci, cidx, col, terminalColIdx);
+      const hl = applyWalkHighlight(state.walkMode, rel);
       if (hl === 'lit') classes.push('highlight');
       else if (hl === 'ring') classes.push('highlight-ring');
       else if (hl === 'dim') classes.push('dimmed');
 
-      const extStr = cell.pathExtension.join('');
-      const data = `data-col="${ci}" data-ext="${esc(extStr)}"`;
-      out.push(`<div class="${classes.join(' ')}" ${data}>`);
-      out.push(`<span class="cell-digit">${esc(extStr)}</span>`);
+      const pathStr = cell.path.join('');
+      const addrDisplay = cell.path.length ? displayAddress(cell.path, fl) : '∅';
+      out.push(`<div class="${classes.join(' ')}" data-path="${esc(pathStr)}">`);
+      out.push(`<span class="cell-digit">${esc(addrDisplay)}</span>`);
       out.push(`<div class="cell-body">`);
       if (cell.text) {
         if (cell.refKind === 'address') out.push(`<div class="cell-text">@${esc(cell.text)}</div>`);
@@ -644,24 +666,20 @@ function attachDynamicHandlers() {
     });
   });
 
-  // Column view cells
+  // Column view cells: click sets state.path to the cell's full walk.
   document.querySelectorAll('#view-body .cell').forEach(el => {
     let clickTimer = null;
     el.addEventListener('click', (e) => {
       if (e.target.closest('.marker-jump')) return;
       clearTimeout(clickTimer);
       clickTimer = setTimeout(() => {
-        const col = parseInt(el.dataset.col, 10);
-        const ext = el.dataset.ext.split('');
-        navCell(col, ext);
+        navCell(el.dataset.path.split(''));
       }, 240);
     });
     el.addEventListener('dblclick', (e) => {
       if (e.target.closest('.marker-jump')) return;
       clearTimeout(clickTimer);
-      const col = parseInt(el.dataset.col, 10);
-      const ext = el.dataset.ext.split('');
-      navCell(col, ext);
+      navCell(el.dataset.path.split(''));
       enterEdit(el);
     });
   });
@@ -727,13 +745,8 @@ function enterEdit(cellEl) {
 
 // ──── Navigation / state mutators ────────────────────────────
 
-function navCell(colIdx, pathExtension) {
-  const block = currentBlock();
-  if (!block) return;
-  // pathOffset of column colIdx tells us how many path-digits sit above it.
-  const cols = buildColumns(block, state.path);
-  const offset = colIdx < cols.length ? cols[colIdx].pathOffset : state.path.length;
-  state.path = state.path.slice(0, offset).concat(pathExtension);
+function navCell(path) {
+  state.path = [...path];
   refresh();
 }
 
