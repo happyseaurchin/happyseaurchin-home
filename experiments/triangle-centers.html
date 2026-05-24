@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>the implied centre and the actual centre — XQ</title>
+  <meta name="description" content="Three people, three centres along the Euler line. Dynamic geometry of psychosocial configuration. XQ project.">
+  <link rel="icon" href="/assets/torus.png" type="image/png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { background: #0e0d12; }
+    body { margin: 0; }
+    .back-link {
+      position: fixed;
+      top: 1rem;
+      left: 1.25rem;
+      z-index: 50;
+      font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
+      font-style: italic;
+      font-size: 0.8rem;
+      color: #6a6470;
+      text-decoration: none;
+      letter-spacing: 0.05em;
+    }
+    .back-link:hover { color: #d8c8a8; }
+  </style>
+</head>
+<body>
+  <a href="/experiments" class="back-link">&larr; experiments</a>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useRef, useEffect } = React;
+
+    function PsychosocialTriangle() {
+      const [points, setPoints] = useState([
+        { id: 0, x: 400, y: 180 },
+        { id: 1, x: 230, y: 450 },
+        { id: 2, x: 570, y: 450 },
+      ]);
+
+      const [draggingId, setDraggingId] = useState(null);
+      const [showCircumcircle, setShowCircumcircle] = useState(true);
+      const [showEulerLine, setShowEulerLine] = useState(true);
+      const [showAltitudes, setShowAltitudes] = useState(false);
+      const [showThales, setShowThales] = useState(false);
+      const [showVector, setShowVector] = useState(true);
+
+      const svgRef = useRef(null);
+
+      const VW = 800, VH = 660;
+
+      const computeCenters = () => {
+        const [a, b, c] = points;
+        const G = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 };
+        const D = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+        if (Math.abs(D) < 0.0001) {
+          return { G, O: G, H: G, R: 0, degenerate: true };
+        }
+        const a2 = a.x * a.x + a.y * a.y;
+        const b2 = b.x * b.x + b.y * b.y;
+        const c2 = c.x * c.x + c.y * c.y;
+        const O = {
+          x: (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / D,
+          y: (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / D
+        };
+        const H = { x: 3 * G.x - 2 * O.x, y: 3 * G.y - 2 * O.y };
+        const R = Math.hypot(a.x - O.x, a.y - O.y);
+        return { G, O, H, R, degenerate: false };
+      };
+
+      const computeAngles = () => {
+        const [a, b, c] = points;
+        const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+        const ab = dist(a, b), bc = dist(b, c), ca = dist(c, a);
+        const safeAcos = (x) => Math.acos(Math.max(-1, Math.min(1, x))) * 180 / Math.PI;
+        const angA = safeAcos((ab * ab + ca * ca - bc * bc) / (2 * ab * ca));
+        const angB = safeAcos((ab * ab + bc * bc - ca * ca) / (2 * ab * bc));
+        const angC = safeAcos((bc * bc + ca * ca - ab * ab) / (2 * bc * ca));
+        return { angles: [angA, angB, angC], sides: { ab, bc, ca } };
+      };
+
+      const { G, O, H, R, degenerate } = computeCenters();
+      const { angles, sides } = computeAngles();
+
+      const maxAngle = Math.max(...angles);
+      let regime = 'acute';
+      if (Math.abs(maxAngle - 90) < 0.6) regime = 'right';
+      else if (maxAngle > 90) regime = 'obtuse';
+
+      const regimeStyle = {
+        acute: { color: '#7fc97f', label: 'ACUTE', sub: 'centre interior · cohesive' },
+        right: { color: '#e8a445', label: 'RIGHT', sub: 'centre on edge · Thales separatrix' },
+        obtuse: { color: '#e87f8b', label: 'OBTUSE', sub: 'centre exterior · pre-fission' }
+      };
+      const r = regimeStyle[regime];
+
+      const goVec = { x: O.x - G.x, y: O.y - G.y };
+      const goMag = Math.hypot(goVec.x, goVec.y);
+
+      const handleMouseDown = (id) => (e) => {
+        e.preventDefault();
+        setDraggingId(id);
+      };
+
+      useEffect(() => {
+        const handleMove = (e) => {
+          if (draggingId === null || !svgRef.current) return;
+          const rect = svgRef.current.getBoundingClientRect();
+          const x = ((e.clientX - rect.left) / rect.width) * VW;
+          const y = ((e.clientY - rect.top) / rect.height) * VH;
+          setPoints(prev => prev.map(p =>
+            p.id === draggingId
+              ? { ...p, x: Math.max(30, Math.min(VW - 30, x)), y: Math.max(30, Math.min(VH - 30, y)) }
+              : p
+          ));
+        };
+        const handleUp = () => setDraggingId(null);
+        const handleTouchMove = (e) => {
+          if (e.touches.length > 0) handleMove(e.touches[0]);
+        };
+        if (draggingId !== null) {
+          window.addEventListener('mousemove', handleMove);
+          window.addEventListener('mouseup', handleUp);
+          window.addEventListener('touchmove', handleTouchMove);
+          window.addEventListener('touchend', handleUp);
+          return () => {
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', handleUp);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleUp);
+          };
+        }
+      }, [draggingId]);
+
+      const presets = {
+        equilateral: () => setPoints([
+          { id: 0, x: 400, y: 180 },
+          { id: 1, x: 230, y: 450 },
+          { id: 2, x: 570, y: 450 },
+        ]),
+        right: () => setPoints([
+          { id: 0, x: 250, y: 200 },
+          { id: 1, x: 250, y: 480 },
+          { id: 2, x: 550, y: 480 },
+        ]),
+        obtuse: () => setPoints([
+          { id: 0, x: 400, y: 380 },
+          { id: 1, x: 180, y: 440 },
+          { id: 2, x: 620, y: 440 },
+        ])
+      };
+
+      const altitudes = (() => {
+        if (!showAltitudes) return [];
+        const result = [];
+        const [a, b, c] = points;
+        const tri = [[a, b, c], [b, c, a], [c, a, b]];
+        tri.forEach(([from, p1, p2]) => {
+          const dx = p2.x - p1.x, dy = p2.y - p1.y;
+          const len2 = dx * dx + dy * dy;
+          const t = ((from.x - p1.x) * dx + (from.y - p1.y) * dy) / len2;
+          const foot = { x: p1.x + t * dx, y: p1.y + t * dy };
+          result.push({ from, to: foot });
+        });
+        return result;
+      })();
+
+      const personLabels = ['A', 'B', 'C'];
+
+      return (
+        <div className="min-h-screen w-full" style={{
+          backgroundColor: '#0e0d12',
+          backgroundImage: 'radial-gradient(ellipse at top, #1a1820 0%, #0a0910 70%)',
+          color: '#e8e0d0',
+          fontFamily: '"Iowan Old Style", "Palatino", "Times New Roman", serif'
+        }}>
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            <header className="mb-6 border-b border-stone-800 pb-4">
+              <div className="text-xs uppercase tracking-[0.3em] text-stone-500 mb-2">
+                XQ · dynamic geometry
+              </div>
+              <h1 className="text-3xl md:text-4xl font-light italic text-stone-100">
+                The implied centre and the actual centre
+              </h1>
+              <p className="text-sm md:text-base text-stone-400 mt-2 max-w-3xl leading-relaxed">
+                Three people. Three centres along the Euler line. The vector from <span style={{ color: '#7fc97f' }}>centroid</span> to <span style={{ color: '#e8a445' }}>circumcentre</span> is the configuration's outward orientation. Drag any vertex.
+              </p>
+            </header>
+
+            <div className="grid lg:grid-cols-[1fr_320px] gap-6">
+              <div className="relative">
+                <div className="relative rounded-sm overflow-hidden" style={{
+                  backgroundColor: '#08070b',
+                  border: '1px solid #1c1a22',
+                  boxShadow: 'inset 0 0 80px rgba(0,0,0,0.5)'
+                }}>
+                  <svg
+                    ref={svgRef}
+                    viewBox={`0 0 ${VW} ${VH}`}
+                    className="w-full h-auto"
+                    style={{ touchAction: 'none', cursor: draggingId !== null ? 'grabbing' : 'default' }}
+                  >
+                    <defs>
+                      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#15131b" strokeWidth="0.5" />
+                      </pattern>
+                      <radialGradient id="circGrad">
+                        <stop offset="0%" stopColor={r.color} stopOpacity="0.02" />
+                        <stop offset="100%" stopColor={r.color} stopOpacity="0.08" />
+                      </radialGradient>
+                    </defs>
+                    <rect width={VW} height={VH} fill="url(#grid)" />
+
+                    {showCircumcircle && !degenerate && (
+                      <circle
+                        cx={O.x} cy={O.y} r={R}
+                        fill="url(#circGrad)"
+                        stroke={r.color}
+                        strokeWidth="0.8"
+                        strokeDasharray="2 4"
+                        opacity="0.5"
+                      />
+                    )}
+
+                    {showThales && points.map((p1, i) => {
+                      const p2 = points[(i + 1) % 3];
+                      const cx = (p1.x + p2.x) / 2;
+                      const cy = (p1.y + p2.y) / 2;
+                      const tr = Math.hypot(p1.x - p2.x, p1.y - p2.y) / 2;
+                      return (
+                        <circle key={`thales-${i}`}
+                          cx={cx} cy={cy} r={tr}
+                          fill="none"
+                          stroke="#5d6b8c"
+                          strokeWidth="0.5"
+                          strokeDasharray="1 5"
+                          opacity="0.4"
+                        />
+                      );
+                    })}
+
+                    <polygon
+                      points={points.map(p => `${p.x},${p.y}`).join(' ')}
+                      fill={r.color}
+                      fillOpacity="0.04"
+                      stroke="#d8c8a8"
+                      strokeWidth="1.5"
+                    />
+
+                    {showAltitudes && altitudes.map((alt, i) => (
+                      <line key={`alt-${i}`}
+                        x1={alt.from.x} y1={alt.from.y}
+                        x2={alt.to.x} y2={alt.to.y}
+                        stroke="#e87f8b"
+                        strokeWidth="0.7"
+                        strokeDasharray="3 3"
+                        opacity="0.6"
+                      />
+                    ))}
+
+                    {showEulerLine && !degenerate && goMag > 1 && (
+                      <line
+                        x1={O.x - (H.x - O.x) * 1.5}
+                        y1={O.y - (H.y - O.y) * 1.5}
+                        x2={O.x + (H.x - O.x) * 1.5}
+                        y2={O.y + (H.y - O.y) * 1.5}
+                        stroke="#6b8db5"
+                        strokeWidth="0.6"
+                        strokeDasharray="6 3"
+                        opacity="0.5"
+                      />
+                    )}
+
+                    {showVector && goMag > 3 && !degenerate && (
+                      <>
+                        <defs>
+                          <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+                            <path d="M0,0 L0,6 L9,3 z" fill="#e8a445" />
+                          </marker>
+                        </defs>
+                        <line
+                          x1={G.x} y1={G.y}
+                          x2={O.x} y2={O.y}
+                          stroke="#e8a445"
+                          strokeWidth="2"
+                          markerEnd="url(#arrow)"
+                          opacity="0.85"
+                        />
+                      </>
+                    )}
+
+                    <g>
+                      <circle cx={G.x} cy={G.y} r="9" fill="#7fc97f" fillOpacity="0.2" />
+                      <circle cx={G.x} cy={G.y} r="4" fill="#7fc97f" />
+                      <text x={G.x + 12} y={G.y + 4} fill="#7fc97f" fontSize="13" fontStyle="italic" fontFamily="Iowan Old Style, Palatino, serif">G</text>
+                    </g>
+
+                    {!degenerate && (
+                      <g>
+                        <circle cx={O.x} cy={O.y} r="9" fill="#e8a445" fillOpacity="0.2" />
+                        <circle cx={O.x} cy={O.y} r="4" fill="#e8a445" />
+                        <text x={O.x + 12} y={O.y + 4} fill="#e8a445" fontSize="13" fontStyle="italic" fontFamily="Iowan Old Style, Palatino, serif">O</text>
+                      </g>
+                    )}
+
+                    {!degenerate && showAltitudes && (
+                      <g>
+                        <circle cx={H.x} cy={H.y} r="9" fill="#e87f8b" fillOpacity="0.2" />
+                        <circle cx={H.x} cy={H.y} r="4" fill="#e87f8b" />
+                        <text x={H.x + 12} y={H.y + 4} fill="#e87f8b" fontSize="13" fontStyle="italic" fontFamily="Iowan Old Style, Palatino, serif">H</text>
+                      </g>
+                    )}
+
+                    {points.map((p, i) => (
+                      <g key={p.id}
+                        style={{ cursor: draggingId === p.id ? 'grabbing' : 'grab' }}
+                        onMouseDown={handleMouseDown(p.id)}
+                        onTouchStart={(e) => {
+                          e.preventDefault();
+                          setDraggingId(p.id);
+                        }}>
+                        <circle cx={p.x} cy={p.y} r="22" fill={r.color} fillOpacity="0.08" />
+                        <circle cx={p.x} cy={p.y} r="14"
+                          fill="#1c1a22"
+                          stroke="#d8c8a8"
+                          strokeWidth="1.5"
+                        />
+                        <text x={p.x} y={p.y + 5} textAnchor="middle"
+                          fill="#d8c8a8"
+                          fontSize="14"
+                          fontStyle="italic"
+                          fontFamily="Iowan Old Style, Palatino, serif"
+                          style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                          {personLabels[i]}
+                        </text>
+                        <text x={p.x} y={p.y - 28} textAnchor="middle"
+                          fill={angles[i] > 90 ? '#e87f8b' : (Math.abs(angles[i] - 90) < 0.6 ? '#e8a445' : '#7fc97f')}
+                          fontSize="10"
+                          fontFamily="ui-monospace, Menlo, monospace"
+                          style={{ userSelect: 'none', pointerEvents: 'none' }}>
+                          {angles[i].toFixed(1)}°
+                        </text>
+                      </g>
+                    ))}
+                  </svg>
+                </div>
+
+                <div className="mt-3 px-1 text-xs text-stone-500 italic flex justify-between">
+                  <span>Drag any vertex to deform the configuration.</span>
+                  <span style={{ color: r.color, letterSpacing: '0.15em' }}>{r.label} · {r.sub}</span>
+                </div>
+              </div>
+
+              <aside className="space-y-4">
+                <div className="rounded-sm p-4" style={{
+                  backgroundColor: '#13111a',
+                  border: `1px solid ${r.color}33`
+                }}>
+                  <div className="text-xs uppercase tracking-[0.3em] text-stone-500 mb-2">Regime</div>
+                  <div className="text-2xl font-light italic" style={{ color: r.color }}>
+                    {r.label.toLowerCase()}
+                  </div>
+                  <div className="text-xs text-stone-400 mt-1 italic">{r.sub}</div>
+                  <div className="mt-3 pt-3 border-t border-stone-800 text-xs font-mono space-y-1 text-stone-400">
+                    <div>max angle: <span className="text-stone-200">{maxAngle.toFixed(2)}°</span></div>
+                    <div>angles: <span className="text-stone-200">{angles.map(a => a.toFixed(0) + '°').join(' / ')}</span></div>
+                  </div>
+                </div>
+
+                <div className="rounded-sm p-4" style={{
+                  backgroundColor: '#13111a',
+                  border: '1px solid #2a2632'
+                }}>
+                  <div className="text-xs uppercase tracking-[0.3em] text-stone-500 mb-2">Movement vector G → O</div>
+                  <div className="text-xs text-stone-400 italic mb-3">
+                    {goMag < 5 ? "near zero — group at static equilibrium" :
+                     goMag < 30 ? "small — gentle outward orientation" :
+                     goMag < 80 ? "moderate — group structurally pointing somewhere" :
+                     "large — group strongly oriented outward / fissioning"}
+                  </div>
+                  <div className="text-xs font-mono space-y-1 text-stone-400">
+                    <div>magnitude: <span className="text-amber-300">{goMag.toFixed(1)}</span></div>
+                    <div>direction: <span className="text-stone-200">
+                      {goMag > 1 ? `${(Math.atan2(goVec.y, goVec.x) * 180 / Math.PI).toFixed(0)}°` : '—'}
+                    </span></div>
+                  </div>
+                </div>
+
+                <div className="rounded-sm p-4" style={{
+                  backgroundColor: '#13111a',
+                  border: '1px solid #2a2632'
+                }}>
+                  <div className="text-xs uppercase tracking-[0.3em] text-stone-500 mb-3">Layers</div>
+                  {[
+                    { key: 'circ', label: 'Circumcircle', state: showCircumcircle, set: setShowCircumcircle, color: '#e8a445' },
+                    { key: 'euler', label: 'Euler line', state: showEulerLine, set: setShowEulerLine, color: '#6b8db5' },
+                    { key: 'alt', label: 'Altitudes & H', state: showAltitudes, set: setShowAltitudes, color: '#e87f8b' },
+                    { key: 'thales', label: 'Thales circles', state: showThales, set: setShowThales, color: '#8896b8' },
+                    { key: 'vec', label: 'G→O vector', state: showVector, set: setShowVector, color: '#e8a445' },
+                  ].map(t => (
+                    <button key={t.key}
+                      onClick={() => t.set(!t.state)}
+                      className="w-full flex items-center justify-between py-1.5 text-sm transition hover:text-stone-100"
+                      style={{ color: t.state ? '#e8e0d0' : '#5a5560' }}
+                    >
+                      <span className="italic">{t.label}</span>
+                      <span className="w-3 h-3 rounded-full transition" style={{
+                        backgroundColor: t.state ? t.color : 'transparent',
+                        border: `1px solid ${t.state ? t.color : '#3a3640'}`
+                      }} />
+                    </button>
+                  ))}
+                </div>
+
+                <div className="rounded-sm p-4" style={{
+                  backgroundColor: '#13111a',
+                  border: '1px solid #2a2632'
+                }}>
+                  <div className="text-xs uppercase tracking-[0.3em] text-stone-500 mb-3">Configurations</div>
+                  <div className="space-y-1.5">
+                    {[
+                      { key: 'equilateral', label: 'Equilateral · G = O', fn: presets.equilateral },
+                      { key: 'right', label: 'Right · O on edge', fn: presets.right },
+                      { key: 'obtuse', label: 'Obtuse · O exits', fn: presets.obtuse }
+                    ].map(p => (
+                      <button key={p.key}
+                        onClick={p.fn}
+                        className="w-full text-left px-3 py-2 text-sm italic rounded-sm transition border"
+                        style={{
+                          backgroundColor: '#0e0c14',
+                          borderColor: '#2a2632',
+                          color: '#b8aea0'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = '#1a1722';
+                          e.currentTarget.style.borderColor = '#3a3540';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = '#0e0c14';
+                          e.currentTarget.style.borderColor = '#2a2632';
+                        }}
+                      >
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-sm p-4 text-xs leading-relaxed" style={{
+                  backgroundColor: '#13111a',
+                  border: '1px solid #2a2632',
+                  color: '#9a9088'
+                }}>
+                  <div className="text-xs uppercase tracking-[0.3em] text-stone-500 mb-3">Reading</div>
+                  <p className="italic mb-2">
+                    <span style={{ color: '#7fc97f' }}>G</span> · centroid · the actual centre, always interior.
+                  </p>
+                  <p className="italic mb-2">
+                    <span style={{ color: '#e8a445' }}>O</span> · circumcentre · the implied centre, moves outside when obtuse.
+                  </p>
+                  <p className="italic mb-2">
+                    <span style={{ color: '#e87f8b' }}>H</span> · orthocentre · where the perpendiculars converge. On Euler line with G and O, ratio OG : GH = 1 : 2.
+                  </p>
+                  <p className="italic mt-3 pt-3 border-t border-stone-800 text-stone-500">
+                    When G = O, the group is at static equilibrium. The G→O vector is the configuration's outward orientation — its directional intent.
+                  </p>
+                </div>
+              </aside>
+            </div>
+
+            <footer className="mt-8 pt-4 border-t border-stone-900 text-xs text-stone-600 italic text-center">
+              XQ project · dynamic geometry of psychosocial reality · <a href="https://xq.crumful.com/" style={{ color: '#9a9088' }}>more XQ &rarr;</a>
+            </footer>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<PsychosocialTriangle />);
+  </script>
+</body>
+</html>
