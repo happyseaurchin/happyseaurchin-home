@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>interpretive matrix — XQ</title>
+  <meta name="description" content="The dyadic perception matrix. Six stances per side, thirty-six cells, five interaction types. Click any cell to read its dynamics.">
+  <link rel="icon" href="/assets/torus.png" type="image/png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { background: #fbf8f1; }
+    body { margin: 0; }
+    .back-link {
+      position: fixed;
+      top: 1rem;
+      left: 1.25rem;
+      z-index: 50;
+      font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
+      font-style: italic;
+      font-size: 0.8rem;
+      color: #9a9085;
+      text-decoration: none;
+      letter-spacing: 0.05em;
+    }
+    .back-link:hover { color: #1f1a13; }
+  </style>
+</head>
+<body>
+  <a href="/experiments" class="back-link">&larr; experiments</a>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState } = React;
+
+    const C = {
+      bg: '#fbf8f1',
+      surface: '#fefcf6',
+      text: '#1f1a13',
+      textSecondary: '#5d544a',
+      textTertiary: '#9a9085',
+      border: '#e8dec8',
+      borderSoft: '#f0e8d4',
+      accent: '#b8602d',
+      acute: '#5b7a3a',
+      right: '#b8722e',
+      obtuse: '#9a4858',
+      blue: '#4a5d78',
+      tan: '#d4b896',
+      reinforce: '#5b8a3a',
+      equality:  '#2d8a8a',
+      compress:  '#b8505a',
+      contract:  '#3a5a8a',
+      tension:   '#c8862a',
+    };
+
+    const fontSerif = '"Iowan Old Style", "Palatino", "Times New Roman", serif';
+
+    const stancesA = [
+      { id: 'A1', voice: 'active',  glyph: '>', sentence: 'I am more than them',   content: 'AGB' },
+      { id: 'A2', voice: 'active',  glyph: '=', sentence: 'I am equal to them',    content: 'AEB' },
+      { id: 'A3', voice: 'active',  glyph: '<', sentence: 'I am less than them',   content: 'ALB' },
+      { id: 'A4', voice: 'passive', glyph: '>', sentence: 'They are more than me', content: 'ALB' },
+      { id: 'A5', voice: 'passive', glyph: '=', sentence: 'They are equal to me',  content: 'AEB' },
+      { id: 'A6', voice: 'passive', glyph: '<', sentence: 'They are less than me', content: 'AGB' },
+    ];
+
+    const stancesB = [
+      { id: 'B1', voice: 'active',  glyph: '>', sentence: 'I am more than them',   content: 'ALB' },
+      { id: 'B2', voice: 'active',  glyph: '=', sentence: 'I am equal to them',    content: 'AEB' },
+      { id: 'B3', voice: 'active',  glyph: '<', sentence: 'I am less than them',   content: 'AGB' },
+      { id: 'B4', voice: 'passive', glyph: '>', sentence: 'They are more than me', content: 'AGB' },
+      { id: 'B5', voice: 'passive', glyph: '=', sentence: 'They are equal to me',  content: 'AEB' },
+      { id: 'B6', voice: 'passive', glyph: '<', sentence: 'They are less than me', content: 'ALB' },
+    ];
+
+    function classify(a, b) {
+      const sameVoice = a.voice === b.voice;
+      if (a.content === b.content) {
+        if (a.content === 'AEB') {
+          return {
+            type: 'equality',
+            color: C.equality,
+            label: sameVoice
+              ? (a.voice === 'active' ? 'engaged equality' : 'observed equality')
+              : 'mixed-voice equality',
+            description: sameVoice
+              ? (a.voice === 'active'
+                  ? 'Both actively claim equality. Engaged A-state, mutual self-positioning at level.'
+                  : 'Both passively observe equality. Quiet A-state, mutual recognition without claim.')
+              : 'Both content-agree on equality, but one centres self while the other centres other. Subtle voice asymmetry under apparent agreement.'
+          };
+        }
+        if (a.content === 'AGB') {
+          return {
+            type: 'reinforce',
+            color: C.reinforce,
+            label: voiceLabelHierarchy(a, b, 'A above B'),
+            description: hierarchyDescription(a, b, 'A', 'B')
+          };
+        }
+        return {
+          type: 'reinforce',
+          color: C.reinforce,
+          label: voiceLabelHierarchy(a, b, 'B above A'),
+          description: hierarchyDescription(a, b, 'B', 'A')
+        };
+      }
+
+      if (a.content === 'AGB' && b.content === 'ALB') {
+        return {
+          type: 'compress',
+          color: C.compress,
+          label: compressionLabel(a, b),
+          description: compressionDescription(a, b)
+        };
+      }
+      if (a.content === 'ALB' && b.content === 'AGB') {
+        return {
+          type: 'contract',
+          color: C.contract,
+          label: contractionLabel(a, b),
+          description: contractionDescription(a, b)
+        };
+      }
+      return {
+        type: 'tension',
+        color: C.tension,
+        label: tensionLabel(a, b),
+        description: tensionDescription(a, b)
+      };
+    }
+
+    function voiceLabelHierarchy(a, b, hier) {
+      if (a.voice === 'active' && b.voice === 'active') return `stable hierarchy · ${hier}`;
+      if (a.voice === 'passive' && b.voice === 'passive') return `mutual observation · ${hier}`;
+      return `voice-asymmetric · ${hier}`;
+    }
+
+    function hierarchyDescription(a, b, upper, lower) {
+      if (a.voice === 'active' && b.voice === 'active') {
+        return `Both actively perform their roles. ${upper} claims primacy, ${lower} claims submission. Classical stable hierarchy, openly enacted.`;
+      }
+      if (a.voice === 'passive' && b.voice === 'passive') {
+        return `Both passively observe the relation. Neither claims a position directly. Quiet, implicit, covert hierarchy — consensual but unspoken.`;
+      }
+      const activeIsA = a.voice === 'active';
+      const activeSide = activeIsA ? 'A' : 'B';
+      const passiveSide = activeIsA ? 'B' : 'A';
+      const activeRole = (activeIsA ? a : b).content === 'AGB' ? 'asserts dominance' : 'performs submission';
+      const passiveRole = (activeIsA ? b : a).content === 'AGB' ? 'observes A is above' : 'observes B is above';
+      return `${activeSide} active, ${passiveSide} passive. ${activeSide} ${activeRole}; ${passiveSide} ${passiveRole}. Same content, but the speakers carry different relational mass.`;
+    }
+
+    function compressionLabel(a, b) {
+      if (a.voice === 'active' && b.voice === 'active') return 'head-on compression';
+      if (a.voice === 'passive' && b.voice === 'passive') return 'cold compression';
+      return 'cross compression';
+    }
+
+    function compressionDescription(a, b) {
+      if (a.voice === 'active' && b.voice === 'active') {
+        return 'Both actively assert primacy. Two upward waves collide at the centre. Open, energised conflict.';
+      }
+      if (a.voice === 'passive' && b.voice === 'passive') {
+        return 'Both passively dismiss the other as below. Compression without acknowledgement. Cold war.';
+      }
+      return 'One actively claims primacy, the other passively pushes the first down. Voice asymmetry on collision course.';
+    }
+
+    function contractionLabel(a, b) {
+      if (a.voice === 'active' && b.voice === 'active') return 'active deference (catch-22)';
+      if (a.voice === 'passive' && b.voice === 'passive') return 'mutual elevation';
+      return 'cross deference';
+    }
+
+    function contractionDescription(a, b) {
+      if (a.voice === 'active' && b.voice === 'active') {
+        return 'Both actively claim to be less. The catch-22 of trying to be equal through performed submission. Waves collapse inward at speakers.';
+      }
+      if (a.voice === 'passive' && b.voice === 'passive') {
+        return 'Both passively elevate the other. Mutual recognition of superiority. Quiet, persistent yielding.';
+      }
+      return 'One actively defers; the other passively elevates them. Same direction of collapse, different voice.';
+    }
+
+    function tensionLabel(a, b) {
+      const aLevel = a.content === 'AEB';
+      const levelSide = aLevel ? 'A' : 'B';
+      const pushSide  = aLevel ? 'B' : 'A';
+      const pusher = aLevel ? b : a;
+      const direction = pusher.content === 'AGB'
+        ? (pushSide === 'A' ? 'A pushes up'  : 'B pushes down on A')
+        : (pushSide === 'A' ? 'A pushes down' : 'B pushes up on A');
+      return `tension · ${direction}, ${levelSide} holds level`;
+    }
+
+    function tensionDescription(a, b) {
+      const aLevel = a.content === 'AEB';
+      const leveler  = aLevel ? a : b;
+      const pusher   = aLevel ? b : a;
+      const levelSide = aLevel ? 'A' : 'B';
+      const pushSide  = aLevel ? 'B' : 'A';
+
+      const pushDir = pusher.content === 'AGB'
+        ? `${pushSide} claims primacy` : `${pushSide} claims deference`;
+
+      let voiceDetail;
+      if (pusher.voice === 'active' && leveler.voice === 'active') {
+        voiceDetail = `Both active. ${pushSide} explicitly pushes the position; ${levelSide} explicitly holds level. Open disagreement on the relation.`;
+      } else if (pusher.voice === 'passive' && leveler.voice === 'passive') {
+        voiceDetail = `Both passive. ${pushSide} observes a position; ${levelSide} observes equality. Silent disagreement — perceived but not stated.`;
+      } else {
+        voiceDetail = `Mixed voice. One active, one passive. Cross-tension under content disagreement.`;
+      }
+      return `${pushDir}; ${levelSide} treats the relation as level. ${voiceDetail}`;
+    }
+
+    function CellGlyph({ a, b, cell, large = false }) {
+      const W = large ? 100 : 56;
+      const H = large ? 60 : 38;
+      const midY = H / 2;
+      const aX = W * 0.18;
+      const bX = W * 0.82;
+
+      const directionAt = (side, stance) => {
+        const isSpeakerA = side === 'a';
+        if (isSpeakerA) {
+          if (stance.content === 'AGB') return 'up';
+          if (stance.content === 'ALB') return 'down';
+          return 'level';
+        } else {
+          if (stance.content === 'AGB') return 'down';
+          if (stance.content === 'ALB') return 'up';
+          return 'level';
+        }
+      };
+
+      const dirA = directionAt('a', a);
+      const dirB = directionAt('b', b);
+
+      const aDashed = a.voice === 'passive';
+      const bDashed = b.voice === 'passive';
+
+      const amp = large ? 14 : 9;
+
+      const aTipY = dirA === 'up' ? midY - amp : dirA === 'down' ? midY + amp : midY;
+      const bTipY = dirB === 'up' ? midY - amp : dirB === 'down' ? midY + amp : midY;
+
+      const midX = (aX + bX) / 2;
+      const midpointY = (aTipY + bTipY) / 2;
+
+      let wavePath;
+      if (cell.type === 'compress') {
+        const pinchY = midY + amp * 0.6;
+        wavePath = `M ${aX} ${aTipY} Q ${aX + (midX - aX) * 0.5} ${aTipY - amp * 0.2} ${midX} ${pinchY} Q ${bX - (bX - midX) * 0.5} ${bTipY - amp * 0.2} ${bX} ${bTipY}`;
+      } else if (cell.type === 'contract') {
+        const bumpY = midY - amp * 0.6;
+        wavePath = `M ${aX} ${aTipY} Q ${aX + (midX - aX) * 0.5} ${aTipY + amp * 0.2} ${midX} ${bumpY} Q ${bX - (bX - midX) * 0.5} ${bTipY + amp * 0.2} ${bX} ${bTipY}`;
+      } else if (cell.type === 'tension') {
+        wavePath = `M ${aX} ${aTipY} C ${midX - amp * 0.3} ${aTipY} ${midX + amp * 0.3} ${bTipY} ${bX} ${bTipY}`;
+      } else {
+        wavePath = `M ${aX} ${aTipY} Q ${midX} ${midpointY} ${bX} ${bTipY}`;
+      }
+
+      return (
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
+          <line x1={0} y1={midY} x2={W} y2={midY}
+            stroke={C.borderSoft} strokeWidth="0.4" />
+          <path d={wavePath} fill="none"
+            stroke={cell.color}
+            strokeWidth={large ? 2 : 1.3}
+            strokeDasharray={aDashed && bDashed ? '3 2' : (aDashed || bDashed ? '4 2' : 'none')}
+            opacity="0.85" />
+          <circle cx={aX} cy={aTipY} r={large ? 3.5 : 2.2}
+            fill={aDashed ? C.surface : cell.color}
+            stroke={cell.color} strokeWidth="1" />
+          <circle cx={bX} cy={bTipY} r={large ? 3.5 : 2.2}
+            fill={bDashed ? C.surface : cell.color}
+            stroke={cell.color} strokeWidth="1" />
+          {large && (
+            <>
+              <text x={aX} y={H - 4} textAnchor="middle" fontSize="9"
+                fontStyle="italic" fill={C.textTertiary} fontFamily={fontSerif}>A</text>
+              <text x={bX} y={H - 4} textAnchor="middle" fontSize="9"
+                fontStyle="italic" fill={C.textTertiary} fontFamily={fontSerif}>B</text>
+            </>
+          )}
+        </svg>
+      );
+    }
+
+    function FlattenedView({ a, b }) {
+      const aShift = a.voice === 'passive' ? 0.25 : 0.15;
+      const bShift = b.voice === 'passive' ? 0.25 : 0.15;
+
+      const aEdgeNorm = a.content === 'AGB' ? 0.5 + aShift
+                      : a.content === 'ALB' ? 0.5 - aShift
+                      : 0.5;
+
+      const bEdgeNorm = b.content === 'ALB' ? 0.5 - bShift
+                      : b.content === 'AGB' ? 0.5 + bShift
+                      : 0.5;
+
+      const mA = aEdgeNorm;
+      const mB = 1 - bEdgeNorm;
+      const centreNorm = (mA + mB) > 0.001 ? mB / (mA + mB) : 0.5;
+
+      const W = 360, H = 88;
+      const margin = 44;
+      const xA = margin;
+      const xB = W - margin;
+      const xRange = xB - xA;
+      const xM = xA + xRange * 0.5;
+
+      const xAEdge = xA + aEdgeNorm * xRange;
+      const xBEdge = xA + bEdgeNorm * xRange;
+      const xCentre = xA + centreNorm * xRange;
+
+      const yMid = 30;
+
+      const epsilon = 4;
+      let mode, stateLabel;
+      if (Math.abs(xAEdge - xBEdge) < epsilon) {
+        mode = 'meet';
+        const meetX = (xAEdge + xBEdge) / 2;
+        if (Math.abs(meetX - xM) < epsilon) stateLabel = 'meet · midpoint';
+        else if (meetX < xM) stateLabel = "meet · A's side";
+        else stateLabel = "meet · B's side";
+      } else if (xAEdge > xBEdge) {
+        mode = 'overlap';
+        const ov = xAEdge - xBEdge;
+        stateLabel = ov > 50 ? 'overlap · clash' : 'overlap · small';
+      } else {
+        mode = 'gap';
+        const g = xBEdge - xAEdge;
+        stateLabel = g > 50 ? 'gap · pulled apart' : 'gap · small';
+      }
+
+      const aDash = a.voice === 'passive' ? '5 2.5' : 'none';
+      const bDash = b.voice === 'passive' ? '5 2.5' : 'none';
+
+      return (
+        <>
+          <div style={{
+            fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase',
+            color: '#5a5550', marginBottom: 8,
+          }}>
+            flattened · 1D
+          </div>
+          <svg viewBox={`0 0 ${W} ${H}`}
+            style={{ width: '100%', height: 'auto', maxHeight: 110, display: 'block' }}>
+            <line x1={xA} y1={yMid} x2={xB} y2={yMid}
+              stroke="#bbb" strokeWidth="0.5" />
+
+            <line x1={xM} y1={yMid - 11} x2={xM} y2={yMid - 2}
+              stroke="#888" strokeWidth="0.7" strokeDasharray="2 2" />
+
+            <line x1={xA} y1={yMid} x2={xAEdge} y2={yMid}
+              stroke="#000" strokeWidth="2.4"
+              strokeDasharray={aDash} strokeLinecap="butt" />
+
+            <line x1={xBEdge} y1={yMid} x2={xB} y2={yMid}
+              stroke="#000" strokeWidth="2.4"
+              strokeDasharray={bDash} strokeLinecap="butt" />
+
+            {mode === 'overlap' && (
+              <line x1={xBEdge} y1={yMid} x2={xAEdge} y2={yMid}
+                stroke="#000" strokeWidth="6" strokeLinecap="butt" />
+            )}
+
+            <line x1={xAEdge} y1={yMid - 6} x2={xAEdge} y2={yMid + 6}
+              stroke="#000" strokeWidth="1" />
+            <line x1={xBEdge} y1={yMid - 6} x2={xBEdge} y2={yMid + 6}
+              stroke="#000" strokeWidth="1" />
+
+            <circle cx={xA} cy={yMid} r="3.5" fill="#000" />
+            <circle cx={xB} cy={yMid} r="3.5" fill="#000" />
+
+            <polygon
+              points={`${xCentre},${yMid + 12} ${xCentre - 4.5},${yMid + 19} ${xCentre + 4.5},${yMid + 19}`}
+              fill="#000"
+            />
+            <text x={xCentre} y={yMid + 31} textAnchor="middle"
+              fontSize="9" fontStyle="italic" fill="#555"
+              fontFamily={fontSerif} letterSpacing="0.04em">
+              centre
+            </text>
+
+            <text x={xA - 12} y={yMid + 4} textAnchor="middle"
+              fontSize="11" fontStyle="italic" fontFamily={fontSerif} fill="#000">A</text>
+            <text x={xB + 12} y={yMid + 4} textAnchor="middle"
+              fontSize="11" fontStyle="italic" fontFamily={fontSerif} fill="#000">B</text>
+          </svg>
+          <div style={{
+            fontSize: 11, color: '#444', fontStyle: 'italic',
+            marginTop: 4, textAlign: 'center', letterSpacing: '0.02em',
+          }}>
+            {stateLabel}
+          </div>
+        </>
+      );
+    }
+
+    const thStyle = {
+      padding: '8px 4px',
+      border: `1px solid ${C.borderSoft}`,
+      backgroundColor: C.bg,
+      fontWeight: 400,
+    };
+
+    function LegendItem({ color, label, detail }) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <div style={{
+            width: 12, height: 12, borderRadius: 2, marginTop: 4,
+            backgroundColor: color, flexShrink: 0,
+          }} />
+          <div>
+            <div style={{ fontSize: 13, fontStyle: 'italic', color: C.text }}>{label}</div>
+            <div style={{ fontSize: 11, color: C.textTertiary, fontStyle: 'italic' }}>{detail}</div>
+          </div>
+        </div>
+      );
+    }
+
+    function InterpretiveMatrix() {
+      const [selected, setSelected] = useState({ aIdx: 0, bIdx: 2 });
+      const [showLegend, setShowLegend] = useState(true);
+
+      const a = stancesA[selected.aIdx];
+      const b = stancesB[selected.bIdx];
+      const cell = classify(a, b);
+
+      return (
+        <div style={{
+          minHeight: '100vh',
+          backgroundColor: C.bg,
+          color: C.text,
+          fontFamily: fontSerif,
+          padding: '40px 32px',
+        }}>
+          <style>{`
+            .matrix-main-layout {
+              display: grid;
+              grid-template-columns: minmax(0, 1fr) 360px;
+              gap: 32px;
+              align-items: flex-start;
+            }
+            .matrix-detail-panel {
+              position: sticky;
+              top: 20px;
+            }
+            @media (max-width: 980px) {
+              .matrix-main-layout {
+                grid-template-columns: 1fr;
+              }
+              .matrix-detail-panel {
+                position: relative;
+                top: 0;
+              }
+            }
+          `}</style>
+          <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+            <header style={{ marginBottom: 32, borderBottom: `1px solid ${C.border}`, paddingBottom: 20 }}>
+              <div style={{
+                fontSize: 11, letterSpacing: '0.3em', textTransform: 'uppercase',
+                color: C.textTertiary, marginBottom: 8,
+              }}>
+                XQ · dyadic perception · 6 × 6
+              </div>
+              <h1 style={{
+                fontSize: '2.2rem', fontWeight: 300, fontStyle: 'italic',
+                margin: 0, color: C.text,
+              }}>
+                The interpretive matrix
+              </h1>
+              <p style={{
+                fontSize: '1rem', color: C.textSecondary, fontStyle: 'italic',
+                margin: '8px 0 0', maxWidth: 760, lineHeight: 1.6,
+              }}>
+                Each side independently picks one of 6 stances — three claims (&lt;, =, &gt;) in two voices (active "I am…" / passive "they are…"). 36 cells, five interaction types.
+              </p>
+            </header>
+
+            <div className="matrix-main-layout">
+              <div>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 640 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ ...thStyle, textAlign: 'left' }}>
+                          <span style={{ fontSize: 10, color: C.textTertiary, letterSpacing: '0.16em' }}>A ↓ / B →</span>
+                        </th>
+                        {stancesB.map((bs) => (
+                          <th key={bs.id} style={thStyle}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                              <span style={{ fontSize: 16, fontStyle: 'italic', color: C.text }}>{bs.glyph}</span>
+                              <span style={{ fontSize: 9, color: C.textTertiary, fontStyle: 'italic',
+                                letterSpacing: '0.1em' }}>
+                                {bs.voice === 'active' ? 'I am' : 'they are'}
+                              </span>
+                            </div>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stancesA.map((as, ai) => (
+                        <tr key={as.id}>
+                          <th style={{ ...thStyle, textAlign: 'right', paddingRight: 12 }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                              <span style={{ fontSize: 16, fontStyle: 'italic', color: C.text }}>{as.glyph}</span>
+                              <span style={{ fontSize: 9, color: C.textTertiary, fontStyle: 'italic',
+                                letterSpacing: '0.1em' }}>
+                                {as.voice === 'active' ? 'I am' : 'they are'}
+                              </span>
+                            </div>
+                          </th>
+                          {stancesB.map((bs, bi) => {
+                            const c = classify(as, bs);
+                            const isSelected = selected.aIdx === ai && selected.bIdx === bi;
+                            return (
+                              <td key={bs.id}
+                                onClick={() => setSelected({ aIdx: ai, bIdx: bi })}
+                                style={{
+                                  padding: 6,
+                                  border: `1px solid ${isSelected ? c.color : C.borderSoft}`,
+                                  borderWidth: isSelected ? 2 : 1,
+                                  backgroundColor: isSelected ? `${c.color}18` : C.surface,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s',
+                                  minWidth: 70,
+                                }}
+                              >
+                                <CellGlyph a={as} b={bs} cell={c} />
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {showLegend && (
+                  <div style={{
+                    marginTop: 24, padding: '16px 20px',
+                    backgroundColor: C.surface, border: `1px solid ${C.border}`,
+                    borderRadius: 4, fontSize: 13,
+                  }}>
+                    <div style={{
+                      fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase',
+                      color: C.textTertiary, marginBottom: 12,
+                    }}>
+                      five interaction types
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+                      <LegendItem color={C.reinforce} label="reinforced hierarchy" detail="agreed direction" />
+                      <LegendItem color={C.equality}  label="reinforced equality"  detail="both hold level" />
+                      <LegendItem color={C.compress}  label="compression"          detail="both claim primacy" />
+                      <LegendItem color={C.contract}  label="contraction"          detail="both claim deference" />
+                      <LegendItem color={C.tension}   label="tension"              detail="one pushes, one holds level" />
+                    </div>
+                    <div style={{ marginTop: 12, fontSize: 11, color: C.textTertiary, fontStyle: 'italic', lineHeight: 1.5 }}>
+                      Solid line · both active &nbsp;·&nbsp; Dashed line · both passive &nbsp;·&nbsp; Mixed dash · voice asymmetry
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <aside className="matrix-detail-panel" style={{
+                backgroundColor: C.surface,
+                border: `1px solid ${cell.color}66`,
+                borderRadius: 4,
+                padding: '24px',
+              }}>
+                <div style={{
+                  backgroundColor: `${cell.color}10`,
+                  border: `1px solid ${cell.color}33`,
+                  borderRadius: 4,
+                  padding: '12px',
+                  marginBottom: 12,
+                }}>
+                  <CellGlyph a={a} b={b} cell={cell} large={true} />
+                </div>
+
+                <div style={{
+                  backgroundColor: '#ffffff',
+                  border: `1px solid #d8d4cc`,
+                  borderRadius: 4,
+                  padding: '12px 14px',
+                  marginBottom: 20,
+                }}>
+                  <FlattenedView a={a} b={b} />
+                </div>
+
+                <div style={{
+                  fontSize: 10, letterSpacing: '0.22em', textTransform: 'uppercase',
+                  color: C.textTertiary, marginBottom: 6,
+                }}>
+                  {a.id} × {b.id}
+                </div>
+                <div style={{
+                  fontSize: '1.15rem', fontStyle: 'italic',
+                  color: cell.color, marginBottom: 16, lineHeight: 1.3,
+                }}>
+                  {cell.label}
+                </div>
+
+                <div style={{
+                  fontSize: 13, color: C.text, lineHeight: 1.55, marginBottom: 16,
+                  padding: '12px 14px', backgroundColor: C.bg, borderRadius: 3,
+                }}>
+                  <div style={{ fontStyle: 'italic' }}>
+                    <strong style={{ fontWeight: 600 }}>A:</strong> "{a.sentence}"
+                    <span style={{ fontSize: 10, color: C.textTertiary, marginLeft: 8 }}>
+                      ({a.voice})
+                    </span>
+                  </div>
+                  <div style={{ fontStyle: 'italic', marginTop: 6 }}>
+                    <strong style={{ fontWeight: 600 }}>B:</strong> "{b.sentence}"
+                    <span style={{ fontSize: 10, color: C.textTertiary, marginLeft: 8 }}>
+                      ({b.voice})
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{
+                  fontSize: 14, color: C.text, lineHeight: 1.7, fontStyle: 'italic',
+                }}>
+                  {cell.description}
+                </div>
+
+                <div style={{
+                  marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.borderSoft}`,
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  fontSize: 12, color: C.textSecondary,
+                }}>
+                  <div style={{
+                    width: 10, height: 10, borderRadius: '50%',
+                    backgroundColor: cell.color,
+                  }} />
+                  <span style={{ fontStyle: 'italic', letterSpacing: '0.04em' }}>
+                    {cell.type}
+                  </span>
+                </div>
+              </aside>
+            </div>
+
+            <div style={{
+              marginTop: 40, padding: '20px 24px',
+              backgroundColor: C.surface, border: `1px solid ${C.borderSoft}`,
+              borderRadius: 4, fontSize: 13, color: C.textSecondary, lineHeight: 1.7,
+              fontStyle: 'italic',
+            }}>
+              <strong style={{ color: C.text, fontWeight: 500, fontStyle: 'normal' }}>Reading the glyphs.</strong>
+              {' '}Each cell shows a small wave between A (left dot) and B (right dot). The vertical position of each dot indicates that side's claim about the relationship — dot raised means "above," dot lowered means "below," dot on midline means "equal." The line connecting them is the joint wave: smooth curves are reinforcement; sharp pinches downward are compression; sharp bumps upward are contraction; offset curves are tension. Solid line means both spoke actively (centred on self); dashed means both passively (centred on other); mixed dash means voice asymmetry.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<InterpretiveMatrix />);
+  </script>
+</body>
+</html>
