@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>depth in the unit interval — XQ</title>
+  <meta name="description" content="1D depth relief of [0,1]. Every rational a vertical stalk. Stalk height equals how many digits the number needs. Terminating, repeating, irrational — three classes of how deep meaning has to go.">
+  <link rel="icon" href="/assets/torus.png" type="image/png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { background: #f4ede0; }
+    body { margin: 0; }
+    .back-link {
+      position: fixed;
+      top: 1rem;
+      left: 1.25rem;
+      z-index: 50;
+      font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
+      font-style: italic;
+      font-size: 0.8rem;
+      color: #9a9085;
+      text-decoration: none;
+      letter-spacing: 0.05em;
+    }
+    .back-link:hover { color: #2a2419; }
+  </style>
+</head>
+<body>
+  <a href="/experiments" class="back-link">&larr; experiments</a>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo, useCallback } = React;
+
+    function gcd(a, b) {
+      a = Math.abs(a); b = Math.abs(b);
+      while (b !== 0) { [a, b] = [b, a % b]; }
+      return a;
+    }
+
+    function analyseDecimal(p, q) {
+      let q2 = 0, q5 = 0, qStripped = q;
+      while (qStripped % 2 === 0) { qStripped /= 2; q2++; }
+      while (qStripped % 5 === 0) { qStripped /= 5; q5++; }
+      const preperiod = Math.max(q2, q5);
+
+      if (qStripped === 1) {
+        return { type: 'terminating', depth: preperiod };
+      }
+      let period = 1;
+      let pow = 10 % qStripped;
+      while (pow !== 1) {
+        pow = (pow * 10) % qStripped;
+        period++;
+        if (period > 10000) break;
+      }
+      return { type: 'repeating', preperiod, period };
+    }
+
+    function continuedFraction(p, q) {
+      const cf = [];
+      while (q !== 0) {
+        cf.push(Math.floor(p / q));
+        [p, q] = [q, p % q];
+      }
+      return cf;
+    }
+
+    function decimalString(p, q, info) {
+      if (info.type === 'terminating') {
+        const digits = [];
+        let r = p;
+        for (let i = 0; i < info.depth; i++) {
+          r *= 10;
+          digits.push(Math.floor(r / q));
+          r = r % q;
+        }
+        return '0.' + digits.join('');
+      }
+      const pre = [];
+      let r = p;
+      for (let i = 0; i < info.preperiod; i++) {
+        r *= 10;
+        pre.push(Math.floor(r / q));
+        r = r % q;
+      }
+      const rep = [];
+      for (let i = 0; i < Math.min(info.period, 12); i++) {
+        r *= 10;
+        rep.push(Math.floor(r / q));
+        r = r % q;
+      }
+      let s = '0.';
+      s += pre.join('');
+      s += '⟨' + rep.join('') + (info.period > 12 ? '…' : '') + '⟩';
+      return s;
+    }
+
+    const IRRATIONALS = [
+      { x: Math.SQRT2 - 1,           label: '√2 − 1',     cfHint: '[0;2,2,2,…]',         note: 'quadratic — periodic CF' },
+      { x: (Math.sqrt(5) - 1) / 2,   label: 'φ − 1',      cfHint: '[0;1,1,1,…]',         note: 'golden — slowest CF' },
+      { x: 1 / Math.PI,              label: '1/π',        cfHint: '[0;3,7,15,1,292,…]',  note: 'transcendental' },
+      { x: 1 / Math.E,               label: '1/e',        cfHint: '[0;2,1,2,1,1,4,…]',   note: 'transcendental, patterned' },
+      { x: 1 / (2 * Math.PI),        label: '1/(2π)',     cfHint: '[0;6,3,1,1,7,…]',     note: 'transcendental' },
+      { x: Math.log10(2),            label: 'log₁₀ 2',    cfHint: '[0;3,3,9,2,1,1,…]',   note: 'transcendental' },
+      { x: Math.PI - 3,              label: 'π − 3',      cfHint: '[0;7,15,1,292,…]',    note: 'transcendental' },
+    ];
+
+    function IntervalDepthVisualizer() {
+      const [maxDenom, setMaxDenom] = useState(40);
+      const [mode, setMode] = useState('decimal');
+      const [showIrrationals, setShowIrrationals] = useState(true);
+      const [showRepeating, setShowRepeating] = useState(true);
+      const [hovered, setHovered] = useState(null);
+      const [viewport, setViewport] = useState({ x0: 0, x1: 1 });
+
+      const fractions = useMemo(() => {
+        const out = [];
+        for (let q = 2; q <= maxDenom; q++) {
+          for (let p = 1; p < q; p++) {
+            if (gcd(p, q) !== 1) continue;
+            const x = p / q;
+            const dec = analyseDecimal(p, q);
+            const cf = continuedFraction(p, q);
+            out.push({ p, q, x, dec, cf, cfDepth: cf.length - 1 });
+          }
+        }
+        return out;
+      }, [maxDenom]);
+
+      const W = 1400;
+      const H = 620;
+      const PAD = { l: 70, r: 70, t: 60, b: 90 };
+      const plotW = W - PAD.l - PAD.r;
+      const plotH = H - PAD.t - PAD.b;
+
+      const xToPx = useCallback(
+        (x) => PAD.l + ((x - viewport.x0) / (viewport.x1 - viewport.x0)) * plotW,
+        [viewport, plotW]
+      );
+
+      const maxVisibleDepth = mode === 'decimal' ? 6 : 8;
+      const depthToPx = (d) => {
+        if (d === Infinity) return PAD.t + 10;
+        const clamped = Math.min(d, maxVisibleDepth);
+        return PAD.t + plotH - (clamped / maxVisibleDepth) * (plotH - 30);
+      };
+
+      const enriched = useMemo(() => {
+        return fractions.map((f) => {
+          if (mode === 'decimal') {
+            if (f.dec.type === 'terminating') {
+              return { ...f, depth: f.dec.depth, isInfinite: false };
+            }
+            return { ...f, depth: Infinity, isInfinite: true };
+          } else {
+            return { ...f, depth: f.cfDepth, isInfinite: false };
+          }
+        });
+      }, [fractions, mode]);
+
+      const visible = enriched.filter((f) => {
+        if (f.x < viewport.x0 || f.x > viewport.x1) return false;
+        if (!showRepeating && f.dec.type === 'repeating') return false;
+        return true;
+      });
+
+      const terminating = visible.filter((f) => f.dec.type === 'terminating');
+      const repeating = visible.filter((f) => f.dec.type === 'repeating');
+
+      const termColor = (depth) => {
+        const palette = ['#c9a227', '#b8841a', '#a36410', '#82440a', '#5e2d07', '#3a1c04'];
+        return palette[Math.min(depth - 1, palette.length - 1)] || '#3a1c04';
+      };
+      const repColor = (period) => {
+        if (period === 1) return '#5b8db3';
+        if (period <= 3) return '#3d6f95';
+        if (period <= 6) return '#2a557a';
+        return '#173b5d';
+      };
+      const irrColor = '#8b1e1e';
+
+      const yTicks = [];
+      for (let d = 1; d <= maxVisibleDepth; d++) {
+        yTicks.push({ d, y: depthToPx(d) });
+      }
+
+      const xTicks = useMemo(() => {
+        const ticks = [];
+        const span = viewport.x1 - viewport.x0;
+        const step = span >= 0.5 ? 0.1 : span >= 0.1 ? 0.02 : 0.01;
+        for (let x = Math.ceil(viewport.x0 / step) * step; x <= viewport.x1 + 1e-9; x += step) {
+          ticks.push(Math.round(x * 1000) / 1000);
+        }
+        return ticks;
+      }, [viewport]);
+
+      const resetZoom = () => setViewport({ x0: 0, x1: 1 });
+      const zoomTo = (xc) => {
+        const span = (viewport.x1 - viewport.x0) * 0.25;
+        setViewport({
+          x0: Math.max(0, xc - span / 2),
+          x1: Math.min(1, xc + span / 2),
+        });
+      };
+
+      return (
+        <div style={styles.root}>
+          <header style={styles.header}>
+            <h1 style={styles.title}>
+              <span style={styles.titleAccent}>Depth</span> in the unit interval
+            </h1>
+            <p style={styles.subtitle}>
+              Each vertical stalk is a rational <span style={styles.mono}>p/q</span> at position <span style={styles.mono}>x = p/q</span> in <span style={styles.mono}>[0,1]</span>.
+              Its height is the <em>depth</em> of that number — how many digits / partial quotients are needed to specify it.
+              Terminating decimals stop; repeating ones have a period; irrationals never close.
+            </p>
+          </header>
+
+          <div style={styles.controls}>
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>depth measure</label>
+              <div style={styles.toggleGroup}>
+                <button
+                  style={{ ...styles.toggleBtn, ...(mode === 'decimal' ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setMode('decimal')}
+                >
+                  decimal
+                </button>
+                <button
+                  style={{ ...styles.toggleBtn, ...(mode === 'cf' ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setMode('cf')}
+                >
+                  continued fraction
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>
+                max denominator: <span style={styles.mono}>{maxDenom}</span>
+              </label>
+              <input
+                type="range"
+                min={5}
+                max={80}
+                value={maxDenom}
+                onChange={(e) => setMaxDenom(parseInt(e.target.value, 10))}
+                style={styles.slider}
+              />
+            </div>
+
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>visibility</label>
+              <div style={styles.toggleGroup}>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showRepeating ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowRepeating(!showRepeating)}
+                >
+                  repeating
+                </button>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showIrrationals ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowIrrationals(!showIrrationals)}
+                >
+                  irrationals
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>
+                viewport: <span style={styles.mono}>[{viewport.x0.toFixed(3)}, {viewport.x1.toFixed(3)}]</span>
+              </label>
+              <button style={styles.resetBtn} onClick={resetZoom}>reset zoom</button>
+            </div>
+          </div>
+
+          <div style={styles.svgWrap}>
+            <svg width={W} height={H} style={styles.svg}>
+              <rect x={0} y={0} width={W} height={H} fill="#f4ede0" />
+
+              <rect
+                x={PAD.l}
+                y={PAD.t}
+                width={plotW}
+                height={plotH}
+                fill="#faf6ec"
+                stroke="#2a2419"
+                strokeWidth={1}
+              />
+
+              {yTicks.map((t) => (
+                <g key={`y-${t.d}`}>
+                  <line
+                    x1={PAD.l}
+                    x2={PAD.l + plotW}
+                    y1={t.y}
+                    y2={t.y}
+                    stroke="#d6cab2"
+                    strokeWidth={0.5}
+                    strokeDasharray="2 4"
+                  />
+                  <text
+                    x={PAD.l - 12}
+                    y={t.y + 4}
+                    textAnchor="end"
+                    style={styles.axisLabel}
+                  >
+                    {t.d}
+                  </text>
+                </g>
+              ))}
+              <text
+                x={20}
+                y={PAD.t + plotH / 2}
+                transform={`rotate(-90 20 ${PAD.t + plotH / 2})`}
+                textAnchor="middle"
+                style={styles.axisTitle}
+              >
+                depth ({mode === 'decimal' ? 'digits' : 'partial quotients'})
+              </text>
+
+              {xTicks.map((x) => (
+                <g key={`x-${x}`}>
+                  <line
+                    x1={xToPx(x)}
+                    x2={xToPx(x)}
+                    y1={PAD.t + plotH}
+                    y2={PAD.t + plotH + 5}
+                    stroke="#2a2419"
+                    strokeWidth={0.8}
+                  />
+                  <text
+                    x={xToPx(x)}
+                    y={PAD.t + plotH + 20}
+                    textAnchor="middle"
+                    style={styles.axisLabel}
+                  >
+                    {x.toFixed(viewport.x1 - viewport.x0 < 0.2 ? 3 : 2)}
+                  </text>
+                </g>
+              ))}
+              <text
+                x={PAD.l + plotW / 2}
+                y={H - 50}
+                textAnchor="middle"
+                style={styles.axisTitle}
+              >
+                x ∈ [0, 1]
+              </text>
+
+              <rect
+                x={PAD.l}
+                y={PAD.t}
+                width={plotW}
+                height={20}
+                fill="#ece1c8"
+                stroke="none"
+              />
+              <text
+                x={PAD.l + plotW - 8}
+                y={PAD.t + 14}
+                textAnchor="end"
+                style={{ ...styles.axisLabel, fontStyle: 'italic', fill: '#6b5b3a' }}
+              >
+                ∞  (no finite depth)
+              </text>
+
+              {terminating.map((f) => {
+                const px = xToPx(f.x);
+                const py = depthToPx(f.depth);
+                const baseY = PAD.t + plotH;
+                return (
+                  <g
+                    key={`t-${f.p}-${f.q}`}
+                    onMouseEnter={() => setHovered(f)}
+                    onMouseLeave={() => setHovered(null)}
+                    onClick={() => zoomTo(f.x)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <line
+                      x1={px}
+                      x2={px}
+                      y1={baseY}
+                      y2={py}
+                      stroke={termColor(f.depth)}
+                      strokeWidth={hovered === f ? 2.5 : 1.2}
+                      opacity={hovered && hovered !== f ? 0.3 : 1}
+                    />
+                    <circle cx={px} cy={py} r={hovered === f ? 4 : 2.5} fill={termColor(f.depth)} />
+                  </g>
+                );
+              })}
+
+              {showRepeating &&
+                repeating.map((f) => {
+                  const px = xToPx(f.x);
+                  const py = PAD.t + 20;
+                  const baseY = PAD.t + plotH;
+                  return (
+                    <g
+                      key={`r-${f.p}-${f.q}`}
+                      onMouseEnter={() => setHovered(f)}
+                      onMouseLeave={() => setHovered(null)}
+                      onClick={() => zoomTo(f.x)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <line
+                        x1={px}
+                        x2={px}
+                        y1={baseY}
+                        y2={py}
+                        stroke={repColor(f.dec.period)}
+                        strokeWidth={hovered === f ? 2 : 0.8}
+                        strokeDasharray="3 2"
+                        opacity={hovered && hovered !== f ? 0.25 : 0.7}
+                      />
+                      <circle cx={px} cy={py} r={hovered === f ? 4 : 2} fill={repColor(f.dec.period)} />
+                    </g>
+                  );
+                })}
+
+              {showIrrationals &&
+                IRRATIONALS.filter((ir) => ir.x >= viewport.x0 && ir.x <= viewport.x1).map((ir, i) => {
+                  const px = xToPx(ir.x);
+                  const baseY = PAD.t + plotH;
+                  return (
+                    <g
+                      key={`ir-${i}`}
+                      onMouseEnter={() => setHovered({ ...ir, isIrrational: true })}
+                      onMouseLeave={() => setHovered(null)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <line
+                        x1={px}
+                        x2={px}
+                        y1={baseY}
+                        y2={PAD.t + 4}
+                        stroke={irrColor}
+                        strokeWidth={1.5}
+                        strokeDasharray="5 3"
+                        opacity={0.85}
+                      />
+                      <text
+                        x={px}
+                        y={PAD.t - 6}
+                        textAnchor="middle"
+                        style={{ ...styles.irrLabel, fill: irrColor }}
+                      >
+                        {ir.label}
+                      </text>
+                    </g>
+                  );
+                })}
+
+              {hovered && (
+                <g>
+                  <rect
+                    x={PAD.l + 12}
+                    y={PAD.t + 30}
+                    width={330}
+                    height={hovered.isIrrational ? 80 : 110}
+                    fill="#fffbf0"
+                    stroke="#2a2419"
+                    strokeWidth={0.5}
+                    rx={2}
+                  />
+                  {hovered.isIrrational ? (
+                    <>
+                      <text x={PAD.l + 24} y={PAD.t + 52} style={styles.infoTitle}>{hovered.label}</text>
+                      <text x={PAD.l + 24} y={PAD.t + 72} style={styles.infoMono}>x ≈ {hovered.x.toFixed(8)}</text>
+                      <text x={PAD.l + 24} y={PAD.t + 90} style={styles.infoMono}>CF: {hovered.cfHint}</text>
+                      <text x={PAD.l + 24} y={PAD.t + 105} style={styles.infoNote}>{hovered.note}</text>
+                    </>
+                  ) : (
+                    <>
+                      <text x={PAD.l + 24} y={PAD.t + 52} style={styles.infoTitle}>
+                        {hovered.p}/{hovered.q}
+                      </text>
+                      <text x={PAD.l + 24} y={PAD.t + 72} style={styles.infoMono}>
+                        = {decimalString(hovered.p, hovered.q, hovered.dec)}
+                      </text>
+                      <text x={PAD.l + 24} y={PAD.t + 90} style={styles.infoMono}>
+                        CF: [{hovered.cf.join('; ').replace(';', ';')}]
+                        {'  '}(length {hovered.cfDepth})
+                      </text>
+                      <text x={PAD.l + 24} y={PAD.t + 105} style={styles.infoNote}>
+                        {hovered.dec.type === 'terminating'
+                          ? `terminating · decimal depth ${hovered.dec.depth}`
+                          : `repeating · period ${hovered.dec.period}` +
+                            (hovered.dec.preperiod ? ` · preperiod ${hovered.dec.preperiod}` : '')}
+                      </text>
+                      <text x={PAD.l + 24} y={PAD.t + 125} style={{ ...styles.infoNote, fontStyle: 'italic' }}>
+                        click stalk → zoom in around it
+                      </text>
+                    </>
+                  )}
+                </g>
+              )}
+            </svg>
+          </div>
+
+          <section style={styles.legend}>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: termColor(1) }} />
+              <span>terminating, depth 1 (e.g. 1/2, 1/5)</span>
+            </div>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: termColor(3) }} />
+              <span>terminating, depth 3 (e.g. 1/8, 1/40)</span>
+            </div>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: termColor(6) }} />
+              <span>terminating, depth 6+ (e.g. 1/64)</span>
+            </div>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: repColor(1), borderStyle: 'dashed' }} />
+              <span>repeating, period 1 (e.g. 1/3, 1/9)</span>
+            </div>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: repColor(6), borderStyle: 'dashed' }} />
+              <span>repeating, period &gt; 5 (e.g. 1/7)</span>
+            </div>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: irrColor, borderStyle: 'dashed' }} />
+              <span>irrational (no period, no terminus)</span>
+            </div>
+          </section>
+
+          <section style={styles.notes}>
+            <h2 style={styles.notesTitle}>What this shows</h2>
+            <ul style={styles.notesList}>
+              <li>
+                In <strong>decimal mode</strong>, depth is the number of digits a fraction needs.
+                A rational <span style={styles.mono}>p/q</span> in lowest terms terminates iff its denominator's
+                only prime factors are 2 and 5. Otherwise it repeats — and lives in the ∞-band at the top.
+              </li>
+              <li>
+                In <strong>continued fraction mode</strong>, depth is the number of partial quotients.
+                Every rational has a finite CF, so nothing lives in the ∞-band.
+                The same fraction can have very different depths in the two views: <span style={styles.mono}>1/3</span> is
+                decimal-depth ∞ but CF-depth 1.
+              </li>
+              <li>
+                <strong>The empty regions are where the irrationals live.</strong> Between any two rationals there is an
+                irrational; there are <em>uncountably</em> more irrationals than rationals.
+                The marked ones (φ−1, 1/π, 1/e, …) are dashed because they have no finite stalk: their depth runs off the top of the diagram.
+              </li>
+              <li>
+                <strong>Zoom in</strong> (click a stalk) and you'll see the same structure repeat at finer scale.
+                That self-similarity is the fractal nature of [0,1] — closely related to the Stern–Brocot / Farey tree structure
+                and to the Ford circles.
+              </li>
+            </ul>
+          </section>
+        </div>
+      );
+    }
+
+    const styles = {
+      root: {
+        fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif',
+        background: '#f4ede0',
+        color: '#2a2419',
+        minHeight: '100vh',
+        padding: '32px 48px',
+        maxWidth: 1600,
+        margin: '0 auto',
+      },
+      header: { marginBottom: 24 },
+      title: {
+        fontSize: 36,
+        fontWeight: 400,
+        letterSpacing: '-0.02em',
+        margin: '0 0 8px 0',
+        lineHeight: 1.1,
+      },
+      titleAccent: {
+        fontStyle: 'italic',
+        color: '#8b1e1e',
+      },
+      subtitle: {
+        fontSize: 15,
+        lineHeight: 1.55,
+        maxWidth: 900,
+        color: '#5a4d36',
+        margin: 0,
+      },
+      mono: {
+        fontFamily: '"Berkeley Mono", "JetBrains Mono", "SF Mono", Consolas, monospace',
+        fontSize: '0.92em',
+        background: '#ece1c8',
+        padding: '1px 5px',
+        borderRadius: 2,
+      },
+      controls: {
+        display: 'flex',
+        gap: 32,
+        flexWrap: 'wrap',
+        margin: '24px 0',
+        padding: '16px 20px',
+        background: '#ece1c8',
+        border: '1px solid #d6cab2',
+      },
+      controlGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
+      label: { fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6b5b3a' },
+      toggleGroup: { display: 'flex', gap: 4 },
+      toggleBtn: {
+        padding: '6px 14px',
+        border: '1px solid #2a2419',
+        background: 'transparent',
+        color: '#2a2419',
+        fontFamily: 'inherit',
+        fontSize: 13,
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+      },
+      toggleBtnActive: {
+        background: '#2a2419',
+        color: '#f4ede0',
+      },
+      slider: { width: 200 },
+      resetBtn: {
+        padding: '6px 14px',
+        border: '1px solid #8b1e1e',
+        background: 'transparent',
+        color: '#8b1e1e',
+        fontFamily: 'inherit',
+        fontSize: 13,
+        cursor: 'pointer',
+      },
+      svgWrap: { overflowX: 'auto', overflowY: 'hidden', marginBottom: 16 },
+      svg: { display: 'block' },
+      axisLabel: {
+        fontFamily: '"Berkeley Mono", "JetBrains Mono", monospace',
+        fontSize: 11,
+        fill: '#5a4d36',
+      },
+      axisTitle: {
+        fontFamily: '"Iowan Old Style", Palatino, Georgia, serif',
+        fontStyle: 'italic',
+        fontSize: 13,
+        fill: '#3a2d18',
+      },
+      irrLabel: {
+        fontFamily: '"Iowan Old Style", Palatino, Georgia, serif',
+        fontStyle: 'italic',
+        fontSize: 12,
+      },
+      infoTitle: {
+        fontFamily: '"Iowan Old Style", Palatino, Georgia, serif',
+        fontSize: 18,
+        fill: '#2a2419',
+        fontWeight: 600,
+      },
+      infoMono: {
+        fontFamily: '"Berkeley Mono", "JetBrains Mono", monospace',
+        fontSize: 12,
+        fill: '#3a2d18',
+      },
+      infoNote: {
+        fontFamily: '"Iowan Old Style", Palatino, Georgia, serif',
+        fontSize: 12,
+        fill: '#6b5b3a',
+      },
+      legend: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 20,
+        padding: '14px 20px',
+        background: '#ece1c8',
+        border: '1px solid #d6cab2',
+        fontSize: 13,
+        marginBottom: 24,
+      },
+      legendItem: { display: 'flex', alignItems: 'center', gap: 8 },
+      swatch: { width: 18, height: 18, border: '1px solid #2a2419' },
+      notes: {
+        marginTop: 12,
+        padding: '20px 24px',
+        background: '#faf6ec',
+        border: '1px solid #d6cab2',
+        maxWidth: 1100,
+      },
+      notesTitle: {
+        fontSize: 18,
+        fontWeight: 400,
+        fontStyle: 'italic',
+        margin: '0 0 12px 0',
+        color: '#8b1e1e',
+      },
+      notesList: {
+        fontSize: 14,
+        lineHeight: 1.6,
+        margin: 0,
+        paddingLeft: 20,
+        color: '#3a2d18',
+      },
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<IntervalDepthVisualizer />);
+  </script>
+</body>
+</html>

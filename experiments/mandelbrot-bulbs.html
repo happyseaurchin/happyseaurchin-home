@@ -1,0 +1,765 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mandelbrot bulbs as Farey relief — XQ</title>
+  <meta name="description" content="The Mandelbrot set with bulbs labelled by attachment angle. Every bulb has period q and attaches at internal angle p/q on the main cardioid. Same Farey/Stern–Brocot combinatorics, emerging dynamically from z² + c iteration. Zoom is depth.">
+  <link rel="icon" href="/assets/torus.png" type="image/png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { background: #f4ede0; }
+    body { margin: 0; }
+    .back-link {
+      position: fixed;
+      top: 1rem;
+      left: 1.25rem;
+      z-index: 50;
+      font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
+      font-style: italic;
+      font-size: 0.8rem;
+      color: #9a9085;
+      text-decoration: none;
+      letter-spacing: 0.05em;
+    }
+    .back-link:hover { color: #2a2419; }
+  </style>
+</head>
+<body>
+  <a href="/experiments" class="back-link">&larr; experiments</a>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef, useMemo } = React;
+
+    function gcd(a, b) {
+      while (b !== 0) { [a, b] = [b, a % b]; }
+      return Math.abs(a);
+    }
+
+    function continuedFraction(p, q) {
+      const cf = [];
+      let a = p, b = q;
+      while (b !== 0) {
+        cf.push(Math.floor(a / b));
+        [a, b] = [b, a % b];
+      }
+      return cf;
+    }
+
+    function bulbAttachment(p, q) {
+      const theta = (2 * Math.PI * p) / q;
+      return {
+        x: 0.5 * Math.cos(theta) - 0.25 * Math.cos(2 * theta),
+        y: 0.5 * Math.sin(theta) - 0.25 * Math.sin(2 * theta),
+      };
+    }
+
+    function bulbOutward(p, q) {
+      const theta = (2 * Math.PI * p) / q;
+      const ox = Math.cos(theta) - 1;
+      const oy = Math.sin(theta);
+      const mag = Math.sqrt(ox * ox + oy * oy);
+      if (mag < 1e-9) return { x: 1, y: 0 };
+      return { x: ox / mag, y: oy / mag };
+    }
+
+    function bulbRadius(p, q) {
+      return Math.sin(Math.PI / q) / q;
+    }
+
+    function bulbCentre(p, q) {
+      const att = bulbAttachment(p, q);
+      const out = bulbOutward(p, q);
+      const r = bulbRadius(p, q);
+      return { x: att.x + out.x * r * 0.9, y: att.y + out.y * r * 0.9 };
+    }
+
+    const PALETTE_STOPS = [
+      [0.00, [248, 240, 218]],
+      [0.18, [241, 214, 140]],
+      [0.36, [230, 169, 60]],
+      [0.55, [180, 116, 30]],
+      [0.72, [120, 70, 18]],
+      [0.88, [70, 40, 14]],
+      [1.00, [38, 30, 20]],
+    ];
+
+    function paletteColour(t) {
+      t = Math.max(0, Math.min(1, t));
+      let i = 0;
+      while (i < PALETTE_STOPS.length - 1 && PALETTE_STOPS[i + 1][0] < t) i++;
+      if (i >= PALETTE_STOPS.length - 1) return PALETTE_STOPS[PALETTE_STOPS.length - 1][1];
+      const t0 = PALETTE_STOPS[i][0];
+      const t1 = PALETTE_STOPS[i + 1][0];
+      const lt = (t - t0) / (t1 - t0);
+      const c0 = PALETTE_STOPS[i][1];
+      const c1 = PALETTE_STOPS[i + 1][1];
+      return [
+        Math.round(c0[0] + lt * (c1[0] - c0[0])),
+        Math.round(c0[1] + lt * (c1[1] - c0[1])),
+        Math.round(c0[2] + lt * (c1[2] - c0[2])),
+      ];
+    }
+
+    const W = 580;
+    const H = 580;
+    const MAX_BULB_DENOM = 40;
+
+    function MandelbrotFareyBulbs() {
+      const canvasRef = useRef(null);
+      const [view, setView] = useState({ cx: -0.5, cy: 0, range: 3.0 });
+      const [renderState, setRenderState] = useState({ progress: 0, rendering: false });
+      const [hoveredBulb, setHoveredBulb] = useState(null);
+      const [hoverPos, setHoverPos] = useState(null);
+      const [showLabels, setShowLabels] = useState(true);
+      const [showFareyLinks, setShowFareyLinks] = useState(false);
+      const [showCardioid, setShowCardioid] = useState(false);
+
+      const bounds = useMemo(() => ({
+        xmin: view.cx - view.range / 2,
+        xmax: view.cx + view.range / 2,
+        ymin: view.cy - view.range / 2,
+        ymax: view.cy + view.range / 2,
+      }), [view]);
+
+      const zoom = 3.0 / view.range;
+      const maxIter = useMemo(
+        () => Math.floor(180 + 90 * Math.log2(Math.max(1, zoom))),
+        [zoom]
+      );
+
+      const cToScreen = (cx, cy) => ({
+        x: ((cx - bounds.xmin) / view.range) * W,
+        y: ((bounds.ymax - cy) / view.range) * H,
+      });
+
+      const screenToC = (sx, sy) => ({
+        cx: bounds.xmin + (sx / W) * view.range,
+        cy: bounds.ymax - (sy / H) * view.range,
+      });
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        let cancelled = false;
+        let py = 0;
+        setRenderState({ progress: 0, rendering: true });
+
+        const renderChunk = () => {
+          if (cancelled) return;
+          const chunkRows = 24;
+          const startY = py;
+          const endY = Math.min(py + chunkRows, H);
+          const rows = endY - startY;
+          if (rows <= 0) {
+            setRenderState({ progress: 1, rendering: false });
+            return;
+          }
+
+          const imgData = ctx.createImageData(W, rows);
+          const data = imgData.data;
+
+          for (let dy = 0; dy < rows; dy++) {
+            const cy0 = bounds.ymax - ((startY + dy) / H) * view.range;
+            for (let px = 0; px < W; px++) {
+              const cx0 = bounds.xmin + (px / W) * view.range;
+
+              const cqx = cx0 - 0.25;
+              const q1 = cqx * cqx + cy0 * cy0;
+              let iter;
+              if (q1 * (q1 + cqx) < 0.25 * cy0 * cy0) {
+                iter = maxIter;
+              } else if ((cx0 + 1) * (cx0 + 1) + cy0 * cy0 < 0.0625) {
+                iter = maxIter;
+              } else {
+                let zx = 0, zy = 0;
+                iter = 0;
+                while (iter < maxIter) {
+                  const zx2 = zx * zx;
+                  const zy2 = zy * zy;
+                  if (zx2 + zy2 > 4) break;
+                  zy = 2 * zx * zy + cy0;
+                  zx = zx2 - zy2 + cx0;
+                  iter++;
+                }
+              }
+
+              const idx = (dy * W + px) * 4;
+              if (iter >= maxIter) {
+                data[idx] = 24;
+                data[idx + 1] = 20;
+                data[idx + 2] = 16;
+                data[idx + 3] = 255;
+              } else {
+                const t = Math.pow(iter / maxIter, 0.42);
+                const [r, g, b] = paletteColour(t);
+                data[idx] = r;
+                data[idx + 1] = g;
+                data[idx + 2] = b;
+                data[idx + 3] = 255;
+              }
+            }
+          }
+
+          ctx.putImageData(imgData, 0, startY);
+          py = endY;
+          setRenderState({ progress: py / H, rendering: py < H });
+
+          if (py < H) {
+            requestAnimationFrame(renderChunk);
+          }
+        };
+
+        requestAnimationFrame(renderChunk);
+        return () => { cancelled = true; };
+      }, [view, maxIter, bounds]);
+
+      const visibleBulbs = useMemo(() => {
+        const list = [];
+        for (let q = 2; q <= MAX_BULB_DENOM; q++) {
+          for (let p = 1; p < q; p++) {
+            if (gcd(p, q) !== 1) continue;
+            const att = bulbAttachment(p, q);
+            const out = bulbOutward(p, q);
+            const radius = bulbRadius(p, q);
+            const centre = bulbCentre(p, q);
+
+            const margin = view.range * 0.08;
+            if (att.x < bounds.xmin - margin || att.x > bounds.xmax + margin) continue;
+            if (att.y < bounds.ymin - margin || att.y > bounds.ymax + margin) continue;
+
+            const screenRadius = (radius * W) / view.range;
+            if (screenRadius < 1.8) continue;
+
+            const labelOffset = Math.max(radius * 1.6, view.range * 0.04);
+            const lab = {
+              x: att.x + out.x * labelOffset,
+              y: att.y + out.y * labelOffset,
+            };
+
+            list.push({ p, q, att, out, radius, centre, labelPos: lab, screenRadius });
+          }
+        }
+        return list;
+      }, [view, bounds]);
+
+      const fareyLinks = useMemo(() => {
+        if (!showFareyLinks) return [];
+        const links = [];
+        const sorted = [...visibleBulbs].sort((a, b) => a.p / a.q - b.p / b.q);
+        for (let i = 0; i < sorted.length - 1; i++) {
+          const A = sorted[i], B = sorted[i + 1];
+          if (Math.abs(A.p * B.q - B.p * A.q) === 1) {
+            links.push({ from: A, to: B });
+          }
+        }
+        return links;
+      }, [visibleBulbs, showFareyLinks]);
+
+      const handleClick = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        const { cx, cy } = screenToC(sx, sy);
+        setView({ cx, cy, range: view.range / 2.2 });
+      };
+
+      const handleMouseMove = (e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const sx = e.clientX - rect.left;
+        const sy = e.clientY - rect.top;
+        setHoverPos({ x: sx, y: sy });
+
+        let closest = null;
+        let bestDist = 30;
+        for (const b of visibleBulbs) {
+          const s = cToScreen(b.centre.x, b.centre.y);
+          const d = Math.hypot(s.x - sx, s.y - sy);
+          const threshold = Math.max(b.screenRadius * 1.3, 10);
+          if (d < threshold && d < bestDist) {
+            bestDist = d;
+            closest = b;
+          }
+        }
+        setHoveredBulb(closest);
+      };
+
+      const handleMouseLeave = () => {
+        setHoveredBulb(null);
+        setHoverPos(null);
+      };
+
+      const zoomOut = () => setView({ ...view, range: Math.min(view.range * 2.2, 4.5) });
+      const reset = () => setView({ cx: -0.5, cy: 0, range: 3.0 });
+
+      const presets = [
+        { label: 'full view', cx: -0.5, cy: 0, range: 3.0 },
+        { label: 'period-2', cx: -1.0, cy: 0, range: 0.5 },
+        { label: 'period-3 (top)', cx: -0.125, cy: 0.745, range: 0.3 },
+        { label: 'seahorse valley', cx: -0.75, cy: 0.1, range: 0.2 },
+        { label: 'period-5 (top)', cx: -0.55, cy: 0.62, range: 0.4 },
+      ];
+
+      return (
+        <div style={styles.root}>
+          <header style={styles.header}>
+            <h1 style={styles.title}>
+              <span style={styles.titleAccent}>Mandelbrot</span> bulbs as Farey relief
+            </h1>
+            <p style={styles.subtitle}>
+              The Mandelbrot set is the c-plane locus where iterating <span style={styles.mono}>z² + c</span> stays bounded.
+              The big heart is the <em>main cardioid</em> (period-1 region). Every bulb attached to it has a
+              period q and attaches at an angle <span style={styles.mono}>p/q</span> on the cardioid boundary
+              — same Farey/Stern–Brocot structure as the disk tessellation, but emerging from the simplest
+              nonlinear iteration. Click anywhere to zoom in.
+            </p>
+          </header>
+
+          <div style={styles.controls}>
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>view</label>
+              <div style={styles.toggleGroup}>
+                <button style={styles.iconBtn} onClick={zoomOut}>−</button>
+                <button style={styles.resetBtn} onClick={reset}>reset</button>
+              </div>
+            </div>
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>presets</label>
+              <div style={styles.presetGroup}>
+                {presets.map((p) => (
+                  <button
+                    key={p.label}
+                    style={styles.presetBtn}
+                    onClick={() => setView({ cx: p.cx, cy: p.cy, range: p.range })}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>overlay</label>
+              <div style={styles.toggleGroup}>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showLabels ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowLabels(!showLabels)}
+                >
+                  p/q labels
+                </button>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showFareyLinks ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowFareyLinks(!showFareyLinks)}
+                >
+                  Farey links
+                </button>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showCardioid ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowCardioid(!showCardioid)}
+                >
+                  cardioid outline
+                </button>
+              </div>
+            </div>
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>state</label>
+              <div style={{ fontSize: 12, color: '#5a4d36' }}>
+                zoom: <span style={styles.mono}>{zoom.toFixed(2)}×</span> ·
+                iter: <span style={styles.mono}>{maxIter}</span>
+                {renderState.rendering && (
+                  <span style={{ color: '#8b1e1e', marginLeft: 6 }}>
+                    rendering {Math.round(renderState.progress * 100)}%
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.canvasWrap}>
+            <canvas
+              ref={canvasRef}
+              width={W}
+              height={H}
+              style={styles.canvas}
+              onClick={handleClick}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+            />
+            <svg
+              width={W}
+              height={H}
+              style={styles.overlay}
+            >
+              {showCardioid && (() => {
+                const pts = [];
+                for (let i = 0; i <= 200; i++) {
+                  const theta = (2 * Math.PI * i) / 200;
+                  const x = 0.5 * Math.cos(theta) - 0.25 * Math.cos(2 * theta);
+                  const y = 0.5 * Math.sin(theta) - 0.25 * Math.sin(2 * theta);
+                  const s = cToScreen(x, y);
+                  pts.push(`${s.x.toFixed(1)},${s.y.toFixed(1)}`);
+                }
+                return (
+                  <polyline
+                    points={pts.join(' ')}
+                    fill="none"
+                    stroke="#faf6ec"
+                    strokeWidth={1.2}
+                    strokeDasharray="3 3"
+                    opacity={0.65}
+                  />
+                );
+              })()}
+
+              {fareyLinks.map((link, i) => {
+                const a = cToScreen(link.from.centre.x, link.from.centre.y);
+                const b = cToScreen(link.to.centre.x, link.to.centre.y);
+                return (
+                  <g key={i}>
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke="#0a1a2a"
+                      strokeWidth={5}
+                      opacity={0.55}
+                    />
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={b.x}
+                      y2={b.y}
+                      stroke="#22e8d4"
+                      strokeWidth={2}
+                      strokeDasharray="7 3"
+                      opacity={1}
+                    />
+                    <circle cx={a.x} cy={a.y} r={3.5} fill="#22e8d4" stroke="#0a1a2a" strokeWidth={1} />
+                    <circle cx={b.x} cy={b.y} r={3.5} fill="#22e8d4" stroke="#0a1a2a" strokeWidth={1} />
+                  </g>
+                );
+              })}
+
+              {showLabels && visibleBulbs.map((b) => {
+                const a = cToScreen(b.att.x, b.att.y);
+                const lab = cToScreen(b.labelPos.x, b.labelPos.y);
+                const isHovered = hoveredBulb && hoveredBulb.p === b.p && hoveredBulb.q === b.q;
+                const fontSize = b.q <= 3 ? 14 : b.q <= 5 ? 12 : b.q <= 8 ? 11 : 9.5;
+                return (
+                  <g key={`${b.p}/${b.q}`} pointerEvents="none">
+                    <line
+                      x1={a.x}
+                      y1={a.y}
+                      x2={lab.x}
+                      y2={lab.y}
+                      stroke={isHovered ? '#fff4d6' : '#faf6ec'}
+                      strokeWidth={isHovered ? 1.3 : 0.5}
+                      opacity={isHovered ? 1 : 0.6}
+                    />
+                    <circle
+                      cx={a.x}
+                      cy={a.y}
+                      r={isHovered ? 3.5 : 2}
+                      fill={isHovered ? '#fff4d6' : '#f1d68c'}
+                      stroke="#2a2419"
+                      strokeWidth={0.5}
+                    />
+                    <text
+                      x={lab.x}
+                      y={lab.y}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      style={{
+                        fontFamily: '"Berkeley Mono", "JetBrains Mono", monospace',
+                        fontSize,
+                        fill: isHovered ? '#fff4d6' : '#faf6ec',
+                        fontWeight: isHovered ? 700 : 500,
+                        paintOrder: 'stroke',
+                        stroke: '#1a0e05',
+                        strokeWidth: 3,
+                        strokeLinejoin: 'round',
+                      }}
+                    >
+                      {b.p}/{b.q}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+
+          <div style={styles.infoPanel}>
+            {hoveredBulb ? (
+              <>
+                <div style={styles.infoTitle}>
+                  Period-<span style={styles.mono}>{hoveredBulb.q}</span> bulb
+                  <span style={styles.depthBadge}>angle {hoveredBulb.p}/{hoveredBulb.q}</span>
+                </div>
+                <div style={styles.infoLine}>
+                  Attaches to the main cardioid at internal angle <span style={styles.mono}>2π · {hoveredBulb.p}/{hoveredBulb.q}</span>.
+                  Period of the attracting cycle inside this bulb: <strong>{hoveredBulb.q}</strong>.
+                </div>
+                <div style={styles.infoLine}>
+                  Continued fraction of {hoveredBulb.p}/{hoveredBulb.q}:
+                  <span style={styles.mono}> [{continuedFraction(hoveredBulb.p, hoveredBulb.q).join('; ').replace(';', ';')}]</span>
+                  · attachment c ≈ <span style={styles.mono}>{hoveredBulb.att.x.toFixed(4)} + {hoveredBulb.att.y.toFixed(4)}i</span>
+                </div>
+                <div style={styles.infoLine}>
+                  This is the same <span style={styles.mono}>{hoveredBulb.p}/{hoveredBulb.q}</span> that
+                  corresponds to a triangle in the Farey tessellation. The bulb here is the dynamical
+                  instantiation of that triangle.
+                </div>
+              </>
+            ) : (
+              <div style={styles.infoHint}>
+                <em>Hover over a labelled bulb to inspect · click anywhere to zoom · scroll the page if labels overflow</em>
+              </div>
+            )}
+          </div>
+
+          <section style={styles.notes}>
+            <h2 style={styles.notesTitle}>What you're looking at</h2>
+            <ul style={styles.notesList}>
+              <li>
+                <strong>The big heart is the main cardioid.</strong> Inside it, <span style={styles.mono}>z² + c</span> has
+                an attracting fixed point. As you traverse its boundary, the multiplier of that fixed point
+                rotates around the unit circle — and the angle of rotation is the "internal angle" 2π·p/q.
+                At rational angles, a new bulb is born.
+              </li>
+              <li>
+                <strong>The big circle to the left is the period-2 bulb</strong>, attached at angle 1/2.
+                Above and below the cardioid are the period-3 bulbs, at angles 1/3 and 2/3. Between them
+                and the period-2 bulb sit the period-5 bulbs (at angles 2/5 and 3/5) — because 2/5 is the
+                <em> mediant</em> of 1/3 and 1/2, and 3/5 is the mediant of 1/2 and 2/3.
+              </li>
+              <li>
+                <strong>This is exactly the Farey tessellation</strong>, but with rationals attached to the
+                cardioid boundary as bulbs instead of placed on the disk boundary as cusps. The mediant rule
+                is identical. Toggle <span style={styles.mono}>Farey links</span> to draw the adjacency
+                connections between Farey-neighbour bulbs.
+              </li>
+              <li>
+                <strong>Bulb size scales like 1/q².</strong> Period-2 is the biggest bulb (q=2 → big).
+                Period-3 bulbs are smaller. Period-7 even smaller. This is the same scaling as Ford circles —
+                both Mandelbrot bulbs and Ford circles realise the same Farey structure with the same
+                denominator-squared scaling law.
+              </li>
+              <li>
+                <strong>Each bulb has its own cascade.</strong> Click into a bulb (try the period-3 preset)
+                and you'll see smaller bulbs attached to its boundary. Those are sub-period bulbs, attached
+                at sub-angles, obeying the same Farey rule on a smaller scale. Zoom is depth.
+              </li>
+              <li>
+                <strong>Where do irrationals go?</strong> Between every pair of Farey-neighbour bulbs, there
+                are infinitely many smaller bulbs. The boundary points between them — where no bulb attaches —
+                correspond to irrational angles. φ−1, 1/π, 1/e all sit on the cardioid boundary at specific
+                points, with infinite cascades of bulbs converging toward them. Look closely at the seahorse
+                valley preset: that's a region of the cardioid where the bulb cascade converges to specific
+                irrational angles.
+              </li>
+            </ul>
+
+            <h2 style={{ ...styles.notesTitle, marginTop: 24 }}>Three views, one structure</h2>
+            <p style={styles.notesText}>
+              You now have three artifacts that all encode the same Farey/Stern–Brocot/CF-depth
+              structure of <span style={styles.mono}>[0,1]</span> in different geometries:
+            </p>
+            <ol style={styles.notesList}>
+              <li><strong>The 1D depth visualizer</strong> — depth as height over a stretched-out interval.</li>
+              <li><strong>The Farey tessellation</strong> — depth as triangle nesting in the Poincaré disk, hyperbolic.</li>
+              <li><strong>This Mandelbrot viewer</strong> — depth as bulb attachment on the cardioid, dynamical.</li>
+            </ol>
+            <p style={styles.notesText}>
+              The static (1) and hyperbolic (2) versions are constructions; the Mandelbrot version (3) is
+              the same structure <em>emerging</em> from the iteration of <span style={styles.mono}>z² + c</span>.
+              The fact that the same Farey combinatorics shows up in all three is the deep reason hyperbolic
+              geometry, continued fractions, and complex dynamics are all entangled with the depth structure
+              of the unit interval — which is the structure your pscale framework is built on.
+            </p>
+          </section>
+        </div>
+      );
+    }
+
+    const styles = {
+      root: {
+        fontFamily: '"Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif',
+        background: '#f4ede0',
+        color: '#2a2419',
+        minHeight: '100vh',
+        padding: '32px 48px',
+        maxWidth: 1400,
+        margin: '0 auto',
+      },
+      header: { marginBottom: 24 },
+      title: {
+        fontSize: 34,
+        fontWeight: 400,
+        letterSpacing: '-0.02em',
+        margin: '0 0 10px 0',
+        lineHeight: 1.1,
+      },
+      titleAccent: { fontStyle: 'italic', color: '#8b1e1e' },
+      subtitle: {
+        fontSize: 15,
+        lineHeight: 1.55,
+        maxWidth: 920,
+        color: '#5a4d36',
+        margin: 0,
+      },
+      mono: {
+        fontFamily: '"Berkeley Mono", "JetBrains Mono", "SF Mono", Consolas, monospace',
+        fontSize: '0.92em',
+        background: '#ece1c8',
+        padding: '1px 5px',
+        borderRadius: 2,
+      },
+      controls: {
+        display: 'flex',
+        gap: 24,
+        flexWrap: 'wrap',
+        margin: '20px 0',
+        padding: '14px 18px',
+        background: '#ece1c8',
+        border: '1px solid #d6cab2',
+      },
+      controlGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
+      label: {
+        fontSize: 12,
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        color: '#6b5b3a',
+      },
+      toggleGroup: { display: 'flex', gap: 4 },
+      presetGroup: { display: 'flex', gap: 4, flexWrap: 'wrap', maxWidth: 380 },
+      toggleBtn: {
+        padding: '5px 10px',
+        border: '1px solid #2a2419',
+        background: 'transparent',
+        color: '#2a2419',
+        fontFamily: 'inherit',
+        fontSize: 12,
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+      },
+      toggleBtnActive: { background: '#2a2419', color: '#f4ede0' },
+      presetBtn: {
+        padding: '5px 10px',
+        border: '1px solid #6b5b3a',
+        background: 'transparent',
+        color: '#3a2d18',
+        fontFamily: 'inherit',
+        fontSize: 11,
+        cursor: 'pointer',
+        fontStyle: 'italic',
+      },
+      iconBtn: {
+        width: 30,
+        height: 30,
+        border: '1px solid #2a2419',
+        background: '#faf6ec',
+        fontFamily: 'inherit',
+        fontSize: 16,
+        cursor: 'pointer',
+      },
+      resetBtn: {
+        padding: '6px 12px',
+        border: '1px solid #8b1e1e',
+        background: 'transparent',
+        color: '#8b1e1e',
+        fontFamily: 'inherit',
+        fontSize: 12,
+        cursor: 'pointer',
+      },
+      canvasWrap: {
+        position: 'relative',
+        width: W,
+        height: H,
+        margin: '0 auto',
+        border: '1px solid #2a2419',
+        cursor: 'zoom-in',
+      },
+      canvas: { display: 'block', position: 'absolute', top: 0, left: 0 },
+      overlay: { position: 'absolute', top: 0, left: 0, pointerEvents: 'none' },
+      infoPanel: {
+        marginTop: 16,
+        padding: '14px 18px',
+        background: '#faf6ec',
+        border: '1px solid #d6cab2',
+        minHeight: 110,
+        maxWidth: W + 200,
+        marginLeft: 'auto',
+        marginRight: 'auto',
+      },
+      infoTitle: {
+        fontSize: 17,
+        color: '#2a2419',
+        marginBottom: 8,
+        fontWeight: 500,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+      },
+      depthBadge: {
+        fontSize: 11,
+        background: '#2a2419',
+        color: '#f4ede0',
+        padding: '2px 8px',
+        borderRadius: 8,
+        letterSpacing: '0.05em',
+        textTransform: 'uppercase',
+      },
+      infoLine: {
+        fontSize: 13,
+        lineHeight: 1.6,
+        color: '#3a2d18',
+        marginBottom: 4,
+      },
+      infoHint: {
+        fontSize: 13,
+        color: '#7d6b48',
+        textAlign: 'center',
+        paddingTop: 32,
+        fontStyle: 'italic',
+      },
+      notes: {
+        marginTop: 24,
+        padding: '20px 24px',
+        background: '#faf6ec',
+        border: '1px solid #d6cab2',
+        maxWidth: 1100,
+      },
+      notesTitle: {
+        fontSize: 17,
+        fontWeight: 400,
+        fontStyle: 'italic',
+        margin: '0 0 12px 0',
+        color: '#8b1e1e',
+      },
+      notesList: {
+        fontSize: 14,
+        lineHeight: 1.65,
+        margin: '0 0 12px 0',
+        paddingLeft: 20,
+        color: '#3a2d18',
+      },
+      notesText: {
+        fontSize: 14,
+        lineHeight: 1.65,
+        color: '#3a2d18',
+        margin: '0 0 10px 0',
+      },
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<MandelbrotFareyBulbs />);
+  </script>
+</body>
+</html>

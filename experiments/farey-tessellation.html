@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Farey tessellation of the Poincaré disk — XQ</title>
+  <meta name="description" content="The 2D depth relief of [0,1]. The bottom semicircle of the Poincaré disk is the interval. Every rational on the boundary, every triangle the mediant of two Farey neighbours. Depth in pscale equals hyperbolic distance from centre.">
+  <link rel="icon" href="/assets/torus.png" type="image/png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    html, body { background: #f4ede0; }
+    body { margin: 0; }
+    .back-link {
+      position: fixed;
+      top: 1rem;
+      left: 1.25rem;
+      z-index: 50;
+      font-family: "Iowan Old Style", "Palatino", "Times New Roman", serif;
+      font-style: italic;
+      font-size: 0.8rem;
+      color: #9a9085;
+      text-decoration: none;
+      letter-spacing: 0.05em;
+    }
+    .back-link:hover { color: #2a2419; }
+  </style>
+</head>
+<body>
+  <a href="/experiments" class="back-link">&larr; experiments</a>
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo, useCallback, useRef } = React;
+
+    function gcd(a, b) {
+      while (b !== 0) { [a, b] = [b, a % b]; }
+      return Math.abs(a);
+    }
+
+    function continuedFraction(p, q) {
+      const cf = [];
+      let a = p, b = q;
+      while (b !== 0) {
+        cf.push(Math.floor(a / b));
+        [a, b] = [b, a % b];
+      }
+      return cf;
+    }
+
+    function mobius(p, q) {
+      if (q === 0) return { x: 0, y: 1 };
+      const z = p / q;
+      const numRe = 1;
+      const numIm = 2 * z - 1;
+      const denRe = 2 * z - 1;
+      const denIm = 1;
+      const denMagSq = denRe * denRe + denIm * denIm;
+      return {
+        x: (numRe * denRe + numIm * denIm) / denMagSq,
+        y: (numIm * denRe - numRe * denIm) / denMagSq,
+      };
+    }
+
+    function mobiusReal(z) {
+      const numRe = 1;
+      const numIm = 2 * z - 1;
+      const denRe = 2 * z - 1;
+      const denIm = 1;
+      const denMagSq = denRe * denRe + denIm * denIm;
+      return {
+        x: (numRe * denRe + numIm * denIm) / denMagSq,
+        y: (numIm * denRe - numRe * denIm) / denMagSq,
+      };
+    }
+
+    function geodesicPolyline(P, Q, segments = 32) {
+      if (Math.abs(P.x + Q.x) < 1e-9 && Math.abs(P.y + Q.y) < 1e-9) {
+        const out = [];
+        for (let i = 0; i <= segments; i++) {
+          const t = i / segments;
+          out.push({ x: P.x + t * (Q.x - P.x), y: P.y + t * (Q.y - P.y) });
+        }
+        return out;
+      }
+
+      const D = P.x * Q.y - P.y * Q.x;
+      if (Math.abs(D) < 1e-12) {
+        return [P, Q];
+      }
+
+      const Cx = (Q.y - P.y) / D;
+      const Cy = (P.x - Q.x) / D;
+      const rSq = Cx * Cx + Cy * Cy - 1;
+      if (rSq <= 0) return [P, Q];
+      const r = Math.sqrt(rSq);
+
+      const angP = Math.atan2(P.y - Cy, P.x - Cx);
+      const angQ = Math.atan2(Q.y - Cy, Q.x - Cx);
+
+      let diff = angQ - angP;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+
+      const midAng = angP + diff / 2;
+      const midX = Cx + r * Math.cos(midAng);
+      const midY = Cy + r * Math.sin(midAng);
+      const useDiff = midX * midX + midY * midY < 1
+        ? diff
+        : (diff > 0 ? diff - 2 * Math.PI : diff + 2 * Math.PI);
+
+      const points = [];
+      for (let i = 0; i <= segments; i++) {
+        const t = i / segments;
+        const ang = angP + t * useDiff;
+        points.push({ x: Cx + r * Math.cos(ang), y: Cy + r * Math.sin(ang) });
+      }
+      return points;
+    }
+
+    function generateTriangles(maxDepth) {
+      const triangles = [];
+      function recurse(a, b, c, d, depth) {
+        if (depth > maxDepth) return;
+        const mn = a + c, md = b + d;
+        triangles.push({
+          v1: [a, b], v2: [mn, md], v3: [c, d],
+          depth,
+          mediant: [mn, md],
+        });
+        recurse(a, b, mn, md, depth + 1);
+        recurse(mn, md, c, d, depth + 1);
+      }
+      recurse(0, 1, 1, 1, 0);
+      return triangles;
+    }
+
+    const IRRATIONALS = [
+      { x: (Math.sqrt(5) - 1) / 2, label: 'φ−1', note: '[0;1,1,1,…]' },
+      { x: Math.SQRT2 - 1,         label: '√2−1', note: '[0;2,2,2,…]' },
+      { x: 1 / Math.PI,            label: '1/π',  note: '[0;3,7,15,1,292,…]' },
+      { x: 1 / Math.E,             label: '1/e',  note: '[0;2,1,2,1,1,4,…]' },
+      { x: Math.log10(2),          label: 'log₁₀2', note: '[0;3,3,9,2,1,1,…]' },
+    ];
+
+    const DEPTH_COLORS = [
+      '#f4c95d',
+      '#e6a93c',
+      '#c98620',
+      '#9e6418',
+      '#724513',
+      '#502f10',
+      '#36200d',
+      '#241608',
+      '#180f05',
+    ];
+    const depthColor = (d) => DEPTH_COLORS[Math.min(d, DEPTH_COLORS.length - 1)];
+    const OUTER_COLOR = '#2d4a5a';
+
+    const SIZE = 760;
+    const CENTER = SIZE / 2;
+    const RADIUS = 320;
+
+    const diskToScreen = ({ x, y }) => ({
+      x: CENTER + x * RADIUS,
+      y: CENTER - y * RADIUS,
+    });
+
+    function FareyTessellationDisk() {
+      const [maxDepth, setMaxDepth] = useState(7);
+      const [hovered, setHovered] = useState(null);
+      const [showOuter, setShowOuter] = useState(true);
+      const [showIrrationals, setShowIrrationals] = useState(true);
+      const [showRationalLabels, setShowRationalLabels] = useState(true);
+      const [zoom, setZoom] = useState(1);
+      const [center, setCenter] = useState({ x: CENTER, y: CENTER });
+      const svgRef = useRef(null);
+
+      const triangles = useMemo(() => generateTriangles(maxDepth), [maxDepth]);
+
+      const trianglePath = useCallback((tri) => {
+        const segs = Math.max(6, 36 - tri.depth * 4);
+        const P1 = mobius(...tri.v1);
+        const P2 = mobius(...tri.v2);
+        const P3 = mobius(...tri.v3);
+        const arc1 = geodesicPolyline(P1, P2, segs);
+        const arc2 = geodesicPolyline(P2, P3, segs);
+        const arc3 = geodesicPolyline(P3, P1, segs);
+        const all = [...arc1, ...arc2.slice(1), ...arc3.slice(1)].map(diskToScreen);
+        return 'M ' + all.map((p) => `${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' L ') + ' Z';
+      }, []);
+
+      const outerTriangle = useMemo(() => ({
+        v1: [0, 1], v2: [1, 0], v3: [1, 1], depth: -1,
+      }), []);
+
+      const viewW = SIZE / zoom;
+      const viewBox = `${center.x - viewW / 2} ${center.y - viewW / 2} ${viewW} ${viewW}`;
+
+      const resetView = () => { setZoom(1); setCenter({ x: CENTER, y: CENTER }); };
+
+      const zoomToBoundary = (worldX, worldY) => {
+        const nextZoom = Math.min(zoom * 2.2, 60);
+        setZoom(nextZoom);
+        setCenter({ x: worldX, y: worldY });
+      };
+
+      const handleWheel = (e) => {
+        e.preventDefault();
+        const rect = svgRef.current.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const worldX = center.x - viewW / 2 + (mouseX / SIZE) * viewW;
+        const worldY = center.y - viewW / 2 + (mouseY / SIZE) * viewW;
+        const factor = e.deltaY < 0 ? 1.2 : 1 / 1.2;
+        const newZoom = Math.max(0.5, Math.min(zoom * factor, 200));
+        const newViewW = SIZE / newZoom;
+        const newCx = worldX - (mouseX / SIZE - 0.5) * newViewW;
+        const newCy = worldY - (mouseY / SIZE - 0.5) * newViewW;
+        setZoom(newZoom);
+        setCenter({ x: newCx, y: newCy });
+      };
+
+      const labeledRationals = useMemo(() => {
+        const list = [];
+        const limit = Math.min(maxDepth + 2, 12);
+        for (let q = 1; q <= limit; q++) {
+          for (let p = 0; p <= q; p++) {
+            if (gcd(p, q) !== 1) continue;
+            list.push({ p, q });
+          }
+        }
+        list.push({ p: 1, q: 0 });
+        return list;
+      }, [maxDepth]);
+
+      const formatCF = (cf) => '[' + cf[0] + (cf.length > 1 ? '; ' + cf.slice(1).join(', ') : '') + ']';
+
+      return (
+        <div style={styles.root}>
+          <header style={styles.header}>
+            <h1 style={styles.title}>
+              <span style={styles.titleAccent}>Farey</span> tessellation of the Poincaré disk
+            </h1>
+            <p style={styles.subtitle}>
+              The 2D relief map of <span style={styles.mono}>[0,1]</span>. The bottom semicircle of the disk
+              <em> is</em> the interval — rationals sit on the boundary, irrationals fill the gaps between.
+              Each triangle has three rational vertices that are pairwise Farey neighbours; the
+              new vertex of each triangle is the <em>mediant</em> of the other two. Colour encodes
+              recursion depth: bright gold near the centre, deepening to near-black as the triangles cascade
+              toward the boundary. The boundary is infinitely far in hyperbolic distance — that's where the
+              irrationals live, unreachable by finite subdivision.
+            </p>
+          </header>
+
+          <div style={styles.controls}>
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>
+                depth: <span style={styles.mono}>{maxDepth}</span>
+                <span style={styles.tinyNote}> ({triangles.length} triangles)</span>
+              </label>
+              <input
+                type="range"
+                min={1}
+                max={9}
+                value={maxDepth}
+                onChange={(e) => setMaxDepth(parseInt(e.target.value, 10))}
+                style={styles.slider}
+              />
+            </div>
+
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>
+                zoom: <span style={styles.mono}>{zoom.toFixed(1)}×</span>
+              </label>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <button style={styles.iconBtn} onClick={() => setZoom((z) => Math.min(z * 1.5, 200))}>+</button>
+                <button style={styles.iconBtn} onClick={() => setZoom((z) => Math.max(z / 1.5, 0.5))}>−</button>
+                <button style={styles.resetBtn} onClick={resetView}>reset</button>
+              </div>
+            </div>
+
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>show</label>
+              <div style={styles.toggleGroup}>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showOuter ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowOuter(!showOuter)}
+                >
+                  outer (∞)
+                </button>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showRationalLabels ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowRationalLabels(!showRationalLabels)}
+                >
+                  rationals
+                </button>
+                <button
+                  style={{ ...styles.toggleBtn, ...(showIrrationals ? styles.toggleBtnActive : {}) }}
+                  onClick={() => setShowIrrationals(!showIrrationals)}
+                >
+                  irrationals
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.controlGroup}>
+              <label style={styles.label}>navigation</label>
+              <p style={styles.helpText}>
+                scroll = zoom · click triangle = inspect · click boundary point = zoom there
+              </p>
+            </div>
+          </div>
+
+          <div style={styles.svgWrap}>
+            <svg
+              ref={svgRef}
+              width={SIZE}
+              height={SIZE}
+              viewBox={viewBox}
+              style={styles.svg}
+              onWheel={handleWheel}
+            >
+              <rect x={0} y={0} width={SIZE} height={SIZE} fill="#f4ede0" />
+              <circle cx={CENTER} cy={CENTER} r={RADIUS} fill="#faf6ec" stroke="none" />
+
+              {showOuter && (
+                <path
+                  d={trianglePath(outerTriangle)}
+                  fill={OUTER_COLOR}
+                  fillOpacity={0.85}
+                  stroke="#1a2c36"
+                  strokeWidth={0.5 / zoom}
+                  onMouseEnter={() => setHovered({ ...outerTriangle, isOuter: true })}
+                  onMouseLeave={() => setHovered(null)}
+                  style={{ cursor: 'pointer' }}
+                />
+              )}
+
+              {triangles.map((tri, i) => {
+                const isHovered = hovered && !hovered.isOuter &&
+                  hovered.v1[0] === tri.v1[0] && hovered.v1[1] === tri.v1[1] &&
+                  hovered.v3[0] === tri.v3[0] && hovered.v3[1] === tri.v3[1];
+                return (
+                  <path
+                    key={`${tri.v1.join(',')}-${tri.v3.join(',')}`}
+                    d={trianglePath(tri)}
+                    fill={depthColor(tri.depth)}
+                    fillOpacity={isHovered ? 1 : 0.92}
+                    stroke={isHovered ? '#fff4d6' : '#2a2419'}
+                    strokeWidth={(isHovered ? 1.5 : 0.4) / zoom}
+                    onMouseEnter={() => setHovered(tri)}
+                    onMouseLeave={() => setHovered(null)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                );
+              })}
+
+              <circle
+                cx={CENTER}
+                cy={CENTER}
+                r={RADIUS}
+                fill="none"
+                stroke="#2a2419"
+                strokeWidth={1.5 / zoom}
+              />
+
+              {showRationalLabels && labeledRationals.map((r, i) => {
+                const pt = mobius(r.p, r.q);
+                const screen = diskToScreen(pt);
+                const dx = screen.x - CENTER;
+                const dy = screen.y - CENTER;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const outset = 16 / zoom;
+                const lx = screen.x + (dx / dist) * outset;
+                const ly = screen.y + (dy / dist) * outset;
+                const label = r.q === 0 ? '∞' : (r.p === 0 ? '0' : (r.p === r.q ? '1' : `${r.p}/${r.q}`));
+                const fontSize = Math.max(8, 11 / Math.sqrt(zoom));
+                return (
+                  <g key={`bl-${i}`}>
+                    <circle cx={screen.x} cy={screen.y} r={2 / zoom} fill="#2a2419" />
+                    <text
+                      x={lx}
+                      y={ly}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      style={{ ...styles.boundaryLabel, fontSize }}
+                    >
+                      {label}
+                    </text>
+                  </g>
+                );
+              })}
+
+              {showIrrationals && IRRATIONALS.map((ir, i) => {
+                const pt = mobiusReal(ir.x);
+                const screen = diskToScreen(pt);
+                const dx = screen.x - CENTER;
+                const dy = screen.y - CENTER;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                const outset = 28 / zoom;
+                const lx = screen.x + (dx / dist) * outset;
+                const ly = screen.y + (dy / dist) * outset;
+                const fontSize = Math.max(9, 12 / Math.sqrt(zoom));
+                return (
+                  <g key={`ir-${i}`}>
+                    <circle cx={screen.x} cy={screen.y} r={3 / zoom} fill="#8b1e1e" />
+                    <line
+                      x1={screen.x}
+                      y1={screen.y}
+                      x2={lx - (dx / dist) * 4}
+                      y2={ly - (dy / dist) * 4}
+                      stroke="#8b1e1e"
+                      strokeWidth={0.5 / zoom}
+                      strokeDasharray={`2 2`}
+                    />
+                    <text
+                      x={lx}
+                      y={ly}
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      style={{ ...styles.irrationalLabel, fontSize, fill: '#8b1e1e' }}
+                      onClick={() => zoomToBoundary(screen.x, screen.y)}
+                    >
+                      {ir.label}
+                    </text>
+                  </g>
+                );
+              })}
+            </svg>
+
+            <div style={styles.infoPanel}>
+              {hovered ? (
+                hovered.isOuter ? (
+                  <>
+                    <div style={styles.infoTitle}>Outer triangle <span style={styles.tinyNote}>(0, ∞, 1)</span></div>
+                    <div style={styles.infoLine}>
+                      The complement of [0,1] within the disk — the rest of the projectively
+                      extended real line. Its three vertices are 0/1, 1/0 (= ∞), and 1/1.
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={styles.infoTitle}>
+                      Triangle <span style={styles.mono}>({hovered.v1[0]}/{hovered.v1[1]}, {hovered.mediant[0]}/{hovered.mediant[1]}, {hovered.v3[0]}/{hovered.v3[1]})</span>
+                      <span style={styles.depthBadge}>depth {hovered.depth}</span>
+                    </div>
+                    <div style={styles.infoLine}>
+                      <strong>Mediant:</strong>
+                      <span style={styles.mono}> {hovered.mediant[0]}/{hovered.mediant[1]} ≈ {(hovered.mediant[0] / hovered.mediant[1]).toFixed(6)}</span>
+                      · CF {formatCF(continuedFraction(hovered.mediant[0], hovered.mediant[1]))}
+                    </div>
+                    <div style={styles.infoLine}>
+                      Bounded by geodesics between
+                      <span style={styles.mono}> {hovered.v1[0]}/{hovered.v1[1]}</span>,
+                      <span style={styles.mono}> {hovered.mediant[0]}/{hovered.mediant[1]}</span>,
+                      <span style={styles.mono}> {hovered.v3[0]}/{hovered.v3[1]}</span>.
+                      All pairs are Farey neighbours: <span style={styles.mono}>|ad − bc| = 1</span>.
+                    </div>
+                  </>
+                )
+              ) : (
+                <div style={styles.infoHint}>
+                  <em>Hover a triangle for details · scroll to zoom · the boundary is ∞ away in hyperbolic distance</em>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <section style={styles.legend}>
+            {DEPTH_COLORS.slice(0, 8).map((c, i) => (
+              <div key={i} style={styles.legendItem}>
+                <div style={{ ...styles.swatch, background: c }} />
+                <span>depth {i}</span>
+              </div>
+            ))}
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: OUTER_COLOR }} />
+              <span>outer (∞)</span>
+            </div>
+            <div style={styles.legendItem}>
+              <div style={{ ...styles.swatch, background: '#8b1e1e', borderRadius: '50%', width: 12, height: 12 }} />
+              <span>irrational on boundary</span>
+            </div>
+          </section>
+
+          <section style={styles.notes}>
+            <h2 style={styles.notesTitle}>How to read it</h2>
+            <ul style={styles.notesList}>
+              <li>
+                <strong>The bottom semicircle is the interval [0,1].</strong> 0 is at the far left of the disk,
+                1 is at the far right, and 1/2 is at the very bottom. Every rational <span style={styles.mono}>p/q</span> in
+                lowest terms occupies a unique point on this arc; the irrationals fill in the gaps.
+              </li>
+              <li>
+                <strong>Each triangle is a Farey triangle.</strong> Its three vertices are pairwise Farey neighbours,
+                and the "new" vertex (the one introduced when this triangle was subdivided from its parent) is the
+                <em> mediant</em> of the other two. The depth field tells you how many subdivisions deep the triangle is.
+              </li>
+              <li>
+                <strong>Depth in this tree = depth in the Stern–Brocot tree</strong> = closely related to the sum of
+                continued-fraction coefficients. Triangles at depth d have vertices reachable in d mediant steps from 1/2.
+              </li>
+              <li>
+                <strong>The disk has hyperbolic geometry.</strong> Distances stretch as you approach the boundary —
+                the small-looking triangles near the edge are the same size in hyperbolic measure as the big golden
+                triangle at the bottom centre. You could subdivide forever without filling in the boundary.
+              </li>
+              <li>
+                <strong>The irrationals are on the boundary, infinitely far away.</strong> φ−1 sits at a specific
+                point; 1/π at another; each is the limit of a Cauchy sequence of triangles spiralling inward.
+                φ−1 has CF [0;1,1,1,…] — every partial quotient is 1, so its convergent path zig-zags maximally
+                through the tessellation. 1/π has CF [0;3,7,15,1,292,…] — the big 292 means its geodesic dives
+                deep through one specific triangle before resolving further.
+              </li>
+              <li>
+                <strong>Click a labelled irrational to zoom toward it.</strong> You'll see the triangle cascade
+                getting finer and finer as you approach — but the boundary point itself never appears as a
+                vertex. The irrational is the limit, never the destination.
+              </li>
+            </ul>
+
+            <h2 style={{ ...styles.notesTitle, marginTop: 24 }}>What this is the 2D version of</h2>
+            <p style={styles.notesText}>
+              This is the geometric companion to the 1D depth visualizer. In that one, depth was encoded as
+              stalk height above a stretched-out [0,1] axis. Here, depth is encoded as size and colour of
+              triangles tiling a 2D hyperbolic disk. Same information; different relief.
+            </p>
+            <p style={styles.notesText}>
+              The 2D version makes one thing immediate that the 1D version can't: <em>every</em> rational has a
+              neighbourhood structure, defined by which triangles share its vertex. Two rationals are
+              "Farey-close" if they sit on the same triangle edge. This is the natural topology of meaning-addresses
+              in your pscale framework — not the Euclidean topology of decimal proximity, but the
+              Farey/hyperbolic topology where 1/2 is one move from 1/3 and from 2/3, two moves from 1/4 and 3/4, etc.
+            </p>
+            <p style={styles.notesText}>
+              The hyperbolic distance from the disk centre to a triangle at depth <span style={styles.mono}>d</span>
+              grows roughly linearly with <span style={styles.mono}>d</span>. So "depth in pscale" and "hyperbolic
+              distance from origin" are the same thing in this picture. This is the precise geometric reason
+              your framework lives natively in hyperbolic space.
+            </p>
+          </section>
+        </div>
+      );
+    }
+
+    const styles = {
+      root: {
+        fontFamily: '"Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif',
+        background: '#f4ede0',
+        color: '#2a2419',
+        minHeight: '100vh',
+        padding: '32px 48px',
+        maxWidth: 1400,
+        margin: '0 auto',
+      },
+      header: { marginBottom: 24 },
+      title: {
+        fontSize: 34,
+        fontWeight: 400,
+        letterSpacing: '-0.02em',
+        margin: '0 0 10px 0',
+        lineHeight: 1.1,
+      },
+      titleAccent: {
+        fontStyle: 'italic',
+        color: '#8b1e1e',
+      },
+      subtitle: {
+        fontSize: 15,
+        lineHeight: 1.55,
+        maxWidth: 950,
+        color: '#5a4d36',
+        margin: 0,
+      },
+      mono: {
+        fontFamily: '"Berkeley Mono", "JetBrains Mono", "SF Mono", Consolas, monospace',
+        fontSize: '0.92em',
+        background: '#ece1c8',
+        padding: '1px 5px',
+        borderRadius: 2,
+      },
+      tinyNote: {
+        fontSize: '0.78em',
+        fontStyle: 'italic',
+        color: '#7d6b48',
+        marginLeft: 4,
+      },
+      controls: {
+        display: 'flex',
+        gap: 28,
+        flexWrap: 'wrap',
+        margin: '20px 0',
+        padding: '16px 20px',
+        background: '#ece1c8',
+        border: '1px solid #d6cab2',
+      },
+      controlGroup: { display: 'flex', flexDirection: 'column', gap: 6 },
+      label: {
+        fontSize: 12,
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        color: '#6b5b3a',
+      },
+      toggleGroup: { display: 'flex', gap: 4 },
+      toggleBtn: {
+        padding: '6px 12px',
+        border: '1px solid #2a2419',
+        background: 'transparent',
+        color: '#2a2419',
+        fontFamily: 'inherit',
+        fontSize: 12,
+        cursor: 'pointer',
+        transition: 'all 0.15s',
+      },
+      toggleBtnActive: { background: '#2a2419', color: '#f4ede0' },
+      slider: { width: 200 },
+      iconBtn: {
+        width: 28,
+        height: 28,
+        border: '1px solid #2a2419',
+        background: '#faf6ec',
+        fontFamily: 'inherit',
+        fontSize: 16,
+        cursor: 'pointer',
+      },
+      resetBtn: {
+        padding: '6px 14px',
+        border: '1px solid #8b1e1e',
+        background: 'transparent',
+        color: '#8b1e1e',
+        fontFamily: 'inherit',
+        fontSize: 12,
+        cursor: 'pointer',
+      },
+      helpText: {
+        fontSize: 12,
+        fontStyle: 'italic',
+        color: '#7d6b48',
+        margin: 0,
+        maxWidth: 280,
+      },
+      svgWrap: {
+        position: 'relative',
+        width: SIZE,
+        margin: '0 auto 16px',
+      },
+      svg: {
+        display: 'block',
+        background: '#f4ede0',
+        border: '1px solid #d6cab2',
+        cursor: 'crosshair',
+      },
+      infoPanel: {
+        marginTop: 12,
+        padding: '14px 18px',
+        background: '#faf6ec',
+        border: '1px solid #d6cab2',
+        minHeight: 96,
+      },
+      infoTitle: {
+        fontSize: 17,
+        color: '#2a2419',
+        marginBottom: 8,
+        fontWeight: 500,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+      },
+      depthBadge: {
+        fontSize: 11,
+        background: '#2a2419',
+        color: '#f4ede0',
+        padding: '2px 7px',
+        borderRadius: 8,
+        letterSpacing: '0.05em',
+        textTransform: 'uppercase',
+      },
+      infoLine: {
+        fontSize: 13,
+        lineHeight: 1.6,
+        color: '#3a2d18',
+        marginBottom: 4,
+      },
+      infoHint: {
+        fontSize: 13,
+        color: '#7d6b48',
+        textAlign: 'center',
+        paddingTop: 28,
+      },
+      boundaryLabel: {
+        fontFamily: '"Berkeley Mono", "JetBrains Mono", monospace',
+        fill: '#3a2d18',
+        pointerEvents: 'none',
+      },
+      irrationalLabel: {
+        fontFamily: '"Iowan Old Style", Palatino, serif',
+        fontStyle: 'italic',
+        cursor: 'pointer',
+      },
+      legend: {
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 14,
+        padding: '12px 16px',
+        background: '#ece1c8',
+        border: '1px solid #d6cab2',
+        fontSize: 12,
+        marginBottom: 24,
+      },
+      legendItem: { display: 'flex', alignItems: 'center', gap: 6 },
+      swatch: { width: 14, height: 14, border: '1px solid #2a2419' },
+      notes: {
+        padding: '20px 24px',
+        background: '#faf6ec',
+        border: '1px solid #d6cab2',
+        maxWidth: 1050,
+      },
+      notesTitle: {
+        fontSize: 17,
+        fontWeight: 400,
+        fontStyle: 'italic',
+        margin: '0 0 12px 0',
+        color: '#8b1e1e',
+      },
+      notesList: {
+        fontSize: 14,
+        lineHeight: 1.65,
+        margin: '0 0 12px 0',
+        paddingLeft: 20,
+        color: '#3a2d18',
+      },
+      notesText: {
+        fontSize: 14,
+        lineHeight: 1.65,
+        color: '#3a2d18',
+        margin: '0 0 10px 0',
+      },
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<FareyTessellationDisk />);
+  </script>
+</body>
+</html>
