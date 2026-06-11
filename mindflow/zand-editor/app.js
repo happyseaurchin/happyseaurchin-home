@@ -1,5 +1,5 @@
 /**
- * zand-editor — multi-block ztone file editor.
+ * biome editor (dir: zand-editor) — multi-block 0-9 file editor.
  *
  * Loads a { id: block, ... } JSON file of ztone blocks (digit '0' as voicing,
  * digits '1'..'9' as lateral siblings), renders document / columns / dir
@@ -104,7 +104,7 @@ function classifyRef(s) {
 
 const state = {
   shelf: new Map(),    // id -> block
-  filename: 'ztone.json',
+  filename: 'biome.json',
   currentId: null,
   view: 'doc',
   docMode: 'html',
@@ -802,32 +802,38 @@ function newFile() {
   state.shelf = new Map();
   state.currentId = null;
   state.path = [];
-  state.filename = 'ztone.json';
+  state.filename = 'biome.json';
   document.getElementById('filename-input').value = state.filename;
   refresh();
 }
 
-async function loadFile(file) {
+async function loadFiles(files) {
   try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-    if (!isObj(data)) { alert('File must be a JSON object.'); return; }
+    const entries = await Promise.all([...files].map(async (f) => {
+      let data;
+      try { data = JSON.parse(await f.text()); }
+      catch (err) { throw new Error(`${f.name}: ${err.message}`); }
+      if (!isObj(data)) throw new Error(`${f.name} must be a JSON object.`);
+      return { name: f.name, data };
+    }));
 
-    // Heuristic for single ztone block vs shelf: a single block has '0'
-    // or a digit (1-9) key at root.
-    const keys = Object.keys(data);
-    const looksLikeSingleBlock = keys.some(k => /^[0-9]$/.test(k));
-
-    if (looksLikeSingleBlock) {
-      const id = file.name.replace(/\.json$/, '') || 'block';
-      state.shelf = new Map([[id, data]]);
-    } else {
-      state.shelf = new Map();
-      for (const [id, block] of Object.entries(data)) {
-        if (isObj(block)) state.shelf.set(id, block);
+    // Heuristic per file, single block vs bundle: a single block has '0'
+    // or a digit (1-9) key at root. Single blocks are named by filename;
+    // bundles merge their { id: block } entries. Multi-select a shell
+    // directory and each file becomes a sibling block on the shelf.
+    const shelf = new Map();
+    for (const { name, data } of entries) {
+      const looksLikeSingleBlock = Object.keys(data).some(k => /^[0-9]$/.test(k));
+      if (looksLikeSingleBlock) {
+        shelf.set(name.replace(/\.json$/, '') || 'block', data);
+      } else {
+        for (const [id, block] of Object.entries(data)) {
+          if (isObj(block)) shelf.set(id, block);
+        }
       }
     }
-    state.filename = file.name || 'ztone.json';
+    state.shelf = shelf;
+    state.filename = entries.length === 1 ? (entries[0].name || 'biome.json') : 'shell.json';
     document.getElementById('filename-input').value = state.filename;
     state.currentId = state.shelf.size ? state.shelf.keys().next().value : null;
     state.path = [];
@@ -840,7 +846,7 @@ async function loadFile(file) {
 function saveFile() {
   const obj = {};
   state.shelf.forEach((v, k) => { obj[k] = v; });
-  let filename = document.getElementById('filename-input').value.trim() || 'ztone.json';
+  let filename = document.getElementById('filename-input').value.trim() || 'biome.json';
   if (!filename.endsWith('.json')) filename += '.json';
   state.filename = filename;
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
@@ -941,14 +947,13 @@ function wireStaticUI() {
   document.getElementById('btn-save').addEventListener('click', saveFile);
   document.getElementById('btn-new-block').addEventListener('click', newBlock);
   document.getElementById('file-input').addEventListener('change', (e) => {
-    const f = e.target.files[0];
-    if (f) loadFile(f);
+    if (e.target.files.length) loadFiles(e.target.files);
     e.target.value = '';
   });
 
   const fnInput = document.getElementById('filename-input');
   fnInput.addEventListener('change', () => {
-    state.filename = fnInput.value.trim() || 'ztone.json';
+    state.filename = fnInput.value.trim() || 'biome.json';
     saveLocal();
   });
 }

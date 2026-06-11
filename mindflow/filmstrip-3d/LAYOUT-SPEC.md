@@ -378,9 +378,9 @@ typically 10–100 cubes per block. Verified workloads in v3 range
 - **Deep blocks read as near-empty plains** at whole-beach distance — a
   depth-5 tile is 243× its cube size (3^depth geometry). Zoom in, or
   subset with `?blocks=`.
-- **Editor mode reads only `mindflow-editor:shelf`** — the zand-editor's
-  0-form shelf (`zand-editor:shelf`) isn't merged in yet; write-back would
-  need `_`→`0` denormalisation to avoid corrupting it.
+- **Editor mode reads only `mindflow-editor:shelf`** — the biome editor's
+  0-form shelf (localStorage key `zand-editor:shelf`) isn't merged in yet;
+  write-back would need `_`→`0` denormalisation to avoid corrupting it.
 - **The relay needs a serverless host.** On a static-only deploy
   (`python -m http.server`) CORS-less beaches like the biome commons
   can't load; beach.happyseaurchin.com still works (it serves CORS).
