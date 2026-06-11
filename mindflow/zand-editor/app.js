@@ -258,7 +258,7 @@ function renderDocHTML(block) {
     out.push(`<div class="node">`);
     out.push(`<h${hLevel} class="node-heading"><span class="addr">${esc(addrDisplay)}</span>`);
     if (sem !== null) out.push(`<span class="sem">${esc(sem)}</span>`);
-    else out.push(`<span class="sem-empty">(no voicing at this position)</span>`);
+    else out.push(`<span class="sem-empty">(no semantic at this position)</span>`);
     out.push(`</h${hLevel}>`);
 
     if (children.length) {
@@ -296,7 +296,7 @@ function renderDocMarkdown(block) {
     const children = deepDigitChildren(node);
 
     if (sem !== null) lines.push(`${h} \`${addrDisplay}\` · ${sem}`);
-    else lines.push(`${h} \`${addrDisplay}\` · *(no voicing)*`);
+    else lines.push(`${h} \`${addrDisplay}\` · *(no semantic)*`);
     lines.push('');
 
     for (const child of children) {
@@ -351,7 +351,7 @@ function renderDir(block) {
     out.push(`<div class="dir-row${walkDepth === 0 ? ' root' : ''}" data-nav="${esc(navKey)}" style="padding-left:${indent}px">`);
     out.push(`<span class="dir-addr">${esc(addrDisplay)}</span>`);
     if (sem !== null) out.push(`<span class="dir-text">${esc(sem)}</span>`);
-    else out.push(`<span class="dir-text empty">(no voicing)</span>`);
+    else out.push(`<span class="dir-text empty">(no semantic)</span>`);
     out.push(`</div>`);
 
     for (const child of children) {
@@ -384,59 +384,41 @@ function renderDirScope() {
 // ──── Render: column view ────────────────────────────────────
 
 /**
- * Build the disc-stack columns. Each column is one pscale level (one disc
- * cross-section); cells are all content positions at that pscale across the
- * whole block, regardless of angular path. A "content position" is a walk
- * that ends in digit 1-9 — pure zero-spine intermediates and voicing strings
- * (walks ending in 0) are not separate cells; their text is collected as the
- * voicing of the deepest ancestor whose walk ends in 1-9 (or the root).
- *
- * Columns are returned sorted high-pscale first (leftmost). The root sits in
- * the highest-pscale column as a single cell carrying the floor voicing.
+ * Miller columns (matching the legacy editor's column behaviour): column 0
+ * holds the block's content positions; selecting a cell opens its children
+ * in the next column, so each column is the downstream of the selection to
+ * its left. Children are gathered with deepDigitChildren, so positions
+ * reached through a zero-spine descent (walk extensions like 0,3) appear
+ * as cells of the column whose node they elaborate.
  */
-function buildColumns(block) {
-  const fl = floorDepth(block);
-  const byPscale = new Map();
-  const push = (pscale, cell) => {
-    if (!byPscale.has(pscale)) byPscale.set(pscale, []);
-    byPscale.get(pscale).push(cell);
-  };
-
-  if (isObj(block)) {
-    push(fl, {
-      path: [],
-      value: block,
-      isLeaf: false,
-      text: collectZeroText(block),
-      refKind: 'text',
+function buildColumns(block, path) {
+  const columns = [];
+  let node = block;
+  let base = [];
+  while (isObj(node)) {
+    const kids = deepDigitChildren(node);
+    if (!kids.length && columns.length) break;
+    const cells = kids.map(k => {
+      const v = k.value;
+      return {
+        path: base.concat(k.pathExtension),
+        value: v,
+        isLeaf: !isObj(v),
+        hasKids: isObj(v) && deepDigitChildren(v).length > 0,
+        text: typeof v === 'string' ? v : collectZeroText(v),
+        refKind: typeof v === 'string' ? classifyRef(v) : 'text',
+      };
     });
+    columns.push({ base: [...base], cells });
+    if (base.length >= path.length) break;
+    // Advance along the selection: the cell whose walk prefixes the path.
+    const next = cells.find(c =>
+      c.path.length <= path.length && c.path.every((d, i) => d === path[i]));
+    if (!next) break;
+    node = next.value;
+    base = next.path;
   }
-
-  function recurse(node, walked) {
-    if (!isObj(node)) return;
-    for (const d of '0123456789') {
-      if (!(d in node)) continue;
-      const newPath = walked.concat([d]);
-      if (d !== '0') {
-        const v = node[d];
-        const pscale = fl - newPath.length;
-        push(pscale, {
-          path: newPath,
-          value: v,
-          isLeaf: !isObj(v),
-          text: typeof v === 'string' ? v : collectZeroText(v),
-          refKind: typeof v === 'string' ? classifyRef(v) : 'text',
-        });
-      }
-      recurse(node[d], newPath);
-    }
-  }
-  recurse(block, []);
-
-  return [...byPscale.keys()].sort((a, b) => b - a).map(ps => ({
-    pscale: ps,
-    cells: byPscale.get(ps),
-  }));
+  return columns;
 }
 
 /** Format a path as a clickable pscale-number, decimal at floor boundary. */
@@ -478,27 +460,31 @@ function cellRelationToSel(cellPath, sel) {
   };
 }
 
+/**
+ * Walk lenses preview the shapes spark derives from (number, attention):
+ *   point   — the selected position alone
+ *   spindle — root → selection, the narrowing walk
+ *   ring    — the selection's digit children (spark's ring is the 1-9 ring
+ *             AT the terminus, not its siblings)
+ *   disc    — every visible position at the selection's pscale
+ * 'free' applies no lens.
+ */
 function applyWalkHighlight(mode, rel) {
   if (mode === 'free') return null;
   if (mode === 'spindle') return rel.isSelected || rel.isAncestor ? 'lit' : 'dim';
   if (mode === 'point') return rel.isSelected ? 'lit' : 'dim';
   if (mode === 'ring') {
     if (rel.isSelected) return null;
-    return rel.isSibling ? 'ring' : 'dim';
+    return rel.isChild ? 'ring' : 'dim';
   }
-  if (mode === 'disc') {
-    // Selected's disc = its column. We mark cells lit when they're at the
-    // selected's pscale; everything else dim. The cell-comparison happens
-    // in renderColumns by length-matching against sel.length.
-    return rel.sameDisc ? 'lit' : 'dim';
-  }
+  if (mode === 'disc') return rel.sameDisc ? 'lit' : 'dim';
   return null;
 }
 
 function renderColumns(block) {
-  const columns = buildColumns(block);
   const fl = floorDepth(block);
   const sel = state.path;
+  const columns = buildColumns(block, sel);
   const out = [];
   out.push(`<div class="col-view">`);
   out.push(`<div class="col-path">${formatColPath(sel, state.currentId, fl)}</div>`);
@@ -507,12 +493,18 @@ function renderColumns(block) {
   if (!columns.length) out.push(`<div class="col-empty">Block has no content positions.</div>`);
 
   for (const col of columns) {
+    const baseAddr = col.base.length ? displayAddress(col.base, fl) : '∅';
+    const pscale = fl - col.base.length - 1;
     out.push(`<div class="column">`);
-    out.push(`<div class="col-header">pscale ${col.pscale}</div>`);
+    out.push(`<div class="col-header">${esc(baseAddr)} ▸ children · pscale ${pscale}</div>`);
+    if (!col.cells.length) out.push(`<div class="col-empty">(no entries)</div>`);
 
     for (const cell of col.cells) {
       const rel = cellRelationToSel(cell.path, sel);
-      // sameDisc = cell is in the same column as the selected (same path length, sel non-empty)
+      // isChild: the cell sits in the selection's children column.
+      rel.isChild = sel.length > 0 && col.base.length === sel.length
+        && col.base.every((d, i) => d === sel[i]);
+      // sameDisc: same pscale as the selection (walk lengths match).
       rel.sameDisc = sel.length > 0 && cell.path.length === sel.length;
       const classes = ['cell'];
       if (rel.isSelected) classes.push('selected');
@@ -536,11 +528,10 @@ function renderColumns(block) {
       } else if (cell.isLeaf) {
         out.push(`<div class="cell-text empty">(empty)</div>`);
       } else {
-        out.push(`<div class="cell-text empty">(no voicing)</div>`);
+        out.push(`<div class="cell-text empty">(no semantic)</div>`);
       }
 
       const markers = [];
-      if (!cell.isLeaf) markers.push(`<span class="marker marker-branch">▸ branch</span>`);
       if (cell.refKind === 'blockref') {
         const refName = cell.text.split(':')[0];
         const has = state.shelf.has(refName);
@@ -548,7 +539,11 @@ function renderColumns(block) {
         else markers.push(`<span class="marker marker-broken">→ missing</span>`);
       }
       if (markers.length) out.push(`<div class="cell-markers">${markers.join('')}</div>`);
-      out.push(`</div></div>`);
+      out.push(`</div>`);
+      // Branch affordance: a slim chevron on the cell's edge, not a worded
+      // marker — the next column is the marker.
+      if (cell.hasKids) out.push(`<span class="cell-chevron" title="has children">▸</span>`);
+      out.push(`</div>`);
     }
     out.push(`</div>`);
   }
@@ -599,7 +594,7 @@ function renderBlockList() {
   }
   const out = [];
   for (const [id, block] of state.shelf) {
-    const preview = collectZeroText(block) || '(no voicing)';
+    const preview = collectZeroText(block) || '(no semantic)';
     const cur = id === state.currentId ? ' current' : '';
     out.push(`<div class="block-item${cur}" data-id="${esc(id)}">`);
     out.push(`<div class="block-item-id"><span>${esc(id)}</span>`);
@@ -617,7 +612,7 @@ function renderView() {
   const body = document.getElementById('view-body');
   const block = currentBlock();
   if (!block) {
-    body.innerHTML = `<div class="empty-state">Select a block from the left, or load a ztone file.</div>`;
+    body.innerHTML = `<div class="empty-state">Select a block from the left, or load a biome file.</div>`;
     updateStatus();
     return;
   }
@@ -664,6 +659,11 @@ function attachDynamicHandlers() {
       if (e.target.closest('.item-btn')) return;
       selectBlock(el.dataset.id);
     });
+    // Double-click a block → raw JSON popup.
+    el.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.item-btn')) return;
+      openRawModal(el.dataset.id);
+    });
   });
   document.querySelectorAll('[data-rename]').forEach(el => {
     el.addEventListener('click', (e) => {
@@ -678,7 +678,10 @@ function attachDynamicHandlers() {
     });
   });
 
-  // Column view cells: click sets state.path to the cell's full walk.
+  // Column view cells: click sets state.path to the cell's full walk;
+  // double-click edits in place. navCell re-renders the view, so the edit
+  // must target the FRESH cell element found by data-path — the captured
+  // `el` is detached after refresh (this was the silent can't-edit bug).
   document.querySelectorAll('#view-body .cell').forEach(el => {
     let clickTimer = null;
     el.addEventListener('click', (e) => {
@@ -691,8 +694,10 @@ function attachDynamicHandlers() {
     el.addEventListener('dblclick', (e) => {
       if (e.target.closest('.marker-jump')) return;
       clearTimeout(clickTimer);
-      navCell(el.dataset.path.split(''));
-      enterEdit(el);
+      const pathStr = el.dataset.path;
+      navCell(pathStr.split(''));
+      const fresh = document.querySelector(`#view-body .cell[data-path="${CSS.escape(pathStr)}"]`);
+      if (fresh) enterEdit(fresh);
     });
   });
 
@@ -730,7 +735,7 @@ function enterEdit(cellEl) {
 
   const ta = document.createElement('textarea');
   ta.className = 'col-edit';
-  ta.value = original === '(empty)' || original === '(no voicing)' ? '' : original;
+  ta.value = ['(empty)', '(no semantic)', '(no semantic)'].includes(original) ? '' : original;
   ta.rows = Math.max(3, Math.ceil(original.length / 40));
   textEl.style.display = 'none';
   body.appendChild(ta);
@@ -753,6 +758,48 @@ function enterEdit(cellEl) {
     if (e.key === 'Escape') { ta.value = original; ta.blur(); }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ta.blur();
   });
+}
+
+// ──── Raw block popup ────────────────────────────────────────
+
+function openRawModal(id) {
+  const block = state.shelf.get(id);
+  if (!block) return;
+  let overlay = document.getElementById('raw-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'raw-modal';
+    overlay.innerHTML = `
+      <div class="raw-box">
+        <header><span class="raw-title"></span>
+          <span class="raw-actions">
+            <button id="raw-copy" title="Copy JSON">copy</button>
+            <button id="raw-close" title="Close (Esc)">close</button>
+          </span>
+        </header>
+        <pre class="raw-pre"></pre>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRawModal(); });
+    overlay.querySelector('#raw-close').addEventListener('click', closeRawModal);
+    overlay.querySelector('#raw-copy').addEventListener('click', () => {
+      navigator.clipboard?.writeText(overlay.querySelector('.raw-pre').textContent).then(() => {
+        const b = overlay.querySelector('#raw-copy');
+        b.textContent = 'copied ✓';
+        setTimeout(() => { b.textContent = 'copy'; }, 1200);
+      }).catch(() => {});
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeRawModal();
+    });
+  }
+  overlay.querySelector('.raw-title').textContent = `${id}.json — raw`;
+  overlay.querySelector('.raw-pre').textContent = JSON.stringify(block, null, 2);
+  overlay.classList.add('open');
+}
+
+function closeRawModal() {
+  document.getElementById('raw-modal')?.classList.remove('open');
 }
 
 // ──── Navigation / state mutators ────────────────────────────
@@ -859,17 +906,42 @@ function saveFile() {
   saveLocal();
 }
 
+const BIOME_BEACH = 'https://biome-commons-production.up.railway.app/.well-known/biome-beach';
+const SAMPLE_BIOME_BLOCKS = ['slate', 'flint', 'genome'];
+
 async function loadSamples() {
+  // Defaults are the biome's own teaching blocks, fetched live through the
+  // same-origin relay (the commons serves no CORS headers). Falls back to
+  // the bundled legacy stones when the relay isn't reachable (static dev).
+  let loaded = false;
   try {
-    const [a, b] = await Promise.all([
-      fetch('./blocks/sunztone-v5.json').then(r => r.json()),
-      fetch('./blocks/whetztone-v3.json').then(r => r.json()),
-    ]);
-    state.shelf.set('sunztone', a);
-    state.shelf.set('whetztone', b);
-    if (!state.currentId) state.currentId = 'sunztone';
+    const fetched = await Promise.all(SAMPLE_BIOME_BLOCKS.map(async (name) => {
+      const q = new URLSearchParams({ url: BIOME_BEACH, block: name });
+      const r = await fetch(`/api/beach-relay?${q}`);
+      if (!r.ok) throw new Error(`relay ${r.status} for ${name}`);
+      const data = await r.json();
+      if (!isObj(data)) throw new Error(`${name} is not an object`);
+      return [name, data];
+    }));
+    for (const [name, data] of fetched) state.shelf.set(name, data);
+    loaded = true;
   } catch (e) {
-    console.warn('Sample load failed:', e);
+    console.warn('biome samples unavailable, using bundled fallback:', e.message);
+  }
+  if (!loaded) {
+    try {
+      const [a, b] = await Promise.all([
+        fetch('./blocks/sunztone-v5.json').then(r => r.json()),
+        fetch('./blocks/whetztone-v3.json').then(r => r.json()),
+      ]);
+      state.shelf.set('sunztone', a);
+      state.shelf.set('whetztone', b);
+    } catch (e) {
+      console.warn('Sample load failed:', e);
+    }
+  }
+  if (!state.currentId && state.shelf.size) {
+    state.currentId = state.shelf.keys().next().value;
   }
 }
 
@@ -946,6 +1018,10 @@ function wireStaticUI() {
   document.getElementById('btn-new').addEventListener('click', newFile);
   document.getElementById('btn-save').addEventListener('click', saveFile);
   document.getElementById('btn-new-block').addEventListener('click', newBlock);
+  document.getElementById('btn-samples').addEventListener('click', async () => {
+    await loadSamples();
+    refresh();
+  });
   document.getElementById('file-input').addEventListener('change', (e) => {
     if (e.target.files.length) loadFiles(e.target.files);
     e.target.value = '';
