@@ -91,13 +91,13 @@
 <div id="viz"></div>
 
 <div id="panel">
-  <h1>filmstrip-3d · v1</h1>
+  <h1>filmstrip-3d · v3.3</h1>
   <div class="row">
     input:
     <button data-input="frame" class="active">frame</button>
     <button data-input="editor">editor</button>
     <button data-input="upload">upload</button>
-    <button data-input="beach" title="Overlay happyseaurchin.com beach marks onto the current blocks">beach</button>
+    <button data-input="beach" title="Load every named block from a beach surface (?beach=home|biome|<url>)">beach</button>
     <button id="input-reload" title="Reload current input">↻</button>
     <input type="file" id="upload-file" accept=".json,application/json" style="display:none;">
   </div>
@@ -166,11 +166,12 @@
   <input id="sc-range" type="range" min="0" max="0" value="0" step="1">
   <span class="idx" id="sc-idx">0 / 0</span>
   <span class="concern" id="sc-concern"></span>
+  <button id="sc-ctx" title="Show this slice's full context window (follows the scrubber)">ctx</button>
 </div>
 
 <div id="tip"></div>
 <div id="legend">
-  cube = one <code>_</code> · 1=center, 2-9 spiral CW from N · root on floor · depth 1 above · depth ≥2 below · glowing cube = hidden content (shift-click to dive in)
+  cube = one semantic (<code>_</code> / biome <code>0</code>) · 1=center, 2-9 spiral CW from N · root on floor · depth 1 above · depth ≥2 below · glowing cube = hidden content (shift-click to dive in)
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -243,6 +244,35 @@ function semanticOf(node) {
     if (typeof cur === 'string') return cur;
   }
   return null;
+}
+
+// Biome 0-form (genome v4): digit 0 holds a node's own semantic; there is no
+// `_` anywhere. The renderer speaks `_` internally, so 0-form blocks are
+// converted on load. Mechanical world test (per pscale-biome): any `_` key
+// anywhere → beach-world, leave alone; otherwise a `0` key anywhere → 0-form.
+function detectZeroForm(root) {
+  if (!root || typeof root !== 'object') return false;
+  let sawZero = false;
+  const stack = [root];
+  while (stack.length) {
+    const n = stack.pop();
+    if (!n || typeof n !== 'object') continue;
+    if ('_' in n) return false;
+    if ('0' in n) sawZero = true;
+    for (const k of '0123456789') if (n[k] !== undefined) stack.push(n[k]);
+  }
+  return sawZero;
+}
+function zeroFormToInternal(node) {
+  if (!node || typeof node !== 'object') return node;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    out[k === '0' ? '_' : k] = zeroFormToInternal(v);
+  }
+  return out;
+}
+function normalizeBlock(block) {
+  return detectZeroForm(block) ? zeroFormToInternal(block) : block;
 }
 
 function maxDepth(node) {
@@ -425,7 +455,7 @@ function addBlock(block, tileX, tileZ, blockId, tileIdx) {
   ctx.fillText(blockId, 256, 64);
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 4;
-  const labelSize = Math.min(C0 * 0.7, 8);
+  const labelSize = Math.max(C0 * 0.7, 6);  // scales with the tile — a beach is read by its names
   const labelMat = new THREE.MeshBasicMaterial({
     map: texture, transparent: true, opacity: 0.85, depthWrite: false,
   });
@@ -473,30 +503,51 @@ function addBlock(block, tileX, tileZ, blockId, tileIdx) {
   return { C0, maxD, cubeSize };
 }
 
-// Render all blocks on a grid. Tile size varies per block (CUBE_SIZE * 3^depth),
-// so pitch = max-block-footprint keeps things non-overlapping without packing
-// logic. Inter-block proximity isn't semantically meaningful, so a regular
-// grid is fine.
+// Render all blocks on the floor. Tile size varies per block
+// (CUBE_SIZE * 3^depth), so a uniform grid pitched by the single deepest
+// block would dwarf every shallow tile (a whole beach mixes depth-1 and
+// depth-5 siblings). Shelf-pack instead: sort by footprint, fill rows up
+// to a square-ish target width, pitch each row by its own tallest tile.
+// Inter-block proximity still isn't semantic.
 function renderBlocks(blocks) {
   clearBlocks();
 
-  const footprints = blocks.map(b => tileFootprintFor(Math.max(maxDepth(b.block), 1)));
-  const maxFoot = footprints.length ? Math.max(...footprints) : CUBE_SIZE;
-  const pitch = maxFoot + TILE_GAP;
+  const items = blocks.map((b, i) => ({
+    b, i, foot: tileFootprintFor(Math.max(maxDepth(b.block), 1)),
+  }));
+  items.sort((a, b) => b.foot - a.foot);
+  const totalArea = items.reduce((s, it) => s + (it.foot + TILE_GAP) ** 2, 0);
+  const targetW = Math.max(Math.sqrt(totalArea), (items[0]?.foot || CUBE_SIZE) + TILE_GAP);
 
-  // Square-ish grid centered on origin.
-  const cols = Math.max(1, Math.ceil(Math.sqrt(blocks.length)));
-  const rows = Math.max(1, Math.ceil(blocks.length / cols));
-  const originX = -((cols - 1) / 2) * pitch;
-  const originZ = -((rows - 1) / 2) * pitch;
+  const shelfRows = [];
+  let row = { items: [], w: 0, h: 0 };
+  for (const it of items) {
+    const w = it.foot + TILE_GAP;
+    if (row.items.length && row.w + w > targetW) {
+      shelfRows.push(row);
+      row = { items: [], w: 0, h: 0 };
+    }
+    row.items.push(it);
+    row.w += w;
+    row.h = Math.max(row.h, w);
+  }
+  if (row.items.length) shelfRows.push(row);
 
-  const placed = blocks.map((b, i) => {
-    const r = Math.floor(i / cols);
-    const c = i % cols;
-    const tx = originX + c * pitch;
-    const tz = originZ + r * pitch;
-    return { ...addBlock(b.block, tx, tz, b.id, i), tx, tz };
-  });
+  const extentX = shelfRows.length ? Math.max(...shelfRows.map(r => r.w)) : CUBE_SIZE;
+  const extentZ = shelfRows.reduce((s, r) => s + r.h, 0) || CUBE_SIZE;
+
+  const placed = [];
+  let z = -extentZ / 2;
+  for (const r of shelfRows) {
+    let x = -r.w / 2;
+    const cz = z + r.h / 2;
+    for (const it of r.items) {
+      const cx = x + (it.foot + TILE_GAP) / 2;
+      placed.push({ ...addBlock(it.b.block, cx, cz, it.b.id, it.i), tx: cx, tz: cz });
+      x += it.foot + TILE_GAP;
+    }
+    z += r.h;
+  }
 
   // Vertical span: deepest block dominates. Depth-d block spans
   // (d-1)*CUBE_SIZE below to +CUBE_SIZE above; plus a cube thickness each side.
@@ -505,13 +556,23 @@ function renderBlocks(blocks) {
   const belowSpan = (maxD >= 2 ? (maxD - 1) : 0) * CUBE_SIZE + CUBE_SIZE;
   const verticalSpan = aboveSpan + belowSpan;
 
-  const lateralExtent = Math.max(cols * pitch, rows * pitch) * 0.6;
+  const lateralExtent = Math.max(extentX, extentZ) * 0.6;
 
   const aspect = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
   const aspectBoost = aspect < 1 ? (1 / aspect) : 1;
   const dist = (lateralExtent * 1.4 + verticalSpan * 0.6) * aspectBoost;
   controls.target.set(0, (aboveSpan - belowSpan) / 2, 0);
   camera.position.set(dist * 0.55, dist * 0.55 + aboveSpan * 0.5, dist * 0.85);
+
+  // Big surfaces push the fitted camera past the static far plane / fog
+  // horizon — scale both with the fit, and stretch the floor so tiles
+  // don't overhang it.
+  camera.far = Math.max(1000, dist * 3);
+  camera.updateProjectionMatrix();
+  scene.fog.density = Math.min(0.0035, 1 / Math.max(dist, 1));
+  const floorScale = Math.max(1, (Math.max(extentX, extentZ) * 1.5) / FLOOR_SIZE);
+  floor.scale.set(floorScale, floorScale, 1);
+  grid.scale.set(floorScale, 1, floorScale);
 }
 
 // ---------------------------------------------------------------------------
@@ -700,10 +761,18 @@ function parseFrame(frame) {
     const body = m[2].trim();
     let block;
     try {
-      block = JSON.parse(body);
+      block = normalizeBlock(JSON.parse(body));
     } catch {
+      // The LAST section's body absorbs frame.message (system and message
+      // are concatenated before sectioning), so a JSON body may carry
+      // trailing prose — salvage up to the final closing brace.
+      let salvaged = null;
+      const cut = body.lastIndexOf('}');
+      if (cut > 0) {
+        try { salvaged = normalizeBlock(JSON.parse(body.slice(0, cut + 1))); } catch {}
+      }
       // Plain text → render as a single-cube depth-0 block (just the underscore).
-      block = { _: body };
+      block = salvaged ?? { _: body };
     }
     blocks.push({ id, name, block, touched: [] });
   }
@@ -822,20 +891,56 @@ function openEditorFor(node) {
   editDirtyEl.textContent = '';
   // Editor mode: update writes to the shared shelf. Upload mode: update
   // mutates in-memory and exposes a download button. Frame mode: view-only.
+  // Beach mode: view-only + download (writes happen via bsp/spark, not here).
   const editable = inputMode === 'editor' || inputMode === 'upload';
   editUpdateBtn.style.display = editable ? '' : 'none';
   editRevertBtn.style.display = editable ? '' : 'none';
-  editDownloadBtn.style.display = inputMode === 'upload' ? '' : 'none';
+  editDownloadBtn.style.display = (inputMode === 'upload' || inputMode === 'beach') ? '' : 'none';
   editDisclaimerEl.style.display = inputMode === 'editor' ? '' : 'none';
   editDisclaimerUploadEl.style.display = inputMode === 'upload' ? '' : 'none';
   editUpdateBtn.disabled = true;
   editRevertBtn.disabled = true;
+  ctxPanelOpen = false;
   editEl.classList.add('open');
 }
 
 function closeEditor() {
   editEl.classList.remove('open');
   editState.blockId = null; editState.addr = null;
+  ctxPanelOpen = false;
+}
+
+// Context-window peek: the raw text of the current filmstrip slice — what
+// the kernel actually saw and said in that C-loop. While open it follows
+// the scrubber, so playing the strip shows the context window "thinking".
+let ctxPanelOpen = false;
+
+function openFrameContext() {
+  const f = frameSeq[frameIdx];
+  if (!f) return;
+  const head = [
+    f.ts ? `ts: ${f.ts}` : null,
+    f.concern ? `concern: ${f.concern}` : null,
+    f.model ? `model: ${f.model}` : null,
+  ].filter(Boolean).join('\n');
+  const text = [
+    head,
+    '\n──── system ────\n' + (f.system || '(empty)'),
+    '\n──── message ────\n' + (f.message || '(empty)'),
+    '\n──── output ────\n' + (f.output || '(empty)'),
+  ].join('\n');
+  editState.blockId = null; editState.addr = null; editState.original = text;
+  editAddrEl.textContent = `slice ${frameIdx + 1}/${frameSeq.length}`;
+  editMetaEl.textContent = `${(f.system || '').length + (f.message || '').length} ctx chars`;
+  editTextEl.value = text;
+  editDirtyEl.textContent = '';
+  editUpdateBtn.style.display = 'none';
+  editRevertBtn.style.display = 'none';
+  editDownloadBtn.style.display = 'none';
+  editDisclaimerEl.style.display = 'none';
+  editDisclaimerUploadEl.style.display = 'none';
+  ctxPanelOpen = true;
+  editEl.classList.add('open');
 }
 
 editTextEl.addEventListener('input', () => {
@@ -876,9 +981,10 @@ editUpdateBtn.addEventListener('click', () => {
 });
 
 editDownloadBtn.addEventListener('click', () => {
-  if (inputMode !== 'upload' || !loadedBlocks?.length) return;
+  if ((inputMode !== 'upload' && inputMode !== 'beach') || !loadedBlocks?.length) return;
   // Re-serialise preserving the uploaded shape: single-block stays single,
-  // multi-block stays an id->block object.
+  // multi-block stays an id->block object. Beach downloads are a snapshot
+  // of the whole fetched surface.
   const payload = loadedBlocks.length === 1
     ? loadedBlocks[0].block
     : Object.fromEntries(loadedBlocks.map(b => [b.id, b.block]));
@@ -886,7 +992,8 @@ editDownloadBtn.addEventListener('click', () => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = uploadedFilename || 'block.json';
+  const beachHost = (() => { try { return new URL(beachUrl).hostname; } catch { return 'beach'; } })();
+  a.download = inputMode === 'beach' ? `beach-${beachHost}.json` : (uploadedFilename || 'block.json');
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -918,15 +1025,26 @@ let uploadedFilename = null; // preserved for the download filename
 let shelfSnapshot = null;    // bookmarkable shelf loaded via ?shelf=<name>
 let shelfSnapshotName = null;
 
-// Beach overlay: happyseaurchin.com visitor marks filtered to pscale-shaped
-// purposes, rendered as a touched-set on the currently-loaded shelf.
-const BEACH_URL = 'https://happyseaurchin.com/.well-known/pscale-beach';
-// Pscale address regex: optional leading _/* then digits with . _ * separators.
-const PSCALE_ADDR_RE = /^([_*]?\d+(?:[._*]\d+)*)/;
+// Beach mode: load EVERY named block at a beach surface. Post-May-2026
+// model: the URL is the surface; GET without ?block returns {blocks: [...]},
+// each name fetched via ?block=<name>. Two worlds are spoken — old-world
+// pscale-beach (`_` semantics, serves CORS) and biome-beach (0-form,
+// no CORS → same-origin /api/beach-relay).
+const BEACH_PRESETS = {
+  home:  'https://beach.happyseaurchin.com/.well-known/pscale-beach',
+  biome: 'https://biome-commons-production.up.railway.app/.well-known/biome-beach',
+};
+let beachUrl = BEACH_PRESETS.home;
+let beachBlockFilter = null;   // ?blocks=a,b,c — subset of the surface's names
+let beachViaRelay = false;     // sticky once direct fetch proves CORS-blocked
 let filmstripOn = false;  // frame scrubber visible?
 let frameSeq = [];        // loaded frames when in filmstrip mode
 let frameIdx = 0;
 let playTimer = null;
+let autoPlay = false;             // ?play=1 — start the scrubber on load
+let frameSourceUrl = FRAME_URL;   // remote frame source (default example)
+let frameSourceData = null;       // uploaded/param-loaded filmstrip kept for reloads
+let frameSourceLabel = null;      // human label for the loaded filmstrip
 
 // Matryoshka dive stack. Each entry is a snapshot we can pop back to.
 // { blocks, label, touchedSet }
@@ -994,17 +1112,47 @@ function buildEditorBlocks() {
 // (a filmstrip sequence). Normalise to frameSeq[]; frame-mode single-slide
 // uses frameSeq[0].
 async function fetchFrameSource() {
-  const r = await fetch(FRAME_URL);
-  const data = await r.json();
-  frameSeq = Array.isArray(data) ? data : [data];
-  frameIdx = Math.min(frameIdx, frameSeq.length - 1);
+  if (frameSourceData) {
+    // Filmstrip arrived via upload or ?source — survives mode switches
+    // and the ↻ reload without a re-fetchable URL.
+    frameSeq = frameSourceData.slice();
+  } else {
+    const r = await fetch(frameSourceUrl);
+    const data = await r.json();
+    frameSeq = Array.isArray(data) ? data : [data];
+  }
+  frameIdx = Math.max(0, Math.min(frameIdx, frameSeq.length - 1));
+}
+
+// A frame is one C-loop context snapshot: {system, message, output, tools, …}.
+function isFrameShaped(v) {
+  return v && typeof v === 'object' && !Array.isArray(v)
+    && ('system' in v || 'message' in v);
+}
+
+// Route any frame-shaped payload (single frame or array) into frame mode
+// with the scrubber armed. Returns false if the payload isn't a filmstrip.
+function tryEnterFilmstrip(data, label) {
+  const seq = Array.isArray(data) ? data.filter(isFrameShaped)
+            : (isFrameShaped(data) ? [data] : null);
+  if (!seq || !seq.length) return false;
+  frameSeq = seq;
+  frameSourceData = seq;
+  frameSourceLabel = label || null;
+  frameIdx = Math.max(0, Math.min(frameIdx, seq.length - 1));
+  inputMode = 'frame';
+  if (seq.length > 1) {
+    filmstripOn = true;
+    document.getElementById('btn-filmstrip-toggle').classList.add('active');
+  }
+  return true;
 }
 
 function loadFrameAt(idx) {
   const frame = frameSeq[idx];
   if (!frame) return [];
   const parsed = parseFrame(frame);
-  parsed.__label = `frame ${idx + 1}/${frameSeq.length} · ${parsed.length} block${parsed.length === 1 ? '' : 's'}`;
+  parsed.__label = `${frameSourceLabel ? frameSourceLabel + ' · ' : ''}frame ${idx + 1}/${frameSeq.length} · ${parsed.length} block${parsed.length === 1 ? '' : 's'}`;
   parsed.__concern = frame.concern || '';
   return parsed;
 }
@@ -1030,18 +1178,18 @@ function parseUploadedJson(data, filename) {
   if (data && typeof data === 'object' && ('system' in data || 'message' in data)) {
     return parseFrame(data);
   }
-  // Pscale block heuristic: top-level has `_` or any digit-key.
+  // Pscale block heuristic: top-level has `_` or any digit-key (0 = biome form).
   const isPscaleBlock = (v) => v && typeof v === 'object' && !Array.isArray(v)
-    && ('_' in v || '1' in v || '2' in v || '3' in v || '4' in v || '5' in v
-        || '6' in v || '7' in v || '8' in v || '9' in v);
+    && ('_' in v || '0' in v || '1' in v || '2' in v || '3' in v || '4' in v
+        || '5' in v || '6' in v || '7' in v || '8' in v || '9' in v);
   if (isPscaleBlock(data)) {
-    return [{ id: base, name: base, block: data, touched: [] }];
+    return [{ id: base, name: base, block: normalizeBlock(data), touched: [] }];
   }
   // Multi-block shelf: object whose values are all pscale blocks.
   if (data && typeof data === 'object' && !Array.isArray(data)) {
     const entries = Object.entries(data).filter(([, v]) => isPscaleBlock(v));
     if (entries.length) {
-      return entries.map(([id, block]) => ({ id, name: id, block, touched: [] }));
+      return entries.map(([id, block]) => ({ id, name: id, block: normalizeBlock(block), touched: [] }));
     }
   }
   return [];
@@ -1064,44 +1212,79 @@ async function loadUploadInput() {
   return parsed;
 }
 
-// Beach mode: overlay happyseaurchin.com marks onto the blocks currently
-// loaded from whichever input was last active (frame/editor/upload). Requires
-// a shelf to be present to have something to overlay onto.
+// Fetch JSON from the beach surface: blockName null → the index. Tries the
+// beach directly; a network-level failure (CORS-less host, e.g. the biome
+// commons) flips sticky beachViaRelay and routes through /api/beach-relay.
+// HTTP errors from a host that DID answer are real errors, not relay cues.
+async function fetchBeachJson(blockName) {
+  if (!beachViaRelay) {
+    try {
+      const direct = blockName
+        ? `${beachUrl}?block=${encodeURIComponent(blockName)}`
+        : beachUrl;
+      const r = await fetch(direct);
+      if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { httpStatus: r.status });
+      return await r.json();
+    } catch (e) {
+      if (e.httpStatus) throw e;
+      beachViaRelay = true;
+    }
+  }
+  const q = new URLSearchParams({ url: beachUrl });
+  if (blockName) q.set('block', blockName);
+  const r = await fetch(`/api/beach-relay?${q}`);
+  if (!r.ok) {
+    let msg = `relay HTTP ${r.status}`;
+    try { const j = await r.json(); if (j.error) msg = j.error; } catch {}
+    throw new Error(msg);
+  }
+  return await r.json();
+}
+
+async function pooledMap(items, limit, fn) {
+  const out = new Array(items.length);
+  let i = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) || 1 }, async () => {
+    while (i < items.length) { const idx = i++; out[idx] = await fn(items[idx], idx); }
+  }));
+  return out;
+}
+
+// Beach mode: the whole surface — every named block, one tile each.
 async function loadBeachInput() {
-  // Preserve existing blocks — beach overlays on top of whatever's loaded.
-  const base = loadedBlocks && loadedBlocks.length ? loadedBlocks : [];
-  if (!base.length) {
+  const host = (() => { try { return new URL(beachUrl).hostname; } catch { return beachUrl; } })();
+  let index;
+  try {
+    index = await fetchBeachJson(null);
+  } catch (e) {
     const empty = [];
-    empty.__label = 'beach: load a shelf first (frame/editor/upload), then toggle beach to overlay';
+    empty.__label = `beach: ${host} — ${e.message}`;
     return empty;
   }
-  let marks = [];
-  try {
-    const r = await fetch(BEACH_URL);
-    const data = await r.json();
-    marks = Array.isArray(data?.marks) ? data.marks : [];
-  } catch (e) {
-    console.warn('beach fetch failed:', e);
+  let names = Array.isArray(index?.blocks) ? index.blocks.slice() : [];
+  if (beachBlockFilter) names = names.filter(n => beachBlockFilter.includes(n));
+  document.getElementById('block-name').textContent =
+    `beach: ${host} — fetching ${names.length} blocks…`;
+  const fetched = await pooledMap(names, 8, async (name) => {
+    try {
+      let block = await fetchBeachJson(name);
+      if (typeof block === 'string') block = { _: block };
+      if (!block || typeof block !== 'object' || Array.isArray(block)) return null;
+      return { id: name, name, block: normalizeBlock(block), touched: [] };
+    } catch (e) {
+      console.warn(`beach block "${name}" failed:`, e);
+      return null;
+    }
+  });
+  const out = fetched.filter(Boolean);
+  out.__label = `beach: ${host} · ${out.length}/${names.length} block${names.length === 1 ? '' : 's'}`
+    + (beachViaRelay ? ' · relay' : '');
+  // A surface of sibling tiles is unreadable without names — default the
+  // floor labels on (flag read by renderBlocks when it builds the tiles).
+  if (!showText) {
+    showText = true;
+    document.getElementById('btn-text-toggle').classList.add('active');
   }
-  // Filter to pscale-shaped purposes; normalise (strip separators so they
-  // match the visualiser's digit-string address format).
-  const hits = [];
-  for (const m of marks) {
-    const p = String(m.purpose || '');
-    const mtch = p.match(PSCALE_ADDR_RE);
-    if (!mtch) continue;
-    const addr = mtch[1].replace(/[._*]/g, '');
-    hits.push({ ...m, addr });
-  }
-  // Hits aren't scoped to any particular block in the marks — happyseaurchin
-  // marks are site-wide. Fan the hit set across every loaded block so any
-  // matching cube lights up. This is the interpretation that makes sense
-  // given one central beach per domain.
-  const out = base.map(b => ({
-    ...b,
-    touched: hits.map(h => ({ addr: h.addr, kind: 'beach', agent: h.agent_id, ts: h.timestamp })),
-  }));
-  out.__label = `beach: ${hits.length}/${marks.length} pscale-shaped marks overlaid on ${base.length} block${base.length === 1 ? '' : 's'}`;
   return out;
 }
 
@@ -1170,22 +1353,30 @@ document.getElementById('input-reload').addEventListener('click', () => {
 document.getElementById('upload-file').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  let data;
   try {
     const text = await file.text();
-    const data = JSON.parse(text);
-    uploadedBlocks = parseUploadedJson(data, file.name);
-    uploadedFilename = file.name;
+    data = JSON.parse(text);
   } catch (err) {
     alert(`Failed to parse ${file.name}: ${err.message}`);
     return;
   }
   e.target.value = '';
-  // Switch to upload mode and render.
+  closeEditor();
+  exitMatryoshka({ fade: false });
+  // A filmstrip (frame array or single frame) goes to frame mode with the
+  // scrubber armed; everything else is an upload-mode shelf.
+  if (tryEnterFilmstrip(data, file.name)) {
+    document.querySelectorAll('#panel button[data-input]').forEach(b =>
+      b.classList.toggle('active', b.dataset.input === 'frame'));
+    loadInput().then(syncScrubberUI);
+    return;
+  }
+  uploadedBlocks = parseUploadedJson(data, file.name);
+  uploadedFilename = file.name;
   inputMode = 'upload';
   document.querySelectorAll('#panel button[data-input]').forEach(b =>
     b.classList.toggle('active', b.dataset.input === 'upload'));
-  closeEditor();
-  exitMatryoshka({ fade: false });
   loadInput().then(syncScrubberUI);
 });
 
@@ -1292,6 +1483,8 @@ document.getElementById('sc-prev').addEventListener('click', () => setFrame(fram
 document.getElementById('sc-next').addEventListener('click', () => setFrame(frameIdx + 1));
 scRange.addEventListener('input', () => setFrame(parseInt(scRange.value, 10)));
 scPlayBtn.addEventListener('click', () => playTimer ? stopPlay() : startPlay());
+document.getElementById('sc-ctx').addEventListener('click', () =>
+  ctxPanelOpen ? closeEditor() : openFrameContext());
 
 // ---------------------------------------------------------------------------
 // Matryoshka phase-change dive.
@@ -1468,17 +1661,19 @@ function eventsBlockToFrames(chronicleBlock, siblingShelf) {
 // shelf; swap the viewer into frame mode so the scrubber works.
 function enterEventsFilmstrip() {
   if (!loadedBlocks?.length) {
-    alert('Load a shelf first (upload / editor mode), then pick a chronicle.');
+    alert('Load a shelf first (upload / editor / beach mode), then pick a chronicle.');
     return;
   }
-  // Heuristic: the chronicle is the block whose root text mentions
-  // "chronicle" or "append-only", else the one named "*-events".
-  const candidate = loadedBlocks.find(b => /events|chronicle/i.test(b.id))
+  // Heuristic: the chronicle is the block whose id reads chronicle-ish
+  // (events / chronicle / marks / scenes — marks and scenes are the biome
+  // commons' digit-per-entry blocks), else the one whose root text mentions
+  // "chronicle" or "append-only".
+  const candidate = loadedBlocks.find(b => /events|chronicle|marks|scenes/i.test(b.id))
                  || loadedBlocks.find(b => typeof b.block === 'object'
                     && typeof b.block['_'] === 'string'
                     && /append-only|chronicle/i.test(b.block['_']));
   if (!candidate) {
-    alert('No chronicle-like block found in shelf. Expected id containing "events" or root text mentioning "chronicle".');
+    alert('No chronicle-like block found in shelf. Expected id containing "events", "chronicle", "marks" or "scenes", or root text mentioning "chronicle".');
     return;
   }
   const others = loadedBlocks.filter(b => b.id !== candidate.id);
@@ -1494,7 +1689,7 @@ function enterEventsFilmstrip() {
     system: '',
     message: '',
     tools: [],
-    output: '',
+    output: f.frameText,  // ctx panel shows the event's full text
     __touchedByBlock: f.touchedByBlock,
     __referenceShelf: others,
   }));
@@ -1534,15 +1729,18 @@ function applyEventsFrame(idx) {
 }
 
 // Hook setFrame so when we're in events-filmstrip mode, scrubbing re-applies.
+// Either way the open ctx panel follows the scrubber — playing the strip
+// streams each slice's context window through the panel.
 const _origSetFrame = setFrame;
 setFrame = function(idx) {
   if (window.__eventsFrames) {
     frameIdx = Math.max(0, Math.min(frameSeq.length - 1, idx));
     applyEventsFrame(frameIdx);
     syncScrubberUI();
-    return;
+  } else {
+    _origSetFrame(idx);
   }
-  _origSetFrame(idx);
+  if (ctxPanelOpen) openFrameContext();
 };
 
 document.getElementById('btn-events-filmstrip').addEventListener('click', () => {
@@ -1562,7 +1760,12 @@ document.getElementById('btn-events-filmstrip').addEventListener('click', () => 
 // ---------------------------------------------------------------------------
 // URL-param dispatcher — bookmarkable links.
 //   ?shelf=<name>        load ./data/<name>.json as an upload-mode snapshot
-//   ?source=<url>        load arbitrary JSON (relative or same-origin)
+//   ?source=<url>        load arbitrary JSON (relative or same-origin);
+//                        a frame array becomes a scrubbable filmstrip
+//   ?beach=<preset|url>  load a whole beach surface (presets: home, biome)
+//   ?blocks=a,b,c        beach mode — only these named blocks
+//   ?frame=N             filmstrip — start at slice N (1-based)
+//   ?play=1              filmstrip — start animating on load
 //   ?mode=frame|editor|upload|beach   initial mode
 // ---------------------------------------------------------------------------
 
@@ -1571,6 +1774,28 @@ async function applyUrlParams() {
   const shelf = params.get('shelf');
   const source = params.get('source');
   const wantMode = params.get('mode');
+
+  const beachParam = params.get('beach');
+  if (beachParam) {
+    const preset = BEACH_PRESETS[beachParam];
+    if (preset) {
+      beachUrl = preset;
+    } else {
+      try {
+        const u = new URL(beachParam);
+        u.search = '';
+        beachUrl = u.toString();
+      } catch { console.warn(`?beach=${beachParam} is neither a preset nor a URL`); }
+    }
+    inputMode = 'beach';
+  }
+  const blocksParam = params.get('blocks');
+  if (blocksParam) {
+    beachBlockFilter = blocksParam.split(',').map(s => s.trim()).filter(Boolean);
+  }
+  const frameParam = parseInt(params.get('frame') || '', 10);
+  if (!Number.isNaN(frameParam)) frameIdx = Math.max(0, frameParam - 1);
+  autoPlay = ['1', 'true'].includes(params.get('play') || '');
   if (shelf) {
     // Bookmarkable shelves resolve live first (via /api/pscale-walk if the
     // shelf has an owner+names mapping) and fall back to ./data/<name>.json
@@ -1605,9 +1830,16 @@ async function applyUrlParams() {
     try {
       const r = await fetch(source);
       const data = await r.json();
-      uploadedBlocks = parseUploadedJson(data, source.split('/').pop() || 'source.json');
-      uploadedFilename = source.split('/').pop() || 'source.json';
-      inputMode = 'upload';
+      const name = source.split('/').pop() || 'source.json';
+      if (tryEnterFilmstrip(data, name)) {
+        // URL sources stay re-fetchable: reload pulls the URL, not the copy.
+        frameSourceUrl = source;
+        frameSourceData = null;
+      } else {
+        uploadedBlocks = parseUploadedJson(data, name);
+        uploadedFilename = name;
+        inputMode = 'upload';
+      }
     } catch (e) {
       console.warn(`source ${source} failed:`, e);
     }
@@ -1619,7 +1851,15 @@ async function applyUrlParams() {
     b.classList.toggle('active', b.dataset.input === inputMode));
 }
 
-applyUrlParams().then(() => loadInput()).then(syncScrubberUI);
+applyUrlParams().then(() => loadInput()).then(() => {
+  syncScrubberUI();
+  if (autoPlay && inputMode === 'frame' && frameSeq.length > 1) {
+    filmstripOn = true;
+    document.getElementById('btn-filmstrip-toggle').classList.add('active');
+    syncScrubberUI();
+    startPlay();
+  }
+});
 </script>
 </body>
 </html>

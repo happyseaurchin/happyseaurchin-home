@@ -1,4 +1,4 @@
-# filmstrip-3d layout spec — v3.2
+# filmstrip-3d layout spec — v3.3
 
 Replaces v2's uniform tile size. The **cube** is now the global unit of
 semantic weight; tile size varies per block with depth. A spindle of five
@@ -6,9 +6,47 @@ cubes in one block is visually equivalent to a spindle of five cubes in any
 other block, regardless of either block's pscale depth.
 
 Since v3.0 (fixed cube + scaling tile) we've added: a third input mode
-(upload with download), a fourth (beach overlay), matryoshka dive, an
+(upload with download), a fourth (beach), matryoshka dive, an
 events→filmstrip transformer, bookmarkable URL params, and an editor ↔
 viewer write-back channel via localStorage.
+
+## v3.3 (2026-06-11) — whole-beach surfaces + filmstrip-as-tool
+
+1. **Beach mode reworked for the post-May-2026 surface model.** The old
+   mode fetched the bare-domain beach (404 since the handler moved to
+   beach.happyseaurchin.com) and overlaid `marks` from the pre-migration
+   single-block shape. Beach mode now loads **the whole surface**: GET the
+   index (`{blocks: [...]}`), then every named block via `?block=<name>`
+   (8-way concurrent), one tile each. Presets `home`
+   (beach.happyseaurchin.com, old world) and `biome`
+   (biome-commons-production.up.railway.app, 0-form world).
+2. **Biome 0-form spoken.** Genome-v4 blocks (digit `0` = a node's own
+   semantic, no `_` anywhere) are detected mechanically (`_` anywhere →
+   beach-world; else any `0` → 0-form) and converted to the renderer's
+   internal `_` form on load — beach, upload, and frame-section paths.
+3. **CORS relay.** Hosts that don't serve `Access-Control-Allow-Origin`
+   (the biome commons) are reached via `/api/beach-relay` — a GET-only,
+   path-allowlisted same-origin proxy. Direct fetch is tried first; a
+   network-level failure flips a sticky per-session relay flag.
+4. **Shelf-packed layout.** The uniform grid pitched every tile by the
+   single deepest block, dwarfing shallow siblings on a whole beach. Tiles
+   are now sorted by footprint and shelf-packed into square-ish rows; each
+   row's pitch is its own tallest tile. Camera far plane, fog density, and
+   floor scale follow the fitted distance.
+5. **Filmstrip as a tool.** Frame arrays from upload or `?source=` enter
+   frame mode with the scrubber armed (previously only the hardcoded
+   example activated it). `?frame=N` deep-links a slice (1-based);
+   `?play=1` starts the animation on load.
+6. **ctx panel.** A `ctx` button on the scrubber opens the slice's raw
+   context window (ts/concern/model + system/message/output) in the peek
+   panel; while open it follows the scrubber, so playing the strip streams
+   the context "thinking".
+7. **Frame-parser brace salvage.** system+message are concatenated before
+   sectioning, so the last `=== SECTION ===` body absorbs the message
+   prose; JSON bodies are now salvaged up to their final closing brace.
+8. **Beach labels default on; label size scales with the tile** (a beach
+   is read by its names). Beach peek panel is view-only + download
+   (`beach-<host>.json` snapshot of the fetched surface).
 
 ---
 
@@ -137,16 +175,19 @@ File picker accepting a JSON file. Auto-detects:
 Upload mode adds a **download** button to the peek panel that exports the
 in-memory mutated JSON with the original shape preserved.
 
-### Beach (overlay, requires a loaded shelf)
-Fetches `happyseaurchin.com/.well-known/pscale-beach`, filters marks by the
-pscale-address regex `/^([_*]?\d+(?:[._*]\d+)*)/`, and overlays the matched
-addresses as a touched set **across every loaded block** (since
-happyseaurchin marks are domain-scoped, not block-scoped). Status line
-reports `beach: N/M pscale-shaped marks overlaid on K blocks`.
+### Beach (whole surface)
+Loads every named block at a beach surface: GET the index
+(`{blocks: [...]}`), then each block via `?block=<name>`, 8-way
+concurrent, one tile per block. Status line reports
+`beach: <host> · N/M blocks [· relay]`.
 
-Marks with freeform purpose strings (`testing-auto-detect`, etc.) are
-dropped. Only works for the happyseaurchin.com domain today; arbitrary URLs
-need a relay-side proxy that this viewer doesn't have.
+- Default surface: `home` preset (beach.happyseaurchin.com). Override with
+  `?beach=home|biome|<url>`; subset with `?blocks=a,b,c`.
+- Biome 0-form blocks are converted to internal `_` form on load.
+- CORS-less hosts are reached through `/api/beach-relay` (GET-only,
+  path-allowlisted to the two well-known beach paths, https-only).
+- Floor labels default on in this mode; peek panel is view-only with a
+  `download` snapshot button.
 
 ---
 
@@ -162,7 +203,11 @@ Click any cube → panel opens with that cube's semantic:
 | frame | close | — |
 | editor | update · revert · close | update writes to `mindflow-editor:shelf`; editor tab picks up live via `storage` listener. To save to file, go to the editor tab and click *save file*. |
 | upload | update · revert · download · close | update mutates in-memory; use *download* to save a JSON copy. |
-| beach | close (inherits the underlying shelf's mode if not yet changed) | — |
+| beach | download · close | view-only — writes happen via bsp/spark, not the viewer; download snapshots the fetched surface as `beach-<host>.json` |
+
+The same panel doubles as the **ctx panel** (scrubber's `ctx` button): the
+current slice's raw context window — ts/concern/model header, then system /
+message / output sections. While open it follows the scrubber.
 
 `update` is disabled when the textarea matches the stored value, enabled on
 dirty, back to disabled after a successful update with an `updated` tag.
@@ -226,10 +271,13 @@ Toggle button reveals a bottom-centre strip with ◀ / ▶ (play/pause) / ▶ /
 range slider / `N/M` / concern. Plays at 1.2 s per frame.
 
 Active when:
-- Frame source is an **array** of frames (multi-frame filmstrip), OR
+- Frame source is an **array** of frames (multi-frame filmstrip) — from the
+  default source, an uploaded file, or `?source=<url>`, OR
 - **events→film** has been triggered (see next §).
 
-Single-frame sources show a disabled scrubber reading `(single-frame source)`.
+Single-frame sources show a disabled scrubber reading `(single-frame source)`
+(the `ctx` button still works). `?frame=N` starts at slice N; `?play=1`
+autostarts; playback stops at the last slice.
 
 ---
 
@@ -256,13 +304,24 @@ reloads the original input.
 | Param | Effect |
 |---|---|
 | `?shelf=<name>` | loads `./data/<name>.json` into upload mode |
-| `?source=<url>` | fetches arbitrary JSON (relative or same-origin) into upload mode |
+| `?source=<url>` | fetches arbitrary JSON (relative or CORS-reachable); a frame array becomes a scrubbable filmstrip, anything else an upload-mode shelf |
+| `?beach=<preset\|url>` | loads a whole beach surface (presets: `home`, `biome`); implies `mode=beach` |
+| `?blocks=a,b,c` | beach mode — only these named blocks |
+| `?frame=N` | filmstrip — start at slice N (1-based) |
+| `?play=1` | filmstrip — start animating on load |
 | `?mode=frame\|editor\|upload\|beach` | sets initial input mode |
+
+Tool-grade bookmarks this enables:
+- whole biome commons: [`?beach=biome`](./?beach=biome)
+- whole old-world beach: [`?beach=home`](./?beach=home)
+- watch a kernel think: [`?source=data/demo-strip.json&play=1`](./?source=data/demo-strip.json&play=1)
 
 Current snapshots live in `mindflow/filmstrip-3d/data/`:
 - `thornkeep.json` — the four Thornkeep RPG blocks (world / rules /
   protocol / events). Bookmarkable as
   [filmstrip-3d/?shelf=thornkeep](./?shelf=thornkeep).
+- `demo-strip.json` — a 4-frame demo filmstrip (a kernel growing a
+  starstone) exercising the scrubber, touched sets, and the ctx panel.
 
 Snapshots are static JSON — refreshing requires re-running the MCP walk
 offline and committing. See "Future: walk-proxy" below.
@@ -305,11 +364,15 @@ typically 10–100 cubes per block. Verified workloads in v3 range
 - **Star / hidden-dir slices** degrade to point in editor mode because v3
   doesn't render matryoshka interiors in-place (dive instead).
 - **Non-JSON context content** — "big black tiles" not yet implemented.
-- **Beach overlay** is happyseaurchin.com-only. Arbitrary URL marks need
-  a Supabase-relay proxy that the static viewer can't reach directly.
-- **Shelf snapshots** are static JSON. Live data would need a
-  `/api/pscale-walk` endpoint (serverless fn proxying Supabase) — see
-  [api/pscale-beach.js](../../api/pscale-beach.js) as the pattern.
+- **Deep blocks read as near-empty plains** at whole-beach distance — a
+  depth-5 tile is 243× its cube size (3^depth geometry). Zoom in, or
+  subset with `?blocks=`.
+- **Editor mode reads only `mindflow-editor:shelf`** — the zand-editor's
+  0-form shelf (`zand-editor:shelf`) isn't merged in yet; write-back would
+  need `_`→`0` denormalisation to avoid corrupting it.
+- **The relay needs a serverless host.** On a static-only deploy
+  (`python -m http.server`) CORS-less beaches like the biome commons
+  can't load; beach.happyseaurchin.com still works (it serves CORS).
 - **MCP response truncation**: the `pscale_walk` tool truncates display
   at ~150 chars, so snapshots generated via MCP have truncated `_`
-  strings. Structural only — fix requires the walk-proxy above.
+  strings. Structural only — live beach mode doesn't have this problem.
