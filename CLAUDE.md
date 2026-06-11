@@ -1,22 +1,85 @@
 # happyseaurchin-home
 
-This repo is the **federated beach handler** for the bsp-mcp / pscale-beach substrate. Its `api/pscale-beach.js` IS the wire-level reference for what the substrate accepts, validates, and rejects at the HTTP boundary.
+This repo is **David's personal site** at https://happyseaurchin.com — the landing page, the mindflow speech/pscale tools, the experiments gallery, and a handful of small Vercel serverless functions.
 
-## Cross-repo scope
+**It is no longer the federated beach.** `api/pscale-beach.js` (the v2 handler, ~680 lines) was deleted in `45759f0` (11 May 2026). The beach lives at **https://beach.happyseaurchin.com**, deployed from [`pscale-commons/pscale-beach`](https://github.com/pscale-commons/pscale-beach) — that repo is now the wire-level reference for what the substrate accepts, validates, and rejects at the HTTP boundary. Do beach/substrate work there and in `bsp-mcp-server`, not here.
 
-happyseaurchin-home is one of three sibling repos that together constitute the substrate. Substantive work routinely spans all three:
+## The beach moved — what that means here
 
-- **`happyseaurchin-home`** (this repo) — federated beach handler at `/.well-known/pscale-beach`. Vercel + Upstash KV. Hosts the live testbed at `https://happyseaurchin.com`. Companion scripts: `wipe-pscale-beach.js` (clears all blocks via Redis), `wipe-block.js` (HTTP DELETE on a single block), `bootstrap-beach-locks.js` (one-shot lock installer).
-- **`bsp-mcp-server`** ([github](https://github.com/pscale-commons/bsp-mcp-server)) — the substrate's MCP router, sentinels, conventions. **Primary architectural reference** — its CLAUDE.md is the source of truth for the surface model (URL = surface; named blocks are siblings), the unified `bsp()` function, and the substrate-stateful primitives (`pscale_create_collective`, `pscale_register`, `pscale_grain_reach`, `pscale_key_publish`, `pscale_verify_rider`). Read it at session start.
-- **`xstream-bsp`** ([github](https://github.com/happyseaurchin/xstream-bsp)) — the canonical browser client. The V-L-S canvas, viewer drawer, kernel, presence/liquid/marks/pools writers. If a write breaks at this handler, xstream-bsp is the most likely caller; check its `src/kernel/beach-kernel.ts` and `src/lib/bsp-client.ts`.
+- `GET https://happyseaurchin.com/.well-known/pscale-beach` returns **404, deliberately**. bsp-mcp's federation resolver treats a bare-domain 404 as the signal to fall back to `beach.<host>` (bsp-mcp-server PR #20; migration in PR #22). Reinstating a handler — or a `vercel.json` rewrite, or even a static file — at that path would shadow the live beach.
+- Substrate architecture (surface model, `bsp()`, conventions, sentinels, lock salts): `bsp-mcp-server`'s CLAUDE.md remains the source of truth. The handler implementation is `pscale-beach/api/pscale-beach.js`.
+- The canonical browser client is still `xstream-bsp`.
 
-If you only see one repo at session start, you'll re-derive what's already in another. **Add the other two as `additionalDirectories` in `.claude/settings.local.json`** so reads, edits, and grep span all three:
+## What's actually here
+
+| area | what |
+|---|---|
+| `index.html`, `assets/`, `style/` | personal site shell |
+| `mindflow/` | speech-to-structure tools (see below) |
+| `experiments/` | standalone math/visualization artifacts + generated `pscale-inventory.html` |
+| `components/` + `docs/components/` | numbered component inventory — HTML pages + source `.md` files, fed by the ingest pipeline |
+| `pscale/starstone/` | starstone format reference (JSON variants + bsp-star walkers in js/ts/py) |
+| `packages/`, `real-organic-human/`, `virtual-ai-agents/` | static site sections |
+| `api/` | four serverless functions (see below) |
+| `scripts/` | inventory pipeline (active) + legacy beach ops (read the warnings) |
+
+### mindflow/ tools
+
+Each subdirectory is a standalone static page; shared walkers live at `mindflow/bsp.js`, `bsp-star.js`, `zand.js`, `pscale-to-gingko.js`.
+
+- **basic** — free word cloud from speech
+- **byok** — bring-your-own Anthropic key; LLM concept extraction into the cloud
+- **explorer** — navigate pscale block topology; load a block or compile one live from speech
+- **editor** — pscale JSON editor; document & column views, star rendering, 0-form toggle for sunztone v5
+- **zand-editor** — ztone editor (digit `0` is voicing, the sunztone v5 successor format); floor-aware addresses; walk modes free/spindle/ring/disc/point
+- **filmstrip** — kernel API-log viewer (C/B/A loops); includes `producer.js` for capturing LLM I/O as frames
+- **zand-filmstrip** — agent-loop wake viewer (γ, edits, currents, faces); sibling of zand-editor
+- **filmstrip-3d** — context window as a 3D landscape; renders whole beach surfaces via `/api/beach-relay`; the landing page's "Thornkeep" entry is a bookmark into it with the Thornkeep shelf pre-loaded
+
+Foundry → public: tools iterate here; stable versions are mirrored to `pscale-commons/dev-tools`.
+
+## api/ functions
+
+- **`llm.js`** — POST pass-through to the Anthropic Messages API; caller supplies `x-api-key`; supports streaming.
+- **`vault.js`** — BYOK key vault + Claude proxy. Keys stored as httpOnly cookies (`hsu_` prefix), routed by `service`: `set-keys` / `check-keys` / `clear-keys` / `claude`. Origin allowlist (happyseaurchin.com + localhost dev ports).
+- **`pscale-walk.js`** — GET-only proxy to the `pscale_blocks` Supabase table; returns full rows (MCP `pscale_walk` truncates display at ~150 chars, losing `_` body text). Env: `SUPABASE_URL`, `SUPABASE_ANON_KEY`. GET-only **is** the security boundary — the table's RLS is permissive-ALL, so the anon key is also a write credential and must never reach the browser.
+- **`beach-relay.js`** (added 11 Jun 2026) — GET-only CORS relay for beach surfaces the browser can't reach directly; exists because the biome commons (`biome-commons-production.up.railway.app`) serves no CORS headers. Strictly scoped: https only, path must be exactly `/.well-known/pscale-beach` or `/.well-known/biome-beach`, no localhost/IP-literal hosts, redirects refused, 8s timeout. Used by filmstrip-3d for whole-beach rendering.
+
+## scripts/
+
+**Active — component inventory pipeline:**
+- `ingest.js` — classify a dropped file → copy into `docs/components/{paddedId}-{slug}` → append `experiments/pscale-inventory.data.json` → rebuild → commit
+- `classify.js` + `prompts/` — LLM classification step
+- `build-inventory.js` — regenerates the marked regions of `experiments/pscale-inventory.html` and rebuilds `docs/components.zip`
+- `watch-inbox.js` — foreground watcher on `~/xstream-inbox/`; drops feed `ingest.js`
+
+**Legacy — pre-migration beach ops. Read before touching:**
+- `wipe-block.js` — defaults to `https://happyseaurchin.com/.well-known/pscale-beach`, which now 404s; only meaningful with `BEACH_URL` pointed at an actual beach deployment.
+- `wipe-pscale-beach.js` — deletes `pscale-beach-v2:*` keys in whatever KV `.env.local` points at. The live beach still uses the `pscale-beach-v2` namespace (origin-scoped keys, plus optional fallback reads of the old un-scoped keys), so **if those env vars point at the shared Upstash instance, this can destroy live beach data**.
+- `bootstrap-beach-locks.js` — Phase B lock installer for the long-gone legacy `beach` block; inert without the deleted handler.
+
+Beach maintenance tooling now lives in `pscale-beach/scripts/` (local-beach, pack-seed/reset/dump, repair-floor, smoke tests). Prefer those; treat the three scripts above as historical.
+
+## Deployment
+
+Vercel auto-deploys from `main`. `vercel.json` is minimal: `cleanUrls` plus `no-store` on `/api/*` — **no `.well-known` rewrite** (deliberate; see above). Env vars: `SUPABASE_URL` / `SUPABASE_ANON_KEY` for pscale-walk, in Vercel project env and `.env.local` (gitignored). `KV_REST_API_URL` / `KV_REST_API_TOKEN` linger in `.env.local` only for the legacy wipe script — no deployed function uses KV, and the sole npm dependency (`@upstash/redis`) exists only for that script.
+
+## Cross-repo map
+
+| repo | role | local checkout |
+|---|---|---|
+| [`pscale-commons/pscale-beach`](https://github.com/pscale-commons/pscale-beach) | the live federated beach at beach.happyseaurchin.com — wire-level reference | `~/Projects/pscale-beach` |
+| [`pscale-commons/bsp-mcp-server`](https://github.com/pscale-commons/bsp-mcp-server) | substrate MCP router, sentinels, conventions — architectural source of truth | `~/Projects/bsp-mcp-server` |
+| [`happyseaurchin/xstream-bsp`](https://github.com/happyseaurchin/xstream-bsp) | canonical browser client (V-L-S canvas, kernel) | `~/Projects/xstream-bsp` |
+| `pscale-commons/dev-tools` | public mirror of stable mindflow tools | — |
+
+If a session needs to read across repos, add the relevant ones as `additionalDirectories` in `.claude/settings.local.json` (gitignored, per-machine):
 
 ```jsonc
-// happyseaurchin/.claude/settings.local.json — gitignored, per-machine
 {
   "permissions": {
     "additionalDirectories": [
+      "/Users/<you>/Projects/pscale-beach",
       "/Users/<you>/Projects/bsp-mcp-server",
       "/Users/<you>/Projects/xstream-bsp"
     ]
@@ -24,70 +87,9 @@ If you only see one repo at session start, you'll re-derive what's already in an
 }
 ```
 
-At session start, run `git fetch origin && git log origin/main..HEAD` in each touched repo. Branch bases drift across sessions; don't assume yours is current.
-
-## What this handler does
-
-One endpoint, polyglot dispatch:
-
-```
-GET  /.well-known/pscale-beach              → derived index of named blocks at this surface
-GET  /.well-known/pscale-beach?block=<name>[&spindle=<addr>]
-POST /.well-known/pscale-beach?block=<name>
-     body: bsp-mcp standard {spindle, content, secret?, new_lock?, gray?, confirm?}
-       OR substrate-action shapes for prefixed blocks:
-         sed:   {action: "register", declaration, passphrase}
-         grain: {action: "reach", side, agent_id, partner_agent_id, ...}
-DELETE /.well-known/pscale-beach?block=<name>
-       body: {confirm: true, secret?}
-```
-
-**Block-name prefix routes the substrate:**
-
-| Prefix | Substrate | Lock model |
-|---|---|---|
-| `sed:<collective>` | site-hosted sed: | per-position locks; atomic next-position allocation |
-| `grain:<pair_id>` | site-hosted grain: | per-side locks; symmetric reach/accept state machine |
-| anything else | ordinary block | per-first-digit locks; `_` for whole-block / underscore-of-root writes |
-
-**Lock salt namespaces** (`hashOrdinary`, `hashSed`, `hashGrain`) match `bsp-mcp-server/src/locks.ts` so locks set under one client verify under any other. Don't drift these — they're the cross-client trust anchor.
-
-## Wire contract for ordinary writes
-
-`content` is the value placed at `spindle` — an object goes in as a subtree, a string as a string-leaf. **Shape derivation (point/ring/subtree/disc/star) per `pscale_attention` is the CLIENT's job; this handler does NOT honour `pscale_attention`.** Empty spindle is a whole-block replace and requires `{confirm: true}`.
-
-**Supernest-on-growth:** when the descent path crosses an intermediate node holding a string, the string migrates to the new sub-block's underscore (`block[k] = "old"` becomes `block[k] = {_: "old", ...}`) so the parent's semantic survives the appearance of children.
-
-## Shape gate (per-host policy, not protocol)
-
-`validateShape` rejects writes that violate pscale spine rules:
-
-1. **`_word` underscore-prefixed sibling keys at any spine level.** Only `_` and digits 1-9 are valid spine keys. `_word` keys (e.g. `_a`, `_addr`, `_t`, `_f`, `_synthesis`) are invisible to the bsp walker and create ghost data — accepting them is how the old `beach.json` got contaminated with shapes no walker could traverse.
-2. **JSON-stringified objects/arrays as values.** Must be written directly, not as serialized strings. Otherwise the walker can't traverse them.
-
-This is **per-host policy, not protocol**. bsp-mcp itself stays silent on shape rules; happyseaurchin chose strict because the testbed needs hygiene. Other beaches may choose differently. If a future block convention legitimately needs an `_word` key for some reason, the conversation happens at the convention layer, not by relaxing this gate.
-
-## "Beach is the surface" — the architectural pivot (8 May 2026)
-
-The historical "beach" block (with reserved positions for marks/pools/reaches/conventions/metadata) is gone. The URL is the surface; named sibling blocks are the only things that exist; `?block=` is required on every read/write; `GET` without `?block=` returns the derived index. The full handover is at `bsp-mcp-server/CLAUDE.md` § "Beach-as-surface migration — what shipped 8 May 2026, what's next" — read that for the architectural rationale, the deploy sequence, and the open items (synthesis storage refactor, perf cache for tide/settings, Thornkeep/GRIT port, dashboard rewrite).
-
-## Operational scripts
-
-- **`scripts/wipe-pscale-beach.js`** — clears every `pscale-beach-v2:*` key (blocks + locks + legacy single-block keys). Requires `WIPE_CONFIRM=yes-i-mean-it`. Use after a coordinated deploy to start clean.
-  ```bash
-  export $(grep -E 'KV_REST_API_(URL|TOKEN)' .env.local | xargs)
-  WIPE_CONFIRM=yes-i-mean-it node scripts/wipe-pscale-beach.js
-  ```
-- **`scripts/wipe-block.js <name>`** — HTTP DELETE on a single named block. Useful for clearing one corrupt sibling without nuking everything. Honours the `_` lock if set.
-- **`scripts/bootstrap-beach-locks.js`** — Phase B helper (legacy; pre-surface-migration era). Installs locks on the legacy beach block.
-
-## Deployment
-
-Vercel auto-deploys from `main`. Upstash KV is the storage backend; env vars `KV_REST_API_URL` and `KV_REST_API_TOKEN` live in `.env.local` (gitignored) and Vercel's project env. Local dev: `vercel dev` against the same KV (or set up a dev KV).
-
 ## What NOT to do
 
-1. **Don't reintroduce `DEFAULT_BLOCK_NAME = 'beach'`** or any "auto-seed default block" behavior. The whole point of the May 2026 migration was that the URL is the surface, not a block. If you find yourself wanting a default, ask why.
-2. **Don't relax the shape gate to accommodate a specific client's convention.** If xstream-bsp or any other client legitimately needs a new shape, the conversation happens at the substrate convention layer (`bsp-mcp-server/src/block-conventions.json`) and the gate stays uniform. Per-client exceptions destroy the "predictable shape" invariant.
-3. **Don't drift the lock salt namespaces.** `hashOrdinary` / `hashSed` / `hashGrain` must match `bsp-mcp-server/src/locks.ts` byte-for-byte. Cross-client trust depends on it.
-4. **Don't add per-block-name special cases.** "Beach" was special once; it became a dumping ground. Sibling blocks are sibling blocks. The handler treats them all the same way (with the prefix-based substrate routing being the only exception, and that's prefix-based, not name-based).
+1. **Don't reinstate anything at `/.well-known/pscale-beach`** — no handler, no rewrite, no static file. The bare-domain 404 is load-bearing: bsp-mcp's federation fallback (`bare 404 → beach.<host>`) routes callers to the real beach through it.
+2. **Don't widen `beach-relay.js`** — no POST, no extra paths, no arbitrary hosts. It is a narrowly-scoped CORS shim, not an open proxy.
+3. **Don't add write methods to `pscale-walk.js` or let `SUPABASE_ANON_KEY` reach the browser** — permissive RLS makes the anon key a write credential.
+4. **Don't run the legacy wipe scripts against the shared KV** without coordinating with the pscale-beach repo first — same `pscale-beach-v2` key namespace as the live beach.
