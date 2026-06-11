@@ -47,6 +47,17 @@ viewer write-back channel via localStorage.
 8. **Beach labels default on; label size scales with the tile** (a beach
    is read by its names). Beach peek panel is view-only + download
    (`beach-<host>.json` snapshot of the fetched surface).
+9. **Mobius wake frames.** A frame whose system/message are JSON strings
+   (no `=== SECTION ===` headers) parses as a mobius wake: one tile per
+   current in `system.self`, named from `system.index`; peer faces from
+   `message.between` as `between:<peer>` tiles; touched = `parsed.writes`
+   keys (kind write) + `gamma` addresses (kind gap). Scrubber concern
+   falls back to `parsed.note`, then `ts`; the ctx panel pretty-prints
+   JSON-string contexts.
+10. **Multi-file upload.** The picker takes multiple files: all
+    frame-shaped → one strip sorted by `ts` (e.g. an agent's `filmstrip/`
+    directory); otherwise → one shell bundle, each file a sibling block
+    named by its filename (e.g. an agent's `shell/` directory).
 
 ---
 
