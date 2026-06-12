@@ -271,6 +271,16 @@ function zeroFormToInternal(node) {
   }
   return out;
 }
+// Inverse — for writing edits back into a 0-form store (the biome
+// editor's shelf). Lossless for blocks that arrived via zeroFormToInternal.
+function internalToZeroForm(node) {
+  if (!node || typeof node !== 'object') return node;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    out[k === '_' ? '0' : k] = internalToZeroForm(v);
+  }
+  return out;
+}
 function normalizeBlock(block) {
   return detectZeroForm(block) ? zeroFormToInternal(block) : block;
 }
@@ -1209,13 +1219,17 @@ editUpdateBtn.addEventListener('click', () => {
   editUpdateBtn.disabled = true;
   editRevertBtn.disabled = true;
   if (inputMode === 'editor') {
-    // Write back to the shared editor shelf in localStorage. The editor
-    // tab picks up the change via `storage` event.
+    // Write back to the source editor's shelf in localStorage — the biome
+    // store in 0-form, the legacy store as-is. The editor tab picks up
+    // the change live via its `storage` listener.
     try {
-      const shelfRaw = localStorage.getItem(LS_SHELF);
+      const key = sec.world === 'biome' ? biomeShelfKeyInUse : LS_SHELF;
+      const shelfRaw = localStorage.getItem(key);
       const shelf = shelfRaw ? JSON.parse(shelfRaw) : {};
-      shelf[editState.blockId] = sec.block;
-      localStorage.setItem(LS_SHELF, JSON.stringify(shelf));
+      shelf[sec.srcId || sec.id] = sec.world === 'biome'
+        ? internalToZeroForm(sec.block)
+        : sec.block;
+      localStorage.setItem(key, JSON.stringify(shelf));
     } catch (e) { console.warn('shelf write failed:', e); }
   }
   // In upload mode the mutation stays in-memory until the user clicks download.
@@ -1264,6 +1278,10 @@ document.getElementById('edit-close').addEventListener('click', closeEditor);
 const FRAME_URL = '../filmstrip/examples/birth-first-awakening.json';
 const LS_SHELF = 'mindflow-editor:shelf';
 const LS_VIEWS = 'mindflow-editor:views';
+// The biome editor's 0-form shelf (with the pre-rename key as fallback).
+const LS_BIOME_SHELVES = ['biome-editor:shelf', 'zand-editor:shelf'];
+const LS_BIOME_VIEWS = ['biome-editor:views', 'zand-editor:views'];
+let biomeShelfKeyInUse = LS_BIOME_SHELVES[0];  // where biome write-backs land
 
 let inputMode = 'frame';  // 'frame' | 'editor' | 'upload' | 'beach'
 let uploadedBlocks = null;   // last-loaded upload parsed into renderable blocks
@@ -1296,11 +1314,23 @@ let frameSourceLabel = null;      // human label for the loaded filmstrip
 // { blocks, label, touchedSet }
 const diveStack = [];
 
-// Flatten an editor slice path [{digit, via}, ...] to a visualiser address
-// (digit string). Star entries (hidden-dir traversals) are not representable
-// in the v2 layout — they're dropped, so a `1*2` slice visualises as `1`.
+// Flatten an editor slice path to a visualiser address (digit string).
+// Legacy slices are [{digit, via}, ...] — star entries (hidden-dir
+// traversals) are dropped, so a `1*2` slice visualises as `1`. Biome
+// slices are plain digit arrays; a '0' step walks the zero-spine, which
+// renders as a hidden interior here — the slice degrades to the visible
+// prefix before the first 0.
 function slicePathToAddr(path) {
-  return path.filter(p => p.via !== 'star').map(p => p.digit).join('');
+  const digits = [];
+  for (const p of path || []) {
+    if (typeof p === 'string') {
+      if (p === '0') break;
+      digits.push(p);
+    } else if (p && p.via !== 'star') {
+      digits.push(p.digit);
+    }
+  }
+  return digits.join('');
 }
 
 // For every node in a block, does the slice (walkMode + focus addr) light it?
@@ -1321,35 +1351,63 @@ function sliceMatches(nodeAddr, slice) {
   return nodeAddr === focus;
 }
 
-// Build a synthetic "parsed" array from the editor's shelf+views. One entry
-// per block; the `touched` list is computed from slice matches against every
-// addressable node in the block.
-function buildEditorBlocks() {
-  const shelfRaw = localStorage.getItem(LS_SHELF);
-  if (!shelfRaw) return [];
-  let shelf;
-  try { shelf = JSON.parse(shelfRaw); } catch { return []; }
-  const viewsRaw = localStorage.getItem(LS_VIEWS);
-  let views = {};
-  try { views = viewsRaw ? JSON.parse(viewsRaw) : {}; } catch {}
+// Build a synthetic "parsed" array from BOTH editors' shelf+views stores:
+// the legacy `_`-form editor (mindflow-editor:*) and the biome 0-9 editor
+// (biome-editor:*, normalised to internal form on the way in). One entry
+// per block; the `touched` list is computed from slice matches against
+// every addressable node in the block. Each entry carries its source
+// world and original id so the peek panel writes back to the right store
+// in the right form.
+function readEditorStore(shelfKey, viewsKey) {
+  let shelf = null, views = {};
+  try {
+    const raw = localStorage.getItem(shelfKey);
+    if (raw) shelf = JSON.parse(raw);
+  } catch {}
+  try {
+    const raw = localStorage.getItem(viewsKey);
+    if (raw) views = JSON.parse(raw) || {};
+  } catch {}
+  return shelf && typeof shelf === 'object' ? { shelf, views } : null;
+}
 
+function buildEditorBlocks() {
   const out = [];
-  for (const [id, block] of Object.entries(shelf)) {
-    const slices = views[id] || [];
-    // Enumerate every addressable node in the block so sliceMatches can tag them.
-    const addrs = [];
-    (function walk(n, addr) {
-      addrs.push(addr);
-      if (!n || typeof n !== 'object') return;
-      for (const k of '123456789') if (n[k] !== undefined) walk(n[k], addr + k);
-    })(block, '');
-    const touched = [];
-    for (const s of slices) {
-      for (const a of addrs) {
-        if (sliceMatches(a, s)) touched.push({ addr: a, kind: 'slice' });
+  const seen = new Set();
+
+  const addEntries = (store, world) => {
+    if (!store) return;
+    for (const [srcId, raw] of Object.entries(store.shelf)) {
+      if (!raw || typeof raw !== 'object') continue;
+      const block = world === 'biome' ? zeroFormToInternal(raw) : raw;
+      const id = seen.has(srcId) ? `${world}:${srcId}` : srcId;
+      seen.add(id);
+      const slices = store.views[srcId] || [];
+      const addrs = [];
+      (function walk(n, addr) {
+        addrs.push(addr);
+        if (!n || typeof n !== 'object') return;
+        for (const k of '123456789') if (n[k] !== undefined) walk(n[k], addr + k);
+      })(block, '');
+      const touched = [];
+      for (const s of slices) {
+        for (const a of addrs) {
+          if (sliceMatches(a, s)) touched.push({ addr: a, kind: 'slice' });
+        }
       }
+      out.push({ id, name: id, block, touched, slices, world, srcId });
     }
-    out.push({ id, name: id, block, touched, slices });
+  };
+
+  addEntries(readEditorStore(LS_SHELF, LS_VIEWS), 'legacy');
+  // Biome store: prefer the current key, fall back to the pre-rename one.
+  for (let i = 0; i < LS_BIOME_SHELVES.length; i++) {
+    const store = readEditorStore(LS_BIOME_SHELVES[i], LS_BIOME_VIEWS[i]);
+    if (store) {
+      biomeShelfKeyInUse = LS_BIOME_SHELVES[i];
+      addEntries(store, 'biome');
+      break;
+    }
   }
   return out;
 }
@@ -1539,9 +1597,15 @@ async function loadBeachInput() {
 async function loadEditorInput() {
   const parsed = buildEditorBlocks();
   const totalSlices = parsed.reduce((n, b) => n + (b.slices?.length || 0), 0);
+  const biomeCount = parsed.filter(b => b.world === 'biome').length;
+  const legacyCount = parsed.length - biomeCount;
+  const worlds = [
+    biomeCount ? `${biomeCount} biome` : null,
+    legacyCount ? `${legacyCount} legacy` : null,
+  ].filter(Boolean).join(' · ');
   parsed.__label = parsed.length
-    ? `editor: ${parsed.length} block${parsed.length === 1 ? '' : 's'} · ${totalSlices} slice${totalSlices === 1 ? '' : 's'}`
-    : 'editor: shelf empty — open the editor and load/create blocks';
+    ? `editor: ${worlds} · ${totalSlices} slice${totalSlices === 1 ? '' : 's'}`
+    : 'editor: shelves empty — open the biome editor (or legacy editor) and load blocks';
   return parsed;
 }
 
@@ -1872,7 +1936,8 @@ document.getElementById('btn-back').addEventListener('click', () => exitMatryosh
 // Cross-tab sync: when editor saves slices in another tab, reload if we're
 // currently in editor mode.
 window.addEventListener('storage', (e) => {
-  if (inputMode === 'editor' && (e.key === LS_VIEWS || e.key === LS_SHELF)) {
+  const editorKeys = [LS_SHELF, LS_VIEWS, ...LS_BIOME_SHELVES, ...LS_BIOME_VIEWS];
+  if (inputMode === 'editor' && editorKeys.includes(e.key)) {
     loadInput();
   }
 });

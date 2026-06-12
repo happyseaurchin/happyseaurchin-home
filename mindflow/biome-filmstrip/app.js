@@ -1,5 +1,5 @@
 /**
- * biome filmstrip (dir: zand-filmstrip) — reader for agent-wake frames.
+ * biome filmstrip — reader for agent-wake frames.
  *
  * One frame is one wake of a pscale-native agent: the gap F computed (γ),
  * the composed window (system = {recipe, index, self}, message = {gap,
@@ -14,7 +14,7 @@
  * sidebar lets you flip between them.
  */
 
-import { collectZeroText, floorDepth, formatAddress } from '../zand.js';
+import { collectZeroText, floorDepth, formatAddress } from '../biome.js';
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -32,7 +32,13 @@ const state = {
   currentIdx: -1,
 };
 
-const LS_THEME = 'zand-filmstrip:theme';
+const LS_THEME = 'biome-filmstrip:theme';
+try {
+  const oldTheme = localStorage.getItem('zand-filmstrip:theme');
+  if (oldTheme !== null && localStorage.getItem(LS_THEME) === null) {
+    localStorage.setItem(LS_THEME, oldTheme);
+  }
+} catch (_) {}
 
 // ── Section parsing ──────────────────────────────────────
 

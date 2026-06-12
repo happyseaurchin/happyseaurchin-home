@@ -1,12 +1,12 @@
 /**
- * biome editor (dir: zand-editor) — multi-block 0-9 file editor.
+ * biome editor — multi-block 0-9 file editor.
  *
  * Loads biome 0-9 blocks — one per file, or a { id: block, ... } bundle —
  * renders document / columns / dir views, and supports inline edits +
  * saved view slices. Reference leaves (e.g. "slate:5.1") resolve by id
  * within the loaded shelf.
  *
- * Walker and address logic come from ../zand.js, the canonical port of
+ * Walker and address logic come from ../biome.js, the canonical port of
  * zand2.py.
  */
 
@@ -15,7 +15,7 @@ import {
   floorDepth,
   formatAddress,
   parseReference,
-} from '../zand.js';
+} from '../biome.js';
 
 // ──── Helpers ────────────────────────────────────────────────
 
@@ -118,10 +118,21 @@ const currentBlock = () => state.currentId ? state.shelf.get(state.currentId) : 
 
 // ──── LocalStorage ───────────────────────────────────────────
 
-const LS_SHELF = 'zand-editor:shelf';
-const LS_FILENAME = 'zand-editor:filename';
-const LS_THEME = 'zand-editor:theme';
-const LS_VIEWS = 'zand-editor:views';
+const LS_SHELF = 'biome-editor:shelf';
+const LS_FILENAME = 'biome-editor:filename';
+const LS_THEME = 'biome-editor:theme';
+const LS_VIEWS = 'biome-editor:views';
+
+// One-time migration from the retired zand-editor:* keys, so shelves
+// saved before the rename survive it.
+for (const key of ['shelf', 'filename', 'theme', 'views']) {
+  try {
+    const oldVal = localStorage.getItem(`zand-editor:${key}`);
+    if (oldVal !== null && localStorage.getItem(`biome-editor:${key}`) === null) {
+      localStorage.setItem(`biome-editor:${key}`, oldVal);
+    }
+  } catch (_) {}
+}
 
 state.slices = new Map();  // blockId -> slice[]
 
