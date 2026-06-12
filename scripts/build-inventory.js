@@ -195,7 +195,12 @@ function catBadge(cat, catName) {
 }
 
 function componentCard(idx, id, component, links, catName) {
-  const docUrl = `/docs/components/${String(id).padStart(2, '0')}-${component.slug}.md`;
+  // most docs are .md, but a few landed as .html (e.g. 56) — link whichever exists
+  const docBase = `${String(id).padStart(2, '0')}-${component.slug}`;
+  const docExt = fs.existsSync(path.join(DOCS_DIR, `${docBase}.md`)) ? '.md'
+    : fs.existsSync(path.join(DOCS_DIR, `${docBase}.html`)) ? '.html'
+    : '.md';
+  const docUrl = `/docs/components/${docBase}${docExt}`;
   const liveHtml = links?.live
     ? `<a class="live" href="${esc(links.live)}" target="_blank" rel="noopener">live ↗</a>`
     : `<span class="empty-link">live: TBD</span>`;
