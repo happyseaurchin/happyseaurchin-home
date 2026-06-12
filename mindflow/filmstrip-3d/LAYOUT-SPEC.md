@@ -51,9 +51,16 @@ viewer write-back channel via localStorage.
    (no `=== SECTION ===` headers) parses as a mobius wake: one tile per
    current in `system.self`, named from `system.index`; peer faces from
    `message.between` as `between:<peer>` tiles; touched = `parsed.writes`
-   keys (kind write) + `gamma` addresses (kind gap). Scrubber concern
-   falls back to `parsed.note`, then `ts`; the ctx panel pretty-prints
-   JSON-string contexts.
+   keys (kind write) + `gamma` addresses AND `target`s (kind gap).
+   Scrubber concern falls back to `parsed.note`, then `ts`; the ctx panel
+   pretty-prints JSON-string contexts. v007 window values per current:
+   digit-keyed block, LIST (ordered ring of texts → digits 1..n), bare
+   string, or null (empty dilation → empty tile); spark result-dicts with
+   an explicit `mode` are unwrapped defensively (subtree / siblings /
+   entries / nodes / text). A resting wake (empty `self`) renders the
+   window's `recipe`. Caveat: writes usually target positions born THIS
+   wake, which the pre-write window can't show — they appear as content
+   in the NEXT frame; γ addresses light reliably.
 10. **Multi-file upload.** The picker takes multiple files: all
     frame-shaped → one strip sorted by `ts` (e.g. an agent's `filmstrip/`
     directory); otherwise → one shell bundle, each file a sibling block

@@ -1,10 +1,10 @@
 /**
  * biome editor (dir: zand-editor) — multi-block 0-9 file editor.
  *
- * Loads a { id: block, ... } JSON file of ztone blocks (digit '0' as voicing,
- * digits '1'..'9' as lateral siblings), renders document / columns / dir
- * views, and supports inline edits + saved view slices. Reference leaves
- * (e.g. "sunztone:5.1") resolve by id within the loaded shelf.
+ * Loads biome 0-9 blocks — one per file, or a { id: block, ... } bundle —
+ * renders document / columns / dir views, and supports inline edits +
+ * saved view slices. Reference leaves (e.g. "slate:5.1") resolve by id
+ * within the loaded shelf.
  *
  * Walker and address logic come from ../zand.js, the canonical port of
  * zand2.py.
@@ -912,7 +912,7 @@ const SAMPLE_BIOME_BLOCKS = ['slate', 'flint', 'genome'];
 async function loadSamples() {
   // Defaults are the biome's own teaching blocks, fetched live through the
   // same-origin relay (the commons serves no CORS headers). Falls back to
-  // the bundled legacy stones when the relay isn't reachable (static dev).
+  // bundled snapshots of the same blocks when the relay isn't reachable.
   let loaded = false;
   try {
     const fetched = await Promise.all(SAMPLE_BIOME_BLOCKS.map(async (name) => {
@@ -930,12 +930,12 @@ async function loadSamples() {
   }
   if (!loaded) {
     try {
-      const [a, b] = await Promise.all([
-        fetch('./blocks/sunztone-v5.json').then(r => r.json()),
-        fetch('./blocks/whetztone-v3.json').then(r => r.json()),
-      ]);
-      state.shelf.set('sunztone', a);
-      state.shelf.set('whetztone', b);
+      const fetched = await Promise.all(SAMPLE_BIOME_BLOCKS.map(async (name) => {
+        const r = await fetch(`./blocks/${name}.json`);
+        if (!r.ok) throw new Error(`${name} snapshot missing`);
+        return [name, await r.json()];
+      }));
+      for (const [name, data] of fetched) state.shelf.set(name, data);
     } catch (e) {
       console.warn('Sample load failed:', e);
     }

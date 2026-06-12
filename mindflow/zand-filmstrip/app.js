@@ -1,12 +1,14 @@
 /**
- * zand-filmstrip — viewer for agent-loop filmstrip JSON frames.
+ * biome filmstrip (dir: zand-filmstrip) — reader for agent-wake frames.
  *
  * One frame is one wake of a pscale-native agent: the gap F computed (γ),
- * the shell at this moment (reflexive_current + the currents named in it),
- * the agent's published face and any peer faces it could see, the edits the
- * agent wrote, and the model's reasoning + usage. Each numbered current is
- * a pscale block (or spindle rendering) rendered with zand.js, so the
- * embedded blocks read the same as in zand-editor.
+ * the composed window (system = {recipe, index, self}, message = {gap,
+ * between}), the writes the agent returned, and the model's reasoning +
+ * usage. Two window grammars are spoken:
+ *   - mobius (v007+): system/message are JSON strings; self holds one
+ *     value per current — a digit-keyed block, a list (ring of texts),
+ *     a string, or null (empty dilation); between holds peer faces.
+ *   - legacy: system/message carry === current N :: id === text sections.
  *
  * Frames load via file picker or drag-drop. Multiple frames sort by ts;
  * sidebar lets you flip between them.
@@ -73,7 +75,7 @@ function parseBody(bodyLines) {
   return { kind: 'text', text };
 }
 
-// ── Embedded block renderer (zand-style document view) ───
+// ── Embedded block renderer (biome-style document view) ──
 
 function renderBlockDoc(block) {
   const out = [];
@@ -91,7 +93,7 @@ function renderBlockDoc(block) {
     out.push(`<div class="node">`);
     out.push(`<h${hLevel} class="node-heading"><span class="addr">${esc(addrDisplay)}</span>`);
     if (sem !== null) out.push(`<span class="sem">${esc(sem)}</span>`);
-    else out.push(`<span class="sem-empty">(no voicing)</span>`);
+    else out.push(`<span class="sem-empty">(no semantic)</span>`);
     out.push(`</h${hLevel}>`);
     for (const d of children) {
       out.push(`<div class="children">`);
@@ -134,6 +136,7 @@ function renderGamma(gamma) {
     out.push(`<div class="gamma-entry gamma-${esc(g.type || 'unknown')}">`);
     out.push(`<div class="gamma-head"><span class="gamma-type">${esc(g.type || 'unknown')}</span><span class="gamma-addr">@${esc(g.address || '')}</span></div>`);
     if (g.divergence) out.push(`<div class="gamma-divergence">${esc(g.divergence)}</div>`);
+    if (g.target) out.push(`<div class="gamma-pair"><div class="gamma-label">target</div><div class="gamma-text">@${esc(g.target)}</div></div>`);
     if (g.intended) {
       out.push(`<div class="gamma-pair"><div class="gamma-label">intended (Π)</div><div class="gamma-text">${esc(g.intended)}</div></div>`);
     }
@@ -146,9 +149,9 @@ function renderGamma(gamma) {
   return out.join('');
 }
 
-function renderReflexive(rc) {
-  if (!rc) return '';
-  const out = [`<section class="frame-section"><h2 class="section-heading">reflexive current — dehydrated index</h2><table class="reflexive-table">`];
+function renderReflexive(rc, heading = 'reflexive current — dehydrated index') {
+  if (!rc || !Object.keys(rc).length) return '';
+  const out = [`<section class="frame-section"><h2 class="section-heading">${esc(heading)}</h2><table class="reflexive-table">`];
   for (const [k, v] of Object.entries(rc)) {
     out.push(`<tr><td class="rc-slot">${esc(k)}</td><td class="rc-addr">${esc(v)}</td></tr>`);
   }
@@ -173,6 +176,15 @@ function renderEdits(edits) {
   }
   out.push(`</section>`);
   return out.join('');
+}
+
+function editsFrom(f) {
+  if (Array.isArray(f.parsed?.edits) && f.parsed.edits.length) return f.parsed.edits;
+  const w = f.parsed?.writes;
+  if (isObj(w)) {
+    return Object.entries(w).map(([address, content]) => ({ class: 'write', address, content }));
+  }
+  return [];
 }
 
 function renderNote(note) {
@@ -223,23 +235,86 @@ function renderFaceSection(header, body) {
   return out.join('');
 }
 
+// ── Mobius (v007) window rendering ───────────────────────
+
+/**
+ * Render one window value: a digit-keyed block, a list (an ordered ring
+ * of texts from a dilated read), a bare string, or null (a dilation that
+ * found nothing).
+ */
+function renderValueBody(v) {
+  if (isObj(v)) {
+    if (!Object.keys(v).length) return `<div class="empty">(empty)</div>`;
+    return `<div class="block-render">${renderBlockDoc(v)}</div>`;
+  }
+  if (Array.isArray(v)) {
+    if (!v.length) return `<div class="empty">(empty)</div>`;
+    return `<div class="block-render">${v.map((item, i) =>
+      isObj(item)
+        ? renderBlockDoc(item)
+        : `<div class="node"><h3 class="node-heading"><span class="addr">${i + 1}</span><span class="sem leaf">${esc(String(item))}</span></h3></div>`
+    ).join('')}</div>`;
+  }
+  if (typeof v === 'string') return `<div class="current-text">${esc(v)}</div>`;
+  return `<div class="empty">(empty dilation)</div>`;
+}
+
+function renderCurrentCard(slot, id, value) {
+  const out = [];
+  out.push(`<details class="current-card" open>`);
+  out.push(`<summary class="current-header"><span class="slot">slot ${esc(slot)}</span><span class="current-id">${esc(id)}</span></summary>`);
+  out.push(`<div class="current-body">${renderValueBody(value)}</div>`);
+  out.push(`</details>`);
+  return out.join('');
+}
+
+function renderFaceCard(peer, value) {
+  const out = [];
+  out.push(`<details class="face-card" open>`);
+  out.push(`<summary class="face-header">peer · ${esc(peer)}</summary>`);
+  out.push(`<div class="face-body">${renderValueBody(value)}</div>`);
+  out.push(`</details>`);
+  return out.join('');
+}
+
+/**
+ * v007 mobius window: system is a JSON string {recipe, index, self};
+ * message is a JSON string {gap, between}. Returns null when the frame
+ * doesn't speak this grammar (legacy === sections handle it instead).
+ */
+function parseJsonWindow(f) {
+  let sys = null, msg = null;
+  try { sys = JSON.parse(f.system); } catch {}
+  try { msg = JSON.parse(f.message); } catch {}
+  if (!isObj(sys) || !isObj(sys.self)) return null;
+  const index = isObj(sys.index) ? sys.index : (f.reflexive_current || {});
+  const currents = Object.entries(sys.self).map(([slot, value]) => ({
+    slot, id: String(index[slot] || `current-${slot}`), value,
+  }));
+  const faces = msg && isObj(msg.between)
+    ? Object.entries(msg.between).map(([peer, value]) => ({ peer, value }))
+    : [];
+  return { currents, faces };
+}
+
 // ── Frame render ─────────────────────────────────────────
 
 function renderFrame(frame) {
   const f = frame.data;
 
-  // Pull sections out of system + message strings. Both contain `=== ... ===`
-  // chunks; together they hold the currents, faces, and a copy of γ.
-  const allSections = [];
-  if (typeof f.system === 'string') allSections.push(...parseSections(f.system));
-  if (typeof f.message === 'string') allSections.push(...parseSections(f.message));
-
-  const currents = [];
-  const faces = [];
-  for (const sec of allSections) {
-    if (!sec.header) continue;
-    if (sec.header.startsWith('current ')) currents.push(sec);
-    else if (sec.header.startsWith('MY FACE') || sec.header.startsWith('PEER FACE')) faces.push(sec);
+  // Mobius (v007+) JSON window first; legacy === sections as fallback.
+  const win = parseJsonWindow(f);
+  let legacyCurrents = [];
+  let legacyFaces = [];
+  if (!win) {
+    const allSections = [];
+    if (typeof f.system === 'string') allSections.push(...parseSections(f.system));
+    if (typeof f.message === 'string') allSections.push(...parseSections(f.message));
+    for (const sec of allSections) {
+      if (!sec.header) continue;
+      if (sec.header.startsWith('current ')) legacyCurrents.push(sec);
+      else if (sec.header.startsWith('MY FACE') || sec.header.startsWith('PEER FACE')) legacyFaces.push(sec);
+    }
   }
 
   const out = [];
@@ -247,20 +322,33 @@ function renderFrame(frame) {
   out.push(renderMeta(f));
   out.push(renderGamma(f.gamma));
   out.push(renderNote(f.parsed?.note));
-  out.push(renderEdits(f.parsed?.edits));
-  out.push(renderReflexive(f.parsed?.reflexive_current || f.reflexive_current));
+  out.push(renderEdits(editsFrom(f)));
+  out.push(renderReflexive(f.reflexive_current, 'reflexive current — woke into'));
+  if (f.parsed?.index) {
+    out.push(renderReflexive(f.parsed.index, 'index — left for the next wake'));
+  }
 
-  if (currents.length) {
+  if (win && win.currents.length) {
     out.push(`<section class="frame-section">`);
     out.push(`<h2 class="section-heading">currents — the shell at this wake</h2>`);
-    for (const sec of currents) out.push(renderCurrentSection(sec.header, parseBody(sec.body)));
+    for (const c of win.currents) out.push(renderCurrentCard(c.slot, c.id, c.value));
+    out.push(`</section>`);
+  } else if (legacyCurrents.length) {
+    out.push(`<section class="frame-section">`);
+    out.push(`<h2 class="section-heading">currents — the shell at this wake</h2>`);
+    for (const sec of legacyCurrents) out.push(renderCurrentSection(sec.header, parseBody(sec.body)));
     out.push(`</section>`);
   }
 
-  if (faces.length) {
+  if (win && win.faces.length) {
+    out.push(`<section class="frame-section">`);
+    out.push(`<h2 class="section-heading">between — peer faces</h2>`);
+    for (const p of win.faces) out.push(renderFaceCard(p.peer, p.value));
+    out.push(`</section>`);
+  } else if (legacyFaces.length) {
     out.push(`<section class="frame-section">`);
     out.push(`<h2 class="section-heading">faces — what's been published</h2>`);
-    for (const sec of faces) out.push(renderFaceSection(sec.header, parseBody(sec.body)));
+    for (const sec of legacyFaces) out.push(renderFaceSection(sec.header, parseBody(sec.body)));
     out.push(`</section>`);
   }
 
@@ -344,10 +432,10 @@ async function loadFile(file) {
 
 async function loadSamples() {
   try {
-    const r = await fetch('./examples/sample-wake-04.json');
+    const r = await fetch('./examples/sample-wake-v007.json');
     if (!r.ok) return;
     const data = await r.json();
-    state.frames.push({ name: 'sample-wake-04.json', data });
+    state.frames.push({ name: 'sample-wake-v007.json', data });
     if (state.currentIdx < 0) state.currentIdx = 0;
   } catch (e) {
     console.warn('Sample load failed:', e);

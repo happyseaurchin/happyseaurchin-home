@@ -820,6 +820,31 @@ function parseFrame(frame) {
 // "reflexive:1:-1", …). message.between carries peer faces. Writes arrive
 // pre-parsed at frame.parsed.writes ("block:addr" keys); the wake's gap
 // lives in frame.gamma.
+// One mobius window value → a renderable block. v007 windows hold, per
+// current: a digit-keyed block, a LIST (an ordered ring of texts from a
+// dilated read → digits 1..n), a bare string, or null (empty dilation).
+// Spark result-dicts carrying an explicit mode are unwrapped defensively
+// (subtree / siblings / entries / nodes / text) in case a future kernel
+// stops unwrapping them before composing.
+function mobiusValueToBlock(v) {
+  if (v === null || v === undefined) return {};
+  if (typeof v === 'string') return { _: v };
+  if (Array.isArray(v)) {
+    const out = {};
+    v.slice(0, 9).forEach((item, i) => {
+      out[String(i + 1)] = (item && typeof item === 'object')
+        ? mobiusValueToBlock(item)
+        : String(item);
+    });
+    return out;
+  }
+  if (typeof v === 'object' && 'mode' in v) {
+    const payload = v.subtree ?? v.siblings ?? v.entries ?? v.nodes ?? v.text;
+    return mobiusValueToBlock(payload);
+  }
+  return normalizeBlock(v);
+}
+
 function parseMobiusFrame(frame) {
   let sys = null;
   try { sys = JSON.parse(frame.system); } catch { return null; }
@@ -833,26 +858,28 @@ function parseMobiusFrame(frame) {
       if (self[k] === undefined) continue;
       const ref = String(index[k] || `current-${k}`);
       const id = ref.split(':')[0] || `current-${k}`;
-      let block = self[k];
-      if (typeof block === 'string') block = { _: block };
-      blocks.push({ id, name: ref, block: normalizeBlock(block), touched: [] });
+      blocks.push({ id, name: ref, block: mobiusValueToBlock(self[k]), touched: [] });
     }
   }
   if (!blocks.length) {
-    // No hydrated self — render the whole system object as one block.
-    blocks.push({ id: 'system', name: 'system', block: normalizeBlock(sys), touched: [] });
+    // No hydrated self (a resting wake) — the recipe is itself digit-keyed
+    // and describes the window; render it rather than nothing.
+    if (sys.recipe && typeof sys.recipe === 'object') {
+      blocks.push({ id: 'recipe', name: 'recipe', block: mobiusValueToBlock(sys.recipe), touched: [] });
+    } else {
+      blocks.push({ id: 'system', name: 'system', block: normalizeBlock(sys), touched: [] });
+    }
   }
   try {
     const msg = JSON.parse(frame.message);
-    if (msg && typeof msg.between === 'object') {
+    if (msg && typeof msg.between === 'object' && msg.between !== null) {
       for (const [peer, face] of Object.entries(msg.between)) {
-        if (face && typeof face === 'object' && !Array.isArray(face)) {
-          blocks.push({ id: `between:${peer}`, name: `between:${peer}`, block: normalizeBlock(face), touched: [] });
-        }
+        blocks.push({ id: `between:${peer}`, name: `between:${peer}`, block: mobiusValueToBlock(face), touched: [] });
       }
     }
   } catch {}
-  // Touched: what the wake wrote, and where its gap sat.
+  // Touched: what the wake wrote, and where its gap sat — including the
+  // address a 'missing' gap points at.
   const addTouched = (ref, kind) => {
     const [blockId, addrRaw] = String(ref).split(':');
     const addr = (addrRaw || '').replace(/[._]/g, '');
@@ -860,7 +887,10 @@ function parseMobiusFrame(frame) {
     if (sec) sec.touched.push({ addr, kind });
   };
   for (const key of Object.keys(frame.parsed?.writes || {})) addTouched(key, 'write');
-  for (const g of frame.gamma || []) if (g?.address) addTouched(g.address, 'gap');
+  for (const g of frame.gamma || []) {
+    if (g?.address) addTouched(g.address, 'gap');
+    if (g?.target) addTouched(g.target, 'gap');
+  }
   return blocks;
 }
 
