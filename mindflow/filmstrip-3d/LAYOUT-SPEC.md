@@ -65,6 +65,20 @@ viewer write-back channel via localStorage.
     frame-shaped → one strip sorted by `ts` (e.g. an agent's `filmstrip/`
     directory); otherwise → one shell bundle, each file a sibling block
     named by its filename (e.g. an agent's `shell/` directory).
+11. **Stable strip layout.** Filmstrips render onto a per-strip FIXED
+    layout: every block id appearing anywhere in the strip gets one tile,
+    sized and subdivided by its union-max depth, packed once in
+    first-appearance (mobius slot) order; absent blocks keep a reserved
+    empty tile; the camera fits once and never refits on scrub. Scrubbing
+    therefore shows content changing, never furniture moving. Beach /
+    shell / single-block inputs keep the per-render shelf-packing — the
+    two layout methods serve different resolutions.
+12. **Ghost writes.** A wake's writes usually CREATE their positions, so
+    the pre-write window (what a frame renders) has no cube for them.
+    The written content is injected at its destination and drawn as a
+    translucent green-edged ghost — the write visible where it is about
+    to land; one frame later it is solid. Replacement writes to existing
+    positions stay plain touched-writes.
 
 ---
 

@@ -171,7 +171,7 @@
 
 <div id="tip"></div>
 <div id="legend">
-  cube = one semantic (<code>_</code> / biome <code>0</code>) · 1=center, 2-9 spiral CW from N · root on floor · depth 1 above · depth ≥2 below · glowing cube = hidden content (shift-click to dive in)
+  cube = one semantic (<code>_</code> / biome <code>0</code>) · 1=center, 2-9 spiral CW from N · root on floor · depth 1 above · depth ≥2 below · glowing cube = hidden content (shift-click to dive in) · green ghost = this wake's write, landing next frame
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -304,9 +304,13 @@ function hasZeroPosition(node) {
 //
 // Per-block CUBE_SIZE is derived from TILE_SIZE so every block fits the
 // standard floor tile regardless of its depth.
-function buildLayout(block) {
+function buildLayout(block, fixedDepth) {
   const nodes = [];
-  const depth = Math.max(maxDepth(block), 1);
+  // fixedDepth pins the subdivision grid (and so every address's absolute
+  // position) to a depth that may exceed the block's current depth — used
+  // by the filmstrip's stable layout so a block deepening mid-strip never
+  // moves the cubes it already had.
+  const depth = Math.max(maxDepth(block), 1, fixedDepth || 0);
   const cubeSize = CUBE_SIZE;
   const C0 = tileFootprintFor(depth);  // root cell width = CUBE_SIZE * 3^depth
 
@@ -412,8 +416,8 @@ function clearBlocks() {
   allNodes = [];
 }
 
-function addBlock(block, tileX, tileZ, blockId, tileIdx) {
-  const { nodes, maxDepth: maxD, C0, cubeSize } = buildLayout(block);
+function addBlock(block, tileX, tileZ, blockId, tileIdx, opts = {}) {
+  const { nodes, maxDepth: maxD, C0, cubeSize } = buildLayout(block, opts.fixedDepth);
 
   // Per-block tile on the floor — size = block's root cell footprint
   // (CUBE_SIZE * 3^depth). Tile is tinted per-block so adjacent blocks
@@ -477,27 +481,42 @@ function addBlock(block, tileX, tileZ, blockId, tileIdx) {
   // cheap (no extra geometry), and reads as "there's more inside".
   const HIDDEN_EMISSIVE = 0xfff4c0;
   const HIDDEN_EMISSIVE_INTENSITY = 0.55;
+  const GHOST_EMISSIVE = 0x40c060;
 
   for (const n of nodes) {
     const fullAddr = blockId + ':' + n.addr;
-    const nn = { ...n, fullAddr, blockId, cubeSize, x: n.x + tileX, z: n.z + tileZ };
+    const isGhost = !!(opts.ghostSet && opts.ghostSet.has(n.addr));
+    const nn = { ...n, fullAddr, blockId, cubeSize, ghost: isGhost, x: n.x + tileX, z: n.z + tileZ };
+    if (isGhost && nn.semantic == null) nn.semantic = '';
     nodesByAddr.set(fullAddr, nn);
     allNodes.push(nn);
-    if (!nn.semantic) continue;
+    if (!nn.semantic && !isGhost) continue;
 
     const baseColor = new THREE.Color(colorForDepth(nn.depth));
     const mat = new THREE.MeshStandardMaterial({
       color: baseColor, roughness: 0.45, metalness: 0.1,
-      transparent: true, opacity: 0.95,
-      emissive: nn.hidden ? new THREE.Color(HIDDEN_EMISSIVE) : new THREE.Color(0x000000),
-      emissiveIntensity: nn.hidden ? HIDDEN_EMISSIVE_INTENSITY : 0,
+      transparent: true, opacity: isGhost ? 0.42 : 0.95,
+      emissive: isGhost ? new THREE.Color(GHOST_EMISSIVE)
+              : nn.hidden ? new THREE.Color(HIDDEN_EMISSIVE) : new THREE.Color(0x000000),
+      emissiveIntensity: isGhost ? 0.45 : (nn.hidden ? HIDDEN_EMISSIVE_INTENSITY : 0),
     });
     const mesh = new THREE.Mesh(cubeGeo, mat);
     mesh.position.set(nn.x, nn.y, nn.z);
     mesh.userData.node = nn;
     scene.add(mesh);
 
-    cubeMeshes.push({ mesh, node: nn, baseColor, dot: null });
+    // Ghosts get a wireframe outline — "about to land".
+    let dot = null;
+    if (isGhost) {
+      dot = new THREE.LineSegments(
+        new THREE.EdgesGeometry(cubeGeo),
+        new THREE.LineBasicMaterial({ color: GHOST_EMISSIVE, transparent: true, opacity: 0.9 })
+      );
+      dot.position.copy(mesh.position);
+      scene.add(dot);
+    }
+
+    cubeMeshes.push({ mesh, node: nn, baseColor, dot });
   }
 
   return { C0, maxD, cubeSize };
@@ -509,8 +528,116 @@ function addBlock(block, tileX, tileZ, blockId, tileIdx) {
 // depth-5 siblings). Shelf-pack instead: sort by footprint, fill rows up
 // to a square-ish target width, pitch each row by its own tallest tile.
 // Inter-block proximity still isn't semantic.
+// Per-strip stable layout: one fixed tile per block id across the WHOLE
+// filmstrip — footprint and subdivision depth from the union of frames
+// (a block's final depth, usually), packed once in first-appearance order
+// (the mobius slot order), so blocks never trade places between frames.
+let stripLayout = null;
+
+function computeStripLayout() {
+  stripLayout = null;
+  if (!frameSeq.length) return;
+  const info = new Map();  // id -> { depth, order }
+  for (const f of frameSeq) {
+    let parsed = [];
+    try { parsed = parseFrame(f) || []; } catch { continue; }
+    for (const b of parsed) {
+      const d = Math.max(maxDepth(b.block), 1);
+      const cur = info.get(b.id);
+      if (cur) cur.depth = Math.max(cur.depth, d);
+      else info.set(b.id, { depth: d, order: info.size });
+    }
+  }
+  if (!info.size) return;
+  const items = [...info.entries()].map(([id, v]) => ({
+    id, depth: v.depth, foot: tileFootprintFor(v.depth), hueIdx: v.order,
+  }));
+  const totalArea = items.reduce((s, it) => s + (it.foot + TILE_GAP) ** 2, 0);
+  const targetW = Math.max(Math.sqrt(totalArea), Math.max(...items.map(it => it.foot)) + TILE_GAP);
+  const rows = [];
+  let row = { items: [], w: 0, h: 0 };
+  for (const it of items) {
+    const w = it.foot + TILE_GAP;
+    if (row.items.length && row.w + w > targetW) {
+      rows.push(row);
+      row = { items: [], w: 0, h: 0 };
+    }
+    row.items.push(it);
+    row.w += w;
+    row.h = Math.max(row.h, w);
+  }
+  if (row.items.length) rows.push(row);
+  const extentX = Math.max(...rows.map(r => r.w));
+  const extentZ = rows.reduce((s, r) => s + r.h, 0);
+  const tiles = new Map();
+  let z = -extentZ / 2;
+  for (const r of rows) {
+    let x = -r.w / 2;
+    const cz = z + r.h / 2;
+    for (const it of r.items) {
+      tiles.set(it.id, { tx: x + (it.foot + TILE_GAP) / 2, tz: cz, depth: it.depth, hueIdx: it.hueIdx });
+      x += it.foot + TILE_GAP;
+    }
+    z += r.h;
+  }
+  stripLayout = {
+    tiles, extentX, extentZ,
+    maxD: Math.max(...items.map(it => it.depth)),
+    fitted: false,
+  };
+}
+
+function fitCameraTo(extentX, extentZ, maxD) {
+  // Vertical span: deepest block dominates. Depth-d block spans
+  // (d-1)*CUBE_SIZE below to +CUBE_SIZE above; plus a cube thickness each side.
+  const aboveSpan = 2 * CUBE_SIZE;
+  const belowSpan = (maxD >= 2 ? (maxD - 1) : 0) * CUBE_SIZE + CUBE_SIZE;
+  const verticalSpan = aboveSpan + belowSpan;
+
+  const lateralExtent = Math.max(extentX, extentZ) * 0.6;
+
+  const aspect = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
+  const aspectBoost = aspect < 1 ? (1 / aspect) : 1;
+  const dist = (lateralExtent * 1.4 + verticalSpan * 0.6) * aspectBoost;
+  controls.target.set(0, (aboveSpan - belowSpan) / 2, 0);
+  camera.position.set(dist * 0.55, dist * 0.55 + aboveSpan * 0.5, dist * 0.85);
+
+  // Big surfaces push the fitted camera past the static far plane / fog
+  // horizon — scale both with the fit, and stretch the floor so tiles
+  // don't overhang it.
+  camera.far = Math.max(1000, dist * 3);
+  camera.updateProjectionMatrix();
+  scene.fog.density = Math.min(0.0035, 1 / Math.max(dist, 1));
+  const floorScale = Math.max(1, (Math.max(extentX, extentZ) * 1.5) / FLOOR_SIZE);
+  floor.scale.set(floorScale, floorScale, 1);
+  grid.scale.set(floorScale, 1, floorScale);
+}
+
 function renderBlocks(blocks) {
   clearBlocks();
+
+  // Filmstrip frames render onto the strip's FIXED layout — same tile,
+  // same subdivision depth for a block in every frame, camera fitted once
+  // — so scrubbing shows the content changing, not the furniture moving.
+  const stable = stripLayout && inputMode === 'frame' && !window.__eventsFrames
+    && blocks.every(b => stripLayout.tiles.has(b.id));
+  if (stable) {
+    const present = new Map(blocks.map(b => [b.id, b]));
+    for (const [id, t] of stripLayout.tiles) {
+      const b = present.get(id);
+      if (b) {
+        addBlock(b.block, t.tx, t.tz, id, t.hueIdx, { fixedDepth: t.depth, ghostSet: b.ghost });
+      } else {
+        // Absent this frame — keep its reserved tile so the field is constant.
+        addBlock({}, t.tx, t.tz, id, t.hueIdx, { fixedDepth: t.depth });
+      }
+    }
+    if (!stripLayout.fitted) {
+      fitCameraTo(stripLayout.extentX, stripLayout.extentZ, stripLayout.maxD);
+      stripLayout.fitted = true;
+    }
+    return;
+  }
 
   const items = blocks.map((b, i) => ({
     b, i, foot: tileFootprintFor(Math.max(maxDepth(b.block), 1)),
@@ -543,36 +670,14 @@ function renderBlocks(blocks) {
     const cz = z + r.h / 2;
     for (const it of r.items) {
       const cx = x + (it.foot + TILE_GAP) / 2;
-      placed.push({ ...addBlock(it.b.block, cx, cz, it.b.id, it.i), tx: cx, tz: cz });
+      placed.push({ ...addBlock(it.b.block, cx, cz, it.b.id, it.i, { ghostSet: it.b.ghost }), tx: cx, tz: cz });
       x += it.foot + TILE_GAP;
     }
     z += r.h;
   }
 
-  // Vertical span: deepest block dominates. Depth-d block spans
-  // (d-1)*CUBE_SIZE below to +CUBE_SIZE above; plus a cube thickness each side.
   const maxD = placed.length ? Math.max(...placed.map(p => p.maxD)) : 1;
-  const aboveSpan = 2 * CUBE_SIZE;
-  const belowSpan = (maxD >= 2 ? (maxD - 1) : 0) * CUBE_SIZE + CUBE_SIZE;
-  const verticalSpan = aboveSpan + belowSpan;
-
-  const lateralExtent = Math.max(extentX, extentZ) * 0.6;
-
-  const aspect = renderer.domElement.clientWidth / renderer.domElement.clientHeight;
-  const aspectBoost = aspect < 1 ? (1 / aspect) : 1;
-  const dist = (lateralExtent * 1.4 + verticalSpan * 0.6) * aspectBoost;
-  controls.target.set(0, (aboveSpan - belowSpan) / 2, 0);
-  camera.position.set(dist * 0.55, dist * 0.55 + aboveSpan * 0.5, dist * 0.85);
-
-  // Big surfaces push the fitted camera past the static far plane / fog
-  // horizon — scale both with the fit, and stretch the floor so tiles
-  // don't overhang it.
-  camera.far = Math.max(1000, dist * 3);
-  camera.updateProjectionMatrix();
-  scene.fog.density = Math.min(0.0035, 1 / Math.max(dist, 1));
-  const floorScale = Math.max(1, (Math.max(extentX, extentZ) * 1.5) / FLOOR_SIZE);
-  floor.scale.set(floorScale, floorScale, 1);
-  grid.scale.set(floorScale, 1, floorScale);
+  fitCameraTo(extentX, extentZ, maxD);
 }
 
 // ---------------------------------------------------------------------------
@@ -620,9 +725,12 @@ function applyHighlight() {
     const filtered = filterOn && (c.node.depth < filterMin || c.node.depth > filterMax);
     const inFocus = isInFocus(c.node, mode, focusAddr);
     c.mesh.visible = !rootHidden && !filtered;
-    c.mesh.material.opacity = inFocus ? 0.95 : 0.08;
+    c.mesh.material.opacity = inFocus ? (c.node.ghost ? 0.42 : 0.95) : 0.08;
     c.mesh.material.color.copy(c.baseColor).multiplyScalar(inFocus ? 1 : 0.6);
-    if (c.dot) c.dot.material.opacity = inFocus ? 0.95 : 0.08;
+    if (c.dot) {
+      c.dot.visible = c.mesh.visible;
+      c.dot.material.opacity = inFocus ? 0.9 : 0.08;
+    }
   }
 }
 
@@ -845,6 +953,37 @@ function mobiusValueToBlock(v) {
   return normalizeBlock(v);
 }
 
+// Ghost writes: a wake's writes usually CREATE their positions, so the
+// pre-write window (what the frame renders) has no cube to light. Inject
+// the written content into the rendered block, marking every created
+// address as ghost — drawn translucent, "about to land". Scrub one frame
+// forward and the ghost is solid: the write has crystallised.
+function injectGhostWrite(block, digits, content, ghostSet) {
+  if (!digits.length) return;
+  let cur = block;
+  let addr = '';
+  for (let i = 0; i < digits.length - 1; i++) {
+    const d = digits[i];
+    addr += d;
+    if (typeof cur[d] === 'string') cur[d] = { _: cur[d] };  // supernest-on-growth
+    else if (!cur[d] || typeof cur[d] !== 'object') { cur[d] = {}; ghostSet.add(addr); }
+    cur = cur[d];
+  }
+  const last = digits[digits.length - 1];
+  addr += last;
+  if (cur[last] !== undefined) return;  // position exists — a plain touched write
+  cur[last] = (content && typeof content === 'object' && !Array.isArray(content))
+    ? zeroFormToInternal(content)
+    : String(content ?? '');
+  ghostSet.add(addr);
+  (function markAll(n, a) {
+    if (!n || typeof n !== 'object') return;
+    for (const k of '123456789') {
+      if (n[k] !== undefined) { ghostSet.add(a + k); markAll(n[k], a + k); }
+    }
+  })(cur[last], addr);
+}
+
 function parseMobiusFrame(frame) {
   let sys = null;
   try { sys = JSON.parse(frame.system); } catch { return null; }
@@ -878,6 +1017,15 @@ function parseMobiusFrame(frame) {
       }
     }
   } catch {}
+  // Ghost-inject this wake's writes so they render where they will land.
+  for (const [key, content] of Object.entries(frame.parsed?.writes || {})) {
+    const [blockId, addrRaw] = String(key).split(':');
+    const digits = (addrRaw || '').replace(/[^0-9]/g, '').split('');
+    const sec = blocks.find(b => b.id === blockId);
+    if (!sec || !digits.length) continue;
+    if (!sec.ghost) sec.ghost = new Set();
+    injectGhostWrite(sec.block, digits, content, sec.ghost);
+  }
   // Touched: what the wake wrote, and where its gap sat — including the
   // address a 'missing' gap points at.
   const addTouched = (ref, kind) => {
@@ -1220,6 +1368,7 @@ async function fetchFrameSource() {
     frameSeq = Array.isArray(data) ? data : [data];
   }
   frameIdx = Math.max(0, Math.min(frameIdx, frameSeq.length - 1));
+  computeStripLayout();
 }
 
 // A frame is one C-loop context snapshot: {system, message, output, tools, …}.
@@ -1238,6 +1387,7 @@ function tryEnterFilmstrip(data, label) {
   frameSourceData = seq;
   frameSourceLabel = label || null;
   frameIdx = Math.max(0, Math.min(frameIdx, seq.length - 1));
+  computeStripLayout();
   inputMode = 'frame';
   if (seq.length > 1) {
     filmstripOn = true;
@@ -1434,6 +1584,7 @@ document.querySelectorAll('#panel button[data-input]').forEach(btn => {
     closeEditor();
     exitMatryoshka({ fade: false });
     frameSeq = [];  // force reload of frame source next time
+    stripLayout = null;
     loadInput().then(syncScrubberUI);
   });
 });
@@ -1445,6 +1596,7 @@ document.getElementById('input-reload').addEventListener('click', () => {
     return;
   }
   frameSeq = [];
+  stripLayout = null;
   loadInput().then(syncScrubberUI);
 });
 
@@ -1818,6 +1970,7 @@ function enterEventsFilmstrip() {
     __referenceShelf: others,
   }));
   frameSeq = pseudoFrames.map(pf => ({ ...pf, system: '', message: '' }));
+  stripLayout = null;  // events frames re-render a constant shelf; no strip layout
   // Override parseFrame path: we'll render others[] directly and compute
   // touched from pf.__touchedByBlock. Hook a minimal wrapper:
   window.__eventsFrames = { frames, others };
