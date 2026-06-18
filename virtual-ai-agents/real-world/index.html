@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>walk the world</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { background:#0b0d12; color:#cdd3df; font:16px/1.6 Georgia,serif;
+         max-width:720px; margin:0 auto; padding:18px 18px 80px; }
+  #crumbs { font:12px system-ui,sans-serif; color:#7f8aa0; margin-bottom:18px; word-spacing:1px; }
+  #crumbs a { color:#9db0d6; text-decoration:none; cursor:pointer; }
+  #crumbs a:hover { color:#cfe0f2; text-decoration:underline; }
+  #crumbs .sep { padding:0 5px; color:#454d63; }
+  h1 { font:600 23px/1.3 Georgia,serif; color:#e8edf6; margin:0 0 3px; }
+  .scale { font:11px system-ui,sans-serif; color:#566179; letter-spacing:.05em; text-transform:uppercase; }
+  .amap { margin:4px 0 22px; font:13px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .arow { display:flex; align-items:baseline; padding:1px 5px; border-radius:5px; }
+  .arow .ad { width:22px; text-align:center; color:#c7b3f0; font-weight:700; }
+  .arow .ap { width:46px; color:#5b6479; font-size:11px; }
+  .arow .an { color:#aeb6c6; }
+  .arow.gap .ad { color:#3f4660; }
+  .arow.gap .an { color:#4d5568; font-style:italic; }
+  .arow.root .ad { color:#5b6479; font-weight:400; }
+  .arow.cur { background:#18202e; }
+  .arow.cur .an { color:#eaf0fb; font-weight:600; }
+  #desc { color:#aeb6c6; margin:8px 0 22px; font-size:15px; }
+  .lbl { font:11px system-ui,sans-serif; color:#7f8aa0; text-transform:uppercase; letter-spacing:.1em; margin:0 0 8px; }
+  .kids { list-style:none; padding:0; margin:0; }
+  .kid { display:flex; align-items:baseline; gap:9px; padding:10px 12px; margin:5px 0; cursor:pointer;
+         background:#11141b; border:1px solid #222838; border-left:3px solid #2b3550; border-radius:7px; }
+  .kid:hover { background:#161b25; border-left-color:#5a78c0; }
+  .kid .nm { color:#dbe2ef; }
+  .kid .ds { color:#7f8aa0; font:13px/1.4 Georgia,serif; }
+  .kid.ref .nm:after { content:" ↪"; color:#c7b3f0; }
+  .kid.head { opacity:.5; font-style:italic; }
+  .empty { color:#56607a; font-style:italic; font:14px system-ui,sans-serif; }
+  .add { margin-top:26px; border-top:1px solid #1c2230; padding-top:16px; }
+  .add input { width:100%; background:#0e1117; color:#e8edf6; border:1px solid #2a3146;
+               border-radius:8px; padding:11px 12px; font:15px Georgia,serif; }
+  .add .row { display:flex; gap:8px; margin-top:8px; align-items:center; }
+  .add button { padding:9px 18px; border:0; border-radius:8px; background:#3a5a86; color:#eaf2ff;
+                font:600 13px system-ui,sans-serif; cursor:pointer; }
+  .add button:hover { background:#456a9d; }
+  .hint { color:#56607a; font:11px system-ui,sans-serif; }
+  #flash { color:#9db0d6; font:12px system-ui,sans-serif; min-height:16px; margin-top:6px; }
+</style>
+</head>
+<body>
+  <div id="crumbs"></div>
+  <h1 id="place">…</h1>
+  <div id="desc"></div>
+  <div class="lbl">the address — each digit is one scale down from the Sun</div>
+  <div class="amap" id="amap"></div>
+  <div class="lbl">within — click to go deeper</div>
+  <ul class="kids" id="kids"></ul>
+
+  <div class="add">
+    <div class="lbl">add a place here — your room, your street, in your own words</div>
+    <input id="newname" placeholder="e.g. the kitchen with the broken radiator">
+    <div class="row">
+      <button id="addbtn">add it here</button>
+      <span class="hint">it lands as a real place anyone can later walk to</span>
+    </div>
+    <div id="flash"></div>
+  </div>
+
+<script type="module">
+import { descend, voice } from "./spark.js";   // relative -> works at any path (root or a subpage)
+const QS = new URLSearchParams(location.search);
+// where the blocks come from: ?door=URL wins; else DEFAULT_DOOR (set per deployment); else this same origin.
+// a hosted copy sets DEFAULT_DOOR to a live biome (e.g. the Railway real-world biome); blocks/ stays a fallback.
+const DEFAULT_DOOR = "https://realworld-biome-production.up.railway.app";
+const DOOR = ((QS.get("door") ?? DEFAULT_DOOR) || "").replace(/\/$/, "") + "/.well-known/biome-beach";
+const ROOT = QS.get("root") || "sol";
+const DIGITS = "123456789".split("");
+const $ = s => document.querySelector(s);
+const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const cache = {};
+
+async function fetchBlock(name){
+  if (name in cache) return cache[name];
+  let b = null;
+  try { const r = await fetch(DOOR + "?block=" + encodeURIComponent(name));   // a live biome door
+        if (r.ok){ const j = await r.json(); if (j && !j.absent) b = j; } } catch(e){}
+  if (b === null){                                  // a static host: read a plain blocks/<name>.json
+    try { const r = await fetch("blocks/" + encodeURIComponent(name) + ".json"); if (r.ok) b = await r.json(); } catch(e){}
+  }
+  return cache[name] = b;
+}
+async function writeBlock(name, content){
+  delete cache[name];
+  try {
+    const r = await fetch(DOOR, { method:"POST", headers:{"Content-Type":"application/json"},
+                                 body: JSON.stringify({ block:name, content }) });
+    return await r.json();
+  } catch(e){ return { error: "this is a read-only window -- adds need a live biome" }; }
+}
+// a bare-name leaf (no spaces, name-shaped) is a ref to another block
+const isRefName = s => typeof s === "string" && /^[a-z][a-z0-9-]*$/i.test(s.trim());
+// descend the structural 0-rungs to where a node actually holds its children
+function childHost(node){
+  let z = [];
+  while (node && typeof node==="object" && !DIGITS.some(d=>d in node) && node["0"] && typeof node["0"]==="object")
+    { node = node["0"]; z.push("0"); }
+  return { host:node, z };
+}
+const nameOf = v => (voice(v)||"").split(" -- ")[0].split(" / ")[0].trim();
+const descOf  = v => { const t = voice(v)||""; const i = t.indexOf(" -- "); return i<0 ? "" : t.slice(i+4); };
+
+// the trail of frames: {blockName, walk(within block), gdigits(global), label}
+let trail = [];
+
+async function enter(blockName, walk, gdigits){
+  const block = await fetchBlock(blockName);
+  const node = descend(block, walk);
+  trail.push({ blockName, walk, gdigits, label: nameOf(node) || blockName });
+  await render();
+}
+function back(i){ trail = trail.slice(0, i+1); render(); }
+
+// jump straight to a global address like "1000111111" (a link to someone's town)
+async function jumpTo(str){
+  const digs = str.match(/\d/g) || [];
+  await enter(ROOT, [], []);
+  let i = 0;
+  while (i < digs.length){
+    const f = trail[trail.length-1];
+    const node = descend(await fetchBlock(f.blockName), f.walk);
+    const { host, z } = childHost(node);
+    const used = [];
+    for (const _z of z){ if (digs[i] === "0"){ used.push("0"); i++; } }
+    if (i >= digs.length || !host || typeof host !== "object") break;
+    const d = digs[i++];
+    if (!(d in host)) break;
+    const cv = host[d], gdig = f.gdigits.concat(used, [d]);
+    if (typeof cv==="string" && isRefName(cv) && await fetchBlock(cv)) await enter(cv, [], gdig);
+    else await enter(f.blockName, f.walk.concat(used, [d]), gdig);
+  }
+}
+
+let renderSeq = 0;
+async function render(){
+  const my = ++renderSeq;                                // guard: a newer render supersedes this one
+  const f = trail[trail.length-1];
+  const block = await fetchBlock(f.blockName);
+  if (my !== renderSeq) return;
+  const node = descend(block, f.walk);
+  $("#place").textContent = nameOf(node) || f.blockName;
+  $("#desc").textContent = descOf(node) || "";
+  // the address, scale by scale: each digit <-> a place; a 0 is a scale with no place here
+  const g = f.gdigits, labelAt = {};
+  for (const t of trail) labelAt[t.gdigits.length] = t.label;
+  let amap = '<div class="arow root"><span class="ad">·</span><span class="ap">+11</span>'
+           + '<span class="an">'+esc(labelAt[0]||"Sol")+'</span></div>';
+  for (let i=1;i<=g.length;i++){
+    const ps = 11 - i, named = (i in labelAt);
+    amap += '<div class="arow'+(named?'':' gap')+(i===g.length?' cur':'')+'">'
+          + '<span class="ad">'+g[i-1]+'</span>'
+          + '<span class="ap">'+(ps>=0?"+":"")+ps+'</span>'
+          + '<span class="an">'+esc(named?labelAt[i]:"— empty scale")+'</span></div>';
+  }
+  $("#amap").innerHTML = amap;
+  $("#crumbs").innerHTML = trail.map((t,i)=>
+    '<a data-i="'+i+'">'+esc(t.label)+'</a>').join('<span class="sep">›</span>');
+  $("#crumbs").querySelectorAll("a").forEach(a=>a.onclick=()=>back(+a.dataset.i));
+
+  const { host, z } = childHost(node);
+  const items = [];
+  for (const d of DIGITS) if (host && typeof host==="object" && d in host) items.push([d, host[d]]);
+  $("#kids").innerHTML = items.length ? "" : '<li class="empty">nothing here yet — add the first place below</li>';
+  for (const [d, cv] of items){
+    const ref = (typeof cv==="string") && isRefName(cv);
+    const headless = (typeof cv==="string") && /^\(/.test(cv.trim());
+    let nm, ds;                                          // a ref leaf names another block -- read ITS voice
+    if (ref){ const b = await fetchBlock(cv); nm = (b && nameOf(b)) || cv; ds = b ? descOf(b) : ""; }
+    else { nm = nameOf(cv) || cv; ds = descOf(cv); }
+    if (my !== renderSeq) return;                         // superseded mid-loop -> stop appending
+    const li = document.createElement("li");
+    li.className = "kid" + (ref?" ref":"") + (headless?" head":"");
+    li.innerHTML = '<span class="nm">'+esc(nm)+'</span> <span class="ds">'+esc((ds||"").slice(0,90))+'</span>';
+    li.onclick = ()=>{
+      const gdig = f.gdigits.concat(z, [d]);
+      if (ref){ enter(cv, [], gdig); return; }            // hop into the other block
+      enter(f.blockName, f.walk.concat(z, [d]), gdig);    // inline (or a leaf voicing)
+    };
+    $("#kids").appendChild(li);
+  }
+}
+
+async function add(){
+  const text = $("#newname").value.trim();
+  if (!text){ flash("type a place first"); return; }
+  const f = trail[trail.length-1];
+  const block = await fetchBlock(f.blockName);          // a fresh copy to mutate
+  // walk to the child-host in the real block, lifting any string voicing on the way
+  let node = block;
+  const path = f.walk.slice();
+  for (const d of path){ if (typeof node[d]==="string") node[d] = {"0":node[d]}; node = node[d]; }
+  let { host } = childHost(node);
+  if (typeof host !== "object"){ flash("can't add here"); return; }
+  let slot = DIGITS.find(d => !(d in host));
+  if (!slot){ flash("this place is full (9) — go one deeper"); return; }
+  host[slot] = { "0": text + " -- added here" };
+  const res = await writeBlock(f.blockName, block);
+  if (res && res.error){ flash("the door said: " + res.error); return; }
+  $("#newname").value = "";
+  flash("added — “" + text + "”");
+  render();
+}
+let flashT;
+function flash(m){ $("#flash").textContent = m; clearTimeout(flashT); flashT=setTimeout(()=>$("#flash").textContent="",3000); }
+$("#addbtn").onclick = add;
+$("#newname").addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
+
+const AT = QS.get("at");
+if (AT) jumpTo(AT); else enter(ROOT, [], []);
+</script>
+</body>
+</html>
