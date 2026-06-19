@@ -10,39 +10,43 @@
   body { background:#0b0d12; color:#cdd3df; font:16px/1.6 Georgia,serif;
          max-width:720px; margin:0 auto; padding:24px 18px 90px; }
 
-  /* 1 — the address as one number */
+  /* 1 — the address as one number, one digit per scale */
   #bignum { font:700 clamp(26px,7vw,38px)/1 ui-monospace,SFMono-Regular,Menlo,monospace;
             letter-spacing:.14em; margin:0 0 14px; word-break:break-all; }
-  #bignum .sig { color:#c7b3f0; }
-  #bignum .pad { color:#39405a; }                 /* trailing scales not yet descended — dim */
+  #bignum .sig { color:#c7b3f0; }                 /* a named scale */
+  #bignum .z   { color:#566179; }                 /* an empty scale (0) — present, just unnamed */
+  #bignum .pt  { color:#9a7adb; padding:0 1px; }  /* the floor — the one decimal point */
 
-  /* 2 — breadcrumbs */
+  /* 2 — breadcrumbs, one chip per scale (digits and 0s alike) */
   #crumbs { font:12px system-ui,sans-serif; color:#7f8aa0; margin-bottom:22px; }
   #crumbs a { color:#9db0d6; text-decoration:none; cursor:pointer; }
   #crumbs a:hover { color:#cfe0f2; text-decoration:underline; }
   #crumbs .sep { padding:0 9px; color:#454d63; }
+  #crumbs .z { color:#566179; }                   /* an empty scale in the trail — the 0 */
+  #crumbs .sep.pt { color:#9a7adb; }              /* the floor boundary in the trail — the decimal point */
 
   /* 3 — title + semantic */
   h1 { font:600 24px/1.3 Georgia,serif; color:#e8edf6; margin:0 0 5px; }
   #desc { color:#aeb6c6; margin:0; font-size:15px; }
 
-  /* 4 — move: up, then down (within) */
-  #upbtn { margin-top:24px; background:#11141b; color:#aeb6c6; border:1px solid #2b3550;
-           border-radius:7px; padding:8px 15px; font:13px system-ui,sans-serif; cursor:pointer;
-           transition:border-color .15s,color .15s; }
-  #upbtn:hover:not(:disabled) { border-color:#5a78c0; color:#dbe2ef; }
-  #upbtn:disabled { opacity:.3; cursor:default; }
-  .lbl { font:11px system-ui,sans-serif; color:#7f8aa0; text-transform:uppercase;
-         letter-spacing:.1em; margin:18px 0 8px; }
+  /* 4 — move: a card up to the parent, a card down to each child */
   .kids { list-style:none; padding:0; margin:0; }
   .kid { display:flex; align-items:baseline; gap:9px; padding:10px 12px; margin:5px 0; cursor:pointer;
          background:#11141b; border:1px solid #222838; border-left:3px solid #2b3550; border-radius:7px; }
   .kid:hover { background:#161b25; border-left-color:#5a78c0; }
+  .kid .ar { color:#5b6479; font:12px system-ui,sans-serif; width:12px; flex:none; }
   .kid .nm { color:#dbe2ef; }
   .kid .ds { color:#7f8aa0; font:13px/1.4 Georgia,serif; }
   .kid.ref .nm:after { content:" \21AA"; color:#c7b3f0; }
   .kid.head { opacity:.5; font-style:italic; }
+  .kid.up { border-left-color:#6a5a9c; }          /* the one card going up */
+  .kid.up:hover { border-left-color:#9a7adb; }
+  .kid.up.muted { cursor:default; opacity:.55; }
+  .kid.up.muted:hover { background:#11141b; border-left-color:#6a5a9c; }
+  .pivot { text-align:center; color:#566179; margin:14px 0 8px; }
   .empty { color:#56607a; font-style:italic; font:14px system-ui,sans-serif; }
+  .lbl { font:11px system-ui,sans-serif; color:#7f8aa0; text-transform:uppercase;
+         letter-spacing:.1em; margin:18px 0 8px; }
 
   /* 5 — add a place */
   .add { margin-top:28px; }
@@ -77,19 +81,19 @@
 </style>
 </head>
 <body>
-  <!-- 1 — the whole descent, as one number -->
+  <!-- 1 — the whole descent, as one number (one digit per scale, 0s included) -->
   <div id="bignum">&hellip;</div>
 
-  <!-- 2 — the trail -->
+  <!-- 2 — the same scales as a trail (0s shown, so it matches the number digit-for-digit) -->
   <div id="crumbs"></div>
 
   <!-- 3 — where you are -->
   <h1 id="place">&hellip;</h1>
   <div id="desc"></div>
 
-  <!-- 4 — move: up a scale, or down into what's within -->
-  <button id="upbtn" disabled>&uarr; up</button>
-  <div class="lbl">within &mdash; go deeper &darr;</div>
+  <!-- 4 — zoom: a card up to the parent, the pivot, then a card down to each child -->
+  <ul class="kids" id="upcard"></ul>
+  <div class="lbl pivot">zoom down or up</div>
   <ul class="kids" id="kids"></ul>
 
   <!-- 5 — add a place at this scale -->
@@ -107,11 +111,13 @@
   <section class="info">
     <h2>how it works</h2>
     <p>Every place here is a <strong>pscale block</strong> &mdash; plain JSON, where numbers
-      address meaning. You descend one scale at a time: the Sun, a planet, a continent, a
-      country&hellip; down to a single room. Each step is one digit, and the big number at the top
-      is your whole descent written out &mdash; one digit per scale, read left to right from just
-      below the Sun down to the floor. A <strong>0</strong> is a scale with no place named at it:
-      one the world skips here, or one you haven&rsquo;t walked into yet.</p>
+      address meaning. You move one scale at a time: the Sun, a planet, a continent, a
+      country&hellip; down to a single room &mdash; or back up. Each step is one digit. The big
+      number is the scales from the head down to where you stand, one digit each; the breadcrumb
+      names those very same scales, digit for digit. A <strong>0</strong> is a scale with no place
+      of its own &mdash; the world simply skips it here. The single <strong>decimal point</strong>
+      marks the floor (your room, pscale 0): add something inside and the address descends naturally
+      into decimals &mdash; <code>.1</code> the table, <code>.11</code> the plate on it.</p>
   </section>
 
   <!-- 7 — the same number, unpacked -->
@@ -119,10 +125,10 @@
     <h2>the number above, unpacked</h2>
     <div class="lbl">digit &middot; pscale &middot; place</div>
     <div class="amap" id="amap"></div>
-    <p class="note">Each row is one scale: the <strong>digit</strong> you took, its
-      <strong>pscale</strong> (height above the floor &mdash; +10 just under the Sun, 0 at the
-      floor), and the <strong>place</strong> that digit names. Empty scales carry a 0; the
-      highlighted row is where you stand.</p>
+    <p class="note">Each row is one scale: the <strong>digit</strong>, its <strong>pscale</strong>
+      (height above the floor &mdash; the floor is 0 and pscale counts up; the head is wherever the
+      world currently tops out, read from its own voice), and the <strong>place</strong>. Empty
+      scales carry a 0; the highlighted row is where you stand.</p>
   </section>
 
   <!-- 8 — what it's for -->
@@ -132,8 +138,8 @@
       own words. This page is a <strong>window</strong> onto that nesting, read live from a shared
       biome. It isn&rsquo;t the thing itself: the blocks are the real substrate, and they live on
       the biome &mdash; readable by any browser, or any agent. The point is that it&rsquo;s open at
-      both ends. You can walk in from the Sun; and you can add your own room at the bottom, in your
-      own words, and the next person can walk to it.</p>
+      both ends. You can walk in from the Sun &mdash; or grow it upward &mdash; and you can add your
+      own room at the bottom, in your own words, and the next person can walk to it.</p>
   </section>
 
 <script type="module">
@@ -145,7 +151,6 @@ const DEFAULT_DOOR = "https://realworld-biome-production.up.railway.app";
 const DOOR = ((QS.get("door") ?? DEFAULT_DOOR) || "").replace(/\/$/, "") + "/.well-known/biome-beach";
 const ROOT = QS.get("root") || "sol";
 const DIGITS = "123456789".split("");
-const DEPTH = 11;                                 // digit positions from +10 (Earth) down to 0 (the floor); Sol +11 is the origin
 const $ = s => document.querySelector(s);
 const esc = s => (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 const cache = {};
@@ -179,6 +184,8 @@ function childHost(node){
 }
 const nameOf = v => (voice(v)||"").split(" -- ")[0].split(" / ")[0].trim();
 const descOf  = v => { const t = voice(v)||""; const i = t.indexOf(" -- "); return i<0 ? "" : t.slice(i+4); };
+// the head's pscale, read from its OWN voice (never hard-coded) -- so the world can grow upward
+const headPscale = () => { const m = (voice(cache[ROOT])||"").match(/pscale\s*\+?(-?\d+)/i); return m ? +m[1] : 0; };
 
 // the trail of frames: {blockName, walk(within block), gdigits(global), label}
 let trail = [];
@@ -212,6 +219,13 @@ async function jumpTo(str){
   }
 }
 
+// ── views, all built from ONE list of scales ──
+const crumb = (name, idx) => '<a data-i="'+idx+'">'+esc(name)+'</a>';
+const arow  = (d, ps, name, cls) =>
+  '<div class="arow '+cls+'"><span class="ad">'+d+'</span>'
+  + '<span class="ap">'+(ps>=0?"+":"")+ps+'</span>'
+  + '<span class="an">'+esc(name)+'</span></div>';
+
 let renderSeq = 0;
 async function render(){
   const my = ++renderSeq;                                // guard: a newer render supersedes this one
@@ -220,38 +234,54 @@ async function render(){
   if (my !== renderSeq) return;
   const node = descend(block, f.walk);
   $("#place").textContent = nameOf(node) || f.blockName;
-  $("#desc").textContent = descOf(node) || "";
+  $("#desc").textContent  = descOf(node) || "";
 
-  // 1 — the big number: the walk so far, padded with trailing 0s down to the floor
-  const g = f.gdigits, sig = g.join("");
-  const pad = sig.length < DEPTH ? "0".repeat(DEPTH - sig.length) : "";
-  $("#bignum").innerHTML = '<span class="sig">'+esc(sig)+'</span><span class="pad">'+pad+'</span>';
+  // ── ONE source of truth: the scales from the head down to here ──
+  // f.gdigits already holds one digit per scale (0 = an empty scale). The number,
+  // the breadcrumb and the table below are just three views of this one list — no
+  // per-view "gap" handling, no re-deriving. They line up digit-for-digit by construction.
+  const g = f.gdigits, HEAD = headPscale();
+  const labelAt = {}, frameAt = {};
+  trail.forEach((t,i)=>{ labelAt[t.gdigits.length] = t.label; frameAt[t.gdigits.length] = i; });
+  const scales = g.map((d,i)=>({ digit:d, pscale:HEAD-(i+1), name:(i+1) in labelAt ? labelAt[i+1] : null }));
 
-  // 4 — up button: live when there's a parent frame above
-  const u = $("#upbtn"), parent = trail.length>1 ? trail[trail.length-2].label : null;
-  u.disabled = trail.length <= 1;
-  u.textContent = parent ? "↑ up to " + parent : "↑ up";
+  // 1 — the number: integer digits down to the floor (pscale 0), then ONE decimal point and
+  //     decimal digits for anything inside the floor — your room: .1 the table, .11 the plate.
+  //     empty scales are plain 0s; they never get a decimal point.
+  const dig  = s => '<span class="'+(s.name?"sig":"z")+'">'+s.digit+'</span>';
+  const intS = scales.filter(s => s.pscale >= 0), decS = scales.filter(s => s.pscale < 0);
+  $("#bignum").innerHTML = scales.length
+    ? intS.map(dig).join("") + (decS.length ? '<span class="pt">.</span>' + decS.map(dig).join("") : "")
+    : '<span class="z">&middot;</span>';
 
-  // 2 — the breadcrumb trail
-  $("#crumbs").innerHTML = trail.map((t,i)=>
-    '<a data-i="'+i+'">'+esc(t.label)+'</a>').join('<span class="sep">›</span>');
+  // 2 — the breadcrumb: the head, then one chip per scale, matching the number digit-for-digit.
+  //     the single floor boundary (stepping into the room) shows as the one decimal point, not a ›.
+  let bc = crumb(labelAt[0]||"Sol", frameAt[0]);
+  scales.forEach((s,i)=>{
+    bc += (s.pscale === -1 ? '<span class="sep pt">.</span>' : '<span class="sep">›</span>')
+        + (s.name ? crumb(s.name, frameAt[i+1]) : '<span class="z">0</span>');
+  });
+  $("#crumbs").innerHTML = bc;
   $("#crumbs").querySelectorAll("a").forEach(a=>a.onclick=()=>back(+a.dataset.i));
 
-  // 7 — the number unpacked: each scale as digit / pscale / place
-  const labelAt = {};
-  for (const t of trail) labelAt[t.gdigits.length] = t.label;
-  let amap = '<div class="arow root"><span class="ad">·</span><span class="ap">+11</span>'
-           + '<span class="an">'+esc(labelAt[0]||"Sol")+'</span></div>';
-  for (let i=1;i<=g.length;i++){
-    const ps = 11 - i, named = (i in labelAt);
-    amap += '<div class="arow'+(named?'':' gap')+(i===g.length?' cur':'')+'">'
-          + '<span class="ad">'+g[i-1]+'</span>'
-          + '<span class="ap">'+(ps>=0?"+":"")+ps+'</span>'
-          + '<span class="an">'+esc(named?labelAt[i]:"— empty scale")+'</span></div>';
-  }
+  // 7 — the same scales, unpacked
+  let amap = arow('·', HEAD, labelAt[0]||"Sol", 'root');
+  scales.forEach((s,i)=> amap += arow(s.digit, s.pscale, s.name || "— empty scale",
+      (s.name?'':'gap') + (i===scales.length-1?' cur':'')));
   $("#amap").innerHTML = amap;
 
-  // 4 — within: the digit children at this scale, click to go deeper
+  // 4a — the up-card: the parent, one scale up (the mirror of a down-card)
+  const upEl = $("#upcard");
+  if (trail.length > 1){
+    upEl.innerHTML = '<li class="kid up"><span class="ar">↑</span>'
+      + '<span class="nm">'+esc(trail[trail.length-2].label)+'</span> <span class="ds">up one scale</span></li>';
+    upEl.querySelector('.kid').onclick = up;
+  } else {
+    upEl.innerHTML = '<li class="kid up muted"><span class="ar">↑</span>'
+      + '<span class="nm">'+esc(labelAt[0]||"Sol")+'</span> <span class="ds">the head — the world grows upward from here</span></li>';
+  }
+
+  // 4b — the down-cards: the children at this scale
   const { host, z } = childHost(node);
   const items = [];
   for (const d of DIGITS) if (host && typeof host==="object" && d in host) items.push([d, host[d]]);
@@ -264,8 +294,8 @@ async function render(){
     else { nm = nameOf(cv) || cv; ds = descOf(cv); }
     if (my !== renderSeq) return;                         // superseded mid-loop -> stop appending
     const li = document.createElement("li");
-    li.className = "kid" + (ref?" ref":"") + (headless?" head":"");
-    li.innerHTML = '<span class="nm">'+esc(nm)+'</span> <span class="ds">'+esc((ds||"").slice(0,90))+'</span>';
+    li.className = "kid down" + (ref?" ref":"") + (headless?" head":"");
+    li.innerHTML = '<span class="ar">↓</span><span class="nm">'+esc(nm)+'</span> <span class="ds">'+esc((ds||"").slice(0,90))+'</span>';
     li.onclick = ()=>{
       const gdig = f.gdigits.concat(z, [d]);
       if (ref){ enter(cv, [], gdig); return; }            // hop into the other block
@@ -298,7 +328,6 @@ async function add(){
 let flashT;
 function flash(m){ $("#flash").textContent = m; clearTimeout(flashT); flashT=setTimeout(()=>$("#flash").textContent="",3000); }
 $("#addbtn").onclick = add;
-$("#upbtn").onclick = up;
 $("#newname").addEventListener("keydown", e=>{ if(e.key==="Enter") add(); });
 
 const AT = QS.get("at");
