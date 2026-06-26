@@ -610,6 +610,7 @@ function renderBlockList() {
     out.push(`<div class="block-item${cur}" data-id="${esc(id)}">`);
     out.push(`<div class="block-item-id"><span>${esc(id)}</span>`);
     out.push(`<span class="block-item-actions">`);
+    out.push(`<button class="item-btn" data-raw="${esc(id)}" title="View raw JSON">{ }</button>`);
     out.push(`<button class="item-btn" data-rename="${esc(id)}" title="Rename">✎</button>`);
     out.push(`<button class="item-btn del" data-delete="${esc(id)}" title="Delete">×</button>`);
     out.push(`</span></div>`);
@@ -674,6 +675,12 @@ function attachDynamicHandlers() {
     el.addEventListener('dblclick', (e) => {
       if (e.target.closest('.item-btn')) return;
       openRawModal(el.dataset.id);
+    });
+  });
+  document.querySelectorAll('[data-raw]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRawModal(el.dataset.raw);
     });
   });
   document.querySelectorAll('[data-rename]').forEach(el => {

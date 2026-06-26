@@ -671,6 +671,7 @@ function renderBlockList() {
     out.push(`<div class="block-item${cur}" data-id="${esc(id)}">`);
     out.push(`<div class="block-item-id"><span>${esc(id)}</span>`);
     out.push(`<span class="block-item-actions">`);
+    out.push(`<button class="item-btn" data-raw="${esc(id)}" title="View raw JSON">{ }</button>`);
     out.push(`<button class="item-btn" data-rename="${esc(id)}" title="Rename">✎</button>`);
     out.push(`<button class="item-btn del" data-delete="${esc(id)}" title="Delete">×</button>`);
     out.push(`</span></div>`);
@@ -733,6 +734,17 @@ function attachDynamicHandlers() {
     el.addEventListener('click', (e) => {
       if (e.target.closest('.item-btn')) return;
       selectBlock(el.dataset.id);
+    });
+    // Double-click a block → raw JSON popup.
+    el.addEventListener('dblclick', (e) => {
+      if (e.target.closest('.item-btn')) return;
+      openRawModal(el.dataset.id);
+    });
+  });
+  document.querySelectorAll('[data-raw]').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openRawModal(el.dataset.raw);
     });
   });
   document.querySelectorAll('[data-rename]').forEach(el => {
@@ -857,6 +869,51 @@ function enterEdit(cellEl) {
     if (e.key === 'Escape') { ta.value = original; ta.blur(); }
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) ta.blur();
   });
+}
+
+// ──── Raw block popup ────────────────────────────────────────
+
+function openRawModal(id) {
+  const block = state.shelf.get(id);
+  if (!block) return;
+  let overlay = document.getElementById('raw-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'raw-modal';
+    overlay.innerHTML = `
+      <div class="raw-box">
+        <header><span class="raw-title"></span>
+          <span class="raw-actions">
+            <button id="raw-copy" title="Copy JSON">copy</button>
+            <button id="raw-close" title="Close (Esc)">close</button>
+          </span>
+        </header>
+        <pre class="raw-pre"></pre>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeRawModal(); });
+    overlay.querySelector('#raw-close').addEventListener('click', closeRawModal);
+    overlay.querySelector('#raw-copy').addEventListener('click', () => {
+      navigator.clipboard?.writeText(overlay.querySelector('.raw-pre').textContent).then(() => {
+        const b = overlay.querySelector('#raw-copy');
+        b.textContent = 'copied ✓';
+        setTimeout(() => { b.textContent = 'copy'; }, 1200);
+      }).catch(() => {});
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeRawModal();
+    });
+  }
+  // Show the block as it would be SAVED: zero-form when the 0-form toggle is
+  // on, underscore-form otherwise — so "raw" matches the file on disk.
+  const out = state.zeroForm ? underscoreToZero(block) : block;
+  overlay.querySelector('.raw-title').textContent = `${id}.json — raw${state.zeroForm ? ' · 0-form' : ''}`;
+  overlay.querySelector('.raw-pre').textContent = JSON.stringify(out, null, 2);
+  overlay.classList.add('open');
+}
+
+function closeRawModal() {
+  document.getElementById('raw-modal')?.classList.remove('open');
 }
 
 // ──── Navigation / state mutators ────────────────────────────

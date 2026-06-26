@@ -36,9 +36,17 @@
     border-radius: 3px; max-width: 320px; line-height: 1.4; display: none; z-index: 10;
   }
   #tip .addr { color: #aaccff; font-weight: 600; }
-  #legend { position: fixed; bottom: 12px; left: 12px; font-size: 10px; color: #666; line-height: 1.5; }
+  #legend {
+    position: fixed; bottom: 12px; left: 12px; z-index: 5;
+    max-width: min(440px, 46vw); font-size: 10px; color: #666; line-height: 1.5;
+    background: rgba(255,255,255,0.85); padding: 6px 9px;
+    border: 1px solid #ccc; border-radius: 4px;
+  }
+  /* The scrubber owns the bottom-centre when open; lift the legend clear of it
+     so the two never overlap (both otherwise sit at bottom:12px). */
+  #scrubber.open ~ #legend { bottom: 60px; }
   #scrubber {
-    position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+    position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 20;
     display: none; align-items: center; gap: 8px;
     padding: 8px 14px; background: rgba(255,255,255,0.92);
     border: 1px solid #ccc; border-radius: 4px; font-size: 11px;
@@ -85,6 +93,30 @@
     font-size: 10px; color: #667; font-style: italic; line-height: 1.4;
   }
   #editor .disclaimer strong { color: #335; font-style: normal; }
+  #raw-modal {
+    position: fixed; inset: 0; display: none; align-items: center;
+    justify-content: center; background: rgba(0,0,0,0.45); z-index: 200;
+  }
+  #raw-modal.open { display: flex; }
+  #raw-modal .raw-box {
+    width: min(720px, 92vw); max-height: 84vh; display: flex; flex-direction: column;
+    background: #fff; color: #222; border: 1px solid #bbb; border-radius: 6px; overflow: hidden;
+  }
+  #raw-modal header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 12px; border-bottom: 1px solid #e2e2dc; font-size: 12px;
+  }
+  #raw-modal .raw-title { font-weight: 600; color: #335; }
+  #raw-modal .raw-actions { display: flex; gap: 6px; }
+  #raw-modal .raw-pre {
+    margin: 0; padding: 12px; overflow: auto; font-size: 11px; line-height: 1.55;
+    white-space: pre-wrap; word-break: break-word;
+  }
+  #raw-modal button {
+    font-family: inherit; font-size: 10px; padding: 3px 8px;
+    background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer;
+  }
+  #raw-modal button:hover { border-color: #888; }
 </style>
 </head>
 <body>
@@ -118,7 +150,9 @@
       <input type="range" id="filter-max" min="0" max="6" value="6" step="1">
     </span>
   </div>
-  <div>blocks: <code id="block-name">…</code></div>
+  <div>blocks: <code id="block-name">…</code>
+    <button id="btn-raw" title="View the raw JSON source of the loaded block(s), in their native form">source</button>
+  </div>
   <div id="breadcrumb" class="row" style="color:#557; display:none;"></div>
   <div class="row">
     highlight:
@@ -171,7 +205,19 @@
 
 <div id="tip"></div>
 <div id="legend">
-  cube = one semantic (<code>_</code> / biome <code>0</code>) · 1=center, 2-9 spiral CW from N · root on floor · depth 1 above · depth ≥2 below · glowing cube = hidden content (shift-click to dive in) · green ghost = this wake's write, landing next frame
+  cube = one semantic (<code>_</code> / biome <code>0</code>, auto-detected) · 1=center, 2-9 spiral CW from N · root on floor · depth 1 above · depth ≥2 below · glowing cube = hidden content (shift-click to dive in) · green ghost = this wake's write, landing next frame
+</div>
+
+<div id="raw-modal">
+  <div class="raw-box">
+    <header><span class="raw-title"></span>
+      <span class="raw-actions">
+        <button id="raw-copy" title="Copy JSON">copy</button>
+        <button id="raw-close" title="Close (Esc)">close</button>
+      </span>
+    </header>
+    <pre class="raw-pre"></pre>
+  </div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -1489,13 +1535,15 @@ function parseUploadedJson(data, filename) {
     && ('_' in v || '0' in v || '1' in v || '2' in v || '3' in v || '4' in v
         || '5' in v || '6' in v || '7' in v || '8' in v || '9' in v);
   if (isPscaleBlock(data)) {
-    return [{ id: base, name: base, block: normalizeBlock(data), touched: [] }];
+    return [{ id: base, name: base, block: normalizeBlock(data), touched: [],
+              world: detectZeroForm(data) ? 'biome' : 'beach' }];
   }
   // Multi-block shelf: object whose values are all pscale blocks.
   if (data && typeof data === 'object' && !Array.isArray(data)) {
     const entries = Object.entries(data).filter(([, v]) => isPscaleBlock(v));
     if (entries.length) {
-      return entries.map(([id, block]) => ({ id, name: id, block: normalizeBlock(block), touched: [] }));
+      return entries.map(([id, block]) => ({ id, name: id, block: normalizeBlock(block),
+        touched: [], world: detectZeroForm(block) ? 'biome' : 'beach' }));
     }
   }
   return [];
@@ -1576,7 +1624,10 @@ async function loadBeachInput() {
       let block = await fetchBeachJson(name);
       if (typeof block === 'string') block = { _: block };
       if (!block || typeof block !== 'object' || Array.isArray(block)) return null;
-      return { id: name, name, block: normalizeBlock(block), touched: [] };
+      // Tag the substrate so "view source" can restore the native form
+      // (0-form for a biome surface; `_`-form for the underscore beach).
+      const world = detectZeroForm(block) ? 'biome' : 'beach';
+      return { id: name, name, block: normalizeBlock(block), touched: [], world };
     } catch (e) {
       console.warn(`beach block "${name}" failed:`, e);
       return null;
@@ -1825,6 +1876,51 @@ scRange.addEventListener('input', () => setFrame(parseInt(scRange.value, 10)));
 scPlayBtn.addEventListener('click', () => playTimer ? stopPlay() : startPlay());
 document.getElementById('sc-ctx').addEventListener('click', () =>
   ctxPanelOpen ? closeEditor() : openFrameContext());
+
+// ---------------------------------------------------------------------------
+// Raw-source popup — the JSON of the currently loaded block(s), restored to
+// their native form (biome blocks back to 0-form; `_`-world blocks as-is).
+// The renderer works in `_`-form internally, so this undoes that for display.
+// ---------------------------------------------------------------------------
+function nativeFormOf(sec) {
+  return sec.world === 'biome' ? internalToZeroForm(sec.block) : sec.block;
+}
+const rawModalEl = document.getElementById('raw-modal');
+function closeRawModal() { rawModalEl.classList.remove('open'); }
+function openRawSource() {
+  if (!loadedBlocks?.length) {
+    rawModalEl.querySelector('.raw-title').textContent = 'no blocks loaded';
+    rawModalEl.querySelector('.raw-pre').textContent =
+      'Load a block via the input controls (frame / editor / upload / beach) first.';
+    rawModalEl.classList.add('open');
+    return;
+  }
+  const single = loadedBlocks.length === 1;
+  const payload = single
+    ? nativeFormOf(loadedBlocks[0])
+    : Object.fromEntries(loadedBlocks.map(b => [b.id, nativeFormOf(b)]));
+  const biomeCount = loadedBlocks.filter(b => b.world === 'biome').length;
+  const form = biomeCount === loadedBlocks.length ? ' · 0-form'
+             : biomeCount === 0 ? ' · _-form' : ' · mixed';
+  rawModalEl.querySelector('.raw-title').textContent = single
+    ? `${loadedBlocks[0].id}.json — source${form}`
+    : `${loadedBlocks.length} blocks — source${form}`;
+  rawModalEl.querySelector('.raw-pre').textContent = JSON.stringify(payload, null, 2);
+  rawModalEl.classList.add('open');
+}
+document.getElementById('btn-raw').addEventListener('click', openRawSource);
+rawModalEl.addEventListener('click', (e) => { if (e.target === rawModalEl) closeRawModal(); });
+document.getElementById('raw-close').addEventListener('click', closeRawModal);
+document.getElementById('raw-copy').addEventListener('click', () => {
+  navigator.clipboard?.writeText(rawModalEl.querySelector('.raw-pre').textContent).then(() => {
+    const b = document.getElementById('raw-copy');
+    b.textContent = 'copied ✓';
+    setTimeout(() => { b.textContent = 'copy'; }, 1200);
+  }).catch(() => {});
+});
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && rawModalEl.classList.contains('open')) closeRawModal();
+});
 
 // ---------------------------------------------------------------------------
 // Matryoshka phase-change dive.
