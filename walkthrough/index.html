@@ -7,9 +7,26 @@
   <meta name="description" content="A guided walk through the whole system — pscale, the federated beach, agents, the biome. Branches you can fork between; tools that load right in the frame.">
   <link rel="stylesheet" href="/style/hub.css">
   <link rel="icon" href="/assets/torus.png" type="image/png">
+  <script>(function(){var t;try{t=localStorage.getItem('walkthrough:theme');}catch(_){}t=t||(window.matchMedia&&matchMedia('(prefers-color-scheme: light)').matches?'light':'dark');document.documentElement.setAttribute('data-theme',t);})();</script>
   <style>
     html, body { height: 100%; overflow: hidden; }
     body { display: flex; flex-direction: column; }
+
+    /* ── palette + theme ──
+       Category accents are warm/neutral (no green, no blue) per the map.
+       Brand blue (torus-glow/ice) stays as UI chrome — links, code, headings. */
+    :root {
+      --p-red: #d6453f; --p-yellow: #f1c40f; --p-green: #2fa84f; --p-violet: #9a5fd0; --p-neutral: var(--text-primary);
+      --accent-hermitcrab: var(--p-red); --accent-onen: var(--p-yellow); --accent-play: var(--p-green);
+      --accent-machus: var(--p-violet); --accent-xstream: var(--p-neutral); --accent-mindflow: var(--p-neutral);
+    }
+    /* lift the brand dark a notch — the default was too dark */
+    html[data-theme="dark"] { --bg-deep: #0e1826; --bg-surface: #152236; --bg-raised: #22324a; }
+    html[data-theme="light"] {
+      --bg-deep: #eef2f7; --bg-surface: #fbfcfe; --bg-raised: #e3eaf2;
+      --text-primary: #16202e; --text-secondary: #3c4d63; --text-dim: #6a7d92;
+      --torus-glow: #2f74b8; --torus-ice: #143a60; --torus-blue: #1f74c4;
+    }
 
     /* ── top bar ── */
     .top {
@@ -28,6 +45,7 @@
       font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
       color: var(--text-dim); border: 1px solid var(--bg-raised);
       padding: 0.3rem 0.75rem; border-radius: 3px; transition: all 0.2s;
+      background: none; cursor: pointer; font-family: var(--font-body);
     }
     .top .topbtn:hover { color: var(--torus-glow); border-color: var(--torus-glow); }
 
@@ -121,7 +139,7 @@
       border-radius: 8px; overflow: hidden; background: var(--bg-surface);
       height: var(--embed-h, 70vh); min-height: 360px;
     }
-    .embed iframe { width: 100%; height: 100%; border: 0; display: block; background: #0a0e16; }
+    .embed iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg-surface); }
     .embed .e-load {
       position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
       color: var(--text-dim); font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase;
@@ -195,6 +213,33 @@
       .branch-intro h2 { font-size: 2rem; }
       .dots { display: none; }
     }
+
+    /* ── the map overlay ── */
+    #map-overlay {
+      position: fixed; inset: 0; z-index: 60; display: none; flex-direction: column;
+      background: var(--bg-deep); padding: 1rem 1.4rem 1.4rem;
+    }
+    #map-overlay.open { display: flex; }
+    #map-overlay .map-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    #map-overlay .map-title { font-family: var(--font-heading); font-size: 1.4rem; color: var(--torus-ice); }
+    #map-overlay .map-hint { font-size: 0.72rem; color: var(--text-dim); }
+    #map-overlay .map-close { margin-left: auto; }
+    #map-overlay .map-canvas { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+    #map-overlay svg { width: 100%; height: 100%; max-width: 1060px; }
+    .mapnode { cursor: pointer; }
+    .mapnode .mn-box { fill: var(--bg-surface); stroke: var(--bg-raised); stroke-width: 1; transition: fill .15s, stroke .15s; }
+    .mapnode:hover .mn-box { fill: var(--bg-raised); }
+    .mapnode.horizon .mn-box { stroke-dasharray: 4 3; }
+    .mapnode.dim { opacity: 0.28; transition: opacity .15s; }
+    .mapnode.lit .mn-box { stroke: var(--mn-accent); stroke-width: 2; }
+    .mapnode .mn-label { fill: var(--text-primary); font-weight: 600; font-size: 12.5px; }
+    .mapnode .mn-sub { fill: var(--text-secondary); font-size: 11px; }
+    .maplevels .mn-lv { fill: var(--text-dim); font-weight: 700; font-size: 11px; }
+    .mn-leg { fill: var(--text-secondary); font-size: 11.5px; }
+    .mapedge { stroke: var(--text-dim); stroke-width: 1.6; fill: none; opacity: 0.5; }
+    .mapedge.lit { stroke: var(--lit, var(--torus-glow)); opacity: 1; }
+    .mapbridge { stroke: var(--text-dim); stroke-width: 1.4; fill: none; stroke-dasharray: 4 3; opacity: 0.4; }
+    @media (max-width: 760px) { #map-overlay .map-hint { display: none; } }
   </style>
 </head>
 <body>
@@ -203,6 +248,8 @@
     <a href="/"><img src="/assets/torus.png" alt="torus" class="torus"></a>
     <span class="wm">walk-through<small>happyseaurchin</small></span>
     <span class="spacer"></span>
+    <button class="topbtn" id="map-btn" title="Open the growth map">⊞ map</button>
+    <button class="topbtn" id="theme-toggle" title="Toggle light / dark">☀ light</button>
     <a class="topbtn" href="/virtual-ai-agents/">cards ↗</a>
   </div>
 
@@ -213,6 +260,8 @@
       <div class="dots" id="dots"></div>
     </main>
   </div>
+
+  <div id="map-overlay"></div>
 
   <script>
   // ===========================================================================
@@ -238,7 +287,7 @@
   const BRANCHES = [
     // ===================== PRIMARY ==========================================
     {
-      id: 'pscale', group: 'primary', accent: 'var(--torus-ice)',
+      id: 'pscale', group: 'primary', accent: 'var(--p-red)',
       label: 'pscale · _ 1–9', tag: 'the spine · federated beach',
       eyebrow: 'the primary path', title: 'Numbers that address meaning',
       lede: 'One underscore is a whole thought; the digits 1–9 are the positions inside it. Walk the spine of the whole system — from a single block to a live federated beach.',
@@ -262,7 +311,7 @@
       ],
     },
     {
-      id: 'biome', group: 'primary', accent: '#9a7adb',
+      id: 'biome', group: 'primary', accent: 'var(--p-violet)',
       label: 'biome · 0–9', tag: 'next · pure digits',
       eyebrow: 'the fork', title: 'A clean start — pure digits',
       lede: 'Every key 0–9, with digit 0 a node’s own voice in place of the underscore. Same geometry, no special characters. Where this is all going.',
@@ -281,7 +330,7 @@
       ],
     },
     {
-      id: 'agents', group: 'primary', accent: 'var(--accent-hermitcrab)',
+      id: 'agents', group: 'primary', accent: 'var(--p-red)',
       label: 'agents · hermitcrab', tag: 'wake on the beach',
       eyebrow: 'living on the substrate', title: 'Agents, not apps',
       lede: 'The primary entry to agents is the agents themselves — wake one on the beach, read its shell, let it act. Hermitcrab gives any LLM a persistent shell to do it from.',
@@ -302,7 +351,7 @@
       ],
     },
     {
-      id: 'xstream', group: 'primary', accent: 'var(--accent-xstream)',
+      id: 'xstream', group: 'primary', accent: 'var(--p-neutral)',
       label: 'xstream', tag: 'the reflexive interface',
       eyebrow: 'the interface', title: 'xstream',
       lede: 'A reflexive interface onto the whole stack — BYOK and bsp built in. The place the substrate becomes something you can actually hold.',
@@ -320,7 +369,7 @@
       ],
     },
     {
-      id: 'rpg', group: 'primary', accent: 'var(--accent-play)',
+      id: 'rpg', group: 'primary', accent: 'var(--p-green)',
       label: 'rpg', tag: 'play on the beach',
       eyebrow: 'play', title: 'The RPG on the beach',
       lede: 'The newest RPG runs on the beach itself, via bsp — in testing now. Around it, a lineage of narrative-coordination games that taught the substrate to play.',
@@ -339,7 +388,7 @@
     },
     // ===================== SECONDARY ========================================
     {
-      id: 'open-business', group: 'secondary', accent: 'var(--accent-onen)',
+      id: 'open-business', group: 'secondary', accent: 'var(--p-yellow)',
       label: 'open business', tag: 'evolutionary',
       eyebrow: 'the economics', title: 'Evolutionary open business',
       lede: 'The substrate has an economic grammar: SAND routes trust, open-business practices make the firm legible, fulcrum drives whole-system change. The money side of not knowing.',
@@ -355,7 +404,7 @@
       ],
     },
     {
-      id: 'xq', group: 'secondary', accent: 'var(--accent-machus)',
+      id: 'xq', group: 'secondary', accent: 'var(--text-dim)',
       label: 'XQ · the maths', tag: 'geometry under pscale',
       eyebrow: 'the maths', title: 'XQ — the geometry underneath',
       lede: 'Pscale addressing sits on a real mathematical skeleton: Farey triangles, triangle centres, the fractal coast where language meets number. Drag the interactives.',
@@ -374,7 +423,7 @@
       ],
     },
     {
-      id: 'tools', group: 'secondary', accent: 'var(--accent-mindflow)',
+      id: 'tools', group: 'secondary', accent: 'var(--p-neutral)',
       label: 'pscale tools', tag: 'operate it yourself',
       eyebrow: 'the workbench', title: 'Tools you operate on your own data',
       lede: 'Speak a block into being, fine-tune it, render it in 3D. The mindflow workbench — every tool runs right here in the frame.',
@@ -393,7 +442,7 @@
       ],
     },
     {
-      id: 'visualisers', group: 'secondary', accent: 'var(--torus-ice)',
+      id: 'visualisers', group: 'secondary', accent: 'var(--p-neutral)',
       label: 'visualisers', tag: '3D & geometry',
       eyebrow: 'seeing it', title: 'The system, made visible',
       lede: 'Addresses are spatial — so render them in space. The 3D inventory, the BSP selection cone, the descent through nested partitions.',
@@ -401,8 +450,8 @@
         { kind: 'embed', title: 'The 3D architecture', src: '/experiments/pscale-inventory.html',
           note: 'live · every component as a node — core-first and product-first', open: '/experiments/pscale-inventory.html', embedH: '76vh' },
         { kind: 'launch', title: 'Selection geometry', cards: [
-          { title: 'pscale cone v5', href: 'https://claude.ai/public/artifacts/7c00e04d-ee9d-4e46-b3a3-a76c9d54cfd8', accent: 'var(--torus-ice)', desc: 'BSP selection geometry — spindle paths, descent cones, attention.' },
-          { title: 'BSP visualiser 2', href: 'https://claude.ai/public/artifacts/bc20dff8-f963-456a-b1f3-f3efa14ff01d', accent: 'var(--torus-ice)', desc: 'bsp() across coordinate space — a spindle descending through nested partitions.' },
+          { title: 'pscale cone v5', href: 'https://claude.ai/public/artifacts/7c00e04d-ee9d-4e46-b3a3-a76c9d54cfd8', accent: 'var(--p-neutral)', desc: 'BSP selection geometry — spindle paths, descent cones, attention.' },
+          { title: 'BSP visualiser 2', href: 'https://claude.ai/public/artifacts/bc20dff8-f963-456a-b1f3-f3efa14ff01d', accent: 'var(--p-neutral)', desc: 'bsp() across coordinate space — a spindle descending through nested partitions.' },
         ] },
         { kind: 'fork', label: 'back', to: ['pscale', 'xq'] },
       ],
@@ -589,6 +638,102 @@
       setTimeout(() => { btn.textContent = 'copy'; }, 1500);
     }).catch(() => { btn.textContent = 'copy failed'; });
   }
+
+  // ── theme (light / dark) ────────────────────────────────────────────────────
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('walkthrough:theme', t); } catch (_) {}
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = t === 'light' ? '☾ dark' : '☀ light';
+  }
+  document.getElementById('theme-toggle').addEventListener('click', () =>
+    setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'));
+  setTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+
+  // ── the growth map (overlay) ────────────────────────────────────────────────
+  // A 2D dependency map: every path grounded in a pscale block type, growing
+  // upward across five levels. Each node maps to a walk-through segment; click
+  // to jump in, hover to trace a path's lineage down to its block-type root.
+  const MAP_P = { red: '#d6453f', yellow: '#f1c40f', green: '#2fa84f', vio: '#9a5fd0', neu: 'var(--text-primary)' };
+  const MAP_LEVELS = [{ y: 120, l: 'L4' }, { y: 210, l: 'L3' }, { y: 300, l: 'L2' }, { y: 390, l: 'L1' }, { y: 480, l: 'L0' }];
+  const MAP_NODES = [
+    { id: 'b0', x: 110, y: 480, w: 200, label: 'pscale _ 1–9', sub: 'block type', c: MAP_P.red, br: 'pscale' },
+    { id: 'tools', x: 408, y: 480, w: 96, label: 'pscale tools', c: MAP_P.neu, br: 'tools' },
+    { id: 'z0', x: 516, y: 480, w: 176, label: 'pscale 0–9', sub: 'block type', c: MAP_P.vio, br: 'biome' },
+    { id: 'beach', x: 28, y: 390, w: 366, label: 'federated beach', sub: 'substrate', c: MAP_P.red, br: 'pscale', p: 'b0' },
+    { id: 'xstream', x: 408, y: 390, w: 96, label: 'xstream', sub: 'interface', c: MAP_P.neu, br: 'xstream', p: 'tools' },
+    { id: 'biome', x: 516, y: 390, w: 176, label: 'biome', sub: 'substrate', c: MAP_P.vio, br: 'biome', p: 'z0' },
+    { id: 'agents', x: 28, y: 300, w: 118, label: 'beach-crab agents', c: MAP_P.red, br: 'agents', p: 'beach' },
+    { id: 'sed', x: 156, y: 300, w: 118, label: 'sed · grain', c: MAP_P.yellow, br: 'open-business', p: 'beach' },
+    { id: 'grit', x: 284, y: 300, w: 110, label: 'GRIT', c: MAP_P.green, br: 'rpg', p: 'beach' },
+    { id: 'vis', x: 408, y: 300, w: 96, label: 'visualisers', c: MAP_P.neu, br: 'visualisers', p: 'xstream' },
+    { id: 'forms', x: 516, y: 300, w: 176, label: 'biome forms', c: MAP_P.vio, br: 'biome', p: 'biome' },
+    { id: 'mobius', x: 28, y: 210, w: 118, label: 'möbius', c: MAP_P.red, br: 'agents', p: 'agents' },
+    { id: 'sand', x: 156, y: 210, w: 118, label: 'SAND', c: MAP_P.yellow, br: 'open-business', p: 'sed' },
+    { id: 'nomad', x: 284, y: 210, w: 110, label: 'NOMAD RPG', c: MAP_P.green, br: 'rpg', p: 'grit', h: true },
+    { id: 'habitats', x: 516, y: 210, w: 176, label: 'habitats', c: MAP_P.vio, br: 'biome', p: 'forms' },
+    { id: 'magi', x: 28, y: 120, w: 118, label: 'MAGI', c: MAP_P.red, br: 'agents', p: 'mobius', h: true },
+    { id: 'openbiz', x: 156, y: 120, w: 118, label: 'open business', c: MAP_P.yellow, br: 'open-business', p: 'sand', h: true },
+    { id: 'ecology', x: 516, y: 120, w: 176, label: 'ecology', c: MAP_P.vio, br: 'biome', p: 'habitats', h: true },
+  ];
+  const MAP_BRIDGES = [[408, 501, 312, 501], [504, 501, 514, 501], [408, 411, 396, 411], [504, 411, 514, 411]];
+  const MAP_LEGEND = [['#d6453f', 'beach · agents'], ['#f1c40f', 'economy'], ['#2fa84f', 'play · RPG'], ['var(--text-primary)', 'tools'], ['#9a5fd0', 'biome']];
+
+  function buildMap() {
+    const nById = Object.fromEntries(MAP_NODES.map(n => [n.id, n]));
+    let edges = '', bridges = '', nodes = '', levels = '', legend = '';
+    for (const n of MAP_NODES) {
+      if (!n.p) continue;
+      const cx = n.x + n.w / 2, par = nById[n.p];
+      edges += `<path class="mapedge" data-to="${n.id}" d="M${cx} ${par.y} L${cx} ${n.y + 43}" marker-end="url(#marrow)"/>`;
+    }
+    for (const [x1, y1, x2, y2] of MAP_BRIDGES) bridges += `<path class="mapbridge" d="M${x1} ${y1} L${x2} ${y2}"/>`;
+    for (const l of MAP_LEVELS) levels += `<text class="mn-lv" x="14" y="${l.y + 25}" text-anchor="middle">${l.l}</text>`;
+    for (const n of MAP_NODES) {
+      const cx = n.x + n.w / 2;
+      nodes += `<g class="mapnode${n.h ? ' horizon' : ''}" data-node="${n.id}" data-branch="${n.br}" style="--mn-accent:${n.c}">`
+        + `<rect class="mn-box" x="${n.x}" y="${n.y}" width="${n.w}" height="42" rx="5"/>`
+        + `<rect x="${n.x}" y="${n.y}" width="4" height="42" fill="${n.c}"/>`
+        + `<text class="mn-label" x="${cx}" y="${n.y + (n.sub ? 22 : 26)}" text-anchor="middle">${esc(n.label)}</text>`
+        + (n.sub ? `<text class="mn-sub" x="${cx}" y="${n.y + 35}" text-anchor="middle">${esc(n.sub)}</text>` : '')
+        + `</g>`;
+    }
+    let lx = 34;
+    for (const [c, t] of MAP_LEGEND) {
+      legend += `<rect x="${lx}" y="556" width="12" height="12" rx="2" fill="${c}" stroke="var(--bg-raised)"/><text class="mn-leg" x="${lx + 17}" y="566">${t}</text>`;
+      lx += t.length * 7 + 42;
+    }
+    const svg = `<svg viewBox="0 0 720 590" xmlns="http://www.w3.org/2000/svg" role="img">`
+      + `<defs><marker id="marrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>`
+      + `<g class="mapedges">${edges}</g><g class="mapbridges">${bridges}</g><g class="maplevels">${levels}</g>${nodes}<g>${legend}</g></svg>`;
+    const ov = document.getElementById('map-overlay');
+    ov.innerHTML = `<div class="map-head"><span class="map-title">the growth map</span>`
+      + `<span class="map-hint">click a node to jump in · hover to trace its lineage · esc to close</span>`
+      + `<button class="topbtn map-close" id="map-close">close ✕</button></div><div class="map-canvas">${svg}</div>`;
+    const svgEl = ov.querySelector('svg');
+    ov.querySelector('#map-close').addEventListener('click', closeMap);
+    ov.addEventListener('click', e => { if (e.target === ov) closeMap(); });
+    svgEl.querySelectorAll('.mapnode').forEach(g => {
+      g.addEventListener('click', () => { const br = g.dataset.branch; closeMap(); if (br && br !== current) openBranch(br); });
+      g.addEventListener('mouseenter', () => {
+        const chain = new Set(); let cur = g.dataset.node;
+        while (cur) { chain.add(cur); cur = nById[cur].p; }
+        svgEl.style.setProperty('--lit', g.style.getPropertyValue('--mn-accent'));
+        svgEl.querySelectorAll('.mapnode').forEach(o => {
+          o.classList.toggle('lit', chain.has(o.dataset.node));
+          o.classList.toggle('dim', !chain.has(o.dataset.node));
+        });
+        svgEl.querySelectorAll('.mapedge').forEach(ed => ed.classList.toggle('lit', chain.has(ed.dataset.to)));
+      });
+      g.addEventListener('mouseleave', () =>
+        svgEl.querySelectorAll('.lit, .dim').forEach(o => o.classList.remove('lit', 'dim')));
+    });
+  }
+  function openMap() { document.getElementById('map-overlay').classList.add('open'); }
+  function closeMap() { document.getElementById('map-overlay').classList.remove('open'); }
+  document.getElementById('map-btn').addEventListener('click', openMap);
+  window.addEventListener('keydown', e => { if (e.key === 'Escape') closeMap(); });
+  buildMap();
 
   // ── boot ──────────────────────────────────────────────────────────────────
   buildRail();
