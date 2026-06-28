@@ -1,4 +1,4 @@
-# filmstrip-3d layout spec — v3.3
+# filmstrip-3d layout spec — v4
 
 Replaces v2's uniform tile size. The **cube** is now the global unit of
 semantic weight; tile size varies per block with depth. A spindle of five
@@ -10,7 +10,7 @@ Since v3.0 (fixed cube + scaling tile) we've added: a third input mode
 events→filmstrip transformer, bookmarkable URL params, and an editor ↔
 viewer write-back channel via localStorage.
 
-## v3.3 (2026-06-11) — whole-beach surfaces + filmstrip-as-tool
+## v4 (2026-06-11) — whole-beach surfaces + filmstrip-as-tool
 
 1. **Beach mode reworked for the post-May-2026 surface model.** The old
    mode fetched the bare-domain beach (404 since the handler moved to
