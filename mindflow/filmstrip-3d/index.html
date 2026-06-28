@@ -123,7 +123,7 @@
 <div id="viz"></div>
 
 <div id="panel">
-  <h1>filmstrip-3d · v3.3</h1>
+  <h1>filmstrip-3d · v4</h1>
   <div class="row">
     input:
     <button data-input="frame" class="active">frame</button>
@@ -132,6 +132,12 @@
     <button data-input="beach" title="Load every named block from a beach surface (?beach=home|biome|<url>)">beach</button>
     <button id="input-reload" title="Reload current input">↻</button>
     <input type="file" id="upload-file" accept=".json,application/json" multiple style="display:none;">
+  </div>
+  <div class="row" id="layout-row" title="Multi-block overview layout (beach / upload / editor)">
+    layout:
+    <button data-layout="prune" title="Pruned: keypad directions kept, empty potential space removed">prune</button>
+    <button data-layout="pack" class="active" title="Max-compact: treemap, area ∝ cube count, no keypad direction (overview only)">pack</button>
+    <button data-layout="raw" title="Raw v3: full 3^depth keypad (deep blocks explode)">raw</button>
   </div>
   <div class="row">
     <button id="btn-events-filmstrip" title="Turn an append-only chronicle block in the shelf into a filmstrip sequence">events→film</button>
@@ -392,6 +398,145 @@ function buildLayout(block, fixedDepth) {
 }
 
 // ---------------------------------------------------------------------------
+// v4 PRUNED layout — "spread up to 9, but only as far as the content fills".
+//
+// The v3 keypad reserves a full 9-ary grid cell at every level, so a block's
+// footprint is CUBE_SIZE * 3^depth even when 99% of those cells are empty
+// *potential* space (a depth-9 block with 30 cubes reserves a 31,493-wide
+// tile). For the whole-beach / multi-block OVERVIEW — where inter-cube
+// position carries no semantics — we instead size each subtree to what it
+// actually occupies. The cube stays globally fixed (CUBE_SIZE): we move cubes
+// closer, never resize them, so the "5 cubes here = 5 cubes there" invariant
+// survives. We keep the keypad's 9 *directions* (digit 1 still pierces
+// straight down; 2–9 still fan to their compass points) but place each child
+// only as far out as its own pruned radius requires. What we give up — and
+// only here — is "position = literal address", which the overview never used.
+let LAYOUT_MODE = 'pack';  // 'pack' | 'prune' | 'raw' (?layout= or panel toggle overrides)
+
+// desc(node): bottom-up pure pass — each node's pruned radius and the ring
+// placement distance Rpos, cached by node identity (cleared in clearBlocks).
+const _descCache = new Map();
+function angleOf(k) { const s = SPIRAL[k]; return Math.atan2(s[1], s[0]); }
+function desc(node) {
+  if (_descCache.has(node)) return _descCache.get(node);
+  let res = { radius: CUBE_SIZE / 2, Rpos: 0, ringKs: [] };
+  if (node && typeof node === 'object') {
+    const ringKs = []; let r1 = 0;
+    for (const k of '123456789') {
+      if (node[k] === undefined) continue;
+      if (k === '1') r1 = desc(node['1']).radius;       // digit 1 → straight down
+      else ringKs.push(k);                              // digits 2–9 → ring
+    }
+    if (ringKs.length) {
+      const maxRing = Math.max(...ringKs.map(k => desc(node[k]).radius));
+      // Required ring distance: clear of the parent cube AND of the nearest
+      // angular neighbour. Sparse rings (few occupied dirs) pack much closer
+      // than a full 8-way ring — that is where most of the pruning comes from.
+      let minSep = 2 * Math.PI;
+      if (ringKs.length > 1) {
+        const angs = ringKs.map(angleOf).sort((a, b) => a - b);
+        for (let i = 0; i < angs.length; i++) {
+          const gap = i === 0 ? (angs[0] + 2 * Math.PI - angs[angs.length - 1]) : (angs[i] - angs[i - 1]);
+          if (gap < minSep) minSep = gap;
+        }
+      }
+      const sep = Math.sin(minSep / 2);
+      const angular = sep > 1e-6 ? maxRing / sep : 0;
+      const Rpos = Math.max(CUBE_SIZE / 2 + maxRing + TILE_GAP, angular);
+      res = { radius: Math.max(Rpos + maxRing, r1, CUBE_SIZE / 2), Rpos, ringKs };
+    } else {
+      res = { radius: Math.max(r1, CUBE_SIZE / 2), Rpos: 0, ringKs: [] };
+    }
+  }
+  _descCache.set(node, res);
+  return res;
+}
+
+// buildPrunedLayout — same node shape as buildLayout, packed positions. C0 is
+// the pruned diameter (tile footprint), so addBlock / shelf-pack size to the
+// occupied content rather than 3^depth potential.
+function buildPrunedLayout(block) {
+  const nodes = [];
+  function place(node, addr, parentAddr, d, cx, cz) {
+    nodes.push({
+      addr, parentAddr, depth: d,
+      semantic: semanticOf(node), hidden: hasZeroPosition(node),
+      x: cx, y: layerYFor(d), z: cz,
+    });
+    if (!node || typeof node !== 'object') return;
+    const dd = desc(node);
+    if (node['1'] !== undefined) place(node['1'], addr + '1', addr, d + 1, cx, cz);
+    for (const k of dd.ringKs) {
+      const s = SPIRAL[k], len = Math.hypot(s[0], s[1]) || 1;
+      place(node[k], addr + k, addr, d + 1, cx + (s[0] / len) * dd.Rpos, cz + (s[1] / len) * dd.Rpos);
+    }
+  }
+  place(block, '', null, 0, 0, 0);
+  const radius = desc(block).radius;
+  return { nodes, maxDepth: maxDepth(block), C0: radius * 2, cubeSize: CUBE_SIZE };
+}
+
+// Max-compact PACK layout (?layout=pack) — a slice-and-dice TREEMAP. This is
+// the only family whose footprint tracks node COUNT, not branching^depth: any
+// per-node-cell scheme (keypad, radial, tight-keypad) still grows geometrically
+// when a block is bushy, because every node demands its own non-overlapping
+// cell. The treemap instead gives each subtree floor AREA proportional to how
+// many cubes it contains (countNodes), so a block's side ≈ √(cubes)·CUBE_SIZE —
+// flat in depth, flat in branchiness. It fully drops keypad direction AND the
+// digit-1-down convention; parents float above their children's region on Y, so
+// depth still reads as height. Overview-only — there is no spatial address to
+// read off position here, only "which blocks, how big, dive in".
+const _packCache = new Map();
+const PACK_SPACING = 1.7;  // leaf rect ≈ PACK_SPACING·CUBE_SIZE so cubes don't touch
+function countNodes(n) {
+  if (!n || typeof n !== 'object') return 1;
+  let c = 1;
+  for (const k of '123456789') if (n[k] !== undefined) c += countNodes(n[k]);
+  return c;
+}
+function packDesc(node) {  // footprint side ∝ √occupancy
+  if (_packCache.has(node)) return _packCache.get(node);
+  const res = { size: Math.max(Math.sqrt(countNodes(node)) * CUBE_SIZE * PACK_SPACING, CUBE_SIZE) };
+  _packCache.set(node, res);
+  return res;
+}
+function buildPackLayout(block) {
+  const nodes = [];
+  const S = packDesc(block).size;
+  function lay(node, addr, parentAddr, d, x, z, w, h, horiz) {
+    nodes.push({
+      addr, parentAddr, depth: d,
+      semantic: semanticOf(node), hidden: hasZeroPosition(node),
+      x: x + w / 2, y: layerYFor(d), z: z + h / 2,
+    });
+    if (!node || typeof node !== 'object') return;
+    const kids = [];
+    for (const k of '123456789') if (node[k] !== undefined) kids.push(k);
+    if (!kids.length) return;
+    const w8 = kids.map(k => countNodes(node[k]));
+    const tot = w8.reduce((a, b) => a + b, 0);
+    let off = 0;
+    kids.forEach((k, i) => {
+      const frac = w8[i] / tot;
+      if (horiz) { const cw = w * frac; lay(node[k], addr + k, addr, d + 1, x + off, z, cw, h, !horiz); off += cw; }
+      else       { const ch = h * frac; lay(node[k], addr + k, addr, d + 1, x, z + off, w, ch, !horiz); off += ch; }
+    });
+  }
+  lay(block, '', null, 0, -S / 2, -S / 2, S, S, true);
+  return { nodes, maxDepth: maxDepth(block), C0: S, cubeSize: CUBE_SIZE };
+}
+
+// Overview layout applies to the multi-block modes only (beach, upload, editor)
+// — never the stable filmstrip strip (frame) and never an active dive, both of
+// which depend on literal keypad geometry. Returns the active overview mode
+// ('prune' | 'pack') or null for the raw 3^depth keypad.
+function overviewMode() {
+  if (diveStack.length) return null;
+  if (!(inputMode === 'beach' || inputMode === 'upload' || inputMode === 'editor')) return null;
+  return (LAYOUT_MODE === 'prune' || LAYOUT_MODE === 'pack') ? LAYOUT_MODE : null;
+}
+
+// ---------------------------------------------------------------------------
 // Three.js setup
 // ---------------------------------------------------------------------------
 
@@ -470,10 +615,15 @@ function clearBlocks() {
   tileMeshes.length = 0;
   nodesByAddr.clear();
   allNodes = [];
+  _descCache.clear();
+  _packCache.clear();
 }
 
 function addBlock(block, tileX, tileZ, blockId, tileIdx, opts = {}) {
-  const { nodes, maxDepth: maxD, C0, cubeSize } = buildLayout(block, opts.fixedDepth);
+  const { nodes, maxDepth: maxD, C0, cubeSize } =
+      opts.layout === 'prune' ? buildPrunedLayout(block)
+    : opts.layout === 'pack'  ? buildPackLayout(block)
+    : buildLayout(block, opts.fixedDepth);
 
   // Per-block tile on the floor — size = block's root cell footprint
   // (CUBE_SIZE * 3^depth). Tile is tinted per-block so adjacent blocks
@@ -509,13 +659,28 @@ function addBlock(block, tileX, tileZ, blockId, tileIdx, opts = {}) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, 512, 128);
   ctx.fillStyle = '#2a2a2a';
-  ctx.font = 'bold 72px "JetBrains Mono", ui-monospace, monospace';
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'center';
+  // Auto-fit: long names (e.g. reflective-compass) overflow the 512px canvas
+  // and get clipped front and aft. Shrink the font until the name fits.
+  const maxTextW = 512 - 32;  // 16px padding each side
+  let fontPx = 72;
+  const fontAt = px => `bold ${px}px "JetBrains Mono", ui-monospace, monospace`;
+  ctx.font = fontAt(fontPx);
+  const measured = ctx.measureText(blockId).width;
+  if (measured > maxTextW) {
+    fontPx = Math.max(20, Math.floor(fontPx * maxTextW / measured));
+    ctx.font = fontAt(fontPx);
+  }
   ctx.fillText(blockId, 256, 64);
   const texture = new THREE.CanvasTexture(canvas);
   texture.anisotropy = 4;
-  const labelSize = Math.max(C0 * 0.7, 6);  // scales with the tile — a beach is read by its names
+  // Overview tiles are already content-sized, but a wide-but-sparse block can
+  // still get a big C0; clamp so names stay legible without ballooning.
+  const overview = opts.layout === 'prune' || opts.layout === 'pack';
+  const labelSize = overview
+    ? Math.max(Math.min(C0 * 0.5, CUBE_SIZE * 16), 6)
+    : Math.max(C0 * 0.7, 6);  // raw: scales with the tile — a beach is read by its names
   const labelMat = new THREE.MeshBasicMaterial({
     map: texture, transparent: true, opacity: 0.85, depthWrite: false,
   });
@@ -695,8 +860,12 @@ function renderBlocks(blocks) {
     return;
   }
 
+  const ov = overviewMode();
   const items = blocks.map((b, i) => ({
-    b, i, foot: tileFootprintFor(Math.max(maxDepth(b.block), 1)),
+    b, i,
+    foot: ov === 'prune' ? desc(b.block).radius * 2
+        : ov === 'pack'  ? packDesc(b.block).size
+        : tileFootprintFor(Math.max(maxDepth(b.block), 1)),
   }));
   items.sort((a, b) => b.foot - a.foot);
   const totalArea = items.reduce((s, it) => s + (it.foot + TILE_GAP) ** 2, 0);
@@ -726,7 +895,7 @@ function renderBlocks(blocks) {
     const cz = z + r.h / 2;
     for (const it of r.items) {
       const cx = x + (it.foot + TILE_GAP) / 2;
-      placed.push({ ...addBlock(it.b.block, cx, cz, it.b.id, it.i, { ghostSet: it.b.ghost }), tx: cx, tz: cz });
+      placed.push({ ...addBlock(it.b.block, cx, cz, it.b.id, it.i, { ghostSet: it.b.ghost, layout: ov }), tx: cx, tz: cz });
       x += it.foot + TILE_GAP;
     }
     z += r.h;
@@ -869,6 +1038,19 @@ document.querySelectorAll('#panel button[data-mode]').forEach(btn => {
     btn.classList.add('active');
     mode = btn.dataset.mode;
     applyHighlight();
+  });
+});
+
+// Layout toggle (prune / pack / raw) — re-renders the loaded overview in place.
+function syncLayoutButtons() {
+  document.querySelectorAll('#panel button[data-layout]').forEach(b =>
+    b.classList.toggle('active', b.dataset.layout === LAYOUT_MODE));
+}
+document.querySelectorAll('#panel button[data-layout]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    LAYOUT_MODE = btn.dataset.layout;
+    syncLayoutButtons();
+    if (loadedBlocks?.length) { renderBlocks(loadedBlocks); applyHighlight(); applyTextLabels(); }
   });
 });
 
@@ -2212,6 +2394,10 @@ async function applyUrlParams() {
   const shelf = params.get('shelf');
   const source = params.get('source');
   const wantMode = params.get('mode');
+
+  const layoutParam = params.get('layout');
+  if (['raw', 'prune', 'pack'].includes(layoutParam)) LAYOUT_MODE = layoutParam;
+  syncLayoutButtons();
 
   const beachParam = params.get('beach');
   if (beachParam) {

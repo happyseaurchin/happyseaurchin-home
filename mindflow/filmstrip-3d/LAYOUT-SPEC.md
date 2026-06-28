@@ -1,4 +1,4 @@
-# filmstrip-3d layout spec — v3.3
+# filmstrip-3d layout spec — v4
 
 Replaces v2's uniform tile size. The **cube** is now the global unit of
 semantic weight; tile size varies per block with depth. A spindle of five
@@ -9,6 +9,30 @@ Since v3.0 (fixed cube + scaling tile) we've added: a third input mode
 (upload with download), a fourth (beach), matryoshka dive, an
 events→filmstrip transformer, bookmarkable URL params, and an editor ↔
 viewer write-back channel via localStorage.
+
+## v4 (2026-06-28) — beach overview: prune / pack / raw layouts
+
+The whole-beach view broke for deep blocks: a tile is `CUBE_SIZE · 3^depth`, so
+a depth-9 federated block (e.g. `reflective-compass`) reserved a ~31,500-unit
+floor for ~30 cubes — the camera fit the empty *potential* and every cube went
+sub-pixel, leaving only giant floor labels. The 3^depth grid is the literal
+geometry of one address tree, but it carries no meaning *between* unrelated
+blocks. v4 adds two overview layouts for the multi-block modes (beach / upload /
+editor), switchable by `?layout=` and a panel toggle; `frame` strips, möbius
+wakes and matryoshka dives keep the raw keypad untouched.
+
+- **pack** (default) — slice-and-dice treemap: each subtree gets floor area
+  proportional to its cube *count* (`countNodes`), so a block's side ≈
+  `√cubes · CUBE_SIZE` — flat in depth and branchiness. Drops keypad direction;
+  depth still reads as height. Biome field ~30,000 → ~77 (~360× tighter).
+- **prune** — recursive radial occupancy: keypad directions kept (digit-1 still
+  pierces straight down, 2–9 fan to their compass points) but each child is
+  placed only as far as its subtree needs. Cube size stays globally fixed, so
+  the v3 "5 cubes here = 5 cubes there" invariant survives. ~46× tighter.
+- **raw** — the v3 `3^depth` keypad, unchanged — the old behaviour, on demand.
+
+Floor labels auto-fit their font to the canvas so long names (`reflective-
+compass`) no longer clip front and aft. `?layout=pack|prune|raw` is bookmarkable.
 
 ## v3.3 (2026-06-11) — whole-beach surfaces + filmstrip-as-tool
 
