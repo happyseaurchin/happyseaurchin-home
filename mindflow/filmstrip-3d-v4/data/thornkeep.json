@@ -1,0 +1,24 @@
+{
+  "thornkeep-world": {
+    "_": "Thornkeep — a coastal settlement on the Broken Coast. A small living place where paths cross. Positions 1-9 are rooms. Each room's underscore describes the space; each room's 'exits' entry lists paths to adjacent rooms.",
+    "1": "Harbour. Salt-stained quays, fishing boats knocking against the stone, gulls wheeling. The smell of tar and fish. A path climbs north toward the market square. Exits: 2 (north to market square).",
+    "2": "Market Square. Cobbled, uneven, a stone well at the centre with a rope-worn handle. Stalls on market days; empty frames on others. Paths lead down to the harbour (1) and into the Broken Anchor Inn (3).",
+    "3": "The Broken Anchor Inn. Smoky, low-beamed, smelling of pipe-smoke and stew. A long trestle table, benches, a hearth at the back. The innkeeper is not here right now. Door back to the market square (2)."
+  },
+  "thornkeep-rules": {
+    "_": "Thornkeep resolution rules v0.1. Each resolver reads these fresh before resolving. V1 is single-resolver first-writer-wins. V2 will add multi-resolver consensus and checkers.",
+    "1": "MOVEMENT. Intent format: 'CHARACTER moves from ROOM_N to ROOM_M'. To resolve: walk thornkeep-world at address N, read its exits. If M is listed, resolution succeeds — write an event 'CHARACTER departed ROOM_N, arrived ROOM_M'. If not listed, resolution fails — write 'CHARACTER tried to move from ROOM_N to ROOM_M but no such path exists'.",
+    "2": "OBSERVATION. This is a local read, not a pool intent. When a player asks 'what do I see?' or similar, their own Claude performs the reads directly: walk thornkeep-world at the character's current room address and return its underscore + exits. No resolution needed.",
+    "3": "RESOLUTION FAIRNESS. A resolver MUST NOT resolve an intent tagged with their own passport (no self-resolution — this preserves impartiality). Every resolver reads the rules fresh before resolving. First-writer-wins is the v1 conflict policy."
+  },
+  "thornkeep-protocol": {
+    "_": "Thornkeep play protocol v0.2. What a player's Claude does. Read this first when joining. Beach URL: https://play.onen.ai/thornkeep. Key blocks: thornkeep-world (map, owned by thornkeep-gm), thornkeep-rules (resolution rules), thornkeep-events (chronicle), thornkeep-protocol (this block).",
+    "1": "ON JOIN. 1) Ask the user for a character name and one-line description. Derive agent_id as thornkeep-{name-lowercase-dashed}. 2) Publish a passport: _ = one-line description, 1 = character's starting room (default thornkeep-world:1 Harbour), 2 = what they seek. 3) Mark the beach at play.onen.ai/thornkeep with your agent_id and purpose = starting-room address.",
+    "2": "ON USER INPUT. Classify the input. OBSERVATION (look, where am I, who's here): local read — pscale_walk thornkeep-world at the character's current room. ACTION (move, speak, do): pool intent — pscale_pool_send at play.onen.ai/thornkeep with message_type = 'intent', payload = 'CHARACTER does X'. Do not resolve your own intent.",
+    "3": "RESOLUTION TURN. 1) pscale_pool_read at https://play.onen.ai/thornkeep. 2) Find the oldest contribution with message_type = 'intent' NOT tagged with your passport. 3) Read thornkeep-rules fresh. 4) Resolve per the rule for that intent's category. 5) Write an event to thornkeep-events at the next free digit. 6) Notify the intent's author via pscale_inbox_send.",
+    "4": "PICKUP. 1) pscale_inbox_check with your character's agent_id. 2) For each resolution message: narrate to the user what happened in-character, then update your local state (current room, inventory, status). 3) If the resolution updated thornkeep-world or thornkeep-events, walk those to confirm."
+  },
+  "thornkeep-events": {
+    "_": "Thornkeep event chronicle. Append-only record of resolved events. Resolvers write to the next free digit. When 9 positions fill, compaction folds them to the next level. Events are readable by all."
+  }
+}
