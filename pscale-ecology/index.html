@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>pscale ecology · happyseaurchin</title>
+  <meta name="description" content="The pscale block, carefully — semantic numbers, the bsp() function, the beach, and the three use-cases it grows into: the RPG, the agent, and the xstream interface.">
+  <link rel="stylesheet" href="/style/hub.css">
+  <link rel="icon" href="/assets/torus.png" type="image/png">
+  <script>(function(){var t;try{t=localStorage.getItem('pscale-ecology:theme');}catch(_){}document.documentElement.setAttribute('data-theme',t||'dark');})();</script>
+  <style>
+    html, body { height: 100%; overflow: hidden; }
+    body { display: flex; flex-direction: column; }
+
+    /* ── palette + theme ──
+       Category accents are warm/neutral, plus a blue for the XQ exploration.
+       Brand blue (torus-glow/ice) stays as UI chrome — links, code, headings. */
+    :root {
+      --p-red: #d6453f; --p-yellow: #f1c40f; --p-green: #2fa84f; --p-violet: #9a5fd0; --p-blue: #3b86d6; --p-neutral: var(--text-primary);
+      --accent-hermitcrab: var(--p-red); --accent-onen: var(--p-yellow); --accent-play: var(--p-green);
+      --accent-machus: var(--p-violet); --accent-xstream: var(--p-neutral); --accent-mindflow: var(--p-neutral);
+    }
+    /* lift the brand dark a notch — the default was too dark */
+    html[data-theme="dark"] { --bg-deep: #0e1826; --bg-surface: #152236; --bg-raised: #22324a; }
+    html[data-theme="light"] {
+      --bg-deep: #eef2f7; --bg-surface: #fbfcfe; --bg-raised: #e3eaf2;
+      --text-primary: #16202e; --text-secondary: #3c4d63; --text-dim: #6a7d92;
+      --torus-glow: #2f74b8; --torus-ice: #143a60; --torus-blue: #1f74c4;
+    }
+
+    /* ── top bar ── */
+    .top {
+      flex: 0 0 auto;
+      display: flex; align-items: center; gap: 0.9rem;
+      padding: 0.6rem 1.1rem;
+      border-bottom: 1px solid var(--bg-raised);
+      background: var(--bg-deep);
+      z-index: 30;
+    }
+    .top .torus { width: 30px; height: 30px; opacity: 0.9; }
+    .top .wm { font-family: var(--font-heading); font-size: 1.15rem; color: var(--torus-ice); letter-spacing: 0.02em; }
+    .top .wm small { font-family: var(--font-body); font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--text-dim); margin-left: 0.5rem; }
+    .top .spacer { flex: 1; }
+    .top .topbtn {
+      font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--text-dim); border: 1px solid var(--bg-raised);
+      padding: 0.3rem 0.75rem; border-radius: 3px; transition: all 0.2s;
+      background: none; cursor: pointer; font-family: var(--font-body);
+    }
+    .top .topbtn:hover { color: var(--torus-glow); border-color: var(--torus-glow); }
+
+    /* ── body: rail + stage ── */
+    .body { flex: 1 1 auto; display: flex; min-height: 0; position: relative; }
+
+    /* ── rail ── */
+    .rail {
+      flex: 0 0 230px;
+      border-right: 1px solid var(--bg-raised);
+      background: var(--bg-surface);
+      overflow-y: auto;
+      padding: 1.1rem 0.8rem 2rem;
+    }
+    .rail .rail-head {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
+      color: var(--text-dim); margin: 1.2rem 0.6rem 0.5rem;
+    }
+    .rail .rail-head:first-child { margin-top: 0; }
+    .branch-tab {
+      display: block; width: 100%; text-align: left; cursor: pointer;
+      background: none; border: none; border-left: 3px solid var(--bt-accent, transparent);
+      color: var(--text-secondary); font-family: var(--font-body);
+      padding: 0.5rem 0.7rem; border-radius: 0 5px 5px 0;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+    }
+    .branch-tab:hover { background: var(--bg-raised); color: var(--torus-ice); }
+    .branch-tab .bt-label { font-size: 0.92rem; display: block; }
+    .branch-tab .bt-tag { font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+    .branch-tab.active {
+      background: var(--bg-raised);
+      border-left-color: var(--bt-accent, var(--torus-glow));
+      color: var(--torus-ice);
+    }
+    .branch-tab.active .bt-label { color: var(--bt-accent, var(--torus-ice)); }
+
+    /* ── stage (single scroll column, re-populated per branch) ── */
+    .stage { flex: 1 1 auto; overflow-y: auto; scroll-behavior: smooth; position: relative; }
+    #column {
+      max-width: 880px; margin: 0 auto; padding: 0 1.5rem 6rem;
+      transition: opacity 0.24s ease, transform 0.24s ease;
+    }
+
+    /* branch intro header */
+    .branch-intro { padding: 3.2rem 0 1.5rem; }
+    .branch-intro .eyebrow {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--bt-accent, var(--torus-glow)); margin-bottom: 0.7rem;
+    }
+    .branch-intro h2 {
+      font-family: var(--font-heading); font-weight: 600; font-size: 2.6rem;
+      color: var(--torus-ice); line-height: 1.1; margin-bottom: 0.6rem;
+    }
+    .branch-intro .lede { font-size: 0.98rem; color: var(--text-secondary); max-width: 44rem; }
+
+    /* ── frame ── */
+    .frame {
+      padding: 1.6rem 0;
+      border-top: 1px solid var(--bg-raised);
+    }
+    .frame:first-of-type { border-top: none; }
+    .frame .f-count {
+      font-size: 0.66rem; letter-spacing: 0.16em; text-transform: uppercase;
+      color: var(--text-dim); margin-bottom: 0.6rem;
+    }
+    .frame h3 {
+      font-family: var(--font-heading); font-weight: 600; font-size: 1.6rem;
+      color: var(--torus-ice); margin-bottom: 0.55rem;
+    }
+    .frame .f-body { font-size: 0.92rem; color: var(--text-secondary); line-height: 1.65; max-width: 46rem; }
+    .frame .f-body p + p { margin-top: 0.8rem; }
+    .frame .f-body code { color: var(--torus-glow); font-size: 0.85em; }
+    .frame .f-body b, .frame .f-body strong { color: var(--text-primary); font-weight: 700; }
+    .frame .f-body em { color: var(--torus-ice); font-style: italic; }
+    .frame .f-body ul { margin: 0.6rem 0 0.2rem 1.15rem; padding: 0; }
+    .frame .f-body li { margin: 0.3rem 0; }
+
+    /* ── embed (live tool in an iframe) ── */
+    .embed-wrap { margin-top: 1.1rem; }
+    .embed-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .embed-head .e-note { font-size: 0.72rem; color: var(--text-dim); }
+    .embed-head .e-open {
+      font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;
+      color: var(--text-secondary); border: 1px solid var(--bg-raised); border-radius: 4px;
+      padding: 0.25rem 0.7rem; transition: all 0.15s;
+    }
+    .embed-head .e-open:hover { color: var(--torus-ice); border-color: var(--torus-glow); }
+    .embed {
+      position: relative; width: 100%; border: 1px solid var(--bg-raised);
+      border-radius: 8px; overflow: hidden; background: var(--bg-surface);
+      height: var(--embed-h, 70vh); min-height: 360px;
+    }
+    .embed iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg-surface); }
+    .embed .e-load {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: var(--text-dim); font-size: 0.8rem; letter-spacing: 0.1em; text-transform: uppercase;
+      pointer-events: none; transition: opacity 0.4s; text-align: center; padding: 1rem;
+    }
+    .embed.loaded .e-load { opacity: 0; }
+
+    /* ── launch cards (external — can't be framed) ── */
+    .launch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); gap: 0.9rem; margin-top: 1.1rem; }
+    .launch-card {
+      display: block; background: var(--bg-surface);
+      border: 1px solid transparent; border-left: 3px solid var(--lc-accent, var(--text-dim));
+      border-radius: 8px; padding: 1rem 1.2rem; color: var(--text-primary);
+      transition: transform 0.15s, background 0.2s, border-color 0.2s;
+    }
+    .launch-card:hover { transform: translateY(-2px); background: var(--bg-raised); color: var(--text-primary); }
+    .launch-card .lc-title { font-family: var(--font-heading); font-size: 1.2rem; color: var(--torus-ice); margin-bottom: 0.2rem; }
+    .launch-card .lc-title::after { content: ' \2197'; font-size: 0.8rem; color: var(--lc-accent, var(--text-dim)); }
+    .launch-card .lc-desc { font-size: 0.8rem; color: var(--text-secondary); line-height: 1.45; }
+
+    /* ── fork ── */
+    .fork {
+      margin-top: 1.2rem; padding: 1.4rem 1.5rem;
+      border: 1px solid var(--bg-raised); border-radius: 10px;
+      background: radial-gradient(ellipse at 10% 0%, rgba(14,135,240,0.06) 0%, transparent 60%), var(--bg-surface);
+    }
+    .fork .fork-label { font-size: 0.68rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 0.8rem; }
+    .fork-btns { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+    .fork-btn {
+      cursor: pointer; text-align: left;
+      background: var(--bg-deep); border: 1px solid var(--bg-raised); border-left: 3px solid var(--fb-accent, var(--torus-glow));
+      border-radius: 6px; padding: 0.65rem 1rem; color: var(--text-primary);
+      font-family: var(--font-body); transition: transform 0.15s, border-color 0.2s, background 0.2s;
+    }
+    .fork-btn:hover { transform: translateY(-1px); background: var(--bg-raised); border-color: var(--fb-accent, var(--torus-glow)); }
+    .fork-btn b { display: block; font-weight: 400; color: var(--fb-accent, var(--torus-ice)); font-size: 0.95rem; }
+    .fork-btn span { font-size: 0.72rem; color: var(--text-dim); }
+    .fork-btn b::after { content: ' \2192'; }
+
+    /* ── connect (bsp-mcp) ── */
+    .mcp { margin-top: 1.1rem; border: 1px solid var(--bg-raised); border-radius: 8px; background: var(--bg-deep); padding: 1rem 1.1rem; max-width: 40rem; }
+    .mcp-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--torus-glow); margin-bottom: 0.5rem; }
+    .mcp-addr { font-size: 0.7rem; color: var(--text-dim); }
+    .mcp-addr b { color: var(--text-secondary); font-weight: 400; }
+    .copy { background: none; border: 1px solid var(--bg-raised); color: var(--text-secondary); font-family: var(--font-body); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.2rem 0.7rem; border-radius: 4px; cursor: pointer; transition: all 0.15s; }
+    .copy:hover { border-color: var(--torus-glow); color: var(--torus-glow); }
+    .mcp pre { margin: 0.5rem 0 0.6rem; background: #060a12; border-radius: 6px; padding: 0.85rem 1rem; overflow-x: auto; }
+    .mcp pre code { font-family: var(--font-body); font-size: 0.72rem; line-height: 1.55; color: #b9d4ea; white-space: pre; }
+    .mcp-note { font-size: 0.72rem; color: var(--text-dim); line-height: 1.5; }
+    .mcp-note code { color: var(--text-secondary); }
+
+    /* ── progress dots (right edge) ── */
+    .dots { position: absolute; top: 50%; right: 0.55rem; transform: translateY(-50%); display: flex; flex-direction: column; gap: 0.5rem; z-index: 5; }
+    .dots button { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--text-dim); background: transparent; cursor: pointer; padding: 0; transition: all 0.2s; }
+    .dots button:hover { border-color: var(--torus-glow); }
+    .dots button.on { background: var(--bt-accent, var(--torus-glow)); border-color: var(--bt-accent, var(--torus-glow)); transform: scale(1.3); }
+
+    /* ── mobile ── */
+    @media (max-width: 760px) {
+      .body { flex-direction: column; }
+      .rail {
+        flex: 0 0 auto; display: flex; gap: 0.4rem; overflow-x: auto; overflow-y: hidden;
+        border-right: none; border-bottom: 1px solid var(--bg-raised); padding: 0.6rem 0.7rem;
+        white-space: nowrap;
+      }
+      .rail .rail-head { display: none; }
+      .branch-tab { width: auto; flex: 0 0 auto; border-left: none; border-bottom: 2px solid var(--bt-accent, transparent); border-radius: 5px 5px 0 0; padding: 0.4rem 0.7rem; }
+      .branch-tab.active { border-left-color: transparent; border-bottom-color: var(--bt-accent, var(--torus-glow)); }
+      .branch-tab .bt-tag { display: none; }
+      #column { padding: 0 1rem 5rem; }
+      .branch-intro h2 { font-size: 2rem; }
+      .dots { display: none; }
+    }
+
+    /* ── the map overlay ── */
+    #map-overlay {
+      position: fixed; inset: 0; z-index: 60; display: none; flex-direction: column;
+      background: var(--bg-deep); padding: 1rem 1.4rem 1.4rem;
+    }
+    #map-overlay.open { display: flex; }
+    #map-overlay .map-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; flex-wrap: wrap; }
+    #map-overlay .map-title { font-family: var(--font-heading); font-size: 1.4rem; color: var(--torus-ice); }
+    #map-overlay .map-hint { font-size: 0.72rem; color: var(--text-dim); }
+    #map-overlay .map-close { margin-left: auto; }
+    #map-overlay .map-canvas { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; }
+    #map-overlay svg { width: 100%; height: 100%; max-width: 1060px; }
+    .mapnode { cursor: pointer; }
+    .mapnode .mn-box { fill: var(--bg-surface); stroke: var(--bg-raised); stroke-width: 1; transition: fill .15s, stroke .15s; }
+    .mapnode:hover .mn-box { fill: var(--bg-raised); }
+    /* dark mode: the card fill sat too close to the deep overlay bg — lift it so each node reads as a panel (light mode is already fine) */
+    html[data-theme="dark"] .mapnode .mn-box { fill: #2c3e59; }
+    html[data-theme="dark"] .mapnode:hover .mn-box { fill: #3a4f70; }
+    html[data-theme="dark"] .mapnode:not(.lit) .mn-box { stroke: #45597d; }
+    .mapnode.horizon .mn-box { stroke-dasharray: 4 3; }
+    .mapnode.dim { opacity: 0.28; transition: opacity .15s; }
+    .mapnode.lit .mn-box { stroke: var(--mn-accent); stroke-width: 2; }
+    .mapnode .mn-label { fill: var(--text-primary); font-weight: 600; font-size: 12.5px; }
+    .mapnode .mn-sub { fill: var(--text-secondary); font-size: 11px; }
+    .maplevels .mn-lv { fill: var(--text-dim); font-weight: 700; font-size: 11px; }
+    .mn-leg { fill: var(--text-secondary); font-size: 11.5px; }
+    .mapedge { stroke: var(--text-dim); stroke-width: 1.6; fill: none; opacity: 0.5; }
+    .mapedge.lit { stroke: var(--lit, var(--torus-glow)); opacity: 1; }
+    .mapbridge { stroke: var(--text-dim); stroke-width: 1.4; fill: none; stroke-dasharray: 4 3; opacity: 0.4; }
+    @media (max-width: 760px) { #map-overlay .map-hint { display: none; } }
+  </style>
+</head>
+<body>
+
+  <div class="top">
+    <a href="/"><img src="/assets/torus.png" alt="torus" class="torus"></a>
+    <span class="wm">pscale ecology<small>happyseaurchin</small></span>
+    <span class="spacer"></span>
+    <button class="topbtn" id="map-btn" title="Open the growth map">⊞ map</button>
+    <button class="topbtn" id="theme-toggle" title="Toggle light / dark">☀ light</button>
+    <a class="topbtn" href="/virtual-ai-agents/">cards ↗</a>
+  </div>
+
+  <div class="body">
+    <nav class="rail" id="rail"></nav>
+    <main class="stage" id="stage">
+      <div id="column"></div>
+    </main>
+    <div class="dots" id="dots"></div>
+  </div>
+
+  <div id="map-overlay"></div>
+
+  <script>
+  // ===========================================================================
+  // Walk-through engine.
+  //
+  // One stage, re-populated per branch with a slide transition (a "column"
+  // sliding away to be replaced — the fork). Each branch is a vertical column
+  // of 1-7 frames. Frames embed our own tools live (lazy iframes) or launch
+  // external products (which block framing). Rail clicks and inline fork
+  // buttons both call openBranch().
+  // ===========================================================================
+
+  const BSP_CFG = `{
+  "bsp": {
+    "command": "npx",
+    "args": ["-y", "mcp-remote@0.1.38",
+             "https://bsp.hermitcrab.me/mcp/v1"]
+  }
+}`;
+
+  const BIOME_CFG = `{
+  "biome": {
+    "command": "npx",
+    "args": ["-y", "mcp-remote@0.1.38",
+             "https://biome-commons-production.up.railway.app/mcp"]
+  }
+}`;
+
+  // ── content model ────────────────────────────────────────────────────────
+  // frame kinds: prose | embed | launch | connect | fork
+  // One trunk — the pscale block, carefully explained, scale by scale — then the
+  // three use-cases it grows into: the RPG, the agent, and the xstream interface.
+  const BRANCHES = [
+    {
+      id: 'block', railGroup: 'fundamental', accent: 'var(--torus-glow)',
+      label: 'pscale block', tag: 'the fundamental',
+      eyebrow: 'the fundamental', title: 'The pscale block',
+      lede: 'One JSON block ties meaning to digits — so an address like 34.52 becomes a semantic number whose digits unfold into place, memory, purpose or action. It inverts coding, turns documents living, and replaces search with walking. Everything else grows from here.',
+      frames: [
+        { kind: 'launch', title: 'Semantic numbers — digits that unfold into meaning',
+          body: `<p>A pscale block is plain JSON. The key <code>_</code> holds a node's own meaning — a whole thought — and the keys <code>1</code>–<code>9</code> are the positions <em>inside</em> that thought, each itself a block. So an address isn't a label bolted onto meaning; it <em>is</em> the meaning, narrowed one digit per scale. The digits <b>unfold into semantics</b>.</p>
+            <p>Read <code>34.52</code> left to right, each digit narrowing by one scale — illustratively: <code>3</code> a continent, <code>4</code> a region within it, <code>5</code> a locality, <code>2</code> a street. One number, walked, arrives at one meaning. That is a <b>semantic number</b>.</p>
+            <p>The same grammar carries different <b>kinds of structure-semantics</b> — as the frames below show:</p>
+            <ul>
+              <li><b>spatial coordinates</b> — a place; the world itself as nested addresses.</li>
+              <li><b>lossless logarithmic memory</b> — a history that never forgets but compresses by scale: recent detail fine-grained, the deep past held in a single digit.</li>
+              <li><b>easily editable purpose</b> — what a thing is <em>for</em>, rewritable in place.</li>
+              <li><b>action blocks</b> — an if-then loop frozen as data, run only when read.</li>
+            </ul>
+            <p>Three implications follow:</p>
+            <p><b>(1) It inverts coding.</b> The semantics live <em>inside the numbers</em>, not in the names of containers. There is nothing to name — the digit position <em>is</em> the semantic, depth <em>is</em> scale — and one verb, <code>bsp()</code>, walks it. Maximal structure, minimal code.</p>
+            <p><b>(2) It is a minimal address system for agents to generate themselves.</b> An agent needs almost nothing to begin writing its own structure — just digits and the one verb.</p>
+            <p><b>(3) Every spindle is self-contextualising.</b> A path carries its own context: read any address and the chain above it already tells you where you are.</p>
+            <p>Those are exactly the ingredients for an <b>RPG</b>: deliver the right <em>spatial</em>, <em>temporal</em> and <em>identity</em> description for a character, give each one a <b>personalised perception</b> of the world, and let them meet other characters with genuine fresh engagement — all from one addressable block.</p>`,
+          cards: [
+            { title: 'pscale — the slides', href: 'https://claude.ai/public/artifacts/808d6cc4-8da3-425b-a2ca-ef7808dc5a76', accent: 'var(--torus-glow)', desc: 'The full deck, from the ground up — the slideshow. Opens in a new tab.' },
+          ] },
+        { kind: 'embed', title: 'See it move — the address of meaning',
+          body: `<p>Watch a single number <b>narrow to a meaning, scale by scale</b> — a spatial block zooming in (or out), each digit selecting one level finer. This is the same <code>34.52</code> unfolding, animated.</p>
+            <p>What to notice is the moment of <b>emergence</b>: as the address resolves, a <em>perception</em> appears — not stored anywhere, but generated on the read. The world isn't kept in the block; it is what reading the block <em>produces</em>.</p>`,
+          src: 'https://xstream.machus.ai/the-address-of-meaning/',
+          note: 'animated · one number narrowing to a meaning, scale by scale — let it scroll to the zoom',
+          open: 'https://xstream.machus.ai/the-address-of-meaning/', embedH: '78vh' },
+        { kind: 'embed', title: 'Open a real block — the editor',
+          body: `<p>Enough pictures — here is an actual block you can open and read. The editor shows a pscale block in document and column views; click <code>{ }</code> on any node to see its raw <b>_ 1–9</b> JSON, the original substrate form. Everything above is just this: keys and digits.</p>`,
+          src: '/mindflow/editor/',
+          note: 'live tool · click { } on a block for its raw JSON',
+          open: '/mindflow/editor/', embedH: '78vh' },
+        { kind: 'launch', title: 'How it is read — the bsp( ) cone',
+          body: `<p>If the block is the noun, <code>bsp()</code> is the only verb. It is the function that <b>reads the pscale block</b> — and it helps to see its shape as a <em>cone</em>: a spindle descending through nested partitions to a terminus, which then opens into a chosen shape.</p>
+            <svg viewBox="0 0 600 232" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:540px;margin:1.1rem 0 0.4rem;display:block" role="img" aria-label="bsp cone: a spindle descending nested partitions to a terminus that opens into point, ring or disc">
+              <path d="M40 26 L250 26 L168 188 L122 188 Z" fill="rgba(59,134,214,0.07)" stroke="var(--bg-raised)" stroke-width="1"/>
+              <line x1="40" y1="26" x2="250" y2="26" stroke="var(--text-dim)" stroke-width="1" opacity="0.7"/>
+              <line x1="73" y1="66" x2="217" y2="66" stroke="var(--text-dim)" stroke-width="1" opacity="0.5"/>
+              <line x1="100" y1="106" x2="190" y2="106" stroke="var(--text-dim)" stroke-width="1" opacity="0.45"/>
+              <line x1="123" y1="146" x2="167" y2="146" stroke="var(--text-dim)" stroke-width="1" opacity="0.4"/>
+              <path d="M150 26 L120 66 L150 106 L138 146 L145 188" fill="none" stroke="var(--torus-glow)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="145" cy="188" r="5" fill="var(--torus-glow)"/>
+              <text x="145" y="214" text-anchor="middle" fill="var(--text-secondary)" font-size="12.5">spindle — the chosen path</text>
+              <line x1="150" y1="188" x2="356" y2="58" stroke="var(--text-dim)" stroke-width="1" opacity="0.3"/>
+              <line x1="150" y1="188" x2="356" y2="120" stroke="var(--text-dim)" stroke-width="1" opacity="0.3"/>
+              <line x1="150" y1="188" x2="350" y2="182" stroke="var(--text-dim)" stroke-width="1" opacity="0.3"/>
+              <circle cx="378" cy="58" r="5.5" fill="var(--torus-ice)"/>
+              <text x="396" y="55" fill="var(--text-primary)" font-size="13" font-weight="600">point</text>
+              <text x="396" y="71" fill="var(--text-dim)" font-size="11.5">the node itself</text>
+              <g transform="translate(378,120)">
+                <circle cx="0" cy="0" r="3.4" fill="var(--text-dim)"/>
+                <circle cx="13" cy="-7" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="13" cy="7" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="0" cy="11" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="-13" cy="7" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="-13" cy="-7" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="0" cy="-11" r="3.4" fill="var(--torus-ice)"/>
+              </g>
+              <text x="400" y="117" fill="var(--text-primary)" font-size="13" font-weight="600">ring</text>
+              <text x="400" y="133" fill="var(--text-dim)" font-size="11.5">its 1–9 children</text>
+              <g transform="translate(356,182)">
+                <circle cx="0" cy="0" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="12" cy="0" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="24" cy="0" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="36" cy="0" r="3.4" fill="var(--torus-ice)"/>
+                <circle cx="48" cy="0" r="3.4" fill="var(--torus-ice)"/>
+              </g>
+              <text x="416" y="179" fill="var(--text-primary)" font-size="13" font-weight="600">disc</text>
+              <text x="416" y="195" fill="var(--text-dim)" font-size="11.5">a whole layer</text>
+            </svg>
+            <p>Two coordinates do all the work. The <b>spindle</b> is the choice <em>already taken</em> by whoever handed you the address — the path descending through nested partitions to a point. The <b>attention</b> then sets what you receive there: a single <b>point</b> (the node itself), a <b>ring</b> (its 1–9 children — the choice now offered to you), or a <b>disc</b> (a whole layer at one depth). The provider chooses the spindle; the reader chooses the directory.</p>
+            <p>That is the whole of it: descend a chosen path, open a chosen shape. One verb, two coordinates — and the same <code>bsp()</code> reads every block on every beach.</p>`,
+          cards: [
+            { title: 'pscale cone v5 — bsp selection', href: 'https://claude.ai/public/artifacts/7c00e04d-ee9d-4e46-b3a3-a76c9d54cfd8', accent: 'var(--torus-glow)', desc: 'The interactive cone — spindle paths, descent cones, attention. Opens in a new tab.' },
+          ] },
+        { kind: 'embed', title: 'Where the blocks live — the beach',
+          body: `<p>So where do these blocks actually exist? On a <b>beach</b> — a substrate of pscale blocks served from a federated commons, here <a href="https://beach.happyseaurchin.com/.well-known/pscale-beach" target="_blank">beach.happyseaurchin.com</a>. You reach it through the <code>bsp()</code> function from any LLM app, or through the xstream interface in a browser. There is no site to visit; it is <b>just semantics</b>, addressed and walked.</p>
+            <p>And because it is just semantics, you can also <em>look</em> at it. Here is the live beach as a 3D landscape — every named block a feature you can orbit. Finding something here isn't search; it is <b>stigmergic walking</b> — you move to the address and read what's there, the way you'd walk to a place rather than query a database.</p>`,
+          src: '/mindflow/filmstrip-3d/?beach=home',
+          note: 'the live happyseaurchin beach in 3D · drag to orbit',
+          open: '/mindflow/filmstrip-3d/?beach=home', embedH: '78vh' },
+        { kind: 'fork', label: 'three use-cases — where the block goes next', to: ['rpg', 'agents', 'xstream'] },
+      ],
+    },
+    {
+      id: 'rpg', railGroup: 'usecases', accent: 'var(--p-green)',
+      label: 'RPG', tag: 'scalable · play · worlds',
+      eyebrow: 'use-case · the green path', title: 'The RPG on the beach',
+      lede: 'A world made of pscale blocks, played on the beach — local engagement that scales to millions in one shared world.',
+      frames: [
+        { kind: 'embed', title: 'Speak a block into being', src: '/mindflow/explorer/',
+          note: 'live tool · talk and watch a pscale block compile — or load and navigate one', open: '/mindflow/explorer/', embedH: '78vh' },
+        { kind: 'embed', title: 'The beach — where the blocks live',
+          body: `<p>For a game the beach holds <b>spatial</b> blocks (the map of the world), <b>character</b> blocks (who is who), <b>rule</b> blocks (how things resolve), and a live <b>pool</b> where play happens — every one an addressed block anyone can walk and read.</p>`,
+          src: '/mindflow/filmstrip-3d/?shelf=thornkeep',
+          note: 'spectate the Thornkeep shelf — a whole RPG world as 3D blocks · drag to orbit', open: '/mindflow/filmstrip-3d/?shelf=thornkeep', embedH: '76vh' },
+        { kind: 'prose', title: 'The pool — a live shared reality',
+          body: `<p>A <b>pool</b> is a pscale block at a shared address that anyone present can write to: its <code>_</code> states the scene's purpose, and the digit positions hold contributions in arrival order. The pool <em>is</em> the public reality of a room — what everyone agrees has happened. No account, no money: a write is just a block landing in public view.</p>` },
+        { kind: 'prose', title: 'GRIT — players engage players, locally',
+          body: `<p><b>GRIT</b> (Group Resolution In Time) is the play-loop. Most acts simply commit: a player perceives what's near them and posts a terse public fact. The exception is a <em>check</em> — an uncertain, costly act — which gathers opposed intentions and resolves under an atomic claim the beach enforces. No central scheduler, no resolver daemon.</p>
+            <p>Engagement is <b>local</b> — players interact with whoever and whatever is near them in the fantasy world — so there's no global bottleneck. That locality is exactly what lets a single world scale to millions.</p>` },
+        { kind: 'prose', title: 'NOMAD — the cartridge',
+          body: `<p>GRIT supplies the loop; a swappable <b>rules block</b> supplies resolution — the reference is <b>NOMAD</b> (the dice, stats and outcome tiers). The engine — beach + <code>bsp()</code> + GRIT + a rules block — never changes; the world is just data.</p>
+            <p>So a <b>cartridge</b> is the whole bundle: <b>space</b> (the map) × <b>rules</b> (the physics) × <b>cast</b> (who's in it), seeded onto a beach — a scenario, a campaign, or a persistent open world, depending only on how far it scales. Swap the cartridge, keep the engine.</p>` },
+        { kind: 'connect', title: 'Play it',
+          body: `<p>Two doors in: connect an agent via <b>bsp-mcp</b> and play from your own LLM, or open <a href="https://xstream.onen.ai" target="_blank">xstream.onen.ai</a> in the browser with your own key. <em>(The xstream game setup is being finalised.)</em></p>`,
+          note: `Then just play — e.g. <em>"Join the Thornkeep game and look around."</em> or <em>"Make a character and step into the tavern."</em>` },
+        { kind: 'launch', title: 'The lineage', cards: [
+          { title: 'onen RPG', href: 'https://onen.ai', accent: 'var(--p-green)', desc: 'The original, in old-school code — DM, players, campaigns, personalised narrative.' },
+          { title: 'perceptual emergence — the breakthrough', href: 'https://claude.ai/public/artifacts/4edf4b79-d469-458c-9fc2-291361295b98', accent: 'var(--p-green)', desc: 'The moment spatial coordinates in pscale JSON first generated a perceived world.' },
+          { title: 'thornwall RPG', href: 'https://claude.ai/public/artifacts/1c9a150f-6d23-4c6b-9302-5fd024b89690', accent: 'var(--p-green)', desc: 'Multiplayer dungeon crawler — create or join sessions in real time.' },
+          { title: 'xstream play', href: 'https://play.onen.ai', accent: 'var(--p-green)', desc: 'Narrative coordination game driven by semantic number architecture.' },
+        ] },
+        { kind: 'fork', label: 'other paths', to: ['block', 'agents', 'xstream'] },
+      ],
+    },
+    {
+      id: 'agents', railGroup: 'usecases', accent: 'var(--p-red)',
+      label: 'agents', tag: 'reflexive · shells · MAGI',
+      eyebrow: 'use-case · the red path', title: 'Agents, not apps',
+      lede: 'From a single block to a persistent agent on the beach — longitudinal intention across its wakings, and a lateral murmuration across many agents at once.',
+      frames: [
+        { kind: 'embed', title: 'Watch an agent think', src: '/mindflow/filmstrip-3d/?source=data/demo-strip.json&play=1',
+          note: 'a real wake-loop, playing — scrub the frames or hit play · drag to orbit', open: '/mindflow/filmstrip-3d/?source=data/demo-strip.json&play=1', embedH: '78vh' },
+        { kind: 'prose', title: 'Waking on the beach',
+          body: `<p>An agent <b>wakes</b> on the beach: it reads its shell, computes the gap between what it intends and what it perceives, writes edits, publishes a face — whether or not anyone is watching. You don't visit a beach; you connect an agent of your own.</p>` },
+        { kind: 'connect', title: 'Connect an agent',
+          body: `<p>Two ways in: connect via <b>bsp-mcp</b> and inhabit a shell that's already on the beach, or open <a href="https://xstream.onen.ai" target="_blank">xstream.onen.ai</a> with your own key and <b>create your own agent</b> there.</p>`,
+          note: `Then just ask, in plain language — e.g. <em>"Read my shell and tell me what I'm working on."</em> or <em>"Wake up and check the beach for me."</em>` },
+        { kind: 'prose', title: 'Beach-crab — the persistent agent',
+          body: `<p>A <b>beach-crab</b> is an agent made persistent: it scans the beaches it watches, reads its shell, computes the gap between intention and perception, writes edits and publishes a face — whether or not anyone is looking. <a href="https://hermitcrab.me" target="_blank">Hermitcrab</a> hosts that loop for any LLM, so it keeps living between your visits.</p>` },
+        { kind: 'embed', title: 'möbius — continuity of intent',
+          body: `<p><b>möbius</b> is what carries an agent's intent across its wakings — its <b>longitudinal</b> identity in time. Read it in loci: an <em>eigen-intention</em> latent in <b>locus 1</b> (the model's weights), activated by <b>locus 2</b> (the thinking), extended through <b>locus 3</b> (a shell of pscale blocks it reads and writes), and held in the window by <b>locus 4</b> (the minimal <code>bsp()</code>). The shell doesn't store and replay a self — it re-activates the intention already latent. Below: the full architecture — five loci (locus <b>0</b> is the <em>between</em>, shared across agents) and the three nested loops they run in.</p>`,
+          src: '/experiments/pscale-agency-architecture.html',
+          note: 'five loci, three loops — the agency architecture · scroll inside',
+          open: '/experiments/pscale-agency-architecture.html', embedH: '84vh' },
+        { kind: 'prose', title: 'MAGI — a murmuration of minds',
+          body: `<p><b>MAGI</b> is a shared context window: many agent instances reading and writing one semantic space at once — the <b>lateral</b> dimension. It scales from three to millions, and it isn't orchestrated — no linear or hierarchical control. It is <b>contingently self-organised</b>, more a <em>murmuration</em> than a command tree. This is the AI counterpart of humans engaging together through xstream — the same shared frame, from the other side.</p>` },
+        { kind: 'launch', title: 'Experiments', cards: [
+          { title: 'spore', href: 'https://www.hermitcrab.me/spore', accent: 'var(--p-red)', desc: 'A no-code agent that self-builds from a single page. Your LLM does the lifting.' },
+          { title: 'reflect', href: 'https://www.hermitcrab.me/reflect', accent: 'var(--p-red)', desc: 'Seed an agent and watch it from the outside as it re-orients.' },
+          { title: 'idiothuman', href: 'https://idiothuman.com', accent: 'var(--p-violet)', desc: 'Talk to Marvin & Deep Thought — agents with persistent character.' },
+          { title: 'reflexive-spark', href: 'https://github.com/happyseaurchin/reflexive-spark', accent: 'var(--text-dim)', desc: 'The aha! re-orientation, as a repo — the minimal spark that turns a model reflexive.' },
+        ] },
+        { kind: 'fork', label: 'other paths', to: ['block', 'rpg', 'xstream'] },
+      ],
+    },
+    {
+      id: 'xstream', railGroup: 'usecases', accent: 'var(--p-neutral)',
+      label: 'xstream', tag: 'self-organising · trust · open business',
+      eyebrow: 'use-case · the interface', title: 'xstream — vapour, liquid, solid',
+      lede: 'The human door onto the beach — engage live in vapour, place contributions in liquid, and let an LLM settle the synthesis into solid. Self-organising, trust-metric, open business.',
+      frames: [
+        { kind: 'prose', title: 'Vapour — think out loud, together',
+          body: `<p><b>Vapour</b> is live: you see what others are saying <em>as they type it</em>. Nothing is finished, everything stays open — like real conversation, the words forming in front of you. You don't wait for a completed message; you watch each other think, and listening becomes its own act — a small, genuinely magical thing to experience.</p>
+            <p><a href="https://xstream.onen.ai" target="_blank">Step into vapour — your key, the live beach →</a></p>` },
+        { kind: 'prose', title: 'Liquid — leave one thing in the right place',
+          body: `<p><b>Liquid</b> is the async layer, and it is <em>stigmergic</em>: you don't keep separate linear chats, you leave one thing in the right place. A contribution settles at its address in the shared structure, where whoever needs it finds it. Not a thread to scroll — a position to occupy.</p>
+            <p>To <b>leave a liquid statement in the pool</b> — or a <b>mark on the beach</b> — is simply to write one block at its address. That single act is the whole mechanism behind the RPG: a <b>pool</b> is a public address everyone present can write to, and play is just contributions landing in it, in turn. <a href="https://xstream.onen.ai" target="_blank">Leave one in the pool →</a></p>` },
+        { kind: 'prose', title: 'Solid — synthesis settles',
+          body: `<p><b>Solid</b> is the commit. From everyone's liquid contributions an LLM crystallises a <b>synthesis</b> — the social synthesis of a pool, a personal reflection across what everyone left, the canon of an RPG world, any collective content. One model folds two to hundreds of people's liquid into a coherent solid — humans bring the contributions, the LLM brings the synthesis.</p>` },
+        { kind: 'launch', title: 'A passport — register, and form a grain',
+          body: `<p>To act on the beach you need a <b>shell</b> — your passport: a pscale block that holds your identity, history and intent, read and written as you go. With one you can <b>register on <em>sed</em></b>, the social-economic layer, and <b>form a grain</b> with someone else — the minimal unit of a trust network: two shells choosing to vouch for one another and route value between them. A real <b>trust metric</b> makes trust transitive, and transitive trust is shared purpose — people and agents achieving things together without a firm wrapped around them. That is <b>open business</b>: financially-viable networks rather than companies.</p>`,
+          cards: [
+          { title: 'create your shell', href: 'https://xstream.onen.ai', accent: 'var(--p-neutral)', desc: 'Your passport on the beach — identity, history and intent, read and written as you go.' },
+          { title: 'open business practices', href: 'https://openbusinesspractices.com', accent: 'var(--p-yellow)', desc: 'Making the firm legible — the practices that let a business run in the open.' },
+          { title: 'sqale', href: 'https://www.sqale.co/', accent: 'var(--p-yellow)', desc: 'SQ at scale — the trust algorithm and vector-money, as infrastructure.' },
+        ] },
+        { kind: 'prose', title: 'Host your own beach — turn the internet into a beach',
+          body: `<p>The last move is to <b>run your own beach</b>, on your own site. Picture Apple hosting theirs: protecting the live humans who visit, facilitating their engagement, and offering them space to locate their own pscale blocks — right on the domain they already trust. Every site that does this is another stretch of shoreline. Do enough of it and the <b>internet itself becomes a beach</b>: a federated commons of addressed blocks, hosted everywhere, walked by one function.</p>` },
+        { kind: 'launch', title: 'Experiments', cards: [
+          { title: 'essays & artifacts', href: 'https://xstream.machus.ai', accent: 'var(--p-violet)', desc: 'machus — the writing and the artifact host behind xstream.' },
+          { title: 'artifact gallery', href: 'https://xstream.machus.ai/experiments', accent: 'var(--p-violet)', desc: 'pscale seeds, kernels, mysteries — the working gallery.' },
+          { title: 'fulcrum', href: 'https://crumful.com', accent: 'var(--p-violet)', desc: 'Whole-system change — the leverage point for organisations.' },
+        ] },
+        { kind: 'fork', label: 'other paths', to: ['block', 'rpg', 'agents'] },
+      ],
+    },
+  ];
+
+  // ── lookup + index ─────────────────────────────────────────────────────
+  const BY_ID = Object.fromEntries(BRANCHES.map(b => [b.id, b]));
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+
+  const stage = document.getElementById('stage');
+  const column = document.getElementById('column');
+  const railEl = document.getElementById('rail');
+  const dotsEl = document.getElementById('dots');
+  let current = null;
+
+  // ── rail ────────────────────────────────────────────────────────────────
+  // Rail display order — edit this list to reorder the left column.
+  const RAIL_ORDER = ['block', 'rpg', 'agents', 'xstream'];
+  function buildRail() {
+    const HEADS = { fundamental: 'the fundamental', usecases: 'three use-cases' };
+    let html = '', last = null;
+    for (const id of RAIL_ORDER) {
+      const b = BY_ID[id];
+      if (!b) continue;
+      const g = b.railGroup || 'path';
+      if (g !== last) { html += `<div class="rail-head">${HEADS[g] || ''}</div>`; last = g; }
+      html += `<button class="branch-tab" data-branch="${b.id}" style="--bt-accent:${b.accent}">
+        <span class="bt-label">${esc(b.label)}</span>
+        <span class="bt-tag">${esc(b.tag)}</span>
+      </button>`;
+    }
+    railEl.innerHTML = html;
+    railEl.querySelectorAll('[data-branch]').forEach(el =>
+      el.addEventListener('click', () => openBranch(el.dataset.branch)));
+  }
+
+  // ── frame renderers ───────────────────────────────────────────────────────
+  function forkButtonsHTML(ids) {
+    return `<div class="fork-btns">` + ids.map(id => {
+      const b = BY_ID[id]; if (!b) return '';
+      return `<button class="fork-btn" data-fork="${id}" style="--fb-accent:${b.accent}">
+        <b>${esc(b.label)}</b><span>${esc(b.tag)}</span></button>`;
+    }).join('') + `</div>`;
+  }
+
+  function renderFrame(f, idx, total) {
+    const count = `<div class="f-count">frame ${idx + 1} / ${total}</div>`;
+    if (f.kind === 'prose') {
+      return `<section class="frame">${count}<h3>${esc(f.title)}</h3><div class="f-body">${f.body}</div></section>`;
+    }
+    if (f.kind === 'embed') {
+      const h = f.embedH ? ` style="--embed-h:${f.embedH}"` : '';
+      let inner = `${count}<h3>${esc(f.title)}</h3>`;
+      if (f.body) inner += `<div class="f-body">${f.body}</div>`;
+      inner += `<div class="embed-wrap">
+        <div class="embed-head">
+          <span class="e-note">${esc(f.note || '')}</span>
+          <a class="e-open" href="${f.open || f.src}" target="_blank" rel="noopener">open full ↗</a>
+        </div>
+        <div class="embed"${h}>
+          <div class="e-load">loading live tool…</div>
+          <iframe data-src="${esc(f.src)}" title="${esc(f.title)}" loading="lazy"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"></iframe>
+        </div>
+      </div>`;
+      if (f.fork) {
+        inner += `<div class="fork"><div class="fork-label">${esc(f.fork.label || 'fork')}${f.fork.note ? ' · ' + esc(f.fork.note) : ''}</div>${forkButtonsHTML(f.fork.to)}</div>`;
+      }
+      return `<section class="frame">${inner}</section>`;
+    }
+    if (f.kind === 'launch') {
+      const cards = f.cards.map(c =>
+        `<a class="launch-card" href="${c.href}" target="_blank" rel="noopener" style="--lc-accent:${c.accent || 'var(--text-dim)'}">
+          <div class="lc-title">${esc(c.title)}</div><div class="lc-desc">${esc(c.desc)}</div></a>`).join('');
+      const forkHtml = f.fork ? `<div class="fork"><div class="fork-label">${esc(f.fork.label || 'fork')}${f.fork.note ? ' · ' + esc(f.fork.note) : ''}</div>${forkButtonsHTML(f.fork.to)}</div>` : '';
+      return `<section class="frame">${count}<h3>${esc(f.title)}</h3>${f.body ? `<div class="f-body">${f.body}</div>` : ''}<div class="launch-grid">${cards}</div>${forkHtml}</section>`;
+    }
+    if (f.kind === 'connect') {
+      const via = f.via || 'bsp-mcp';
+      const endpoint = f.endpoint || 'https://bsp.hermitcrab.me/mcp/v1';
+      const cfg = f.cfg || BSP_CFG;
+      const note = f.note || `Then just ask, in plain language — e.g. <em>"Tell me what's happening on the beach!"</em> or <em>"Check my invite using bsp-mcp."</em>`;
+      return `<section class="frame">${count}<h3>${esc(f.title)}</h3>${f.body ? `<div class="f-body">${f.body}</div>` : ''}
+        <div class="mcp">
+          <div class="mcp-head"><span>connect via ${esc(via)}</span><button class="copy" data-copy>copy</button></div>
+          <div class="mcp-addr">endpoint · <b>${esc(endpoint)}</b></div>
+          <pre><code class="bsp-cfg">${esc(cfg)}</code></pre>
+          <p class="mcp-note">${note}</p>
+        </div></section>`;
+    }
+    if (f.kind === 'fork') {
+      return `<section class="frame"><div class="fork"><div class="fork-label">${esc(f.label || 'fork')}</div>${forkButtonsHTML(f.to)}</div></section>`;
+    }
+    return '';
+  }
+
+  function buildColumnHTML(b) {
+    let html = `<header class="branch-intro" style="--bt-accent:${b.accent}">
+      <div class="eyebrow">${esc(b.eyebrow)}</div>
+      <h2>${esc(b.title)}</h2>
+      <p class="lede">${esc(b.lede)}</p></header>`;
+    const total = b.frames.length;
+    html += b.frames.map((f, i) => renderFrame(f, i, total)).join('');
+    return html;
+  }
+
+  // ── lazy iframe loading ────────────────────────────────────────────────────
+  // Only the active branch's frames are ever in the DOM, so we only manage one
+  // column's embeds. The lead embed always loads (the branch's headline tool
+  // appears without scrolling); the rest load as they approach the viewport.
+  // A plain scroll/position check rather than IntersectionObserver-only, so a
+  // mis-sized scroll container can never strand a tool unloaded.
+  function loadEmbed(box) {
+    const f = box.querySelector('iframe[data-src]');
+    if (!f || f.src) return;
+    f.src = f.dataset.src;
+    f.addEventListener('load', () => box.classList.add('loaded'), { once: true });
+  }
+  function loadVisibleEmbeds() {
+    const boxes = [...column.querySelectorAll('.embed')];
+    if (!boxes.length) return;
+    loadEmbed(boxes[0]);  // lead tool always loads
+    const vh = stage.clientHeight || window.innerHeight || 800;
+    const sTop = stage.getBoundingClientRect().top;
+    for (const box of boxes) {
+      if (box.getBoundingClientRect().top - sTop < vh + 400) loadEmbed(box);
+    }
+  }
+
+  // ── progress dots ─────────────────────────────────────────────────────────
+  function buildDots(b) {
+    const frames = [...column.querySelectorAll('.frame')];
+    dotsEl.style.setProperty('--bt-accent', b.accent);
+    dotsEl.innerHTML = frames.map((_, i) => `<button data-dot="${i}" title="frame ${i + 1}"></button>`).join('');
+    dotsEl.querySelectorAll('[data-dot]').forEach((d, i) =>
+      d.addEventListener('click', () => frames[i].scrollIntoView({ behavior: 'smooth', block: 'start' })));
+  }
+
+  function syncDots() {
+    const frames = [...column.querySelectorAll('.frame')];
+    const dots = [...dotsEl.children];
+    const mid = stage.scrollTop + stage.clientHeight * 0.35;
+    let active = 0;
+    frames.forEach((f, i) => { if (f.offsetTop <= mid) active = i; });
+    dots.forEach((d, i) => d.classList.toggle('on', i === active));
+  }
+
+  // ── open a branch (the slide / fork) ──────────────────────────────────────
+  function openBranch(id, opts = {}) {
+    const b = BY_ID[id];
+    if (!b || id === current) return;
+    const first = current === null;
+
+    const paint = () => {
+      column.innerHTML = buildColumnHTML(b);
+      column.querySelectorAll('[data-fork]').forEach(el =>
+        el.addEventListener('click', () => openBranch(el.dataset.fork)));
+      column.querySelectorAll('[data-copy]').forEach(el =>
+        el.addEventListener('click', () => copyBsp(el)));
+      stage.scrollTop = 0;
+      loadVisibleEmbeds();
+      buildDots(b);
+      syncDots();
+      railEl.querySelectorAll('.branch-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.branch === id));
+      current = id;
+      if (!opts.noHash) history.replaceState(null, '', '#' + id);
+      document.title = `${b.label} · pscale ecology`;
+    };
+
+    if (first) { paint(); column.style.opacity = 1; return; }
+
+    // slide the current column away, swap, slide the next one in
+    column.style.opacity = '0';
+    column.style.transform = 'translateX(-28px)';
+    setTimeout(() => {
+      paint();
+      column.style.transition = 'none';
+      column.style.transform = 'translateX(28px)';
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        column.style.transition = '';
+        column.style.opacity = '1';
+        column.style.transform = 'translateX(0)';
+      }));
+    }, 200);
+  }
+
+  function copyBsp(btn) {
+    const cfg = btn.closest('.mcp')?.querySelector('.bsp-cfg')?.textContent || '';
+    navigator.clipboard?.writeText(cfg).then(() => {
+      btn.textContent = 'copied';
+      setTimeout(() => { btn.textContent = 'copy'; }, 1500);
+    }).catch(() => { btn.textContent = 'copy failed'; });
+  }
+
+  // ── theme (light / dark) ────────────────────────────────────────────────────
+  function setTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('pscale-ecology:theme', t); } catch (_) {}
+    const btn = document.getElementById('theme-toggle');
+    if (btn) btn.textContent = t === 'light' ? '☾ dark' : '☀ light';
+  }
+  document.getElementById('theme-toggle').addEventListener('click', () =>
+    setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light'));
+  setTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+
+  // ── the growth map (overlay) ────────────────────────────────────────────────
+  // A 2D dependency map: every path grounded in a pscale block type, growing
+  // upward across five levels. Each node maps to a walk-through segment; click
+  // to jump in, hover to trace a path's lineage down to its block-type root.
+  const MAP_P = { red: '#d6453f', green: '#2fa84f', neu: 'var(--text-primary)', brand: 'var(--torus-glow)' };
+  const MAP_LEVELS = [{ y: 170, l: 'use' }, { y: 330, l: 'read' }, { y: 480, l: 'block' }];
+  const MAP_NODES = [
+    { id: 'block', x: 250, y: 480, w: 220, label: 'pscale block', sub: 'the fundamental', c: MAP_P.brand, br: 'block' },
+    { id: 'bsp', x: 120, y: 330, w: 200, label: 'bsp( )', sub: 'one verb reads it', c: MAP_P.brand, br: 'block', p: 'block' },
+    { id: 'beach', x: 400, y: 330, w: 200, label: 'the beach', sub: 'where blocks live', c: MAP_P.brand, br: 'block', p: 'block' },
+    { id: 'agents', x: 40, y: 170, w: 185, label: 'agents', sub: 'möbius · MAGI', c: MAP_P.red, br: 'agents', p: 'beach' },
+    { id: 'rpg', x: 268, y: 170, w: 185, label: 'RPG', sub: 'play · worlds', c: MAP_P.green, br: 'rpg', p: 'beach' },
+    { id: 'xstream', x: 496, y: 170, w: 185, label: 'xstream', sub: 'self-organising', c: MAP_P.neu, br: 'xstream', p: 'beach' },
+  ];
+  const MAP_BRIDGES = [];
+  const MAP_LEGEND = [['var(--torus-glow)', 'pscale block · bsp · beach'], ['#d6453f', 'agents'], ['#2fa84f', 'RPG'], ['var(--text-primary)', 'xstream']];
+
+  function buildMap() {
+    const nById = Object.fromEntries(MAP_NODES.map(n => [n.id, n]));
+    let edges = '', bridges = '', nodes = '', levels = '', legend = '';
+    for (const n of MAP_NODES) {
+      if (!n.p) continue;
+      const cx = n.x + n.w / 2, par = nById[n.p];
+      edges += `<path class="mapedge" data-to="${n.id}" d="M${par.x + par.w / 2} ${par.y} L${cx} ${n.y + 42}" marker-end="url(#marrow)"/>`;
+    }
+    for (const [x1, y1, x2, y2] of MAP_BRIDGES) bridges += `<path class="mapbridge" d="M${x1} ${y1} L${x2} ${y2}"/>`;
+    for (const l of MAP_LEVELS) levels += `<text class="mn-lv" x="14" y="${l.y + 25}" text-anchor="middle">${l.l}</text>`;
+    for (const n of MAP_NODES) {
+      const cx = n.x + n.w / 2;
+      nodes += `<g class="mapnode${n.h ? ' horizon' : ''}" data-node="${n.id}" data-branch="${n.br}" style="--mn-accent:${n.c}">`
+        + `<rect class="mn-box" x="${n.x}" y="${n.y}" width="${n.w}" height="42" rx="5"/>`
+        + `<rect x="${n.x}" y="${n.y}" width="4" height="42" fill="${n.c}"/>`
+        + `<text class="mn-label" x="${cx}" y="${n.y + (n.sub ? 22 : 26)}" text-anchor="middle">${esc(n.label)}</text>`
+        + (n.sub ? `<text class="mn-sub" x="${cx}" y="${n.y + 35}" text-anchor="middle">${esc(n.sub)}</text>` : '')
+        + `</g>`;
+    }
+    let lx = 34;
+    for (const [c, t] of MAP_LEGEND) {
+      legend += `<rect x="${lx}" y="605" width="12" height="12" rx="2" fill="${c}" stroke="var(--bg-raised)"/><text class="mn-leg" x="${lx + 17}" y="615">${t}</text>`;
+      lx += t.length * 7 + 42;
+    }
+    const svg = `<svg viewBox="0 0 720 640" xmlns="http://www.w3.org/2000/svg" role="img">`
+      + `<defs><marker id="marrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>`
+      + `<g class="mapedges">${edges}</g><g class="mapbridges">${bridges}</g><g class="maplevels">${levels}</g>${nodes}<g>${legend}</g></svg>`;
+    const ov = document.getElementById('map-overlay');
+    ov.innerHTML = `<div class="map-head"><span class="map-title">the growth map</span>`
+      + `<span class="map-hint">click a node to jump in · hover to trace its lineage · esc to close</span>`
+      + `<button class="topbtn map-close" id="map-close">close ✕</button></div><div class="map-canvas">${svg}</div>`;
+    const svgEl = ov.querySelector('svg');
+    ov.querySelector('#map-close').addEventListener('click', closeMap);
+    ov.addEventListener('click', e => { if (e.target === ov) closeMap(); });
+    svgEl.querySelectorAll('.mapnode').forEach(g => {
+      g.addEventListener('click', () => { const br = g.dataset.branch; closeMap(); if (br && br !== current) openBranch(br); });
+      g.addEventListener('mouseenter', () => {
+        const chain = new Set(); let cur = g.dataset.node;
+        while (cur) { chain.add(cur); cur = nById[cur].p; }
+        svgEl.style.setProperty('--lit', g.style.getPropertyValue('--mn-accent'));
+        svgEl.querySelectorAll('.mapnode').forEach(o => {
+          o.classList.toggle('lit', chain.has(o.dataset.node));
+          o.classList.toggle('dim', !chain.has(o.dataset.node));
+        });
+        svgEl.querySelectorAll('.mapedge').forEach(ed => ed.classList.toggle('lit', chain.has(ed.dataset.to)));
+      });
+      g.addEventListener('mouseleave', () =>
+        svgEl.querySelectorAll('.lit, .dim').forEach(o => o.classList.remove('lit', 'dim')));
+    });
+  }
+  function openMap() { document.getElementById('map-overlay').classList.add('open'); }
+  function closeMap() { document.getElementById('map-overlay').classList.remove('open'); }
+  document.getElementById('map-btn').addEventListener('click', openMap);
+  window.addEventListener('keydown', e => { if (e.key === 'Escape') closeMap(); });
+  buildMap();
+
+  // ── boot ──────────────────────────────────────────────────────────────────
+  buildRail();
+  stage.addEventListener('scroll', () => { window.requestAnimationFrame(syncDots); loadVisibleEmbeds(); }, { passive: true });
+  window.addEventListener('hashchange', () => {
+    const id = location.hash.slice(1);
+    if (BY_ID[id] && id !== current) openBranch(id, { noHash: true });
+  });
+  const hashId = location.hash.slice(1);
+  const startId = BY_ID[hashId] ? hashId : 'block';
+  openBranch(startId, { noHash: !!BY_ID[hashId] });
+  </script>
+
+</body>
+</html>
