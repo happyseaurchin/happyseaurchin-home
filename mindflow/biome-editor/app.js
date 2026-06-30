@@ -872,6 +872,60 @@ function newFile() {
   refresh();
 }
 
+/**
+ * Normalise a window value (from system.self / message.between) into a
+ * renderable block. Mirrors the four window shapes biome-filmstrip speaks:
+ *   object → the block itself
+ *   array  → a ring, re-keyed 1..n so the digit-walking views can read it
+ *   string → a point, wrapped as { 0: text } so it carries a semantic
+ *   null / empty → dropped (an empty dilation has nothing to show)
+ */
+function asBlock(value) {
+  if (isObj(value)) return value;
+  if (typeof value === 'string') return value.trim() ? { '0': value } : null;
+  if (Array.isArray(value) && value.length) {
+    const b = {};
+    value.forEach((item, i) => { b[String(i + 1)] = isObj(item) ? item : String(item); });
+    return b;
+  }
+  return null;
+}
+
+/**
+ * A wake frame (agent filmstrip JSON) hides its pscale content inside the
+ * `system` and `message` JSON strings — the bare wrapper keys (ts, gamma,
+ * parsed, usage, …) are NOT block content. Strip it the way
+ * biome-filmstrip's parseJsonWindow does: the shell currents are
+ * system.self (named by system.index, falling back to reflexive_current);
+ * the peer faces are message.between. Returns [[id, block], …], or null
+ * when the file isn't a wake frame and should load via the normal path.
+ */
+function expandWakeFrame(data) {
+  if (typeof data.system !== 'string') return null;
+  let sys;
+  try { sys = JSON.parse(data.system); } catch { return null; }
+  if (!isObj(sys) || !isObj(sys.self)) return null;
+
+  let msg = null;
+  try { msg = JSON.parse(data.message); } catch {}
+
+  const index = isObj(sys.index) ? sys.index
+    : (isObj(data.reflexive_current) ? data.reflexive_current : {});
+
+  const out = [];
+  for (const [slot, value] of Object.entries(sys.self)) {
+    const block = asBlock(value);
+    if (block) out.push([String(index[slot] || `current-${slot}`), block]);
+  }
+  if (msg && isObj(msg.between)) {
+    for (const [peer, value] of Object.entries(msg.between)) {
+      const block = asBlock(value);
+      if (block) out.push([`face:${peer}`, block]);
+    }
+  }
+  return out.length ? out : null;
+}
+
 async function loadFiles(files) {
   try {
     const entries = await Promise.all([...files].map(async (f) => {
@@ -882,15 +936,26 @@ async function loadFiles(files) {
       return { name: f.name, data };
     }));
 
-    // Heuristic per file, single block vs bundle: a single block has '0'
-    // or a digit (1-9) key at root. Single blocks are named by filename;
-    // bundles merge their { id: block } entries. Multi-select a shell
-    // directory and each file becomes a sibling block on the shelf.
+    // Per file, three shapes: a wake frame (strip the wrapper, expand its
+    // system/message into shell + face blocks); a single block (has a 0-9
+    // key at root, named by filename); or a bundle ({ id: block, … }).
+    // Multi-select a shell directory and each file becomes a sibling block.
+    // When several files are loaded, wake-frame block ids are prefixed with
+    // the file stem so frames don't overwrite each other's slate/purpose/…
     const shelf = new Map();
+    const multi = entries.length > 1;
     for (const { name, data } of entries) {
+      const stem = name.replace(/\.json$/, '') || 'frame';
+
+      const wake = expandWakeFrame(data);
+      if (wake) {
+        for (const [id, block] of wake) shelf.set(multi ? `${stem}/${id}` : id, block);
+        continue;
+      }
+
       const looksLikeSingleBlock = Object.keys(data).some(k => /^[0-9]$/.test(k));
       if (looksLikeSingleBlock) {
-        shelf.set(name.replace(/\.json$/, '') || 'block', data);
+        shelf.set(stem, data);
       } else {
         for (const [id, block] of Object.entries(data)) {
           if (isObj(block)) shelf.set(id, block);
