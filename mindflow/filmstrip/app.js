@@ -76,7 +76,9 @@ const aBlocks = document.getElementById('a-blocks');
 
 function detectFormat(data) {
   if (data.meta && data.b_loops) return 'log';
-  if (data.system !== undefined && data.output !== undefined) return 'filmstrip';
+  // A frame needs a system prompt and either an output (a full LLM wake) or a
+  // message (a compose-only wake — structural F, no LLM call, so no output).
+  if (data.system !== undefined && (data.output !== undefined || data.message !== undefined)) return 'filmstrip';
   return 'unknown';
 }
 
@@ -295,6 +297,87 @@ function tryParsePscale(text) {
   return null;
 }
 
+/**
+ * Mobius (v007+) window: system is a JSON string {recipe, index, self};
+ * message is a JSON string {gap, between}. Returns one section per shell
+ * current (system.self, labelled by system.index / reflexive_current) and
+ * one per peer face (message.between), or null when the frame isn't a
+ * mobius window (legacy === sections handle it instead). Recipe/index/gap
+ * are deliberately omitted — the context window stays a uniform list of
+ * blocks, not a mix of formats.
+ */
+function parseMobiusWindow(frame) {
+  let sys;
+  try { sys = JSON.parse(frame.system); } catch { return null; }
+  if (!sys || typeof sys !== 'object' || !sys.self || typeof sys.self !== 'object') return null;
+
+  let msg = null;
+  try { msg = JSON.parse(frame.message); } catch {}
+
+  const index = (sys.index && typeof sys.index === 'object') ? sys.index
+    : (frame.reflexive_current && typeof frame.reflexive_current === 'object' ? frame.reflexive_current : {});
+
+  const sections = [];
+  for (const [slot, value] of Object.entries(sys.self)) {
+    const id = index[slot] ? ` · ${index[slot]}` : '';
+    sections.push({ label: `current ${slot}${id}`, value });
+  }
+  if (msg && msg.between && typeof msg.between === 'object') {
+    for (const [peer, value] of Object.entries(msg.between)) {
+      sections.push({ label: `face · ${peer}`, value });
+    }
+  }
+  return { sections };
+}
+
+/** The deepest semantic string of a leaf block: digit 0 chain, then _. */
+function leafText(value) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    let z = value['0'];
+    while (z && typeof z === 'object') z = z['0'];
+    if (typeof z === 'string') return z;
+    if (typeof value['_'] === 'string') return value['_'];
+    return JSON.stringify(value, null, 2);
+  }
+  return String(value);
+}
+
+/**
+ * Append one labelled context-window section. A block with digit children
+ * renders as navigable columns; a leaf (a string, or a block with only a
+ * semantic and no branches) shows its text rather than an empty column.
+ */
+function addContextSection(label, value) {
+  const secEl = document.createElement('div');
+  secEl.className = 'ctx-section';
+
+  const header = document.createElement('div');
+  header.className = 'ctx-section-header';
+  header.textContent = label;
+  secEl.appendChild(header);
+
+  const bodyEl = document.createElement('div');
+  bodyEl.className = 'ctx-section-body';
+
+  const isObject = value !== null && typeof value === 'object' && !Array.isArray(value);
+  const hasDigitChildren = isObject && '123456789'.split('').some(d => d in value);
+
+  if (hasDigitChildren) {
+    const colContainer = document.createElement('div');
+    colContainer.className = 'ctx-columns';
+    bodyEl.appendChild(colContainer);
+    new ColumnRenderer(colContainer, () => {}, () => {}).render(value);
+  } else {
+    const pre = document.createElement('pre');
+    pre.textContent = leafText(value);
+    bodyEl.appendChild(pre);
+  }
+
+  secEl.appendChild(bodyEl);
+  cSections.appendChild(secEl);
+}
+
 function renderCLoop(frame) {
   cSections.innerHTML = '';
   cOutputText.textContent = '';
@@ -305,40 +388,16 @@ function renderCLoop(frame) {
     return;
   }
 
-  // Parse system + message sections
-  const systemSections = parseSections(frame.system);
-  const messageSections = parseSections(frame.message);
-  const allSections = [...systemSections, ...messageSections];
-
-  for (const sec of allSections) {
-    const secEl = document.createElement('div');
-    secEl.className = 'ctx-section';
-
-    const header = document.createElement('div');
-    header.className = 'ctx-section-header';
-    header.textContent = sec.label;
-    secEl.appendChild(header);
-
-    const bodyEl = document.createElement('div');
-    bodyEl.className = 'ctx-section-body';
-
-    // Try to render as pscale columns
-    const pscale = tryParsePscale(sec.body);
-    if (pscale) {
-      const colContainer = document.createElement('div');
-      colContainer.className = 'ctx-columns';
-      bodyEl.appendChild(colContainer);
-
-      const renderer = new ColumnRenderer(colContainer, () => {}, () => {});
-      renderer.render(pscale);
-    } else {
-      const pre = document.createElement('pre');
-      pre.textContent = sec.body;
-      bodyEl.appendChild(pre);
-    }
-
-    secEl.appendChild(bodyEl);
-    cSections.appendChild(secEl);
+  // Two window grammars. Mobius (v007+): system/message are JSON strings —
+  // the shell lives in system.self, peer faces in message.between; render
+  // each current/face as its own column block. Legacy: system/message are
+  // === sections, some of them _-keyed pscale blocks. Mobius first.
+  const win = parseMobiusWindow(frame);
+  if (win) {
+    for (const sec of win.sections) addContextSection(sec.label, sec.value);
+  } else {
+    const allSections = [...parseSections(frame.system), ...parseSections(frame.message)];
+    for (const sec of allSections) addContextSection(sec.label, tryParsePscale(sec.body) || sec.body);
   }
 
   // Output

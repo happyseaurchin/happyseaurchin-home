@@ -12,6 +12,22 @@ function isObj(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
+/**
+ * A node's own semantic text. Mobius pscale carries it at digit 0 (follow
+ * a 0-chain to the deepest string); the legacy touchstone format carries
+ * it at the underscore. Try 0 first, then fall back to the _ walker — so
+ * the renderer reads both dialects without a regression on legacy blocks
+ * (which never have a 0 key).
+ */
+function semanticOf(node) {
+  if (typeof node === 'string') return node;
+  if (!isObj(node)) return node == null ? null : String(node);
+  let z = node['0'];
+  while (isObj(z)) z = z['0'];
+  if (typeof z === 'string') return z;
+  return collectUnderscore(node);
+}
+
 /** Extract cards (digit children) from a pscale node. */
 function getCards(node) {
   if (!isObj(node)) return [];
@@ -19,7 +35,7 @@ function getCards(node) {
   for (const d of '123456789') {
     if (d in node) {
       const child = node[d];
-      const text = typeof child === 'string' ? child : (isObj(child) ? collectUnderscore(child) : String(child));
+      const text = semanticOf(child);
       const hasChildren = isObj(child) && '123456789'.split('').some(k => k in child);
       cards.push({ digit: d, text: text || '', node: child, hasChildren });
     }
@@ -209,7 +225,7 @@ export class ColumnRenderer {
   emitSpindle() {
     // Build spindle from path, include address and digit info
     const texts = [];
-    const rootText = collectUnderscore(this.block);
+    const rootText = semanticOf(this.block);
     if (rootText) texts.push({ pscale: 0, text: rootText, digit: null });
 
     let node = this.block;
@@ -217,7 +233,7 @@ export class ColumnRenderer {
       const d = this.path[i];
       if (!isObj(node) || !(d in node)) break;
       node = node[d];
-      const text = typeof node === 'string' ? node : (isObj(node) ? collectUnderscore(node) : null);
+      const text = semanticOf(node);
       if (text) texts.push({ pscale: -(i + 1), text, digit: d });
     }
 
