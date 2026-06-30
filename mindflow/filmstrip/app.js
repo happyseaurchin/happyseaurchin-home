@@ -161,7 +161,7 @@ function renderFrameList() {
 
     const concern = document.createElement('div');
     concern.className = 'frame-concern';
-    concern.textContent = f.concern || 'unnamed';
+    concern.textContent = f.concern || f.note || 'unnamed';
 
     const meta = document.createElement('div');
     meta.className = 'frame-meta';
@@ -854,11 +854,15 @@ function connectWebSocket() {
 }
 
 async function loadExample() {
+  // ?example=<name> lets an embed pick which example loads (basename only,
+  // always from examples/). Defaults to the birth wake.
+  const param = new URLSearchParams(location.search).get('example');
+  const name = param ? param.replace(/^.*\//, '') : 'birth-first-awakening.json';
   try {
-    const resp = await fetch('examples/birth-first-awakening.json');
+    const resp = await fetch('examples/' + name);
     if (resp.ok) {
       const data = await resp.json();
-      ingestFile(data, 'birth-first-awakening.json');
+      ingestFile(data, name);
     }
   } catch (e) {
     console.log('No example file loaded:', e.message);
@@ -870,11 +874,13 @@ async function loadExample() {
 // Try WebSocket first (works when filmstrip-server is running).
 // On static sites (happyseaurchin.com etc), WS fails after 3 retries
 // and falls back to loading the example file + manual upload.
+// An explicit ?example= (used by embeds) loads immediately — no WebSocket wait.
+const hasExampleParam = new URLSearchParams(location.search).has('example');
+if (hasExampleParam) loadExample();
 if (location.protocol === 'http:' || location.protocol === 'https:') {
-  connectWebSocket();
-} else {
-  // file:// mode — load example directly
-  loadExample();
+  connectWebSocket();   // live mode; on a static host it falls back to loadExample()
+} else if (!hasExampleParam) {
+  loadExample();        // file:// mode — load example directly
 }
 
 // Expose for testing / programmatic loading
