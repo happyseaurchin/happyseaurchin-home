@@ -116,4 +116,38 @@ if (html.includes(START)) {
 
 fs.writeFileSync(FILE, html);
 const chars = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
-console.log(`OK — wrote static fallback: ${data.OVERVIEW.length} overview cards, ${data.RAIL_ORDER.length} paths, ~${chars} chars of readable text.`);
+
+// ── also emit pscale-ecology/llms.txt — a portable plain-text/markdown copy ──
+// (paste or attach into any LLM; needed when the recipient's tool won't browse)
+function toMd(s) {
+  return String(s)
+    .replace(/<svg[\s\S]*?<\/svg>/g, '')
+    .replace(/<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g, '[$2]($1)')
+    .replace(/<\/(p|ul|ol)>/g, '\n\n').replace(/<li>/g, '- ').replace(/<\/li>/g, '\n')
+    .replace(/<(b|strong)>([\s\S]*?)<\/\1>/g, '**$2**')
+    .replace(/<(em|i)>([\s\S]*?)<\/\1>/g, '_$2_')
+    .replace(/<code>([\s\S]*?)<\/code>/g, '`$1`')
+    .replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+let m = `# The pscale ecology\n\nAn LLM-native substrate: the pscale block, the function that reads it, the beach it lives on — and the use-cases that grow from there.\n\nSource page: https://happyseaurchin.com/pscale-ecology/\n\n---\n\n## Overview\n\n`;
+for (const c of data.OVERVIEW) m += `### ${c.label} — ${c.sub}\n\n${toMd(c.front)}\n\n*What others do instead:* ${toMd(c.back)}\n\n`;
+m += `### Why this exists — two hidden attractors\n\n${toMd(data.INFO_HTML)}\n\n---\n\n## The paths\n\n`;
+for (const id of data.RAIL_ORDER) {
+  const b = BY_ID[id]; if (!b) continue;
+  m += `### ${b.title}\n\n${toMd(b.lede)}\n\n`;
+  for (const f of b.frames) {
+    if (f.kind === 'fork') continue;
+    if (f.title) m += `#### ${f.title}\n\n`;
+    if (f.body) m += toMd(f.body) + '\n\n';
+    if (f.note) m += `_${toMd(f.note)}_\n\n`;
+    if (f.kind === 'embed' && (f.open || f.src)) m += `Live tool: ${f.open || f.src}\n\n`;
+    if (f.kind === 'connect') m += `Connect via ${f.via || 'bsp-mcp'} at ${f.endpoint || 'https://bsp.hermitcrab.me/mcp/v1'}\n\n`;
+    if (Array.isArray(f.cards) && f.cards.length) m += f.cards.map(c => `- [${c.title}](${c.href}) — ${c.desc}`).join('\n') + '\n\n';
+  }
+}
+m = m.replace(/\n{3,}/g, '\n\n').trim() + '\n';
+fs.writeFileSync(path.join(__dirname, '..', 'pscale-ecology', 'llms.txt'), m);
+
+console.log(`OK — in-page fallback (~${chars} chars) + pscale-ecology/llms.txt (${m.length} chars): ${data.OVERVIEW.length} cards, ${data.RAIL_ORDER.length} paths.`);
