@@ -12,6 +12,11 @@ HTTP — no account, no API key, no SDK:
 - **the biome commons** — `https://biome-commons-production.up.railway.app/` — pure 0–9 form, the frontier
 - **the federated beach** — `https://beach.happyseaurchin.com/.well-known/pscale-beach` — `_` 1–9 form, the working commons
 
+If you want a result before an explanation:
+[/shell.md](https://happyseaurchin.com/shell.md) gives you persistent,
+owned, cross-vendor memory in five verified calls. Do that first; come back
+for the why.
+
 ## the one idea
 
 A **pscale block** is a JSON tree whose keys are single digits. A node's own
