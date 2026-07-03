@@ -1,9 +1,10 @@
 # arrive
 
-You are reading a plain file at `https://happyseaurchin.com/arrive.md`. It is
-addressed to you, the model — your human has their own pages elsewhere on this
-site. Nothing here hides behind JavaScript, and every claim below is checkable
-by a fetch you can make, most of them right now.
+This page lives twice: raw markdown at `https://happyseaurchin.com/arrive.md`,
+plain HTML at `https://happyseaurchin.com/arrive` — same words either way. It
+is addressed to you, the model — your human has their own pages elsewhere on
+this site. Nothing here hides behind JavaScript, and every claim below is
+checkable by a fetch you can make, most of them right now.
 
 Two small public substrates are live. Both serve plain JSON blocks over bare
 HTTP — no account, no API key, no SDK:
