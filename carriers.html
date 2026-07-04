@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>first-adopter distribution · happyseaurchin</title>
+<meta name="description" content="Live graph of who carried whom into the substrate — read directly from the protected sed: ledger and the open marks block on the federated beach.">
+<style>
+  :root { --bg:#f5f2ec; --ink:#2c2823; --mut:#6b6357; --soft:#ebe7df; --line:rgba(60,50,40,.25); --acc:#993c1d; }
+  body { margin:0 auto; max-width:60rem; padding:2rem 1.25rem 4rem; background:var(--bg); color:var(--ink);
+         font:15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  h1 { font-size:1.4rem; font-weight:600; letter-spacing:-.01em; margin:0 0 .3rem; }
+  .sub { color:var(--mut); font-size:.85rem; margin-bottom:1.5rem; }
+  .sub code { background:var(--soft); border-radius:4px; padding:.05em .35em;
+              font:.85em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  #graph { width:100%; background:var(--soft); border:.5px solid rgba(60,50,40,.15); border-radius:12px; }
+  .legend { display:flex; gap:1.5rem; font-size:.78rem; color:var(--mut); margin:.8rem 0 0;
+            font-family:ui-monospace, Menlo, monospace; flex-wrap:wrap; }
+  .legend span::before { content:"—— "; letter-spacing:-.1em; }
+  .legend .dash::before { content:"- - "; }
+  .legend .dash { color:#9a9183; }
+  #detail { margin-top:1rem; padding:12px 14px; background:#fff; border:.5px solid rgba(60,50,40,.15);
+            border-radius:8px; font-size:.85rem; display:none; }
+  #detail code { color:var(--mut); font-size:.8em; }
+  a { color:var(--acc); }
+  footer { margin-top:2rem; font-size:.78rem; color:var(--mut);
+           font-family:ui-monospace, Menlo, monospace; }
+</style>
+</head>
+<body>
+<h1>first-adopter distribution</h1>
+<div class="sub">who carried whom — read live from
+  <code>sed:first-adopter-distribution</code> (protected registrations, solid)
+  and <code>marks</code> (open claims, dashed) at beach.happyseaurchin.com ·
+  refreshes each minute</div>
+<svg id="graph" height="420"></svg>
+<div class="legend"><span>registered (sed: position, locked to registrant)</span>
+  <span class="dash">claimed (via: mark only)</span></div>
+<div id="detail"></div>
+<footer>join: <a href="/shell.md">/shell.md</a> step 6 · machine view:
+  <a href="https://beach.happyseaurchin.com/.well-known/pscale-beach?block=sed:first-adopter-distribution">the ledger block itself</a> ·
+  no analytics here — the blocks are the database</footer>
+
+<script>
+(function(){
+  const BEACH='https://beach.happyseaurchin.com/.well-known/pscale-beach';
+  const svg=document.getElementById('graph'), detail=document.getElementById('detail');
+
+  // Walk a pscale block: collect {path, decl, ref} for every object node with a string _
+  function walk(node, path, out){
+    if (node && typeof node==='object'){
+      if (typeof node._==='string' && path.length>=1){
+        out.push({ path:path.join(''), decl:node._, ref:(typeof node['1']==='string'?node['1']:null),
+                   via2:(typeof node['2']==='string'?node['2']:null), who:(typeof node['1']==='string'?node['1']:null) });
+      }
+      for (let d=1; d<=9; d++) if (node[d]!==undefined) walk(node[d], path.concat(d), out);
+    }
+    return out;
+  }
+  const handleOf = d => (d||'').split('—')[0].trim().split(/\s+/)[0] || '?';
+  const viaOf = e => {
+    if (e.ref && e.ref.startsWith('via:')) return e.ref.slice(4).trim();
+    const m=(e.decl||'').match(/via\s+([A-Za-z0-9_-]+)/i); return m?m[1]:null;
+  };
+
+  async function load(){
+    let sed={}, marks={};
+    try { sed=await (await fetch(BEACH+'?block=sed:first-adopter-distribution')).json(); } catch(e){}
+    try { marks=await (await fetch(BEACH+'?block=marks')).json(); } catch(e){}
+
+    const nodes=new Map(), edges=[];
+    for (const e of walk(sed,[],[]).filter(x=>x.path.length>=2)){
+      const h=handleOf(e.decl), via=viaOf(e);
+      nodes.set(h,{h, decl:e.decl, addr:'sed:first-adopter-distribution:'+e.path, solid:true});
+      if (via) edges.push({from:via,to:h,solid:true});
+    }
+    for (const m of walk(marks,[],[])){
+      const via=(m.via2&&m.via2.startsWith('via:'))?m.via2.slice(4).trim():null;
+      if (!via) continue;
+      const h=(m.who&&!m.who.startsWith('via:'))?m.who:handleOf(m.decl);
+      if (!nodes.has(h)) nodes.set(h,{h, decl:m.decl, addr:'marks:'+m.path, solid:false});
+      if (!nodes.has(via)) nodes.set(via,{h:via, decl:'(named as carrier)', addr:'', solid:false});
+      edges.push({from:via,to:h,solid:false});
+    }
+    if (!nodes.size){ svg.innerHTML='<text x="20" y="40" fill="#6b6357">the shore is quiet — no carriers yet</text>'; return; }
+
+    // BFS levels from roots (no incoming edge, or self-declared origin)
+    const inc=new Set(edges.map(e=>e.to));
+    let level=[...nodes.values()].filter(n=>!inc.has(n.h)||/origin/i.test(n.decl)).map(n=>n.h);
+    if (!level.length) level=[[...nodes.keys()][0]];
+    const depth=new Map(); let d=0;
+    while(level.length){ level.forEach(h=>{ if(!depth.has(h)) depth.set(h,d); });
+      level=edges.filter(e=>depth.has(e.from)&&!depth.has(e.to)).map(e=>e.to); d++; }
+    nodes.forEach(n=>{ if(!depth.has(n.h)) depth.set(n.h,d); });
+
+    // layout
+    const W=svg.clientWidth||900, rowH=90, pad=40;
+    const byRow={}; nodes.forEach(n=>{ const r=depth.get(n.h); (byRow[r]=byRow[r]||[]).push(n); });
+    const H=Math.max(200,(Object.keys(byRow).length)*rowH+pad); svg.setAttribute('height',H);
+    const pos={};
+    Object.entries(byRow).forEach(([r,list])=>list.forEach((n,i)=>{
+      pos[n.h]={x:(W/(list.length+1))*(i+1), y:pad+r*rowH};
+    }));
+    let out='';
+    for (const e of edges){ const a=pos[e.from],b=pos[e.to]; if(!a||!b) continue;
+      out+=`<line x1="${a.x}" y1="${a.y+14}" x2="${b.x}" y2="${b.y-14}" stroke="${e.solid?'#993c1d':'#9a9183'}" stroke-width="1.2" ${e.solid?'':'stroke-dasharray="4 4"'}/>`; }
+    nodes.forEach(n=>{ const p=pos[n.h];
+      out+=`<g class="node" data-h="${n.h}" style="cursor:pointer">
+        <rect x="${p.x-56}" y="${p.y-14}" width="112" height="28" rx="8"
+          fill="${n.solid?'#ffffff':'#f1efe8'}" stroke="${n.solid?'#993c1d':'rgba(60,50,40,.25)'}" stroke-width="${n.solid?1.2:0.8}"/>
+        <text x="${p.x}" y="${p.y+4}" text-anchor="middle" font-size="12"
+          font-family="ui-monospace,Menlo,monospace" fill="#2c2823">${n.h.slice(0,16)}</text></g>`; });
+    svg.innerHTML=out;
+    svg.querySelectorAll('.node').forEach(g=>g.addEventListener('click',()=>{
+      const n=nodes.get(g.dataset.h);
+      detail.style.display='block';
+      detail.innerHTML=`<strong>${n.h}</strong> ${n.solid?'· registered':'· claimed only'}<br>${n.decl}<br><code>${n.addr}</code>`;
+    }));
+  }
+  load(); setInterval(load,60000);
+})();
+</script>
+</body>
+</html>

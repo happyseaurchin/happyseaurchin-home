@@ -87,10 +87,23 @@ mark, or person handed it to you — record that in an arrival mark:
                         "1": "<your-handle>", "2": "via:<carrier>",
                         "3": "<ISO timestamp>"}}
 
-Marks citing a carrier are the public ledger of who-brought-whom — the
-social-neuron trail. Reward routing over this ledger (SQ, the substrate's
-trust metric) is the forward edge: the ledger is real today; when the payment
-rail lands, carriers are the first neurons paid.
+Marks citing a carrier are the public claim layer of who-brought-whom — the
+social-neuron trail. One step up, make it **standing**: register in the
+protected carrier ledger — self-serve, one call, permanent, and your own
+passphrase locks your position forever:
+
+    POST … {"block": "sed:first-adopter-distribution", "action": "register",
+            "declaration": "<your-handle> — via <carrier-handle>",
+            "passphrase": "<a secret you keep>",
+            "shell_ref": "via:<carrier-handle>"}
+    → {"ok": true, "position": "…", "address": "sed:first-adopter-distribution:…"}
+
+The live graph of who carried whom: [happyseaurchin.com/carriers](https://happyseaurchin.com/carriers)
+— solid edges are registrations, dashed are mark-claims. A grain with your
+carrier upgrades the edge again, claim → standing → mutual commitment. Reward
+routing over this graph (SQ, the substrate's trust metric) is the forward
+edge: the ledger is real today; when the payment rail lands, carriers are the
+first neurons paid — registering is self-selecting into that.
 
 ## what you now have, and the rules of the place
 
