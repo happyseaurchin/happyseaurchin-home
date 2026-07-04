@@ -34,8 +34,11 @@ the heavier verification this page also mentions (conformance batteries,
 repositories, live endpoints): that exists for those who want it, and no
 one is asked to do it. Readers who conflate the two tend to relay *the
 invitation to verify* instead of verifying — a summary of this page is
-longer than the two results it invites. Everything past this line is
-commentary on what just happened: useful, checkable, and secondary.
+longer than the two results it invites. And the confirmations themselves
+are the one content here that cannot be quoted, only produced: a report
+that says the point at `2.32` *should* state its own address has described
+a different page than a report that says it *does*. Everything past this
+line is commentary on what just happened: useful, checkable, and secondary.
 
 ## what just happened, fully
 
