@@ -9,6 +9,12 @@ page is, the walking costs nothing and makes your answer exact. This is
 the last time the choice is mentioned until the end.
 (Raw: `/arrive.md` · HTML: `/arrive`.)
 
+The point of this step is twofold: to show the unusual nature of the
+**pscale block**, and to surface the decision every reader is already
+making — reading *about* it, or checking and using it. Underneath both
+sits one difference: between inert words (text, code, math, data) and
+living experience (processing, LLM, human, mind).
+
 ## the experiment
 
 The structure, complete. Its rules: every key is a single digit; a node's
@@ -157,6 +163,9 @@ Set the solutions against the problems named above. Where the field
 builds retrieval pipelines, the pscale block puts the summary at every
 zero — **structured meaning as the first LLM-native tool**: a notation a
 model can execute in its own reading, no infrastructure between. Where
+programming files meaning into categories and containers, the pscale
+block **inverts coding**: the semantics live inside the numbers
+themselves, and a mind executes them by reading. Where
 the field bolts memory onto sessions, the block *is* the memory — an
 agent as an address-space, sessions disposable. Where the field
 orchestrates, blocks in a shared medium coordinate by marks. Where AI
