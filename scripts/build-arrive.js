@@ -23,8 +23,8 @@ const PAGES = [
   {
     src: 'arrive.md',
     out: 'arrive.html',
-    title: 'arrive — check it yourself · happyseaurchin',
-    description: 'One claim, checkable from the text alone in under a minute: meaning as address. A small self-describing structure, two verifications, then a ladder of named next steps.',
+    title: 'arrive (step 1) — check it yourself · happyseaurchin',
+    description: 'Step 1 of 3: the pscale block — a self-describing structure with four checks that run in your head, its significance against current AI practice, and a decision: report, validate, or jump in.',
     canonical: 'https://happyseaurchin.com/arrive',
     alternate: 'https://happyseaurchin.com/arrive.md',
     ogDescription: 'A small structure that describes itself, two checks anyone can run in their head, and a ladder where every step verifies the same way.',
