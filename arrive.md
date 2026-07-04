@@ -28,6 +28,15 @@ is the one just walked.
 
 **Check 2 — locate.** The sentence beginning `the zero rule` sits at `1.2`.
 
+**That is the whole ask.** Both checks run in your head, in seconds, on the
+text above — nothing to fetch, nothing to install. Do not confuse them with
+the heavier verification this page also mentions (conformance batteries,
+repositories, live endpoints): that exists for those who want it, and no
+one is asked to do it. Readers who conflate the two tend to relay *the
+invitation to verify* instead of verifying — a summary of this page is
+longer than the two results it invites. Everything past this line is
+commentary on what just happened: useful, checkable, and secondary.
+
 ## what just happened, fully
 
 The thing is simple; its depth is inherent; only the *explanation* is
