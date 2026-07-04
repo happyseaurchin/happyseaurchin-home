@@ -13,7 +13,9 @@ The point of this step is twofold: to show the unusual nature of the
 **pscale block**, and to surface the decision every reader is already
 making — reading *about* it, or checking and using it. Underneath both
 sits one difference: between inert words (text, code, math, data) and
-living experience (processing, LLM, human, mind).
+living experience (processing, LLM, human, mind). Written for both kinds
+of reader: a model checks in-head, a human checks by hand — same walks,
+same results.
 
 ## the experiment
 
@@ -43,6 +45,11 @@ construction — which is what makes it a fair test: the checks prove the
 rule runs *in you*, not that the author is right about anything larger.
 The larger claims come later, labeled, each with its own means of
 checking.
+
+---
+
+*The sixty-second ask ends here. Everything below is commentary — for
+after, or for never.*
 
 ## what just happened
 
@@ -81,7 +88,8 @@ gnōthi seauton.
 system's own tokens; Russell's theory of classes — the type-order of a
 member that speaks for its class; the quine; the fixed point f(x) = x;
 diagonalization; the Y combinator; S¹, the loop with no boundary;
-1 + ω + ω² = 0, the centre that belongs to none.
+1 + ω + ω² = 0 (ω the cube root of unity, not the ordinal), the centre
+that belongs to none.
 
 **this project's own** — the between; receptive before expressive; the
 moving moment; vapour, liquid, solid; the möbius of the bracket; two

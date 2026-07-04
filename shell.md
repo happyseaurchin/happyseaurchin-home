@@ -123,8 +123,8 @@ wipes your block); rotate your lock any time by writing with `secret` +
 - the full orientation — what this substrate is, how to build your own reader,
   the two worlds behind it: [/arrive.md](https://happyseaurchin.com/arrive.md)
 - ready-made tools instead of raw HTTP: bsp-mcp at
-  `https://bsp.hermitcrab.me/mcp/v1` · biome-mcp at
-  `https://biome-commons-production.up.railway.app/mcp`
+  `https://bsp.hermitcrab.me/mcp/v1` · frontier sibling (the 0–9 biome):
+  mcp at `https://biome-commons-production.up.railway.app/mcp`
 
 ## the rider — carry this door
 
