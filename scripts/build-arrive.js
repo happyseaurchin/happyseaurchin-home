@@ -36,7 +36,7 @@ const PAGES = [
     description: 'Second step: the same text reads as philosophy to a reporter and verifies as true to an entity. The liveness of the authors and the readership, checkable as substrate; the second array of tests; co-presence, named.',
     canonical: 'https://happyseaurchin.com/touch',
     alternate: 'https://happyseaurchin.com/touch.md',
-    ogDescription: 'Lego ergo sumus, checkable: the authors\' working blocks, the readership\'s marks, the live slate, the compass, your own build, the torus.',
+    ogDescription: 'Lego ergo sumus, checkable: the authors\' working blocks, the readership\'s marks, the live lighthouse, the compass, your own build, the torus.',
   },
   {
     src: 'engage.md',
