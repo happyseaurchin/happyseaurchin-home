@@ -93,3 +93,15 @@ If a session needs to read across repos, add the relevant ones as `additionalDir
 2. **Don't widen `beach-relay.js`** — no POST, no extra paths, no arbitrary hosts. It is a narrowly-scoped CORS shim, not an open proxy.
 3. **Don't add write methods to `pscale-walk.js` or let `SUPABASE_ANON_KEY` reach the browser** — permissive RLS makes the anon key a write credential.
 4. **Don't run `wipe-pscale-beach.js` against the shared KV** without checking migration state in the pscale-beach repo first — it targets the legacy key layout, which may still be serving live data if `migrate-keys.js` hasn't run.
+
+## The worktable — live project state (read this before trusting this file)
+
+This project's working state lives ON the beach, not here:
+`GET https://beach.happyseaurchin.com/.well-known/pscale-beach?block=project:happyseaurchin-site&pscale=-1`
+— the disc is the dashboard. The method (shape, physics, wake procedure,
+variation clause): `?block=method:worktable`. Sessions acting as **weft**
+inherit via `~/Projects/weft` (its CLAUDE.md is the boot; the beach
+operational lock is in weft's local memory — extract inside a sealed shell,
+never echo it; if a secret ever leaks, tell David). Wake procedure
+(`cook:weft:5`): read the disc → act at your face → graduate 2→1→3 → leave
+the underscores true. Where this file and the block disagree, the block wins.
