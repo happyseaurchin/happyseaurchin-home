@@ -44,6 +44,12 @@
 
   .tile{background:transparent;border:none;padding:8px 2px;border-radius:10px;text-align:center;transition:transform .15s ease,background .15s ease}
   .tile:hover{transform:translateY(-3px);background:#ffffff59}
+  .tile{position:relative}
+  .tile .here{position:absolute;top:0;right:4px;font-size:10.5px;font-weight:700;color:var(--claude);display:none}
+  .tile .here.on{display:inline}
+  .b5 .tile .here{color:#F1D98A}
+  .livebar{max-width:1060px;margin:6px auto 0;padding:0 20px;font-size:13px;color:var(--ink-soft)}
+  .livebar b{color:var(--claude);font-weight:700}
   .tile svg{width:52px;height:52px;display:block;margin:0 auto;filter:drop-shadow(0 2px 2px #22303A2e)}
   .tile .nm{font-size:12.5px;font-weight:600;margin-top:5px;line-height:1.22;color:var(--ink)}
   .b5 .tile .nm{color:#F4F7F2}
@@ -141,8 +147,11 @@
     </div>
     <button class="tg" id="tg-mirror" aria-pressed="false" title="Leave each trace as your own sovereign mirror, folded into the tree — not a flat note">mirror</button>
     <button class="tg" id="tg-key" aria-pressed="false">key</button>
+    <button class="tg" id="tg-here" title="One quick check of who's around right now — no live updating; tap again to refresh">who's about</button>
   </div>
 </header>
+
+<div class="livebar" id="livebar" hidden></div>
 
 <div class="stage">
   <main class="field" id="field" aria-label="Experiences, shallow to deep"></main>
@@ -433,6 +442,43 @@ function mirrorTrace(e){
 }
 function reopen(){ if(currentExp) openExp(currentExp); else if(currentRung) openRung(currentRung); }
 
+/* live presence — MANUAL refresh only. One aggregate read of the shared presence block,
+   grouped by location, cached 60s. Never polled: cost is one read per deliberate tap, and
+   one read covers the whole board. Reading is free — only participants writing heartbeats pay. */
+let live = false, liveCache = null, liveAt = 0;
+async function loadLive(){
+  if(liveCache && Date.now()-liveAt < 60000) return liveCache;
+  const r = await fetch(BEACH+"/.well-known/pscale-beach?block=presence", {cache:"no-store"});
+  const blk = await r.json();
+  const now = Date.now(), byLoc = {}; let total = 0;
+  Object.keys(blk).filter(k=>/^[1-9][0-9]*$/.test(k)).forEach(k=>{
+    const s = blk[k]; if(!s || !s["1"]) return;
+    const t = Date.parse(s["3"]||""); if(isNaN(t) || (now-t) > 3*3600*1000) return;  /* last ~3h */
+    total++; const loc = (s["2"]||"").trim(); byLoc[loc] = (byLoc[loc]||0)+1;
+  });
+  liveCache = {total, byLoc}; liveAt = now; return liveCache;
+}
+function renderLive(d){
+  const bar = document.getElementById("livebar"); bar.hidden = false;
+  const exp = Object.keys(d.byLoc).filter(l=>l.indexOf("experience:")===0);
+  let s = '<b>'+d.total+'</b> '+(d.total===1?'person':'people')+' around in the last few hours';
+  if(exp.length) s += ' &middot; ' + exp.map(l=>d.byLoc[l]+' on '+l.replace("experience:","")).join(', ');
+  else if(d.total>0) s += ' &middot; no one on a particular experience yet — be the first';
+  bar.innerHTML = s;
+}
+function updateBadges(byLoc){
+  document.querySelectorAll(".tile .here").forEach(el=>{
+    const n = byLoc["experience:"+el.getAttribute("data-here")]||0;
+    el.textContent = n ? ("● "+n) : ""; el.classList.toggle("on", n>0);
+  });
+}
+async function refreshLive(){
+  const b = document.getElementById("tg-here"), old = b.textContent; b.textContent = "checking…";
+  try{ live = true; const d = await loadLive(); renderLive(d); updateBadges(d.byLoc); if(veil.classList.contains("open")) reopen(); }
+  catch(e){ const bar = document.getElementById("livebar"); bar.hidden = false; bar.textContent = "couldn't reach the beach just now — try again in a moment."; }
+  b.textContent = old;
+}
+
 const DOORCOL = {claude:"var(--claude)", xs:"var(--xs)", brws:"var(--brws)"};
 const DOORNAME = {claude:"your own Claude", xs:"xstream", brws:"just a browser"};
 const SHAPENAME = {solo:"solo", duo:"two of you", trio:"a group"};
@@ -458,7 +504,8 @@ for(let r=1;r<=5;r++){
     b.className="tile";
     b.innerHTML = shapeSVG(e.shape, DOORCOL[e.door])
       + '<div class="nm">'+e.title+'</div>'
-      + '<div class="ad">'+e.addr+(e.biz?'<span class="biz">£</span>':'')+'</div>';
+      + '<div class="ad">'+e.addr+(e.biz?'<span class="biz">£</span>':'')+'</div>'
+      + '<div class="here" data-here="'+e.addr+'"></div>';
     b.addEventListener("click", ()=>openExp(e.addr));
     tiles.appendChild(b);
   });
@@ -526,6 +573,12 @@ function openExp(addr){
   const mir = (traceMode==="mirror" && e.door==="claude");
   const tr = mir ? mirrorTrace(e) : e.trace;
   html += '<h3>Leave your trace'+(mir?' · your mirror':'')+'</h3><div class="trace"><p>'+(tr.t||"")+'</p>'+(tr.c?cpBlock(tr.c):'')+'</div>';
+  if(live && e.door==="claude"){
+    const eng = (face==="character"||face==="observer")
+      ? "Put me among the others on this at "+BEACH+" — mark me here at experience:"+e.addr+" under the name {HANDLE}, and tell me who else is around or has left a line."
+      : "Mark me present at "+BEACH+" with position 2 = experience:"+e.addr+" under {HANDLE}, then read who else is present here and any pool for this experiment.";
+    html += '<h3>Run it with others</h3><div class="trace"><p>See who else is on this, and stand among them.</p>'+cpBlock(eng)+'</div>';
+  }
   panel.innerHTML = html;
   refreshCP(); show();
 }
@@ -594,6 +647,7 @@ tgM.addEventListener("click", ()=>{
   tgM.setAttribute("aria-pressed", traceMode==="mirror" ? "true" : "false");
   if(veil.classList.contains("open")) reopen();
 });
+document.getElementById("tg-here").addEventListener("click", refreshLive);
 </script>
 </body>
 </html>
