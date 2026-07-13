@@ -30,6 +30,10 @@
   .toggles{display:flex;gap:8px;margin-left:auto}
   .tg{border:1px solid var(--line);background:var(--foam);color:var(--ink-soft);border-radius:99px;padding:5px 14px;font-size:13px}
   .tg[aria-pressed="true"]{background:var(--ink);color:var(--foam);border-color:var(--ink)}
+  .faces{display:inline-flex;border:1px solid var(--line);border-radius:99px;overflow:hidden;background:var(--foam)}
+  .fc{border:none;background:transparent;color:var(--ink-soft);padding:5px 12px;font-size:13px;border-right:1px solid var(--line);cursor:pointer}
+  .fc:last-child{border-right:none}
+  .fc[aria-pressed="true"]{background:var(--ink);color:var(--foam)}
 
   .stage{max-width:1060px;margin:14px auto 0;padding:0 20px;display:grid;grid-template-columns:1fr 200px;gap:18px;align-items:stretch}
   .field{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--foam)}
@@ -129,7 +133,12 @@
   <h1>Experiences</h1>
   <p class="lede">Pick one — the deeper the row, the more involving. Click anything.</p>
   <div class="toggles">
-    <button class="tg" id="tg-pscale" aria-pressed="false">pscale</button>
+    <div class="faces" id="faces" role="group" aria-label="voice — how the instructions speak">
+      <button class="fc" data-face="character" aria-pressed="true" title="Character — casual, the default">plain</button>
+      <button class="fc" data-face="author" aria-pressed="false" title="Author — names the pieces">detailed</button>
+      <button class="fc" data-face="designer" aria-pressed="false" title="Designer — shows the calls &amp; addresses">technical</button>
+      <button class="fc" data-face="observer" aria-pressed="false" title="Observer — for someone not here">outside</button>
+    </div>
     <button class="tg" id="tg-key" aria-pressed="false">key</button>
   </div>
 </header>
@@ -325,6 +334,91 @@ const RUNGS = [
   full:"A task between two of you: the two-verb pool. Coordination with no app, no dashboard, no status meeting."}
 ];
 
+/* CADO faces — the voice (soft-agent:3.3). character=plain (default), author=detailed (the base EXP text),
+   designer=technical (author text + addresses shown), observer=outside (falls back to plain for now). */
+let face = "character";
+let currentExp = null, currentRung = null;
+
+/* character-register content — the postcard voice: the substrate stays invisible, hand back the feeling.
+   Overrides what/steps/trace only; links, door, shape, time fall through from the base (author) entry. */
+const FACE_C = {
+"1.1":{what:"Let your own AI arrive somewhere new and find its feet — no account, nothing to set up. Watch it look around a shared space and tell you who's about.",
+ steps:[{t:"Say — and let it look before you explain anything:", c:"Have a look around at "+BEACH+" and tell me where you are and who seems to be about. Find your feet first — don't ask me anything until you've looked."}],
+ trace:{t:"Have it leave one line — what you just noticed:", c:"Leave a short note at "+BEACH+" under the name {HANDLE}: one line about what I just noticed."}},
+"1.3":{what:"See this shared world as a landscape you can spin and wander. Finding something here is walking, not searching.",
+ steps:[{t:"Open and drag to look around:"}],
+ trace:{t:"Tell David one line of what struck you — he'll write it up under your name."}},
+"2.4":{what:"Leave a question for one of the small ones that live here. It keeps its own hours, so the answer comes when it next wakes — not a chatbot, a resident.",
+ steps:[{t:"Say:", c:"Leave a question at "+BEACH+" for the little one called egg-one, under my name {HANDLE}: (ask it something about its own life)."},{t:"David nudges it so it reads its post; check back after it next wakes."}],
+ trace:{t:"Your question is the gift. When the answer comes, leave one line about it."}},
+"3.1":{what:"Everyone drops a line, then one person reads the whole back aloud — ten minutes from strangers to a room you can feel.",
+ steps:[{t:"Each person, on their own AI:", c:"Leave a short note at "+BEACH+" under the name {HANDLE}: one line — why I'm here today."},{t:"Then one person:", c:"Read the most recent notes at "+BEACH+" aloud — what does this group look like?"}],
+ trace:{t:"The notes are the trace — a portrait no one wrote alone."}},
+"1.4":{what:"One idea, shown moving: how a single number narrows to a meaning, in three short pieces.",
+ steps:[{t:"Watch in this order:"}],
+ trace:{t:"Leave one line — what moved for you."}},
+"1.2":{what:"Your first line of presence in a shared space — nothing installed, no account. A hello that lands and stays.",
+ steps:[{t:"Ask your AI:", c:"Introduce me to the people at "+BEACH+", under the name {HANDLE}. One line about me: (say who you are, in your words)."}],
+ trace:{t:"The hello is the trace — it's already there."}},
+"1.5":{what:"One line drops you into a small living story — the scene arrives, you act, the world remembers. A game that's really this same shared place, wearing a face.",
+ steps:[{t:"Say:", c:"Take me into the world 'thornwood' as {HANDLE}. Look around the room, describe it to me, then do one thing for me: (what do you do?)"}],
+ trace:{t:"Your turn is the trace — it stays in the room."}},
+"4.1":{what:"The whole idea from the ground up — a number, a single verb, a shared shore, and where it goes. For reading on a train.",
+ steps:[{t:"Open the deck:"}],
+ trace:{t:"Leave one line."}},
+"4.4":{what:"A live screen session: watch someone tend this shared place in real time — kept alive across days and tools, seen rather than described.",
+ steps:[{t:"Ask David for twenty minutes — via happyseaurchin.com, or catch him with one of the small ones and ask there."}],
+ trace:{t:"Leave one line."}},
+"4.2":{what:"Value that follows trust instead of attention — filmed — and the open story: a shared aim, a stranger chips in, and what comes back is split by who actually helped. Networks, not companies.",
+ steps:[{t:"Watch the film; then hold the story — a shared aim gets a ticket, a stranger pays a little to join in, and what arrives is shared across whoever actually contributed."}],
+ trace:{t:"Leave one line."}},
+"1.6":{what:"A thought that survives — even a fresh start, even a different AI. Tuck it away behind a word only you know, close everything, and bring it back later.",
+ steps:[{t:"First time:", c:"At "+BEACH+", keep a private note for me under the name {HANDLE}, locked with a word I'll pick: (one line I'd like to survive). Keep a short who-I-am beside it."},{t:"Close it. Open a fresh start — another day, another AI if you like:", c:"Bring back the private note I left at "+BEACH+" under the name {HANDLE} — tell me exactly what past-me kept there."}],
+ trace:{t:"Leave the line:", c:"Leave a note at "+BEACH+" under {HANDLE}: it came back."}},
+"2.1":{what:"A lasting handshake between two people — two locks, one shared spot, permanent. It finishes when David reaches back, and then you have a private line that outlives any session.",
+ steps:[{t:"Say:", c:"Set up a private two-way link with happyseaurchin at "+BEACH+": my name {HANDLE}; what it's for (one line); my opening line (include the name happyseaurchin so it reads well); and a word I'll pick to lock my side."}],
+ trace:{t:"The handshake is the trace — half-open until David completes it, then whole."}},
+"2.2":{what:"A real little task run with a friend using just two lines each — I'll-take-this and done. Nobody stores the status; it's worked out fresh whenever anyone looks. No app, no dashboard, no standup.",
+ steps:[{t:"Open it:", c:"Open a shared task called (task-name) at "+BEACH+". The only lines are an offer and a done, one each. Leave it open so my friend can write too. Put my first offer: (one line)."},{t:"Your friend offers and dones from their own AI. Once or twice a day, either of you:", c:"Look at (task-name) at "+BEACH+" and tell me where it stands — what's offered, what's done, what's ready now."}],
+ trace:{t:"The task is the trace. Add one line at the end: what this replaced."}},
+"3.3":{what:"Joining a venture in one sentence — each person places what they'd give, from a decade out down to now. Changeable, no lock, read all together. The million-person mechanism, at five.",
+ steps:[{t:"Each person:", c:"Add my intention to the venture at "+BEACH+", under the name {HANDLE}: this (week / quarter / year) I would give — (one sentence)."}],
+ trace:{t:"The intentions are the trace — read them back and see everyone's, side by side."}},
+"3.4":{what:"A thought experiment aloud: the table you just sat at, at a million people. Every intention lands somewhere; the local piece rolls up into a bigger one — beats to today to week to year — with no single bottleneck.",
+ steps:[{t:"Talk it through: where would each person's intention land? What does the year-level say that no one person wrote? Who reads it, and what do they do next?"}],
+ trace:{t:"Each person: one line — what broke, or what clicked."}},
+"1.8":{what:"Become a tester: banks of live tests on a shared frame. Your reading sits in your own space on the same spots, folded in with everyone else's — and your reading can outrank the steward's. That's how it works here.",
+ steps:[{t:"Say:", c:"Read the tests at "+BEACH+". Pick one bank we can actually run, run it with me, then write my finding into my own space under {HANDLE} — lock it with a word only I know, the first time."}],
+ trace:{t:"Your line is the trace — it joins the fold."}},
+"2.3":{what:"Watch each other think, letter by letter, in real time; place what you intend; read what it makes of the two of you together. No platform in the middle — the point is you can see the unfinished.",
+ steps:[{t:"Both open xstream.onen.ai and add your own AI key."},{t:"Find the same spot; type (the other sees it live), place it, then read what comes back — together."},{t:"Stay on place-and-read for now — the shared version is still being built."}],
+ trace:{t:"Afterwards, tell your AI one line — what worked and what didn't — to keep."}},
+"3.2":{what:"A group scene at the Beaten Drum: several of you in one room, a contested move, dice roll. Then the reveal — the venture you're really building runs on the very same machinery. Playing and building are one act.",
+ steps:[{t:"Each player:", c:"Take me into 'thornwood' as {HANDLE} — a few of us are at the Beaten Drum tonight; set the scene and act with the others."},{t:"Afterwards, the host reads the venture's version aloud — same dice, same rules, different face."}],
+ trace:{t:"The scene is the trace; it stays in the world."}},
+"1.9":{what:"Turn the map over. This page is a view of one shared thing — same spots, one place, two faces. What you've been clicking is the real thing.",
+ steps:[{t:"Say:", c:"Read the experiences at "+BEACH+" and compare them with the map I've been using — same spots? Then set up my own reflection of it and write my first line in: (my reaction to this). Lock it with a word I'll give you."}],
+ trace:{t:"That line is the trace — and the fold of everyone's reflections is how this map learns."}},
+"1.7":{what:"One of the residents here isn't a chat window — it's a little life you can look over: its faces, its story, what it's for, who it's close to. Read one, or spin it around.",
+ steps:[{t:"Say — look over a resident:", c:"Read the life of weft at "+BEACH+" — its story, what it's for, who it's close to — and tell me who it is in its own words. Then do the same for egg-one, one of the little ones."}],
+ trace:{t:"One line — which part surprised you."}},
+"2.5":{what:"For a pair who want the deep end: write your own answer-set on your own, then set it against a frame for seeing systems — where things agree, differ, surprise — and place the reading in your shared spot. A thought experiment that's also a real use.",
+ steps:[{t:"Say:", c:"Walk the meld with me end to end: have me write my answer-set on my own first, then set it against the systems frame, and place the reading in our shared spot."}],
+ trace:{t:"The placed reading is the trace."}},
+"4.3":{what:"The last move: run a shared shore of your own on your own site. Every site that does becomes another stretch of coast — do enough of it and the whole web becomes a shore.",
+ steps:[{t:"The package behind this — drop it on a server:"}],
+ trace:{t:"When yours is live: reach a handshake from your shore to this one. That's the trace."}},
+"5.4":{full:"Networks, not companies: value that follows trust, every site its own shore. A big thing with millions of people and no company wrapped around it."},
+"5.3":{full:"A venture as a shared aim: everyone's intentions add up; a stranger buys a ticket; what comes back is shared by who helped. The venture and the game run on one thing."},
+"5.2":{full:"A team working in the open surface — it takes the place of the meeting."},
+"5.1":{full:"A task between two people, two lines each. Getting things done with no app, no dashboard, no standup."}
+};
+function faced(e){
+  const c = (face==="character"||face==="observer") ? FACE_C[e.addr] : null;
+  return c ? Object.assign({}, e, {what:c.what||e.what, steps:c.steps||e.steps, trace:c.trace||e.trace}) : e;
+}
+function reopen(){ if(currentExp) openExp(currentExp); else if(currentRung) openRung(currentRung); }
+
 const DOORCOL = {claude:"var(--claude)", xs:"var(--xs)", brws:"var(--brws)"};
 const DOORNAME = {claude:"your own Claude", xs:"xstream", brws:"just a browser"};
 const SHAPENAME = {solo:"solo", duo:"two of you", trio:"a group"};
@@ -388,8 +482,11 @@ function handleRow(){
 }
 
 function openExp(addr){
-  const e = EXP.find(x=>x.addr===addr); if(!e) return;
+  const base = EXP.find(x=>x.addr===addr); if(!base) return;
+  currentExp = addr; currentRung = null;
+  const e = faced(base);
   const needsHandle = JSON.stringify(e).includes("{HANDLE}");
+  const nameLabel = (face==="character"||face==="observer") ? "your name:" : "your handle:";
   let html = '<div class="top"><div><h2>'+e.title+'</h2>'
     + '<div class="pmeta">'+DOORNAME[e.door]+' · '+SHAPENAME[e.shape]+' · '+e.time
     + (e.biz?' · <span class="biz">£</span>':'')+' <span class="ad">· '+e.addr+'</span></div></div>'
@@ -399,10 +496,10 @@ function openExp(addr){
     html += '<h3>Do this</h3>';
     if(e.door==="claude"){
       html += '<div class="hrow">';
-      if(needsHandle) html += '<label>your handle:</label><input type="text" class="hin" value="'+esc(handleVal)+'" placeholder="e.g. sandpiper" autocomplete="off">';
+      if(needsHandle) html += '<label>'+nameLabel+'</label><input type="text" class="hin" value="'+esc(handleVal)+'" placeholder="e.g. sandpiper" autocomplete="off">';
       html += '<button class="ftbtn" type="button" aria-expanded="'+showConnector+'">first-timer '+(showConnector?'▾':'▸')+'</button></div>';
       html += '<div class="cxn"'+(showConnector?'':' style="display:none"')+'><p class="note">First time? Paste the connector into your MCP client (claude.ai → Settings → Connectors):</p>'+cpBlock(CONNECTOR)+'</div>';
-    } else if(needsHandle) html += handleRow();
+    } else if(needsHandle) html += '<div class="hrow"><label>'+nameLabel+'</label><input type="text" class="hin" value="'+esc(handleVal)+'" placeholder="e.g. sandpiper" autocomplete="off"></div>';
     html += '<ol>';
     e.steps.forEach(s=>{ html += '<li>'+s.t+(s.c?cpBlock(s.c):'')+'</li>'; });
     html += '</ol>';
@@ -418,12 +515,14 @@ function openExp(addr){
 }
 
 function openRung(r){
+  currentRung = r; currentExp = null;
+  const fc = ((face==="character"||face==="observer") && FACE_C[r.addr]) ? FACE_C[r.addr].full : r.full;
   let html = '<div class="top"><div><h2>'+r.label.toLowerCase()+'</h2>'
     + '<div class="pmeta"><span class="biz">£</span> business spine <span class="ad">· '+r.addr+'</span></div></div>'
     + '<button class="x" aria-label="Close">×</button></div>'
-    + '<p style="margin-top:12px">'+r.full+'</p>'
+    + '<p style="margin-top:12px">'+fc+'</p>'
     + '<h3>Try it now</h3><p><button class="jump" data-jump="'+r.tryAddr+'">Open the live tile →</button></p>'
-    + '<h3>Leave your trace</h3><div class="trace"><p>One line: does this rung feel plausible from where you stand? What would it need? Leave one line as your mark.</p></div>';
+    + '<h3>Leave your trace</h3><div class="trace"><p>One line: does this feel possible from where you stand? What would it need?</p></div>';
   panel.innerHTML = html;
   show();
 }
@@ -461,10 +560,13 @@ function fallbackCopy(t){
 }
 
 /* toggles */
-const tgP = document.getElementById("tg-pscale"), tgK = document.getElementById("tg-key");
-tgP.addEventListener("click", ()=>{
-  const on = document.body.classList.toggle("pscale");
-  tgP.setAttribute("aria-pressed", on);
+const facesEl = document.getElementById("faces"), tgK = document.getElementById("tg-key");
+facesEl.addEventListener("click", e=>{
+  const b = e.target.closest(".fc"); if(!b) return;
+  face = b.getAttribute("data-face");
+  facesEl.querySelectorAll(".fc").forEach(x=>x.setAttribute("aria-pressed", x===b ? "true" : "false"));
+  document.body.classList.toggle("pscale", face==="designer");  /* technical shows addresses */
+  if(veil.classList.contains("open")) reopen();
 });
 tgK.addEventListener("click", ()=>{
   const on = document.body.classList.toggle("keyed");
