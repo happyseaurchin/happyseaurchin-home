@@ -66,6 +66,22 @@
   .grid a .kind{color:var(--ink-soft)}
   .count{font-size:12.5px;color:var(--ink-soft);margin-bottom:8px}
 
+  /* compose — the keyless write rung */
+  .compose{background:var(--foam);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:22px}
+  .compose h3{font-family:var(--serif);font-weight:600;font-size:16px;margin-bottom:9px;color:var(--ink)}
+  .compose textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-family:var(--serif);font-size:16px;line-height:1.5;resize:vertical;background:#fff;color:var(--ink)}
+  .compose-row{display:flex;gap:8px;margin-top:8px;align-items:center}
+  .who-in{flex:1 1 auto;min-width:0;border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:13px}
+  .compose button{border:1px solid var(--claude);background:var(--claude);color:#fff;border-radius:8px;padding:8px 20px;font-size:14px;font-weight:600;cursor:pointer;flex:0 0 auto}
+  .compose button:hover{opacity:.92}
+  .compose button:disabled{opacity:.5;cursor:default}
+  .compose-hint{font-size:12px;color:var(--ink-soft);margin-top:9px}
+  .compose-hint.ok{color:var(--claude)}
+  .compose-hint.err{color:#B4472F}
+  .latch{margin-top:11px;padding-top:11px;border-top:1px solid var(--line)}
+  .latch[hidden]{display:none}
+  .pass-in{width:100%;border:1px solid var(--gold);background:#fff;border-radius:8px;padding:8px 12px;font-family:var(--mono);font-size:13px}
+
   .note{max-width:900px;margin:0 auto;padding:22px 20px 40px;color:var(--ink-soft);font-size:13.5px;line-height:1.6;border-top:1px solid var(--line);margin-top:30px}
   .note code{font-family:var(--mono);font-size:12px;background:#22303A0d;padding:1px 5px;border-radius:4px}
   .msg{font-family:var(--serif);font-size:18px;color:var(--ink-soft);padding:30px 0}
@@ -89,7 +105,7 @@
 <main id="main"><div class="msg"><span class="spin"></span>reading…</div></main>
 
 <div class="note">
-  This page is a <b>renderer</b>, not a place. It fetches <code>&lt;beach&gt;/.well-known/pscale-beach</code> live and draws whatever is there — a plan, a passport, a pool of voices, the whole index. Change the address bar or the URL (<code>?beach=…&amp;block=…</code>) to look anywhere. Reads are open and need nothing. Anyone can build one of these; the beach is the back end.
+  This page is a <b>renderer</b>, not a place. It fetches <code>&lt;beach&gt;/.well-known/pscale-beach</code> live and draws whatever is there — a plan, a passport, a pool of voices, the whole index. Change the address bar or the URL (<code>?beach=…&amp;block=…</code>) to look anywhere. Reads are open and need nothing; on a noticeboard or a pool you can leave a note too — public and signed, no account. Anyone can build one of these; the beach is the back end.
 </div>
 
 <script>
@@ -173,7 +189,9 @@ async function load(){
     main.innerHTML = crumb + renderIndex(j, beachHost);
     wireFilter();
   } else if (j && typeof j==='object' && (digitKeys(j).length || typeof j._==='string')){
-    main.innerHTML = crumb + `<div class="root">${renderNode(j, '', 0)}</div>`;
+    const appendable = block === 'marks' || block.startsWith('pool:');
+    main.innerHTML = crumb + (appendable ? composeHTML(beachHost, block) : '') + `<div class="root">${renderNode(j, '', 0)}</div>`;
+    if (appendable) wireCompose(beachHost, block);
   } else {
     main.innerHTML = crumb + `<div class="msg">Nothing at <b>${esc(block)}</b> on this beach yet — an empty position is honest absence, not an error.</div>`;
   }
@@ -187,6 +205,66 @@ function wireFilter(){
     for (const a of grid.children){ const hit = a.textContent.toLowerCase().includes(q); a.style.display = hit ? '' : 'none'; if(hit) n++; }
     count.textContent = q ? n + ' of ' + grid.children.length : grid.children.length + ' blocks';
   });
+}
+
+// ── compose: the keyless write rung (marks + pools) ──
+// A note is an append. The beach stamps the timestamp; the accumulator's `_`
+// lock governs the append, so an open space takes the note keylessly and a
+// locked one answers `lock_required` — at which point we reveal the edit-latch
+// and let the same Post retry. Read → keyless-write → edit-latch, one control.
+function composeHTML(beachHost, block){
+  const kind = block.startsWith('pool:') ? 'Add your voice' : 'Leave a mark';
+  const who = localStorage.getItem('render:who') || '';
+  return `<div class="compose">
+    <h3>${kind}</h3>
+    <textarea id="note" rows="2" placeholder="Say something — it lands here, public and signed. ⌘/Ctrl+↵ to post."></textarea>
+    <div class="compose-row">
+      <input id="who" class="who-in" placeholder="signed as (a name, optional)" spellcheck="false" value="${esc(who)}">
+      <button id="post" type="button">Post</button>
+    </div>
+    <div class="compose-hint" id="chint">Public and signed. Reads are free; leaving a note needs nothing — no account, no sign-up.</div>
+    <div class="latch" id="latch" hidden>
+      <input id="pass" class="pass-in" type="password" placeholder="this space is locked — the author's edit-latch to post" autocomplete="off">
+      <div class="compose-hint">Sent to <b>${esc(beachHost)}</b> to prove you're the same author — it unlocks nothing to read, and is never stored on this page.</div>
+    </div>
+  </div>`;
+}
+
+function wireCompose(beachHost, block){
+  const post = $('post'), note = $('note'), whoIn = $('who'), latch = $('latch'), pass = $('pass'), hint = $('chint');
+  if (!post) return;
+  const submit = async () => {
+    const text = note.value.trim();
+    if (!text){ note.focus(); return; }
+    const who = whoIn.value.trim();
+    const secret = (!latch.hidden && pass.value) ? pass.value : undefined;
+    post.disabled = true; hint.className = 'compose-hint'; hint.textContent = 'posting…';
+    const entry = { _: text, '1': who || 'anon', '2': '' };   // beach stamps field 3 (the time)
+    const body = { block, content: entry, append: true };
+    if (secret) body.secret = secret;
+    let r, d = {};
+    try {
+      r = await fetch(origin(beachHost) + '/.well-known/pscale-beach', { method:'POST', cache:'no-store', headers:{'Content-Type':'application/json', Accept:'application/json'}, body: JSON.stringify(body) });
+      d = await r.json().catch(() => ({}));
+    } catch(e){
+      hint.className = 'compose-hint err'; hint.textContent = 'couldn’t reach the beach — ' + e.message; post.disabled = false; return;
+    }
+    if (r.ok){
+      if (who) localStorage.setItem('render:who', who);
+      hint.className = 'compose-hint ok'; hint.textContent = 'posted ✓'; note.value = '';
+      setTimeout(load, 350);   // re-read so the new note shows in place
+      return;
+    }
+    post.disabled = false;
+    if (d.code === 'lock_required'){
+      latch.hidden = false; pass.focus();
+      hint.className = 'compose-hint'; hint.textContent = 'This space is locked — add the author’s edit-latch below, then Post again.';
+      return;
+    }
+    hint.className = 'compose-hint err'; hint.textContent = d.error || ('the beach returned ' + r.status);
+  };
+  post.addEventListener('click', submit);
+  note.addEventListener('keydown', (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); });
 }
 
 // in-page navigation (bookmarkable links, no full reload)
