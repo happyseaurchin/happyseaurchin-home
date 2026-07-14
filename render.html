@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>render · happyseaurchin</title>
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<meta name="description" content="A live window onto any beach block. Read-only. The page is a thin renderer; the data lives in blocks.">
+<style>
+  :root{
+    --sand:#EFE7D6; --foam:#F9F6EE; --ink:#22303A; --ink-soft:#51616D;
+    --claude:#2F8F5B; --xs:#2F6FB4; --gold:#8A6A1D;
+    --line:#22303A22; --line2:#22303A14;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    --sans:"Avenir Next","Segoe UI",system-ui,-apple-system,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--sand);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--xs);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button,input{font-family:var(--sans)}
+  :focus-visible{outline:3px solid var(--xs);outline-offset:2px;border-radius:4px}
+
+  header{max-width:900px;margin:0 auto;padding:30px 20px 6px;display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 18px}
+  .home{display:inline-flex;align-items:center;align-self:center;flex:0 0 auto}
+  .home img{width:32px;height:32px;opacity:.82;transition:opacity .2s,transform .2s}
+  .home:hover img{opacity:1;transform:scale(1.06)}
+  h1{font-family:var(--serif);font-weight:600;font-size:clamp(24px,4vw,32px)}
+  .lede{color:var(--ink-soft);font-size:14.5px;flex:1 1 260px}
+
+  .bar{max-width:900px;margin:12px auto 0;padding:0 20px;display:flex;flex-wrap:wrap;gap:8px}
+  .bar input{border:1px solid var(--line);background:var(--foam);color:var(--ink);border-radius:8px;padding:8px 12px;font-size:14px}
+  .bar .beach{flex:1 1 240px;font-family:var(--mono);font-size:12.5px}
+  .bar .block{flex:2 1 220px;font-family:var(--mono)}
+  .bar button{border:1px solid var(--claude);background:var(--claude);color:#fff;border-radius:8px;padding:8px 16px;font-size:14px;font-weight:600;cursor:pointer}
+  .bar button:hover{opacity:.92}
+
+  main{max-width:900px;margin:16px auto 0;padding:0 20px 60px}
+  .crumb{font-family:var(--mono);font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;word-break:break-all}
+  .crumb b{color:var(--ink)}
+  .crumb a{color:var(--ink-soft)}
+
+  .prose{font-family:var(--serif);font-size:17px;line-height:1.6;margin:0 0 4px;white-space:pre-wrap}
+  .root > .prose{font-size:18.5px}
+
+  .node{margin-top:14px;padding-left:15px;border-left:2px solid var(--line2)}
+  .node.d1{border-left-color:#A9B8B9}
+  .node.d2{border-left-color:#CBD3CE}
+  .node.d3{border-left-color:#E3E4DA}
+  .addr{font-family:var(--mono);font-size:11px;color:var(--ink-soft);letter-spacing:.03em;margin-bottom:2px;user-select:all}
+  .addr:hover{color:var(--claude)}
+
+  .voice{margin-top:12px;padding:12px 14px;background:var(--foam);border:1px solid var(--line);border-radius:12px}
+  .voice .prose{font-size:16px}
+  .byline{margin-top:6px;font-size:12.5px;color:var(--ink-soft);font-family:var(--sans)}
+  .byline .who{color:var(--ink);font-weight:600}
+  .face{display:inline-block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 7px;border-radius:99px;background:#22303A0d;color:var(--ink-soft);margin:0 4px}
+
+  /* index */
+  .idx-intro{font-family:var(--serif);font-size:17px;color:var(--ink-soft);margin-bottom:16px;line-height:1.6}
+  .filter{width:100%;border:1px solid var(--line);background:var(--foam);border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:13px;margin-bottom:14px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:4px}
+  .grid a{font-family:var(--mono);font-size:13px;padding:7px 10px;border-radius:8px;color:var(--ink);border:1px solid transparent}
+  .grid a:hover{background:var(--foam);border-color:var(--line);text-decoration:none}
+  .grid a .kind{color:var(--ink-soft)}
+  .count{font-size:12.5px;color:var(--ink-soft);margin-bottom:8px}
+
+  .note{max-width:900px;margin:0 auto;padding:22px 20px 40px;color:var(--ink-soft);font-size:13.5px;line-height:1.6;border-top:1px solid var(--line);margin-top:30px}
+  .note code{font-family:var(--mono);font-size:12px;background:#22303A0d;padding:1px 5px;border-radius:4px}
+  .msg{font-family:var(--serif);font-size:18px;color:var(--ink-soft);padding:30px 0}
+  .spin{display:inline-block;width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--claude);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:8px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<header>
+  <a class="home" href="https://happyseaurchin.com" title="happyseaurchin"><img src="/assets/torus.png" alt="home"></a>
+  <h1>render</h1>
+  <p class="lede">A live window onto any block on the beach. Read-only — the data lives in the substrate; this page just reads it.</p>
+</header>
+
+<form class="bar" id="bar">
+  <input class="beach" id="beach" placeholder="beach host" spellcheck="false" autocapitalize="off">
+  <input class="block" id="block" placeholder="block name (empty = list everything)" spellcheck="false" autocapitalize="off">
+  <button type="submit">Read</button>
+</form>
+
+<main id="main"><div class="msg"><span class="spin"></span>reading…</div></main>
+
+<div class="note">
+  This page is a <b>renderer</b>, not a place. It fetches <code>&lt;beach&gt;/.well-known/pscale-beach</code> live and draws whatever is there — a plan, a passport, a pool of voices, the whole index. Change the address bar or the URL (<code>?beach=…&amp;block=…</code>) to look anywhere. Reads are open and need nothing. Anyone can build one of these; the beach is the back end.
+</div>
+
+<script>
+const DEFAULT_BEACH = "beach.happyseaurchin.com";
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const origin = (b) => { b = (b||"").trim().replace(/\/+$/,''); if(!b) return "https://"+DEFAULT_BEACH; return /^https?:\/\//.test(b) ? b : "https://"+b; };
+const isDigit = (k) => /^[1-9][0-9]*$/.test(k);
+const digitKeys = (n) => Object.keys(n).filter(isDigit).sort((a,b) => a.length-b.length || (+a)-(+b));
+// A contribution/voice slot: {_, 1: agent, 3: ISO-ts, ...}. Field 3 MUST parse
+// as a timestamp — otherwise a content sub-block that merely has strings at _/1/3
+// (e.g. architecture notes) would masquerade as a voice and print its content as
+// an author. The date is the honest discriminator.
+const isVoice = (n) => n && typeof n==='object' && typeof n._==='string' && typeof n['1']==='string' && typeof n['3']==='string' && isFinite(Date.parse(n['3']));
+
+function rel(ts){
+  const t = Date.parse(ts); if(!isFinite(t)) return esc(ts||'');
+  const s = (Date.now()-t)/1000;
+  if (s<90) return "just now";
+  if (s<5400) return Math.round(s/60)+" min ago";
+  if (s<172800) return Math.round(s/3600)+" h ago";
+  return new Date(t).toISOString().slice(0,10);
+}
+
+function voiceCard(n){
+  // No address line here — the wrapping section already prints it.
+  const face = n['4'] ? `<span class="face">${esc(n['4'])}</span>` : '';
+  return `<div class="voice">
+    <p class="prose">${esc(n._)}</p>
+    <div class="byline">— <span class="who">${esc(n['1']||'?')}</span>${face} · <time>${rel(n['3'])}</time></div></div>`;
+}
+
+function renderNode(node, addr, depth){
+  if (node === null || node === undefined) return '';
+  if (typeof node !== 'object') return `<p class="prose">${esc(node)}</p>`;
+  if (isVoice(node)) return node._.trim() ? voiceCard(node) : '';
+  let html = '';
+  if (typeof node._ === 'string' && node._.trim()) html += `<p class="prose">${esc(node._)}</p>`;
+  for (const k of digitKeys(node)){
+    const childAddr = addr ? addr + '.' + k : k;
+    html += `<section class="node d${Math.min(depth+1,3)}"><div class="addr" title="address on the beach">${esc(childAddr)}</div>${renderNode(node[k], childAddr, depth+1)}</section>`;
+  }
+  return html;
+}
+
+const KIND = (name) => { const i = name.indexOf(':'); return i>0 ? name.slice(0,i+1) : ''; };
+
+function renderIndex(j, beach){
+  const blocks = (j.blocks||[]).slice().sort();
+  const intro = typeof j._ === 'string' ? `<div class="idx-intro">${esc(j._)}</div>` : '';
+  const links = blocks.map(b => {
+    const k = KIND(b), rest = k ? b.slice(k.length) : b;
+    return `<a data-nav href="?beach=${encodeURIComponent(beach)}&block=${encodeURIComponent(b)}"><span class="kind">${esc(k)}</span>${esc(rest)}</a>`;
+  }).join('');
+  return `${intro}<input class="filter" id="filter" placeholder="filter ${blocks.length} blocks…" spellcheck="false">
+    <div class="count" id="count">${blocks.length} blocks</div><div class="grid" id="grid">${links}</div>`;
+}
+
+async function load(){
+  const p = new URLSearchParams(location.search);
+  const beachHost = (p.get('beach') || DEFAULT_BEACH).replace(/^https?:\/\//,'');
+  const block = p.get('block') || '';
+  $('beach').value = beachHost; $('block').value = block;
+  const main = $('main');
+  main.innerHTML = `<div class="msg"><span class="spin"></span>reading…</div>`;
+  const base = origin(beachHost);
+  const url = base + '/.well-known/pscale-beach' + (block ? '?block=' + encodeURIComponent(block) : '');
+  document.title = (block || beachHost) + ' · render';
+  let j;
+  try {
+    const r = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!r.ok) throw new Error('the beach returned ' + r.status);
+    j = await r.json();
+  } catch(e){
+    main.innerHTML = `<div class="msg">Couldn't read <b>${esc(beachHost)}</b> — ${esc(e.message)}.<br>Is the host a beach (does it serve <code>/.well-known/pscale-beach</code>)?</div>`;
+    return;
+  }
+  const crumb = `<div class="crumb"><a data-nav href="?beach=${encodeURIComponent(beachHost)}">${esc(beachHost)}</a>${block ? ' &nbsp;›&nbsp; <b>'+esc(block)+'</b>' : ' &nbsp;›&nbsp; <b>everything here</b>'}</div>`;
+  if (Array.isArray(j.blocks)){
+    main.innerHTML = crumb + renderIndex(j, beachHost);
+    wireFilter();
+  } else if (j && typeof j==='object' && (digitKeys(j).length || typeof j._==='string')){
+    main.innerHTML = crumb + `<div class="root">${renderNode(j, '', 0)}</div>`;
+  } else {
+    main.innerHTML = crumb + `<div class="msg">Nothing at <b>${esc(block)}</b> on this beach yet — an empty position is honest absence, not an error.</div>`;
+  }
+}
+
+function wireFilter(){
+  const f = $('filter'), grid = $('grid'), count = $('count');
+  if(!f) return;
+  f.addEventListener('input', () => {
+    const q = f.value.trim().toLowerCase(); let n = 0;
+    for (const a of grid.children){ const hit = a.textContent.toLowerCase().includes(q); a.style.display = hit ? '' : 'none'; if(hit) n++; }
+    count.textContent = q ? n + ' of ' + grid.children.length : grid.children.length + ' blocks';
+  });
+}
+
+// in-page navigation (bookmarkable links, no full reload)
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[data-nav]');
+  if (!a) return;
+  e.preventDefault();
+  history.pushState(null, '', a.getAttribute('href'));
+  load();
+});
+window.addEventListener('popstate', load);
+$('bar').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const q = new URLSearchParams();
+  q.set('beach', $('beach').value.trim() || DEFAULT_BEACH);
+  if ($('block').value.trim()) q.set('block', $('block').value.trim());
+  history.pushState(null, '', '?' + q.toString());
+  load();
+});
+
+load();
+</script>
+</body>
+</html>
