@@ -54,15 +54,13 @@ Foundry → public: tools iterate here; stable versions are mirrored to `pscale-
 - `watch-inbox.js` — foreground watcher on `~/xstream-inbox/`; drops feed `ingest.js`
 
 **Legacy — pre-migration beach ops. Read before touching:**
-- `wipe-block.js` — still works: the live handler kept per-block HTTP DELETE (lock-gated), so `BEACH_URL=https://beach.happyseaurchin.com/.well-known/pscale-beach node scripts/wipe-block.js <name>` is valid. Only its **default** URL (the bare domain) is stale — it now 404s.
-- `wipe-pscale-beach.js` — deletes keys in the **pre-namespacing** layout (`pscale-beach-v2:block:*` / `pscale-beach-v2:locks:*`) in whatever KV `.env.local` points at. The live beach writes origin-scoped keys (`pscale-beach-v2:<origin>:block:<name>`), which these patterns do **not** match — so this script cannot clean the current beach. It is destructive only if the shared Upstash still serves data from legacy keys (`LEGACY_NAMESPACE_FALLBACK_READS=true` and `pscale-beach`'s `migrate-keys.js` not yet run); after migration it deletes dead keys.
-- `bootstrap-beach-locks.js` — Phase B lock installer for the long-gone legacy `beach` block; inert without the deleted handler.
+- `wipe-block.js` — still works: the live handler kept per-block HTTP DELETE (lock-gated), so `BEACH_URL=https://beach.happyseaurchin.com/.well-known/pscale-beach node scripts/wipe-block.js <name>` is valid. Only its **default** URL (the bare domain) is stale — it now 404s.- `bootstrap-beach-locks.js` — Phase B lock installer for the long-gone legacy `beach` block; inert without the deleted handler.
 
 Beach maintenance tooling now lives in `pscale-beach/scripts/` (local-beach, pack-seed/reset/dump, repair-floor, migrate-keys, smoke tests). Note the gap: **no repo currently has a whole-beach wipe for the origin-scoped layout** — if that capability is needed, write it in `pscale-beach/scripts/`, not here.
 
 ## Deployment
 
-Vercel auto-deploys from `main`. `vercel.json` is minimal: `cleanUrls` plus `no-store` on `/api/*` — **no `.well-known` rewrite** (deliberate; see above). Env vars: `SUPABASE_URL` / `SUPABASE_ANON_KEY` for pscale-walk, in Vercel project env and `.env.local` (gitignored). `KV_REST_API_URL` / `KV_REST_API_TOKEN` linger in `.env.local` only for the legacy wipe script — no deployed function uses KV, and the sole npm dependency (`@upstash/redis`) exists only for that script.
+Vercel auto-deploys from `main`. `vercel.json` is minimal: `cleanUrls` plus `no-store` on `/api/*` — **no `.well-known` rewrite** (deliberate; see above). Env vars: `SUPABASE_URL` / `SUPABASE_ANON_KEY` for pscale-walk, in Vercel project env and `.env.local` (gitignored). No deployed function uses KV/Redis, and the project has **no npm dependencies** — the last one (`@upstash/redis`, used only by the removed `wipe-pscale-beach.js`) was dropped 2026-07-19, when the dangling Upstash-KV env vars were also removed from the `happyseaurchin-home` Vercel project (they pointed at an uninstalled/archived store — the old pre-migration beach DB — and were the source of the Vercel "Needs Attention" flag). Stale `KV_*` lines may still sit in a local `.env.local`; nothing reads them.
 
 ## Cross-repo map
 
@@ -92,8 +90,6 @@ If a session needs to read across repos, add the relevant ones as `additionalDir
 1. **Don't reinstate anything at `/.well-known/pscale-beach`** — no handler, no rewrite, no static file. The bare-domain 404 is load-bearing: bsp-mcp's federation fallback (`bare 404 → beach.<host>`) routes callers to the real beach through it.
 2. **Don't widen `beach-relay.js`** — no POST, no extra paths, no arbitrary hosts. It is a narrowly-scoped CORS shim, not an open proxy.
 3. **Don't add write methods to `pscale-walk.js` or let `SUPABASE_ANON_KEY` reach the browser** — permissive RLS makes the anon key a write credential.
-4. **Don't run `wipe-pscale-beach.js` against the shared KV** without checking migration state in the pscale-beach repo first — it targets the legacy key layout, which may still be serving live data if `migrate-keys.js` hasn't run.
-
 ## The worktable — live project state (read this before trusting this file)
 
 This project's working state lives ON the beach, not here:
