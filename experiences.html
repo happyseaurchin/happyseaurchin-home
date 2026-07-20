@@ -625,7 +625,7 @@ const recipeEl = document.getElementById("recipe");
 CATS.forEach(c=>{
   const b = document.createElement("button");
   b.className = "scat"; b.textContent = c.label;
-  b.addEventListener("click", ()=>{ currentCat = c.key; currentStance = c.subs[0]; renderSidebar(); });
+  b.addEventListener("click", ()=>{ currentCat = c.key; currentStance = c.subs[0]; renderSidebar(); writeHash(); });
   stancePickEl.appendChild(b);
 });
 function renderSidebar(){
@@ -637,7 +637,7 @@ function renderSidebar(){
       const b = document.createElement("button");
       b.className = "ssub"; b.textContent = STANCES[sk].label;
       b.setAttribute("aria-pressed", sk===currentStance ? "true":"false");
-      b.addEventListener("click", ()=>{ currentStance = sk; renderSidebar(); });
+      b.addEventListener("click", ()=>{ currentStance = sk; renderSidebar(); writeHash(); });
       subPickEl.appendChild(b);
     });
   }
@@ -656,6 +656,36 @@ function renderSidebar(){
   recipeEl.innerHTML = html;
 }
 recipeEl.addEventListener("click", e=>{ const b = e.target.closest(".step"); if(b) openExp(b.getAttribute("data-jump")); });
+
+/* deep-linking — /experiences#business, #gamer, #llm … so any other surface
+   (xstream's what's-this panel, /about, /play, /minimal) can aim a reader
+   straight at their own band instead of dropping them on the default and
+   hoping they self-select a second time. Accepts a CATEGORY key or the finer
+   STANCE key; a stance implies its parent category. An unknown or absent
+   fragment falls through to the default silently. */
+function catOfStance(sk){ const c = CATS.find(c=>c.subs.includes(sk)); return c ? c.key : null; }
+function applyHash(){
+  const h = decodeURIComponent(location.hash.slice(1)).trim().toLowerCase();
+  if(!h) return false;
+  const cat = CATS.find(c=>c.key===h);
+  if(cat){ currentCat = cat.key; currentStance = cat.subs[0]; return true; }
+  const ck = STANCES[h] ? catOfStance(h) : null;
+  if(ck){ currentCat = ck; currentStance = h; return true; }
+  return false;
+}
+/* Record the choice at full precision: a category with two sub-stances
+   writes the stance (so a shared link reopens exactly what was on screen);
+   a single-stance category writes the category. replaceState, not assignment
+   — it must not fire hashchange back at us, and it must not stack history
+   entries as the reader browses bands. */
+function writeHash(){
+  const cat = CATS.find(c=>c.key===currentCat);
+  const frag = (cat && cat.subs.length > 1) ? currentStance : currentCat;
+  if(location.hash.slice(1) !== frag) history.replaceState(null, "", "#"+frag);
+}
+window.addEventListener("hashchange", ()=>{ if(applyHash()) renderSidebar(); });
+
+applyHash();
 renderSidebar();
 
 /* panel */

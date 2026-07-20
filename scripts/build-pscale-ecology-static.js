@@ -83,8 +83,12 @@ function renderFrame(f) {
   return h;
 }
 
+// `id` as well as `data-path`: the JS view routes #rpg through BY_ID/openBranch,
+// but a reader that does NOT run JS (LLM fetcher, curl, crawler, link preview)
+// only has the markup — without an id, /pscale-ecology/#rpg lands them at the
+// top of the whole article instead of the branch they were pointed at.
 function renderBranch(b) {
-  let h = `<section data-path="${esc(b.id)}">\n<h3>${esc(b.title)}</h3>\n<p>${esc(b.lede)}</p>\n`;
+  let h = `<section id="${esc(b.id)}" data-path="${esc(b.id)}">\n<h3>${esc(b.title)}</h3>\n<p>${esc(b.lede)}</p>\n`;
   h += b.frames.map(renderFrame).join('');
   return h + '</section>\n';
 }
