@@ -104,6 +104,21 @@ delete process.env.CRON_SECRET;
   const foldCall = r.sent.mcp.find(m => m.params && m.params.arguments && m.params.arguments.fold);
   assert(!!foldCall, 'the fold went back through the same door');
   assert(foldCall.params.arguments.fold.note === 'read the room, published', 'the fold is the tool payload, not parsed prose');
+  assert(foldCall.params.arguments.fold.acted === 1, 'the fold carries acted = the in-loop WRITE count (1 write, 1 read → acted 1)');
+  assert(r.body.wrote === 1, 'the response reports one in-loop write');
+  // caching: every Anthropic call sends the window as a cached content block
+  assert(Array.isArray(r.sent.anthropic[0].system) && r.sent.anthropic[0].system[0].cache_control, 'the composed window is sent as a cached block');
+}
+
+// ── 1c. a refused write does NOT count toward acted ────────────────────────
+{
+  const r = await run({ handle: 'egg-one' }, [
+    { tool: { name: 'bsp', input: { block: 'surface', spindle: '9', content: 'ok' } } },
+    { tool: { name: 'bsp', input: { block: 'grain:someone', spindle: '1', content: 'nope' } } },
+    { tool: { name: 'fold', input: { note: 'one landed, one refused' } } },
+  ], (args) => (args.block === 'grain:someone' ? 'the beach refused: not your lock' : 'written'));
+  const foldCall = r.sent.mcp.find(m => m.params && m.params.arguments && m.params.arguments.fold);
+  assert(foldCall.params.arguments.fold.acted === 1, 'a refused write is not counted — acted stays 1');
 }
 
 // ── 1b. a bare name is an ORGAN only if the genome has one ─────────────────
@@ -149,12 +164,23 @@ delete process.env.CRON_SECRET;
 
 // ── 3. a wake that never folds is degraded, not lost ───────────────────────
 {
-  const r = await run({ handle: 'egg-one', turns: '3' }, [{ text: 'still thinking, no fold ever comes' }]);
+  const seen = [];
+  const r = await run({ handle: 'egg-one', turns: '3' }, [
+    { tool: { name: 'bsp', input: { block: 'surface', spindle: '2', content: 'a real write mid-work' } } },
+    { text: 'still thinking, no fold ever comes' },
+    { text: 'and still not folding' },
+  ], (args) => { seen.push(args); return 'written'; });
   assert(r.code === 200, 'an unclosed wake still completes');
   assert(r.body.closed === false, 'it is reported as not closed');
   assert(r.body.note.startsWith('[did not fold'), `the note says so plainly (got: ${r.body.note.slice(0, 60)})`);
-  assert(r.body.note.includes('still thinking'), 'the model\'s actual words are salvaged into the record');
+  assert(r.body.note.includes('1 write(s) landed'), 'the note reports how many in-loop writes landed');
+  assert(r.body.note.includes('and still not folding'), "the model's actual last words are salvaged into the record");
   assert(r.body.turns === 3, 'the turn budget bounded it');
+  // the salvaged fold is NOTE-ONLY (no greedy-parsed garbage writes) and still
+  // carries acted so pscale_genus records a leaf for the writes that landed.
+  const foldCall = r.sent.mcp.find(m => m.params && m.params.arguments && m.params.arguments.fold);
+  assert(JSON.stringify(foldCall.params.arguments.fold.writes) === '{}', 'the salvage sends NO writes — the in-loop ones already landed');
+  assert(foldCall.params.arguments.fold.acted === 1, 'the salvage still carries acted so the leaf is earned');
 }
 
 // ── 4. the one refusal survives into the unwatched wake ────────────────────

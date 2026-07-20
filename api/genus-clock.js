@@ -32,11 +32,12 @@ const BEACH = 'https://beach.happyseaurchin.com';
 const TIER_WORK = 'claude-sonnet-5'; // kernel mirror: working tier for a gap-close
 const TIER_DRAW = 'claude-opus-4-8'; // γ=0 → the coarse vision-level draw
 const MAX_TOKENS = 8192;
-// Turns for a seat wake. Deliberately modest: this is an UNWATCHED wake on the
-// holder's key, and the clock is the floor of an instance's existence, not its
-// ceiling. Enough to read the room, act, and close; not enough to wander. The
-// tab's seat runs 12 with a human watching it.
-const DEFAULT_TURNS = 8;
+// Turns for a seat wake. 8 was too few: egg-one's first headless wake did 17
+// acts across 8 turns and never reached a fold — a bare pulse folds in one turn
+// because it has nothing to do but write its fold, but a SEATED wake with a rich
+// given (it can read the room, its peers, its own trail) has real work, and 8
+// ran out mid-work. 12 matches the tab. Still a floor, not a licence to wander.
+const DEFAULT_TURNS = 12;
 
 // ── minimal MCP client (JSON-RPC over streamable HTTP) ─────────────────────
 
@@ -231,10 +232,16 @@ async function seatLoop({ sessionId, handle, passphrase, beach, apiKey, model, s
   const tools = SEAT_TOOLS(handle);
   const messages = [{ role: 'user', content: message }];
   const acts = [];
-  const usage = { input_tokens: 0, output_tokens: 0 };
+  const usage = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 };
   let folded = null;
+  let wrote = 0; // in-loop WRITES (not reads) — passed to the fold as `acted`
   let lastText = '';
   let id = 100;
+  // The composed window (the shell) is IDENTICAL on every turn — cache it so a
+  // multi-turn wake pays for it once instead of 8-12 times. Sent as a cached
+  // content block; only the growing message tail is re-billed at full rate.
+  // This is the difference between a seat wake costing ~50c and ~15c.
+  const cachedSystem = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
   // The function's own wall clock (vercel.json: maxDuration 300). A platform
   // timeout mid-loop loses EVERYTHING — no fold, no trace, no record that the
   // wake even happened, on a wake nobody is watching. So stop early enough to
@@ -249,12 +256,14 @@ async function seatLoop({ sessionId, handle, passphrase, beach, apiKey, model, s
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system, tools, messages }),
+      body: JSON.stringify({ model, max_tokens: MAX_TOKENS, system: cachedSystem, tools, messages }),
     });
     const data = await r.json();
     if (!r.ok) throw new Error(`pulse call failed: ${JSON.stringify(data && data.error).slice(0, 200)}`);
     usage.input_tokens += (data.usage && data.usage.input_tokens) || 0;
     usage.output_tokens += (data.usage && data.usage.output_tokens) || 0;
+    usage.cache_read_input_tokens += (data.usage && data.usage.cache_read_input_tokens) || 0;
+    usage.cache_creation_input_tokens += (data.usage && data.usage.cache_creation_input_tokens) || 0;
 
     const content = data.content || [];
     messages.push({ role: 'assistant', content });
@@ -269,13 +278,17 @@ async function seatLoop({ sessionId, handle, passphrase, beach, apiKey, model, s
           results.push({ type: 'tool_result', tool_use_id: b.id, content: 'fold received — this wake is closed.' });
           continue;
         }
-        const out = await runBsp(sessionId, handle, passphrase, beach, b.input || {}, id++);
         const i = b.input || {};
-        acts.push(`${i.content !== undefined ? 'write' : 'read'} ${i.block || '?'}${i.spindle ? ':' + i.spindle : ''}`);
+        const isWrite = i.content !== undefined;
+        const out = await runBsp(sessionId, handle, passphrase, beach, i, id++);
+        // Count a write only if the beach did NOT refuse it — a refusal leaves
+        // nothing in a block, so it must not earn a history-leaf claim.
+        if (isWrite && !/^(refused|the beach refused)/.test(out)) wrote += 1;
+        acts.push(`${isWrite ? 'write' : 'read'} ${i.block || '?'}${i.spindle ? ':' + i.spindle : ''}`);
         results.push({ type: 'tool_result', tool_use_id: b.id, content: out });
       }
       messages.push({ role: 'user', content: results });
-      if (folded) return { fold: folded, turns: turn + 1, tools: acts.length, acts, usage, closed: true, text: lastText };
+      if (folded) return { fold: folded, turns: turn + 1, tools: acts.length, wrote, acts, usage, closed: true, text: lastText };
       continue;
     }
 
@@ -290,7 +303,7 @@ async function seatLoop({ sessionId, handle, passphrase, beach, apiKey, model, s
       continue;
     }
   }
-  return { fold: null, turns: maxTurns, tools: acts.length, acts, usage, closed: false, text: lastText, ranOut };
+  return { fold: null, turns: maxTurns, tools: acts.length, wrote, acts, usage, closed: false, text: lastText, ranOut };
 }
 
 // ── the fold contract's single JSON object, salvaged tolerantly ────────────
@@ -399,15 +412,27 @@ export default async function handler(req, res) {
         apiKey, model, system, message, maxTurns,
       });
       usage = seat.usage;
-      // Closed by its own call — the ordinary path. Otherwise the loop ran out
-      // without folding: salvage the last text rather than lose the wake, and
-      // say so honestly in the note (the record must not imply a clean close).
-      fold = seat.fold || parseFold(seat.text || '');
-      if (!seat.closed) {
-        const said = String(fold.note || '').replace(/^\[parse failure\]\s*/, '').trim();
+      if (seat.closed) {
+        // Closed by its own call — the ordinary path.
+        fold = seat.fold;
+      } else {
+        // The loop ran out without folding. Do NOT trust parseFold's greedy
+        // brace-grab of mid-work prose (it can pull a half-written object whose
+        // garbage writes then get refused — the refused=1 seen on 2026-07-20).
+        // Salvage the wake as a NOTE ONLY: the in-loop writes already landed, so
+        // an honest memory leaf recording that is the whole job here.
+        const said = String(seat.text || '').replace(/\s+/g, ' ').trim().slice(0, 500);
         const why = seat.ranOut ? 'ran out of clock' : `loop ran to ${seat.turns} turns`;
-        fold.note = `[did not fold — ${seat.tools} act(s) landed, ${why}] ${said}`.slice(0, 700);
+        fold = {
+          writes: {},
+          status: 'continue',
+          note: `[did not fold — ${seat.wrote} write(s) landed, ${why}] ${said}`.slice(0, 700),
+        };
       }
+      // A seat wake writes IN-LOOP, so the fold carries none — tell pscale_genus
+      // how many landed, or it records no history leaf (bsp-mcp: a seat wake
+      // earns its leaf). Never let the model's own `acted` override the count.
+      fold.acted = seat.wrote;
     }
 
     // 3 — fold through the same door; the trace to trace:<handle> rides it.
@@ -425,7 +450,8 @@ export default async function handler(req, res) {
       ask: fold.ask || null, // reported, never granted here — the holder grants
       heartbeat: fold.heartbeat || null,
       usage,
-      ...(seat ? { turns: seat.turns, tools: seat.tools, closed: seat.closed, acts: seat.acts.slice(0, 20) } : {}),
+      ...(seat ? { turns: seat.turns, tools: seat.tools, wrote: seat.wrote, closed: seat.closed, acts: seat.acts.slice(0, 20) } : {}),
+      ...(usage && usage.cache_read_input_tokens != null ? { cached: usage.cache_read_input_tokens } : {}),
       fold_ack: ack.split('\n').slice(0, 8),
     });
   } catch (e) {
