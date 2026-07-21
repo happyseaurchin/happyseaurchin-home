@@ -38,6 +38,11 @@ const MAX_TOKENS = 8192;
 // given (it can read the room, its peers, its own trail) has real work, and 8
 // ran out mid-work. 12 matches the tab. Still a floor, not a licence to wander.
 const DEFAULT_TURNS = 12;
+// The trajectory (purpose) wake ticks at most this often when nothing external
+// is live, so it advances the agent's own work about once a day without
+// churning the same gap every cron. Responsiveness (a reach) wakes whenever it
+// arrives, regardless of this. Override per-call with ?purpose_hours=.
+const DEFAULT_PURPOSE_HOURS = 20;
 
 // ── minimal MCP client (JSON-RPC over streamable HTTP) ─────────────────────
 
@@ -334,7 +339,55 @@ function parseFold(text) {
   return { note: '[parse failure] ' + text.slice(0, 160), writes: {}, status: 'continue' };
 }
 
-// ── the pulse ──────────────────────────────────────────────────────────────
+// ── due-ness — is this wake worth its cost? ────────────────────────────────
+//
+// A blind twice-daily wake defaults to auditing its own conditions when
+// nothing external is live — the navel-gazing egg-one's leaves 24/25/26 show,
+// re-finding the same purpose:2.1 gap wake after wake, on the holder's key. The
+// gate turns the clock from "wake on a schedule" into "wake when a concern is
+// actually due", so the cron can run OFTEN (responsive) while spending only
+// when there is something to attend to. It composes (free) and reads the
+// trace, then decides — no LLM call unless due.
+//
+// Three concerns, David's model, outward-first:
+//   responsiveness — someone reached me since I last woke (room / liquid / a
+//                    new task entry). The open door; the usual reason.
+//   purpose        — the trajectory: γ>0 AND it has been a whole period since
+//                    my last wake. Gated to periodic so it ticks (once/day by
+//                    default) rather than churning every cron.
+// A wake handles whatever it finds; the gate only decides WHETHER to wake.
+
+const ISO = /\d{4}-\d{2}-\d{2}T[\d:.]+Z/;
+function tsOf(v) {
+  const m = ISO.exec(String(v ?? ''));
+  return m ? Date.parse(m[0]) : 0;
+}
+
+/** The newest timestamp anywhere in an accumulator (trace / task / room / a
+ * bracketed counting block), walking digit children to their leaves. */
+function newestTs(node, depth = 0) {
+  if (!node || typeof node !== 'object' || depth > 5) return 0;
+  let max = tsOf(node['3']);
+  for (const k of '123456789') {
+    const c = node[k];
+    if (c && typeof c === 'object') max = Math.max(max, newestTs(c, depth + 1));
+  }
+  if (node['_'] && typeof node['_'] === 'object') max = Math.max(max, newestTs(node['_'], depth + 1));
+  return max;
+}
+
+/** Decide due-ness from the composed given, γ, and the last wake time.
+ * `given` is the parsed message; room/liquid are lists, task is a block. */
+function dueness(given, gamma, lastWakeTs, now, purposePeriodMs) {
+  const listMax = (arr) => (Array.isArray(arr) ? arr.reduce((m, e) => Math.max(m, tsOf(e && e['3'])), 0) : 0);
+  const reachTs = Math.max(listMax(given.room), listMax(given.liquid), newestTs(given.task));
+  const responsiveness = reachTs > lastWakeTs;
+  const purpose = (gamma ?? 0) > 0 && (now - lastWakeTs) >= purposePeriodMs;
+  const reasons = [];
+  if (responsiveness) reasons.push('reached-since-last-wake');
+  if (purpose) reasons.push('purpose-tick');
+  return { due: responsiveness || purpose, responsiveness, purpose, reasons, reachTs, lastWakeTs };
+}
 
 export default async function handler(req, res) {
   // Cron auth: when CRON_SECRET is set, Vercel invokes crons with it as a
@@ -367,6 +420,39 @@ export default async function handler(req, res) {
     const message = composed.slice(msgAt + 25).trim();
     const gammaMatch = /γ:\s*(\d+)\s+structural/.exec(head);
     const gamma = gammaMatch ? Number(gammaMatch[1]) : null;
+
+    // 1b — DUE-NESS: spend only if a concern is actually live. Compose (above)
+    // is free; this reads the trace for the last wake and the given for what
+    // has reached since, then decides. `?force=1` overrides (David's manual
+    // run); `?gate=off` runs the old unconditional wake.
+    const gate = String(req.query.gate || 'on') !== 'off';
+    const forced = req.query.force === '1' || req.query.force === 'true';
+    const purposeHours = Number(req.query.purpose_hours) || DEFAULT_PURPOSE_HOURS;
+    const now = Date.now();
+    let due = { due: true, reasons: ['gate-off'] };
+    if (gate && !forced) {
+      let given = {};
+      try { given = JSON.parse(message); } catch { /* a malformed given → treat as due, don't strand a real wake */ }
+      let lastWakeTs = 0;
+      try {
+        // The trace records every wake from every door; its newest leaf IS the
+        // last wake. Read it RAW (a direct beach GET, not the MCP tool) so the
+        // stored ISO stamps are clean — the tool's rendered output carries a
+        // "now · <ts>" footer that would read as the newest and skip forever.
+        const tr = await fetch(`${BEACH}/.well-known/pscale-beach?block=trace:${handle}`);
+        if (tr.ok) lastWakeTs = newestTs(await tr.json());
+      } catch { /* no trace → first wake → lastWakeTs 0 → due */ }
+      due = dueness(given, gamma, lastWakeTs, now, purposeHours * 3600_000);
+      if (!due.due) {
+        return res.status(200).json({
+          ok: true, handle, skipped: true, gamma,
+          reason: 'nothing due — no reach since last wake, and not the purpose tick',
+          last_wake: lastWakeTs ? new Date(lastWakeTs).toISOString() : null,
+          newest_reach: due.reachTs ? new Date(due.reachTs).toISOString() : null,
+          purpose_hours: purposeHours,
+        });
+      }
+    }
 
     // 2 — the pulse. The model in this call IS the instance for the turn, with
     // nothing else in its context (the containment David requires: no host
@@ -446,6 +532,7 @@ export default async function handler(req, res) {
       model,
       gamma,
       status: fold.status || 'continue',
+      woke_because: due.reasons, // why the gate let this wake through
       note: String(fold.note || '').slice(0, 300),
       ask: fold.ask || null, // reported, never granted here — the holder grants
       heartbeat: fold.heartbeat || null,

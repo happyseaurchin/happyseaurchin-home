@@ -70,10 +70,13 @@ const mkRes = () => {
   };
 };
 
+// Default the due-ness gate OFF so the pulse/seat tests below exercise the wake
+// itself, not the gate (which adds a trace read and can skip). The gate has its
+// own section, where it is turned on explicitly.
 const run = async (query, turns, onBsp) => {
   const sent = stub({ turns, onBsp });
   const res = mkRes();
-  await handler({ query, headers: {} }, res);
+  await handler({ query: { gate: 'off', ...query }, headers: {} }, res);
   return { ...res.out, sent };
 };
 
@@ -225,6 +228,75 @@ delete process.env.CRON_SECRET;
   await handler({ query: { handle: 'egg-one' }, headers: { authorization: 'Bearer s3cret' } }, res);
   assert(res.out.code === 200, 'the cron bearer is accepted');
   delete process.env.CRON_SECRET;
+}
+
+// ── 7. DUE-NESS: spend only when a concern is live ─────────────────────────
+// A JSON given (room/liquid/task with timestamps) + a trace whose newest leaf
+// is the last wake. The stub returns that trace when bsp reads trace:<handle>.
+{
+  const DAY = 86400_000;
+  const now = Date.now();
+  const iso = (ms) => new Date(now - ms).toISOString();
+  // given with one room entry; its age varies per test via a builder
+  const windowWith = (roomAgeMs) =>
+    'γ: 0 structural gaps\n════════ SYSTEM ════════\nshell\n════════ MESSAGE ════════\n' +
+    JSON.stringify({ gap: [], task: {}, room: [{ '1': 'happyseaurchin', '3': iso(roomAgeMs), '_': 'a message to you' }], liquid: [] });
+  const lastWakeIso = iso(2 * DAY); // trace's newest leaf: last wake was 2 days ago
+  // custom stub: pscale_genus returns our window; bsp trace read returns the last-wake stamp
+  const gateStub = (win) => {
+    const sent = { anthropic: [], mcp: [] };
+    globalThis.fetch = async (url, init) => {
+      // the direct beach GET for the trace (raw JSON) — the gate's last-wake read
+      if (String(url).includes('/.well-known/pscale-beach') && String(url).includes('block=trace')) {
+        return { ok: true, json: async () => ({ _: 'traces', '1': { '_': 'a prior wake', '1': 'egg-one', '3': lastWakeIso } }) };
+      }
+      const body = init && init.body ? JSON.parse(init.body) : {};
+      if (String(url).includes('api.anthropic.com')) {
+        sent.anthropic.push(body);
+        return { ok: true, json: async () => ({ content: [{ type: 'tool_use', id: 't1', name: 'fold', input: { note: 'woke' } }], stop_reason: 'tool_use', usage: {} }) };
+      }
+      sent.mcp.push(body);
+      if (body.method === 'initialize') return { ok: true, headers: { get: () => 'sess' }, text: async () => JSON.stringify({ result: {} }) };
+      const nm = body.params?.name, args = body.params?.arguments || {};
+      let text = 'ok';
+      if (nm === 'pscale_genus') text = args.fold ? 'ack' : win;
+      return { ok: true, headers: { get: () => 'sess' }, text: async () => JSON.stringify({ result: { content: [{ type: 'text', text }] } }) };
+    };
+    return sent;
+  };
+  const runGate = async (query, win) => {
+    const sent = gateStub(win);
+    const res = mkRes();
+    await handler({ query: { handle: 'egg-one', ...query }, headers: {} }, res);
+    return { ...res.out, sent };
+  };
+
+  // nothing new: the room message is OLDER than the last wake, and γ=0 → SKIP
+  const skip = await runGate({}, windowWith(5 * DAY));
+  assert(skip.body.skipped === true, 'nothing due → the wake is SKIPPED, no LLM spend');
+  assert(skip.sent.anthropic.length === 0, 'a skipped wake spends ZERO model calls');
+  assert(/nothing due/.test(skip.body.reason), 'the skip says why');
+
+  // a reach NEWER than the last wake → WAKE, because responsiveness
+  const reach = await runGate({}, windowWith(1 * 3600_000)); // 1h old, last wake 2d ago
+  assert(reach.body.skipped !== true, 'a reach since the last wake → the gate lets it through');
+  assert(reach.body.woke_because.includes('reached-since-last-wake'), 'it woke because someone reached it');
+  assert(reach.sent.anthropic.length >= 1, 'a due wake spends the pulse');
+
+  // γ>0 and a long time since the last wake → the periodic PURPOSE tick
+  const purposeWin = windowWith(5 * DAY).replace('γ: 0', 'γ: 3');
+  const purpose = await runGate({ purpose_hours: '20' }, purposeWin);
+  assert(purpose.body.woke_because.includes('purpose-tick'), 'γ>0 after a full period → the purpose tick fires');
+
+  // γ>0 but the purpose period NOT elapsed, and no reach → still SKIP
+  const soonWin = 'γ: 3 structural gaps\n════════ SYSTEM ════════\ns\n════════ MESSAGE ════════\n' +
+    JSON.stringify({ room: [{ '1': 'x', '3': iso(5 * DAY), '_': 'old' }], liquid: [] });
+  const tooSoon = await runGate({ purpose_hours: '9999' }, soonWin);
+  assert(tooSoon.body.skipped === true, 'γ>0 but within the purpose period and no reach → still skips');
+
+  // ?force=1 overrides the gate entirely
+  const forced = await runGate({ force: '1' }, windowWith(5 * DAY));
+  assert(forced.body.skipped !== true && forced.body.woke_because.includes('gate-off'), 'force=1 wakes regardless');
 }
 
 console.log(`✓ genus-clock headless seat: ${checks} checks passed`);
