@@ -102,12 +102,18 @@ const LS_FILENAME = 'mindflow-editor:filename';
 const LS_THEME = 'mindflow-editor:theme';
 const LS_VIEWS = 'mindflow-editor:views';  // { [blockId]: slice[] }
 const LS_ZERO_FORM = 'mindflow-editor:zero-form';
+const LS_BEACH = 'mindflow-editor:beach';  // last beach URL used in the loader
+const LS_ORIGINS = 'mindflow-editor:beach-origins';  // { [blockId]: beachUrl } — where a block was loaded from (not secret)
 
 // slice = { view, walkMode, path: [{digit, via}] }
 // Each captures one "facet" / configured view the user has composed on a block.
 // These travel to the filmstrip-3d visualiser as highlight selections —
 // multiple slices per block union into the block's lit cubes.
 state.slices = new Map();  // blockId -> slice[]
+
+// blockId -> beach URL it was loaded from. Lets "push" default to the right
+// beach. Origins are public, so this persists; passphrases never do.
+state.beachOrigins = new Map();
 
 function saveLocal() {
   try {
@@ -119,6 +125,9 @@ function saveLocal() {
     state.slices.forEach((v, k) => { if (v.length) slicesObj[k] = v; });
     localStorage.setItem(LS_VIEWS, JSON.stringify(slicesObj));
     localStorage.setItem(LS_ZERO_FORM, state.zeroForm ? '1' : '0');
+    const originsObj = {};
+    state.beachOrigins.forEach((v, k) => { if (v) originsObj[k] = v; });
+    localStorage.setItem(LS_ORIGINS, JSON.stringify(originsObj));
   } catch (_) {}
 }
 
@@ -131,6 +140,8 @@ function loadLocal() {
     const vraw = localStorage.getItem(LS_VIEWS);
     if (vraw) state.slices = new Map(Object.entries(JSON.parse(vraw)));
     state.zeroForm = localStorage.getItem(LS_ZERO_FORM) === '1';
+    const oraw = localStorage.getItem(LS_ORIGINS);
+    if (oraw) state.beachOrigins = new Map(Object.entries(JSON.parse(oraw)));
   } catch (_) {}
 }
 
@@ -560,7 +571,11 @@ function renderColumns(block) {
   const fl = floorDepth(block);
   const out = [];
   out.push(`<div class="col-view">`);
-  out.push(`<div class="col-path">${formatColPath(state.path, state.currentId, fl)}</div>`);
+  const pushable = state.path.length && !state.path.some(p => p.via === 'star');
+  const pushTitle = pushable ? 'Push this rung to a beach (write)' : 'Select a normal (non-star) rung to push';
+  out.push(`<div class="col-path">${formatColPath(state.path, state.currentId, fl)}`
+    + `<button id="btn-push-rung" class="push-btn"${pushable ? '' : ' disabled'} title="${pushTitle}">&#8593; push</button>`
+    + `</div>`);
   out.push(`<div class="columns-wrap">`);
 
   if (!columns.length) out.push(`<div class="col-empty">Block has no digit children.</div>`);
@@ -836,6 +851,10 @@ function attachDynamicHandlers() {
       refresh();
     });
   });
+
+  // Push the selected rung to a beach (write path).
+  const pushBtn = document.getElementById('btn-push-rung');
+  if (pushBtn) pushBtn.addEventListener('click', () => { if (!pushBtn.disabled) openPushModal(); });
 }
 
 function enterEdit(cellEl) {
@@ -1038,6 +1057,339 @@ async function loadSamples() {
   }
 }
 
+// ──── Beach loader (read-only) ───────────────────────────────
+// Pull live blocks off a federated beach via plain GET. A beach serves its
+// named blocks at /.well-known/pscale-beach: no ?block= lists them under
+// `.blocks`; ?block=<name> returns the block itself. Beaches send
+// `access-control-allow-origin: *`, so the browser fetches directly — no
+// proxy, no key, no write path. Loaded blocks are ADDED to the shelf (like
+// loadSamples), not replacing it.
+
+const beachState = { url: null, blocks: [] };  // the connected beach + its index
+
+// Accept a bare host, an origin, or a full .well-known URL; return the
+// canonical pscale-beach URL. Production beaches are https; http is allowed
+// only for localhost so the offline local-beach rig can be pointed at.
+const isLocalHost = (h) => h === 'localhost' || h === '127.0.0.1' || h === '[::1]';
+function normalizeBeachUrl(input) {
+  let s = (input || '').trim();
+  if (!s) return null;
+  if (!/^https?:\/\//i.test(s)) s = 'https://' + s;   // bare host → https origin
+  let u;
+  try { u = new URL(s); } catch { return null; }
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && isLocalHost(u.hostname))) return null;
+  if (u.pathname === '/' || u.pathname === '') u.pathname = '/.well-known/pscale-beach';
+  u.search = ''; u.hash = '';
+  return u.toString();
+}
+
+async function fetchBeachIndex(beachUrl) {
+  const r = await fetch(beachUrl);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const data = await r.json();
+  const blocks = Array.isArray(data?.blocks) ? data.blocks : [];
+  let origin = data?.origin;
+  if (!origin) { try { origin = new URL(beachUrl).hostname; } catch { origin = beachUrl; } }
+  return { origin, blocks };
+}
+
+async function fetchBeachBlock(beachUrl, name) {
+  const u = new URL(beachUrl);
+  u.searchParams.set('block', name);   // encodes ':' etc.; the beach accepts %3A
+  const r = await fetch(u);
+  const data = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+  if (!isObj(data)) throw new Error('not a block');
+  // Mirror loadFile: if the 0-form toggle is on, treat incoming as zero-form.
+  return state.zeroForm ? zeroToUnderscore(data) : data;
+}
+
+function setBeachStatus(msg, kind) {
+  const el = document.getElementById('beach-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'beach-status' + (kind ? ' ' + kind : '');
+}
+
+function renderBeachList(blocks) {
+  const listEl = document.getElementById('beach-list');
+  if (!listEl) return;
+  const rows = blocks.map(name => {
+    const have = state.shelf.has(name);
+    return `<div class="beach-row">
+      <span class="beach-name">${esc(name)}${have ? '<span class="beach-have" title="Already on the shelf — loading overwrites it">on shelf</span>' : ''}</span>
+      <button class="beach-load" data-load="${esc(name)}">${have ? 'reload' : 'load'}</button>
+    </div>`;
+  }).join('');
+  const allRow = blocks.length > 1
+    ? `<div class="beach-row beach-row-all"><span class="beach-name muted">all ${blocks.length} blocks</span><button class="beach-load" data-load-all="1">load all</button></div>`
+    : '';
+  listEl.innerHTML = rows + allRow;
+}
+
+async function beachConnect(rawInput) {
+  const beachUrl = normalizeBeachUrl(rawInput);
+  const listEl = document.getElementById('beach-list');
+  if (listEl) listEl.innerHTML = '';
+  if (!beachUrl) { setBeachStatus('Enter a beach host or https:// URL.', 'error'); return; }
+  let host = beachUrl;
+  try { host = new URL(beachUrl).hostname; } catch (_) {}
+  setBeachStatus(`Connecting to ${host}…`, '');
+  try {
+    const { origin, blocks } = await fetchBeachIndex(beachUrl);
+    beachState.url = beachUrl;
+    beachState.blocks = blocks;
+    localStorage.setItem(LS_BEACH, beachUrl);
+    if (!blocks.length) { setBeachStatus(`No named blocks at ${origin}.`, ''); return; }
+    setBeachStatus(`${blocks.length} block${blocks.length === 1 ? '' : 's'} at ${origin}`, 'ok');
+    renderBeachList(blocks);
+  } catch (e) {
+    setBeachStatus(`Could not reach beach: ${e.message}`, 'error');
+  }
+}
+
+async function beachLoadBlock(name) {
+  if (!beachState.url) return;
+  setBeachStatus(`Loading ${name}…`, '');
+  try {
+    const block = await fetchBeachBlock(beachState.url, name);
+    state.shelf.set(name, block);
+    state.beachOrigins.set(name, beachState.url);   // remember where it came from
+    selectBlock(name);                     // sets currentId + refresh()
+    renderBeachList(beachState.blocks);    // update "on shelf" markers
+    setBeachStatus(`Loaded ${name} ✓`, 'ok');
+  } catch (e) {
+    setBeachStatus(`Failed to load ${name}: ${e.message}`, 'error');
+  }
+}
+
+async function beachLoadAll() {
+  if (!beachState.url || !beachState.blocks.length) return;
+  const names = beachState.blocks.slice();
+  setBeachStatus(`Loading ${names.length} blocks…`, '');
+  const results = await Promise.allSettled(names.map(n => fetchBeachBlock(beachState.url, n)));
+  const failed = [];
+  let firstLoaded = null;
+  results.forEach((res, i) => {
+    if (res.status === 'fulfilled') {
+      state.shelf.set(names[i], res.value);
+      state.beachOrigins.set(names[i], beachState.url);
+      if (!firstLoaded) firstLoaded = names[i];
+    } else {
+      failed.push(names[i]);
+    }
+  });
+  const ok = names.length - failed.length;
+  if (firstLoaded && !state.currentId) selectBlock(firstLoaded);
+  else refresh();
+  renderBeachList(beachState.blocks);
+  setBeachStatus(
+    failed.length ? `Loaded ${ok}; failed: ${failed.join(', ')}` : `Loaded all ${ok} ✓`,
+    failed.length ? 'error' : 'ok'
+  );
+}
+
+function openBeachModal() {
+  let overlay = document.getElementById('beach-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'beach-modal';
+    overlay.innerHTML = `
+      <div class="beach-box">
+        <header><span class="beach-title">Load from beach · read-only</span>
+          <button id="beach-close" title="Close (Esc)">close</button>
+        </header>
+        <div class="beach-body">
+          <div class="beach-connect">
+            <input id="beach-url" type="text" spellcheck="false"
+              placeholder="beach.happyseaurchin.com  ·  or a full .well-known URL">
+            <button id="beach-connect-btn">connect</button>
+          </div>
+          <div class="beach-status" id="beach-status"></div>
+          <div class="beach-list" id="beach-list"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBeachModal(); });
+    overlay.querySelector('#beach-close').addEventListener('click', closeBeachModal);
+    const urlInput = overlay.querySelector('#beach-url');
+    overlay.querySelector('#beach-connect-btn').addEventListener('click', () => beachConnect(urlInput.value));
+    urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') beachConnect(urlInput.value); });
+    overlay.querySelector('#beach-list').addEventListener('click', (e) => {
+      const all = e.target.closest('[data-load-all]');
+      if (all) { beachLoadAll(); return; }
+      const one = e.target.closest('[data-load]');
+      if (one) beachLoadBlock(one.dataset.load);
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closeBeachModal();
+    });
+  }
+  overlay.querySelector('#beach-url').value = localStorage.getItem(LS_BEACH) || '';
+  setBeachStatus('', '');
+  overlay.querySelector('#beach-list').innerHTML = '';
+  overlay.classList.add('open');
+  overlay.querySelector('#beach-url').focus();
+  overlay.querySelector('#beach-url').select();
+}
+
+function closeBeachModal() {
+  document.getElementById('beach-modal')?.classList.remove('open');
+}
+
+// ──── Beach push (write path — per rung) ─────────────────────
+// Push the value at the selected rung back to a beach:
+//   POST ?block=<name>  body {spindle, content, secret?}
+// `spindle` is the pscale address the editor already shows (toPscaleAddr) —
+// the beach's parseSpindle wants that decimal form, not the raw dotted path.
+// `content` is the node at that rung (a string leaf, or the whole sub-block
+// for a branch — the beach's writeAt REPLACES the position, so a branch push
+// carries its children so they aren't dropped). Per-position writes never
+// need {confirm}; that's whole-block replace only. The rung's lock gates it:
+// unlocked → no secret needed; locked → the passphrase, which the beach hashes
+// against (origin, block, position). Passphrases live in memory for the
+// session only — never localStorage.
+
+const beachSecrets = new Map();   // `${beachUrl} ${blockId}` -> secret (session only)
+const secretKey = (url, id) => `${url} ${id}`;
+
+// Walk the current block down a normal-spine path to the terminal node.
+// Star (hidden-dir) steps aren't point-writable on a beach, so callers gate
+// them out before here.
+function valueAtPath(block, path) {
+  let node = block;
+  for (const step of path) {
+    if (!isObj(node) || !(step.digit in node)) return undefined;
+    node = node[step.digit];
+  }
+  return node;
+}
+
+// Is the current selection something we can push? (a normal-spine rung of the
+// current block). Returns { ok, reason }.
+function pushPrecheck() {
+  if (!state.currentId || !currentBlock()) return { ok: false, reason: 'no block selected' };
+  if (!state.path.length) return { ok: false, reason: 'select a rung first (click a cell)' };
+  if (state.path.some(p => p.via === 'star')) return { ok: false, reason: 'hidden (star) rungs are not point-writable on a beach' };
+  return { ok: true };
+}
+
+function setPushStatus(msg, kind) {
+  const el = document.getElementById('push-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'push-status' + (kind ? ' ' + kind : '');
+}
+
+function closePushModal() {
+  document.getElementById('push-modal')?.classList.remove('open');
+}
+
+function openPushModal() {
+  const block = currentBlock();
+  const check = pushPrecheck();
+  if (!check.ok || !block) return;
+
+  const fl = floorDepth(block);
+  const spindle = toPscaleAddr(pathToRawAddr(state.path), fl);
+  const content = valueAtPath(block, state.path);
+  if (content === undefined) return;
+  const isLeaf = typeof content === 'string';
+
+  let overlay = document.getElementById('push-modal');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'push-modal';
+    overlay.innerHTML = `
+      <div class="push-box">
+        <header><span class="push-title">Push rung to beach · write</span>
+          <button id="push-close" title="Close (Esc)">close</button>
+        </header>
+        <div class="push-body">
+          <label class="push-field"><span>beach</span>
+            <input id="push-beach" type="text" spellcheck="false" placeholder="beach.happyseaurchin.com"></label>
+          <div class="push-row"><span class="push-k">block</span><span id="push-block" class="push-v"></span></div>
+          <div class="push-row"><span class="push-k">rung</span><span id="push-addr" class="push-v"></span></div>
+          <div class="push-row"><span class="push-k">content</span><span id="push-content" class="push-v"></span></div>
+          <label class="push-field"><span>passphrase</span>
+            <input id="push-secret" type="password" spellcheck="false" placeholder="only if this rung is locked"></label>
+          <div class="push-status" id="push-status"></div>
+          <div class="push-actions"><button id="push-go">push &#8593;</button></div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closePushModal(); });
+    overlay.querySelector('#push-close').addEventListener('click', closePushModal);
+    overlay.querySelector('#push-go').addEventListener('click', doPush);
+    overlay.querySelector('#push-secret').addEventListener('keydown', (e) => { if (e.key === 'Enter') doPush(); });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && overlay.classList.contains('open')) closePushModal();
+    });
+  }
+
+  const defaultBeach = state.beachOrigins.get(state.currentId) || localStorage.getItem(LS_BEACH) || '';
+  overlay.querySelector('#push-beach').value = defaultBeach;
+  overlay.querySelector('#push-block').textContent = state.currentId;
+  overlay.querySelector('#push-addr').textContent = '@' + spindle;
+  const contentEl = overlay.querySelector('#push-content');
+  contentEl.textContent = isLeaf
+    ? (content.length > 90 ? content.slice(0, 90) + '…' : content)
+    : `branch — ${digitKeys(content).length} child rung(s); pushes the whole subtree`;
+  contentEl.className = 'push-v' + (isLeaf ? '' : ' branch');
+  const norm = normalizeBeachUrl(defaultBeach);
+  overlay.querySelector('#push-secret').value = (norm && beachSecrets.get(secretKey(norm, state.currentId))) || '';
+  setPushStatus(
+    isLeaf ? '' : 'Branch rung — pushing replaces its whole subtree on the beach.',
+    isLeaf ? '' : 'warn'
+  );
+  overlay.classList.add('open');
+  overlay.querySelector('#push-beach').focus();
+}
+
+async function doPush() {
+  const block = currentBlock();
+  const check = pushPrecheck();
+  if (!check.ok || !block) { setPushStatus(check.reason || 'cannot push', 'error'); return; }
+
+  const beachUrl = normalizeBeachUrl(document.getElementById('push-beach').value);
+  if (!beachUrl) { setPushStatus('Enter a valid beach host (https, or http://localhost).', 'error'); return; }
+
+  const fl = floorDepth(block);
+  const spindle = toPscaleAddr(pathToRawAddr(state.path), fl);
+  const content = valueAtPath(block, state.path);
+  if (content === undefined) { setPushStatus('Nothing at that rung to push.', 'error'); return; }
+  const secret = document.getElementById('push-secret').value;
+
+  const body = { spindle, content };
+  if (secret) body.secret = secret;
+
+  setPushStatus('Pushing…', '');
+  try {
+    const u = new URL(beachUrl);
+    u.searchParams.set('block', state.currentId);
+    const r = await fetch(u, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => null);
+    if (r.ok && data && data.ok) {
+      if (secret) beachSecrets.set(secretKey(beachUrl, state.currentId), secret);
+      state.beachOrigins.set(state.currentId, beachUrl);
+      saveLocal();
+      setPushStatus(`Pushed @${spindle} ✓`, 'ok');
+      return;
+    }
+    if (r.status === 403) {
+      setPushStatus(`Locked — ${data?.error || 'passphrase required or does not match'}.`, 'error');
+      return;
+    }
+    setPushStatus(`Beach rejected it: ${data?.error || ('HTTP ' + r.status)}`, 'error');
+  } catch (e) {
+    setPushStatus(`Could not reach beach: ${e.message}`, 'error');
+  }
+}
+
 // ──── Theme ──────────────────────────────────────────────────
 
 function setTheme(theme) {
@@ -1113,6 +1465,7 @@ function wireStaticUI() {
 
   document.getElementById('btn-new').addEventListener('click', newFile);
   document.getElementById('btn-save').addEventListener('click', saveFile);
+  document.getElementById('btn-beach').addEventListener('click', openBeachModal);
   document.getElementById('btn-new-block').addEventListener('click', newBlock);
   document.getElementById('btn-zero-form').addEventListener('click', () => {
     state.zeroForm = !state.zeroForm;
