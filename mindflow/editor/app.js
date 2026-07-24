@@ -1067,6 +1067,9 @@ async function loadSamples() {
 
 const beachState = { url: null, blocks: [] };  // the connected beach + its index
 
+// The beach the loader defaults to when nothing else is remembered.
+const DEFAULT_BEACH = 'beach.happyseaurchin.com';
+
 // Accept a bare host, an origin, or a full .well-known URL; return the
 // canonical pscale-beach URL. Production beaches are https; http is allowed
 // only for localhost so the offline local-beach rig can be pointed at.
@@ -1104,6 +1107,52 @@ async function fetchBeachBlock(beachUrl, name) {
   return state.zeroForm ? zeroToUnderscore(data) : data;
 }
 
+// Federation discovery: a beach's `lighthouse` block curates neighbouring
+// beaches (position 6 by convention) and its `worlds` block lists sub-beaches
+// (`<name> → <host>`; `/w/…` path-routed worlds are skipped — not a plain host).
+// Best-effort: any block that's missing just yields fewer neighbours. Returns
+// [{ label, host, url }] deduped by origin, excluding the beach itself.
+async function discoverBeaches(beachUrl) {
+  const found = new Map();  // origin -> { label, host, url }
+  let selfOrigin = null;
+  try { selfOrigin = new URL(beachUrl).origin; } catch (_) {}
+  const add = (hostish, label) => {
+    const cleaned = String(hostish || '').replace(/[).,;]+$/, '');  // trim trailing sentence punctuation
+    const url = normalizeBeachUrl(cleaned);
+    if (!url) return;
+    let origin, host;
+    try { const u = new URL(url); origin = u.origin; host = u.host; } catch { return; }
+    if (origin === selfOrigin) return;
+    if (!found.has(origin)) found.set(origin, { label: label || host, host, url });
+  };
+  const [lh, worlds] = await Promise.all([
+    fetchBeachBlock(beachUrl, 'lighthouse').catch(() => null),
+    fetchBeachBlock(beachUrl, 'worlds').catch(() => null),
+  ]);
+  if (lh) {
+    for (const m of JSON.stringify(lh).match(/https?:\/\/[a-zA-Z0-9.-]+(?::\d+)?/g) || []) add(m);
+  }
+  if (worlds) {
+    for (const v of Object.values(worlds)) {
+      if (typeof v !== 'string' || !v.includes('→')) continue;
+      const [name, route] = v.split('→').map(s => s.trim());
+      if (!route || route.startsWith('/')) continue;  // /w/ jungle worlds aren't host-addressable here
+      add(route, name);
+    }
+  }
+  return [...found.values()];
+}
+
+function renderBeachChips(neighbours) {
+  const el = document.getElementById('beach-chips');
+  if (!el) return;
+  if (!neighbours || !neighbours.length) { el.innerHTML = ''; return; }
+  el.innerHTML = `<span class="beach-chips-label">other beaches</span>`
+    + neighbours.map(n =>
+        `<span class="beach-chip" data-beach="${esc(n.host)}" title="${esc(n.url)}">${esc(n.label)}</span>`
+      ).join('');
+}
+
 function setBeachStatus(msg, kind) {
   const el = document.getElementById('beach-status');
   if (!el) return;
@@ -1111,26 +1160,36 @@ function setBeachStatus(msg, kind) {
   el.className = 'beach-status' + (kind ? ' ' + kind : '');
 }
 
-function renderBeachList(blocks) {
+function renderBeachList(blocks, filter) {
   const listEl = document.getElementById('beach-list');
   if (!listEl) return;
-  const rows = blocks.map(name => {
+  if (!blocks || !blocks.length) { listEl.innerHTML = ''; return; }
+  const f = (filter || '').trim().toLowerCase();
+  const shown = f ? blocks.filter(n => n.toLowerCase().includes(f)) : blocks;
+  if (!shown.length) { listEl.innerHTML = `<div class="beach-empty">no blocks match "${esc(f)}"</div>`; return; }
+  const rows = shown.map(name => {
     const have = state.shelf.has(name);
     return `<div class="beach-row">
       <span class="beach-name">${esc(name)}${have ? '<span class="beach-have" title="Already on the shelf — loading overwrites it">on shelf</span>' : ''}</span>
       <button class="beach-load" data-load="${esc(name)}">${have ? 'reload' : 'load'}</button>
     </div>`;
   }).join('');
-  const allRow = blocks.length > 1
-    ? `<div class="beach-row beach-row-all"><span class="beach-name muted">all ${blocks.length} blocks</span><button class="beach-load" data-load-all="1">load all</button></div>`
+  // "load all" only when the shown set is small enough to be a sane bulk pull.
+  const allRow = (shown.length >= 2 && shown.length <= 25)
+    ? `<div class="beach-row beach-row-all"><span class="beach-name muted">${f ? `all ${shown.length} shown` : `all ${shown.length} blocks`}</span><button class="beach-load" data-load-all="1">load all</button></div>`
     : '';
   listEl.innerHTML = rows + allRow;
 }
 
+// Current filter text (empty string if no filter box).
+const beachFilterValue = () => (document.getElementById('beach-filter')?.value || '');
+
 async function beachConnect(rawInput) {
   const beachUrl = normalizeBeachUrl(rawInput);
   const listEl = document.getElementById('beach-list');
+  const filterEl = document.getElementById('beach-filter');
   if (listEl) listEl.innerHTML = '';
+  if (filterEl) { filterEl.hidden = true; filterEl.value = ''; }
   if (!beachUrl) { setBeachStatus('Enter a beach host or https:// URL.', 'error'); return; }
   let host = beachUrl;
   try { host = new URL(beachUrl).hostname; } catch (_) {}
@@ -1140,9 +1199,14 @@ async function beachConnect(rawInput) {
     beachState.url = beachUrl;
     beachState.blocks = blocks;
     localStorage.setItem(LS_BEACH, beachUrl);
-    if (!blocks.length) { setBeachStatus(`No named blocks at ${origin}.`, ''); return; }
-    setBeachStatus(`${blocks.length} block${blocks.length === 1 ? '' : 's'} at ${origin}`, 'ok');
-    renderBeachList(blocks);
+    if (!blocks.length) setBeachStatus(`No named blocks at ${origin}.`, '');
+    else {
+      setBeachStatus(`${blocks.length} block${blocks.length === 1 ? '' : 's'} at ${origin}`, 'ok');
+      if (filterEl && blocks.length > 12) filterEl.hidden = false;
+      renderBeachList(blocks);
+    }
+    // Federation discovery runs in the background — chips appear when ready.
+    discoverBeaches(beachUrl).then(renderBeachChips).catch(() => {});
   } catch (e) {
     setBeachStatus(`Could not reach beach: ${e.message}`, 'error');
   }
@@ -1156,16 +1220,30 @@ async function beachLoadBlock(name) {
     state.shelf.set(name, block);
     state.beachOrigins.set(name, beachState.url);   // remember where it came from
     selectBlock(name);                     // sets currentId + refresh()
-    renderBeachList(beachState.blocks);    // update "on shelf" markers
+    renderBeachList(beachState.blocks, beachFilterValue());   // update "on shelf" markers
     setBeachStatus(`Loaded ${name} ✓`, 'ok');
   } catch (e) {
     setBeachStatus(`Failed to load ${name}: ${e.message}`, 'error');
   }
 }
 
+// Load a specific block by name from the beach field — no need to connect and
+// scroll the index first. Targets whatever host is in the beach field.
+async function beachLoadNamed() {
+  const beachUrl = normalizeBeachUrl(document.getElementById('beach-url')?.value);
+  if (!beachUrl) { setBeachStatus('Enter a beach host first.', 'error'); return; }
+  const name = (document.getElementById('beach-block')?.value || '').trim();
+  if (!name) { setBeachStatus('Type a block name to load — or use connect to list them.', 'error'); return; }
+  beachState.url = beachUrl;
+  localStorage.setItem(LS_BEACH, beachUrl);
+  await beachLoadBlock(name);
+}
+
 async function beachLoadAll() {
   if (!beachState.url || !beachState.blocks.length) return;
-  const names = beachState.blocks.slice();
+  const f = beachFilterValue().trim().toLowerCase();
+  const names = (f ? beachState.blocks.filter(n => n.toLowerCase().includes(f)) : beachState.blocks).slice();
+  if (!names.length) return;
   setBeachStatus(`Loading ${names.length} blocks…`, '');
   const results = await Promise.allSettled(names.map(n => fetchBeachBlock(beachState.url, n)));
   const failed = [];
@@ -1182,7 +1260,7 @@ async function beachLoadAll() {
   const ok = names.length - failed.length;
   if (firstLoaded && !state.currentId) selectBlock(firstLoaded);
   else refresh();
-  renderBeachList(beachState.blocks);
+  renderBeachList(beachState.blocks, beachFilterValue());
   setBeachStatus(
     failed.length ? `Loaded ${ok}; failed: ${failed.join(', ')}` : `Loaded all ${ok} ✓`,
     failed.length ? 'error' : 'ok'
@@ -1202,10 +1280,17 @@ function openBeachModal() {
         <div class="beach-body">
           <div class="beach-connect">
             <input id="beach-url" type="text" spellcheck="false"
-              placeholder="beach.happyseaurchin.com  ·  or a full .well-known URL">
-            <button id="beach-connect-btn">connect</button>
+              placeholder="beach host — e.g. beach.happyseaurchin.com">
+            <button id="beach-connect-btn" title="List every block on this beach">connect</button>
+          </div>
+          <div class="beach-connect">
+            <input id="beach-block" type="text" spellcheck="false"
+              placeholder="block name (optional) — e.g. lighthouse, spatial:urb">
+            <button id="beach-load-one" title="Load this one block directly">load</button>
           </div>
           <div class="beach-status" id="beach-status"></div>
+          <div class="beach-chips" id="beach-chips"></div>
+          <input id="beach-filter" class="beach-filter" type="text" spellcheck="false" placeholder="filter blocks…" hidden>
           <div class="beach-list" id="beach-list"></div>
         </div>
       </div>`;
@@ -1213,8 +1298,22 @@ function openBeachModal() {
     overlay.addEventListener('click', (e) => { if (e.target === overlay) closeBeachModal(); });
     overlay.querySelector('#beach-close').addEventListener('click', closeBeachModal);
     const urlInput = overlay.querySelector('#beach-url');
+    const blockInput = overlay.querySelector('#beach-block');
     overlay.querySelector('#beach-connect-btn').addEventListener('click', () => beachConnect(urlInput.value));
     urlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') beachConnect(urlInput.value); });
+    overlay.querySelector('#beach-load-one').addEventListener('click', beachLoadNamed);
+    blockInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') beachLoadNamed(); });
+    // Neighbour-beach chips: switch the field and reconnect.
+    overlay.querySelector('#beach-chips').addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-beach]');
+      if (!chip) return;
+      urlInput.value = chip.dataset.beach;
+      beachConnect(chip.dataset.beach);
+    });
+    // Live filter over the (possibly large) block index.
+    overlay.querySelector('#beach-filter').addEventListener('input', (e) => {
+      renderBeachList(beachState.blocks, e.target.value);
+    });
     overlay.querySelector('#beach-list').addEventListener('click', (e) => {
       const all = e.target.closest('[data-load-all]');
       if (all) { beachLoadAll(); return; }
@@ -1225,12 +1324,21 @@ function openBeachModal() {
       if (e.key === 'Escape' && overlay.classList.contains('open')) closeBeachModal();
     });
   }
-  overlay.querySelector('#beach-url').value = localStorage.getItem(LS_BEACH) || '';
-  setBeachStatus('', '');
+  // Default to the last beach used, else the house beach — and connect straight
+  // away so the modal opens already showing blocks + neighbour beaches.
+  let prefill = DEFAULT_BEACH;
+  const last = localStorage.getItem(LS_BEACH);
+  if (last) { try { prefill = new URL(last).origin; } catch { prefill = last; } }
+  overlay.querySelector('#beach-url').value = prefill;
+  overlay.querySelector('#beach-block').value = '';
+  overlay.querySelector('#beach-chips').innerHTML = '';
   overlay.querySelector('#beach-list').innerHTML = '';
+  const filterEl = overlay.querySelector('#beach-filter');
+  filterEl.value = ''; filterEl.hidden = true;
+  setBeachStatus('', '');
   overlay.classList.add('open');
-  overlay.querySelector('#beach-url').focus();
-  overlay.querySelector('#beach-url').select();
+  overlay.querySelector('#beach-block').focus();
+  beachConnect(prefill);
 }
 
 function closeBeachModal() {
