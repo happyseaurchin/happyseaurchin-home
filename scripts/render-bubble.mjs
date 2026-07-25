@@ -4,16 +4,19 @@
 //
 // Deliberately dependency-free: the beach is plain CORS HTTP, so this needs NO
 // bsp-mcp, NO MCP client, and NO xstream. The ONLY external dependency is an
-// image API — your key, your spend — isolated in generateImage() below so you
-// can swap OpenAI for Replicate / fal / Google / Stability in ~10 lines.
+// image API — your key, your spend — isolated in generateImage() below.
 //
 //   Node 18+ (uses global fetch).
 //
-//   OPENAI_API_KEY=sk-... node scripts/render-bubble.mjs               # renders bubble:gal-1
-//   OPENAI_API_KEY=sk-... node scripts/render-bubble.mjs bubble:gal-1  # explicit scene
+//   # Gemini ("nano banana" = gemini-2.5-flash-image) — the default:
+//   GEMINI_API_KEY=... node scripts/render-bubble.mjs bubble:gal-1
+//
+//   # or OpenAI, if you set OPENAI_API_KEY instead:
+//   OPENAI_API_KEY=sk-... node scripts/render-bubble.mjs bubble:gal-1
 //
 // Env:  BEACH (default https://beach.happyseaurchin.com), STYLE (default style:gal),
-//       GALLERY (default gallery:gal), AGENT (default "observer").
+//       GALLERY (default gallery:gal), AGENT (default "observer"),
+//       GEMINI_MODEL (default gemini-2.5-flash-image).
 
 const BEACH   = process.env.BEACH   || 'https://beach.happyseaurchin.com';
 const SCENE   = process.argv[2]     || process.env.SCENE   || 'bubble:gal-1';
@@ -53,23 +56,44 @@ function composePrompt(faces, look) {
   ].join(' ');
 }
 
-// ── generate: THE ONE EXTERNAL CALL. Swap this whole function for any provider. ──
-// Returns an <img src> value: a data-URI (durable) or a hosted URL (may expire).
+// ── generate: THE ONE EXTERNAL CALL. Returns an <img src> value: a data-URI. ──
+// Gemini first (GEMINI_API_KEY), else OpenAI (OPENAI_API_KEY). Swap freely.
 async function generateImage(prompt) {
-  const key = process.env.OPENAI_API_KEY || process.env.IMAGE_API_KEY;
-  if (!key) throw new Error('set OPENAI_API_KEY (or edit generateImage for another provider)');
-  // NB: model names/params change — confirm the current one at your provider's docs.
-  const r = await fetch('https://api.openai.com/v1/images/generations', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-    body: JSON.stringify({ model: 'gpt-image-1', prompt, size: '1536x1024', n: 1 }),
-  });
-  const d = await r.json();
-  if (!r.ok) throw new Error(`image API HTTP ${r.status}: ${JSON.stringify(d).slice(0, 300)}`);
-  const item = d.data && d.data[0];
-  if (item && item.b64_json) return `data:image/png;base64,${item.b64_json}`;
-  if (item && item.url) return item.url; // some models/params return a (possibly expiring) URL
-  throw new Error('image API returned neither b64_json nor url');
+  const gkey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  if (gkey) {
+    // "nano banana". If Google has moved the model/shape, the thrown response
+    // below shows exactly what came back — paste it and it's a one-line fix.
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash-image';
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': gkey },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(`Gemini HTTP ${r.status}: ${JSON.stringify(d).slice(0, 500)}`);
+    const parts = (d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts) || [];
+    const part = parts.find((p) => (p.inlineData && p.inlineData.data) || (p.inline_data && p.inline_data.data));
+    const inline = part && (part.inlineData || part.inline_data);
+    if (inline && inline.data) return `data:${inline.mimeType || inline.mime_type || 'image/png'};base64,${inline.data}`;
+    throw new Error(`Gemini returned no image part. Response: ${JSON.stringify(d).slice(0, 500)}`);
+  }
+
+  const okey = process.env.OPENAI_API_KEY || process.env.IMAGE_API_KEY;
+  if (okey) {
+    const r = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${okey}` },
+      body: JSON.stringify({ model: 'gpt-image-1', prompt, size: '1536x1024', n: 1 }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(`OpenAI HTTP ${r.status}: ${JSON.stringify(d).slice(0, 500)}`);
+    const item = d.data && d.data[0];
+    if (item && item.b64_json) return `data:image/png;base64,${item.b64_json}`;
+    if (item && item.url) return item.url;
+    throw new Error('OpenAI returned neither b64_json nor url');
+  }
+
+  throw new Error('set GEMINI_API_KEY (nano banana) or OPENAI_API_KEY');
 }
 
 // ── write: append the entry (raw POST — the beach stamps field 3 = timestamp) ──
