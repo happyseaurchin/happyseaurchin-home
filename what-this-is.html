@@ -131,6 +131,12 @@
   .reading__who{font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;color:var(--gold);margin-bottom:7px}
   .reading__body{font-size:1rem;line-height:1.58;color:var(--dim);white-space:pre-wrap}
 
+  .edge{position:relative;margin:12px 0 0;padding:14px 18px 14px 20px;background:var(--cardon);border:1px solid var(--line2);border-radius:3px}
+  .edge::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent-deep)}
+  .edge__who{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--accent);margin-bottom:7px}
+  .edge__body{font-size:1rem;line-height:1.58;color:var(--dim)}
+  .edge__more{font-family:var(--mono);font-size:11px;letter-spacing:.04em;display:inline-block;margin-top:8px}
+
   .answer{margin-top:18px}
   .answer__open{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dimmer);background:none;border:none;padding:0;cursor:pointer;border-bottom:1px dashed var(--line2)}
   .answer__open:hover{color:var(--accent);border-color:var(--accent)}
@@ -242,8 +248,9 @@
       <li>Over 40% of agentic AI projects cancelled by end of 2027 — <a href="https://www.gartner.com/en/newsroom/press-releases/2025-06-25-gartner-predicts-over-40-percent-of-agentic-ai-projects-will-be-canceled-by-end-of-2027" target="_blank" rel="noopener">Gartner</a>, 25 June 2025.</li>
     </ul>
     <div class="exits">
+      <a href="/minimal">The case, in full</a>
+      <a href="/edge">The widening edge</a>
       <a href="/experiences">Find your way in</a>
-      <a href="https://xstream.onen.ai" target="_blank" rel="noopener">The live surface</a>
       <a href="/venture">The open invitation</a>
       <a href="/render?beach=https://beach.happyseaurchin.com&amp;block=situating-pscale">See the raw block</a>
     </div>
@@ -342,6 +349,32 @@
       .then(function(l){mirrors=l.filter(Boolean);})
       .catch(function(){mirrors=[];});
   }
+
+  // The widening edge holds observations that have not settled into this block
+  // yet. Each names the address it speaks to, so a note made once lands both
+  // there and at the rung it belongs to here. When one earns it, its words move
+  // into this block at that address and the edge keeps only what is unsettled.
+  var edges=[];
+  function loadEdge(){
+    return fetch(BEACH+'/.well-known/pscale-beach?block=edge',{cache:'no-store',headers:{Accept:'application/json'}})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(b){
+        var out=[];
+        (function walk(nd){
+          if(!nd||typeof nd!=='object')return;
+          Object.keys(nd).filter(function(k){return /^[1-9][0-9]*$/.test(k);})
+            .sort(function(x,y){return x.length-y.length||(+x)-(+y);})
+            .forEach(function(k){
+              var c=nd[k];
+              if(c&&typeof c==='object'&&typeof c._==='string'&&typeof c['3']==='string') out.push(c);
+              else if(c&&typeof c==='object') walk(c);
+            });
+        })(b||{});
+        edges=out;
+      })
+      .catch(function(){edges=[];});
+  }
+  function edgeAt(a){return edges.filter(function(e){return e['2']===a;});}
 
   function readingsAt(a){
     var out=[];
@@ -449,21 +482,39 @@
         h+='<div class="reading"><div class="reading__who">'+esc(x.who)+' · answering here</div>'
           +'<div class="reading__body">'+esc(x.text)+'</div></div>';
       });
+      edgeAt(u.addr).forEach(function(e){
+        h+='<div class="edge"><div class="edge__who">from the widening edge · '+esc(e['4']||'open')+'</div>'
+          +'<div class="edge__body">'+esc(headline(String(e._).trim()).head)+'</div>'
+          +'<a class="edge__more" href="/edge">read it in full →</a></div>';
+      });
       h+=answerHTML(u.addr)+'</div>';
     }
     document.getElementById('column').innerHTML=h;
     wireAnswers();
   }
 
+  // #5.11 addresses a rung directly, so the edge can link at what it answers.
+  function hashAddr(){var m=/^#([1-9](?:\.1+)?)$/.exec(location.hash||'');return m?m[1]:null;}
+  function selFromAddr(a){
+    var g=digitsOf(a), di=-1;
+    for(var i=0;i<DOORS.length;i++) if(DOORS[i].d===g[0]) di=i;
+    if(di<0) return null;
+    return {d:di, r:Math.min(REGS.length-1,g.length-1)};
+  }
+  function stampHash(){
+    if(!DOORS.length||!history.replaceState) return;
+    try{history.replaceState(null,'','#'+addr(descent(DOORS[sel.d].d,sel.r)));}catch(e){}
+  }
+
   function focus(i,scroll){
     i=(i+DOORS.length)%DOORS.length;
     if(i===sel.d && scroll!==true) return;
-    sel.d=i; markDisc(); renderColumn();
+    sel.d=i; markDisc(); renderColumn(); stampHash();
     if(scroll) centre(i);
   }
   function setDepth(r){
     sel.r=Math.max(0,Math.min(REGS.length-1,r));
-    renderDepth(); renderColumn();
+    renderDepth(); renderColumn(); stampHash();
   }
 
   // ── answering ─────────────────────────────────────────────────────────
@@ -591,11 +642,14 @@
     .then(function(b){
       root=b; DOORS=readDoors(root);
       if(!DOORS.length)throw new Error('nothing to show');
-      return loadMirrors();
+      return Promise.all([loadMirrors(),loadEdge()]);
     })
     .then(function(){
+      var want=hashAddr(), from=want&&selFromAddr(want);
+      if(from){sel.d=from.d;sel.r=from.r;}
       renderDisc(); renderDepth(); renderColumn(); wireControls();
       centre(sel.d,false);
+      if(from) document.getElementById('down').scrollIntoView({block:'start'});
       var n=mirrors.length;
       document.getElementById('footlive').textContent=
         'reading live · '+n+(mirrorTotal>n?' of '+mirrorTotal:'')+' '+(n===1?'reading':'readings')+' laid against it';
