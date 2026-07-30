@@ -146,13 +146,34 @@ function renderNode(node, addr, depth){
   let html = '';
   if (typeof node._ === 'string' && node._.trim()) html += `<p class="prose">${esc(node._)}</p>`;
   for (const k of digitKeys(node)){
-    const childAddr = addr ? addr + '.' + k : k;
+    const childAddr = addr ? addr + ',' + k : k;   /* comma is the walk notation — one decimal per ADDRESS, never dots between steps */
     html += `<section class="node d${Math.min(depth+1,3)}"><div class="addr" title="address on the beach">${esc(childAddr)}</div>${renderNode(node[k], childAddr, depth+1)}</section>`;
   }
   return html;
 }
 
 const KIND = (name) => { const i = name.indexOf(':'); return i>0 ? name.slice(0,i+1) : ''; };
+
+/* ── URL aperture: ?spindle=<digits>&att=<pscale> make the URL a bsp() read ── */
+function floorOfB(b){ let n=0,x=b; while(x && typeof x==='object' && ('_' in x)){ x=x['_']; n++; } return n; }
+function voiceOfB(n){ let x=n; while(x && typeof x==='object'){ if(!('_' in x)) return null; x=x['_']; } return typeof x==='string'?x:null; }
+function walkTo(b, s){
+  let node = b;
+  for (const c of s.replace(/0+$/,'')){            /* trailing zeros are floor padding */
+    if (!node || typeof node !== 'object') return undefined;
+    node = node[c === '0' ? '_' : c];              /* an inner zero walks the underscore step */
+  }
+  return node;
+}
+/* keep `levels` digit-layers below the node; underscores ride free (same position) */
+function pruneView(node, levels){
+  if (node === null || node === undefined || typeof node !== 'object') return node;
+  if (levels <= 0){ const v = voiceOfB(node); return v === null ? '…' : v + '  …'; }
+  const out = {};
+  if ('_' in node) out['_'] = node['_'];
+  for (const k of Object.keys(node)) if (/^[1-9]$/.test(k)) out[k] = pruneView(node[k], levels - 1);
+  return out;
+}
 
 function renderIndex(j, beach){
   const blocks = (j.blocks||[]).slice().sort();
@@ -189,8 +210,27 @@ async function load(){
     main.innerHTML = crumb + renderIndex(j, beachHost);
     wireFilter();
   } else if (j && typeof j==='object' && (digitKeys(j).length || typeof j._==='string')){
-    const appendable = block === 'marks' || block.startsWith('pool:');
-    main.innerHTML = crumb + (appendable ? composeHTML(beachHost, block) : '') + `<div class="root">${renderNode(j, '', 0)}</div>`;
+    const spindle = (p.get('spindle') || '').trim();
+    const attRaw = (p.get('att') || '').trim();
+    let view = j, crumb2 = crumb, baseAddr = '';
+    if (spindle){
+      if (!/^\d+$/.test(spindle)){ main.innerHTML = crumb + `<div class="msg">A spindle is digits only — <b>${esc(spindle)}</b> is not one (commas and dots are notation, not wire form).</div>`; return; }
+      const target = walkTo(j, spindle);
+      if (target === undefined){ main.innerHTML = crumb + `<div class="msg">Nothing at spindle <b>${esc(spindle)}</b> in ${esc(block)}.</div>`; return; }
+      view = target;
+      baseAddr = spindle.replace(/0+$/,'').split('').filter(c => c !== '0').join(',');
+      crumb2 = crumb + ` &nbsp;›&nbsp; <b>${esc(spindle)}</b>` +
+        (attRaw ? ` <span style="opacity:.6">@ pscale ${esc(attRaw)}</span>` : '') +
+        ` &nbsp;·&nbsp; <a data-nav href="?beach=${encodeURIComponent(beachHost)}&block=${encodeURIComponent(block)}">whole block</a>`;
+      if (attRaw && /^-?\d+$/.test(attRaw) && view && typeof view === 'object'){
+        const fl = floorOfB(j);
+        const consumed = spindle.replace(/0+$/,'').split('').filter(c => c !== '0').length;
+        const levels = (fl - consumed) - parseInt(attRaw, 10);   /* absolute pscale → depth budget */
+        view = pruneView(view, Math.max(0, levels));
+      }
+    }
+    const appendable = !spindle && (block === 'marks' || block.startsWith('pool:'));
+    main.innerHTML = crumb2 + (appendable ? composeHTML(beachHost, block) : '') + `<div class="root">${renderNode(view, baseAddr, 0)}</div>`;
     if (appendable) wireCompose(beachHost, block);
   } else {
     main.innerHTML = crumb + `<div class="msg">Nothing at <b>${esc(block)}</b> on this beach yet — an empty position is honest absence, not an error.</div>`;

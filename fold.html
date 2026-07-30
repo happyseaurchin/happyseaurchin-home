@@ -69,6 +69,7 @@
   .mverb.rated{color:var(--abyss);background:var(--solid)}
   .mverb.up{color:var(--abyss);background:var(--liquid)}
   .mverb.down{color:var(--foam);background:rgba(130,160,168,0.35)}
+  .mverb.reply{color:var(--abyss);background:var(--liquid)}
   .mverb.done{color:var(--abyss);background:var(--solid)}
   .mverb.doing{color:var(--solid);border:1px solid var(--solid);background:none}
   .mverb.drop{color:var(--vapour-dim);border:1px solid var(--line-strong);background:none}
@@ -171,6 +172,7 @@ function verbOf(t){
   const s = t.trim();
   let m;
   if ((m = s.match(/^rated\s+(\d{1,2})/i))) return { verb:'rated', value:+m[1] };
+  if (/^replied\b/i.test(s)) return { verb:'reply' };
   if (/^up\b/i.test(s)) return { verb:'up' };
   if (/^down\b/i.test(s)) return { verb:'down' };
   if (/^done\b/i.test(s)) return { verb:'done' };
@@ -246,7 +248,7 @@ async function load(){
       const digits = [s, l];
       const rows = [];
       const ratings = [];
-      let ups = 0, downs = 0, settled = false;
+      let ups = 0, downs = 0, replies = 0, settled = false;
       for (const who of Object.keys(mirrors).sort()){
         const entry = nodeAt(mirrors[who], digits);
         for (const t of textsOf(entry)){
@@ -256,9 +258,11 @@ async function load(){
           if (v.verb === 'rated') ratings.push(v.value);
           if (v.verb === 'up') ups++;
           if (v.verb === 'down') downs++;
+          if (v.verb === 'reply') replies++;
           if (v.verb === 'done' || v.verb === 'drop') settled = true;
           const label = v.verb === 'rated' ? 'rated ' + v.value
             : v.verb === 'up' ? '👍 up' : v.verb === 'down' ? '👎 down'
+            : v.verb === 'reply' ? '✎ replied'
             : v.verb;
           const why = whyOf(t);
           rows.push('<div class="mrow"><span class="mwho">' + esc(who) + '</span><span class="mverb ' + v.verb + '">' + esc(label) + '</span><span class="mwhy">' + esc(why) + '</span></div>');
@@ -270,6 +274,8 @@ async function load(){
         agg = 'avg ' + (Math.round(avg * 10) / 10) + ' · ' + ratings.length + ' answered';
       } else if (ups || downs){
         agg = '👍 ' + ups + ' · 👎 ' + downs;
+      } else if (replies){
+        agg = replies + ' replied';
       }
       out.push('<div class="fcard' + (settled ? ' settled' : '') + (rows.length ? '' : ' quiet') + '">' +
         '<div class="fcard__row"><span class="fcard__no">' + s + '·' + l + '</span>' +
