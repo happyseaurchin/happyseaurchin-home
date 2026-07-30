@@ -54,6 +54,9 @@
   .ask__row input{flex:1;min-width:0;background:rgba(6,23,30,0.55);border:1px solid var(--line-strong);border-radius:4px;padding:13px 15px;color:var(--foam);font-family:var(--mono);font-size:14px}
   .ask__row button{flex:none;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;color:var(--abyss);background:var(--liquid);border:none;border-radius:4px;padding:13px 22px;cursor:pointer}
   .ask__row button:hover{background:var(--foam)}
+  .ask__hint{font-family:var(--mono);font-size:11px;letter-spacing:0.03em;color:var(--vapour-dim);max-width:46ch;margin:12px 0 0;line-height:1.6}
+
+  .gatebar{max-width:640px;margin:0 auto;padding:8px 18px;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;color:var(--solid);text-align:center;border-bottom:1px solid rgba(231,178,76,0.25)}
 
   /* ── stage ── */
   .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 18px 10px;position:relative;min-height:0}
@@ -196,6 +199,10 @@
     <input id="ask-handle" type="text" placeholder="your handle" autocapitalize="none" autocomplete="off" spellcheck="false">
     <button id="ask-go">Flick</button>
   </div>
+  <div class="ask__row" style="margin-top:10px">
+    <input id="ask-latch" type="password" placeholder="your edit-latch (optional — claims your mirror)" autocomplete="off">
+  </div>
+  <p class="ask__hint">The latch is a wiki-style edit token, not an account: it proves same-authorship on your own public mirror. Your first mark with a latch locks the mirror to you; a link alone is never authority.</p>
 </div>
 
 <!-- main -->
@@ -209,6 +216,7 @@
     <button id="btn-latch" title="edit-latch">⚿</button>
     <button id="btn-refresh" title="refresh the field">↻</button>
   </div>
+  <div id="gatebar" class="gatebar hidden"></div>
 
   <div class="stage">
     <div class="deckwrap" id="deckwrap">
@@ -359,7 +367,7 @@ const isDone     = s => /^done\b/i.test(s.trim());
 const isDrop     = s => /^drop\b/i.test(s.trim());
 const isDoing    = s => /^doing\b/i.test(s.trim());
 const isProposed = s => /^proposed\b/i.test(s.trim());
-const isResponse = s => /^(rated|up|down)\b/i.test(s.trim());
+const isResponse = s => /^(rated|up|down|replied)\b/i.test(s.trim());
 const deferUntil = s => { const m = s.trim().match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i); return m ? m[1] : null; };
 
 function spindleFor(digits, floor){
@@ -403,13 +411,14 @@ function fmtElapsed(ms){
 
 /* ── operator ── */
 function parseOperator(spine){
-  const op = { mode:'doing', respond:'rate', disarm:'field' };
+  const op = { mode:'doing', respond:'rate', disarm:'field', access:'open', member:true };
   const node = spine['9'];
   if (node) for (const t of textsOf(node, [], 1)){
     let m;
     if ((m = t.match(/^mode:\s*(doing|respond)/i))) op.mode = m[1].toLowerCase();
-    else if ((m = t.match(/^respond:\s*(rate|thumbs)/i))) op.respond = m[1].toLowerCase();
+    else if ((m = t.match(/^respond:\s*(rate|thumbs|reply)/i))) op.respond = m[1].toLowerCase();
     else if ((m = t.match(/^disarm:\s*(field|person)/i))) op.disarm = m[1].toLowerCase();
+    else if ((m = t.match(/^access:\s*(open|latched|sed:[a-z0-9-]+)/i))) op.access = m[1].toLowerCase();
   }
   if (op.mode === 'respond') op.disarm = 'person';
   return op;
@@ -423,6 +432,20 @@ async function loadField(){
   SPINE_BLOCK = spine;
   FLOOR = floorOf(spine) || 3;
   OP = parseOperator(spine);
+  /* sed-gating is convention, not enforcement — the check is a courteous read */
+  if (OP.access.startsWith('sed:')){
+    OP.member = false;
+    try {
+      const sedB = await readBlock(OP.access);
+      const found = [];
+      (function walk(n, d){
+        if (typeof n === 'string') found.push(n);
+        else if (n && typeof n === 'object' && d < 4) for (const k of Object.keys(n)) walk(n[k], d + 1);
+      })(sedB, 0);
+      const h = HANDLE.toLowerCase();
+      OP.member = found.some(t => t.trim().toLowerCase().split(/[\s—:,]/)[0] === h);
+    } catch(e){}
+  }
 
   const names = (index && index.blocks ? index.blocks : [])
     .filter(b => b.startsWith(FIELD + ':'));
@@ -510,10 +533,14 @@ function cardEl(card, layer){
         '<div class="nrow"><span class="nwho">' + esc(n.who) + '</span><span>' + esc(n.text) + '</span></div>').join('') + '</div>'
     : '';
   let act = '';
-  if (layer === 'top' && !card.proposed && OP.mode === 'respond'){
+  const mayMark = OP.member !== false;
+  if (layer === 'top' && !card.proposed && OP.mode === 'respond' && mayMark){
     if (OP.respond === 'rate')
       act = '<div class="respond"><p class="rlabel">rate it</p><div class="rate">' +
             Array.from({length:10},(_,i)=>'<button data-rate="'+(i+1)+'">'+(i+1)+'</button>').join('') + '</div></div>';
+    else if (OP.respond === 'reply')
+      act = '<div class="respond"><p class="rlabel">your answer</p><div class="thumbs">' +
+            '<button data-reply="1" style="font-size:14px;font-family:var(--mono);font-weight:700">✎ answer</button></div></div>';
     else
       act = '<div class="respond"><p class="rlabel">your read</p><div class="thumbs">' +
             '<button data-thumb="UP">👍</button><button data-thumb="DOWN">👎</button></div></div>';
@@ -536,8 +563,13 @@ function renderDeck(){
   closeMenu();
   $('count').textContent = DECK.length ? ((POS % DECK.length) + 1) + ' / ' + DECK.length : '';
   const canAct = DECK.length > 0;
+  const gated = !OP.member;
+  const latchWanted = OP.access === 'latched' && !localStorage.getItem(latchKey());
+  $('gatebar').classList.toggle('hidden', !(gated || latchWanted));
+  if (gated) $('gatebar').textContent = 'this deck belongs to ' + OP.access + ' — reading is open; marks from outside stay outside its fold (convention, not enforcement)';
+  else if (latchWanted) $('gatebar').textContent = 'this field asks for latched mirrors — set your edit-latch (⚿) before marking';
   $('btn-next').disabled = !canAct;
-  $('btn-donow').disabled = !canAct;
+  $('btn-donow').disabled = !canAct || gated;
   $('btn-donow').classList.toggle('hidden', OP.mode !== 'doing');
   $('foot-hint').textContent = OP.mode === 'doing'
     ? 'swipe → browse · ↑ tomorrow · ↓ drop' : 'swipe → browse · ↑ later · answer on the card';
@@ -561,6 +593,8 @@ function renderDeck(){
     openSheet('respond', 'RATED ' + b.dataset.rate, 'Rate it ' + b.dataset.rate)));
   t.querySelectorAll('[data-thumb]').forEach(b => b.addEventListener('click', () =>
     openSheet('respond', b.dataset.thumb, b.dataset.thumb === 'UP' ? 'Thumbs up' : 'Thumbs down')));
+  t.querySelectorAll('[data-reply]').forEach(b => b.addEventListener('click', () =>
+    openSheet('respond', 'REPLIED', 'Your answer')));
   const adopt = t.querySelector('#btn-adopt');
   if (adopt) adopt.addEventListener('click', doAdopt);
   renderDone();
@@ -693,7 +727,7 @@ function gestureTomorrow(el){
 }
 /* down = drop (doing mode; field-level) */
 function gestureDrop(el){
-  if (OP.mode !== 'doing'){ if (el){ el.classList.add('snap'); el.style.transform=''; } return; }
+  if (OP.mode !== 'doing' || !OP.member){ if (el){ el.classList.add('snap'); el.style.transform=''; } return; }
   const card = currentCard(); if (!card) return;
   const prev = card.done;
   card.done = { who: HANDLE, text: 'DROP ' + iso(), kind: 'drop' };
@@ -714,7 +748,12 @@ async function ensureMirror(){
   if (existing) return true;
   let root = 'MIRROR — ' + HANDLE + "'s readings on the " + FIELD + ' field (' + SPINE + '), at the spine’s own addresses. Sovereign; silence at an address is honest absence. First entry written from /next.';
   for (let i = 0; i < FLOOR; i++) root = { '_': root };
-  const w = await writeBlock({ block: name, content: root });
+  /* homestead at birth: a latch on this device locks the newborn mirror to its holder */
+  const body = { block: name, content: root };
+  const latch = localStorage.getItem(latchKey());
+  if (latch) body.new_lock = latch;
+  const w = await writeBlock(body);
+  if (w.ok && latch) toast('mirror born latched to ' + HANDLE);
   return w.ok;
 }
 async function writeMark(addr, content){
@@ -754,6 +793,8 @@ async function writeSpine(addr, content){
 
 /* ── sheet: done-already / finish / respond ── */
 function openSheet(kind, mark, title){
+  if (!OP.member){ toast('marks from outside ' + OP.access + ' stay outside its fold', true); return; }
+  if (OP.access === 'latched' && !localStorage.getItem(latchKey())){ toast('set your edit-latch first — ⚿', true); return; }
   const card = TIMER && kind === 'finish'
     ? CARDS.find(c => c.addr === TIMER.addr) || { text: TIMER.text }
     : currentCard();
@@ -762,7 +803,9 @@ function openSheet(kind, mark, title){
   $('sheet-title').textContent = kind === 'finish' ? 'Finish — ' + fmtElapsed(elapsedMs()) + ' held' : (title || 'Mark it done');
   $('sheet-what').textContent = card.text.length > 120 ? card.text.slice(0,117) + '…' : card.text;
   $('sheet-note').value = '';
-  $('sheet-note').placeholder = kind === 'respond' ? 'why, briefly (optional)' : 'a line about how it went (optional)';
+  $('sheet-note').placeholder = kind === 'respond'
+    ? (mark === 'REPLIED' ? 'your answer — a line or three' : 'why, briefly (optional)')
+    : 'a line about how it went (optional)';
   $('sheet-go').textContent = kind === 'respond' ? '✓ answer' : '✓ done';
   $('sheet-hint').classList.remove('err');
   $('sheet-hint').textContent = 'Writes to ' + FIELD + ':' + HANDLE + ' on the beach — public, signed by the write itself.';
@@ -776,6 +819,10 @@ async function commitSheet(){
   const { kind, card, mark } = SHEET;
   const addr = kind === 'finish' ? TIMER.addr : card.addr;
   const note = $('sheet-note').value.trim();
+  if (mark === 'REPLIED' && !note){
+    $('sheet-hint').classList.add('err'); $('sheet-hint').textContent = 'an answer needs words';
+    BUSY = false; $('sheet-go').disabled = false; return;
+  }
   let stamp;
   if (kind === 'respond') stamp = mark + ' ' + iso() + (note ? ' — ' + note : '');
   else stamp = 'DONE ' + iso() + (note ? ' — ' + note : '') + (kind === 'finish' ? ' (' + fmtElapsed(elapsedMs()) + ')' : '');
@@ -862,6 +909,8 @@ function showDoing(){
 }
 function hideDoing(){ $('doing').classList.add('hidden'); tickClocks(); }
 function startDoing(){
+  if (!OP.member) return;
+  if (OP.access === 'latched' && !localStorage.getItem(latchKey())){ toast('set your edit-latch first — ⚿', true); return; }
   const card = currentCard(); if (!card || card.proposed) return;
   if (TIMER && TIMER.addr !== card.addr){ toast('already holding one — finish or release it first', true); showDoing(); return; }
   if (!TIMER){
@@ -909,6 +958,8 @@ async function boot(){
     $('ask-go').addEventListener('click', () => {
       const h = $('ask-handle').value.trim();
       if (h){
+        const lv = $('ask-latch').value.trim();
+        if (lv) localStorage.setItem('next-latch:' + FIELD + ':' + h, lv);
         const p = new URLSearchParams(location.search); p.delete('h');
         const qs = p.toString();
         location.href = '/next/' + encodeURIComponent(h) + (qs ? '?' + qs : '');
@@ -942,10 +993,17 @@ async function boot(){
   $('cap-go').addEventListener('click', commitCapture);
   $('cap-veil').addEventListener('click', e => { if (e.target === $('cap-veil')) closeCapture(); });
   $('btn-refresh').addEventListener('click', async () => { toast('reading the field…'); await reload(); });
-  $('btn-latch').addEventListener('click', () => {
+  $('btn-latch').addEventListener('click', async () => {
     const cur = localStorage.getItem(latchKey()) || '';
-    const v = prompt('Edit-latch for ' + FIELD + ':' + HANDLE + ' (stored only on this device):', cur);
-    if (v !== null){ v.trim() ? localStorage.setItem(latchKey(), v.trim()) : localStorage.removeItem(latchKey()); toast('latch ' + (v.trim() ? 'kept on this device' : 'cleared')); }
+    const v = prompt('Edit-latch for ' + FIELD + ':' + HANDLE + ' (kept on this device; claims your mirror):', cur);
+    if (v === null) return;
+    if (!v.trim()){ localStorage.removeItem(latchKey()); toast('latch cleared on this device'); return; }
+    localStorage.setItem(latchKey(), v.trim());
+    const existing = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
+    if (!existing){ toast('latch kept — your mirror will be born locked at your first mark'); renderDeck(); return; }
+    const w = await writeBlock({ block: FIELD + ':' + HANDLE, new_lock: v.trim(), secret: v.trim() });
+    toast(w.ok ? '✓ mirror claimed — latched on the beach' : 'already claimed with a different latch', !w.ok);
+    renderDeck();
   });
   await reload();
 }
