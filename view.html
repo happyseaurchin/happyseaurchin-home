@@ -400,9 +400,67 @@ async function loadCatalogue(){
       '<span class="fam__n">' + digitKeys(b || {}).filter(d => d !== '9').length + ' lenses</span></div>');
   }
   if (!specs.length) out.push('<p class="vnone">No views yet — the first one is a single block away.</p>');
+
+  /* the maker — publishing is one write: name it, one line per lens, invent a latch.
+     Create-if-absent is race-safe at the beach: a name already standing refuses. */
+  out.push('<div class="sect" id="maker" style="margin-top:26px">' +
+    '<p class="quote" style="font-size:1.05rem;margin-bottom:4px">Make your own — one write, no code, no account.</p>' +
+    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · voices · fold · explain · liquid · form. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
+    '<div class="compose">' +
+    '<div class="row" style="margin-top:0"><input data-mk-name placeholder="a name — lowercase, dashes (becomes view:<name>)" spellcheck="false"></div>' +
+    '<textarea data-mk-voicing rows="2" style="margin-top:8px" placeholder="the voicing — what this view shows, for whom (doubles as its card text)"></textarea>' +
+    '<textarea data-mk-lenses rows="4" style="margin-top:8px;font-family:var(--mono);font-size:13px" placeholder="one lens per line, e.g.&#10;walk spine:experiences 5&#10;voices marks&#10;liquid pool:this-hour"></textarea>' +
+    '<div class="row"><select data-mk-register style="flex:1;background:rgba(6,23,30,0.6);border:1px solid var(--line);border-radius:8px;color:var(--foam);font-family:var(--mono);font-size:12.5px;padding:8px 12px;outline:none">' +
+    '<option value="observer">for anyone — observer register</option>' +
+    '<option value="author">for authors — content and structure</option>' +
+    '<option value="designer">for designers — process and operators</option>' +
+    '</select></div>' +
+    '<div class="row"><input data-mk-latch type="password" placeholder="invent a latch — it locks the view to you" autocomplete="new-password"><button data-mk-go type="button">Publish</button></div>' +
+    '<div class="hint" data-mk-hint>The write goes straight to the beach; the page exists the moment it lands. Then propose its card from your mirror at <a href="/next?field=views">the views deck</a>.</div>' +
+    '</div></div>');
+
   $('main').innerHTML = out.join('');
   $('main').classList.remove('hidden'); $('state').classList.add('hidden');
-  $('foot').innerHTML = '<a href="/tree?family=views">the views catalogue, walked →</a><a href="/next?field=views">reply to a view as a card →</a><span>a view is authored, never installed — write view:&lt;name&gt; and it renders here</span>';
+  wireMaker();
+  $('foot').innerHTML = '<a href="/views">how the page system works →</a><a href="/tree?family=views">the views catalogue, walked →</a><a href="/next?field=views">reply to a view as a card →</a><span>a view is authored, never installed</span>';
+}
+
+function wireMaker(){
+  const mk = sel => document.querySelector('[data-mk-' + sel + ']');
+  const go = mk('go'); if (!go) return;
+  go.addEventListener('click', async () => {
+    const hint = mk('hint');
+    const name = (mk('name').value || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const voicing = mk('voicing').value.trim();
+    const lines = mk('lenses').value.split('\n').map(s => s.trim()).filter(Boolean).slice(0, 8);
+    const latch = mk('latch').value;
+    if (!name || !voicing || !lines.length || !latch){
+      hint.className = 'hint err'; hint.textContent = 'a view needs all four: a name, its voicing, at least one lens, and a latch.';
+      return;
+    }
+    const content = { _: voicing };
+    lines.forEach((l, i) => { content[String(i + 1)] = l; });
+    content['9'] = 'register: ' + (mk('register').value || 'observer');
+    go.disabled = true; hint.className = 'hint'; hint.textContent = 'publishing…';
+    let r, d = {};
+    try {
+      r = await fetch(beachUrl(HOME), { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ block: 'view:' + name, content, new_lock: latch }) });
+      d = await r.json().catch(() => ({}));
+    } catch(err){
+      hint.className = 'hint err'; hint.textContent = 'could not reach the beach — ' + (err.message || err); go.disabled = false; return;
+    }
+    if (r.ok){
+      hint.className = 'hint ok'; hint.textContent = 'published ✓ — opening your view…';
+      setTimeout(() => { location.href = PAGE + '?spec=' + encodeURIComponent(name); }, 500);
+      return;
+    }
+    go.disabled = false;
+    hint.className = 'hint err';
+    hint.textContent = (r.status === 409 || /exists|confirm/i.test(d.code || ''))
+      ? 'view:' + name + ' already stands — its author holds the latch. Pick another name, or rival it: same subject, your own name.'
+      : 'the beach said no — ' + (d.code || r.status);
+  });
 }
 
 /* ---------- one view ---------- */
