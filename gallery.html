@@ -115,6 +115,9 @@
             <input id="scene" placeholder="scene block, e.g. bubble:gal-1" spellcheck="false">
             <input id="channel" placeholder="room, e.g. gallery:gal" spellcheck="false">
           </div>
+          <div class="make__row">
+            <input id="shot" placeholder="direct the shot (optional) — your words replace the scene's own description" spellcheck="false">
+          </div>
         </details>
       </div>
     </div>
@@ -271,6 +274,7 @@
   (function(){
     var provider=document.getElementById('provider'),key=document.getElementById('key'),
         scene=document.getElementById('scene'),channel=document.getElementById('channel'),
+        shot=document.getElementById('shot'),
         btn=document.getElementById('render'),hint=document.getElementById('mhint');
     // restore per-browser prefs
     try{
@@ -278,16 +282,17 @@
       key.value=localStorage.getItem('gallery:key')||'';
       scene.value=localStorage.getItem('gallery:scene')||'bubble:gal-1';
       channel.value=localStorage.getItem('gallery:channel')||BLOCK||'gallery:gal';
+      shot.value=localStorage.getItem('gallery:shot')||'';
     }catch(e){scene.value='bubble:gal-1';channel.value=BLOCK||'gallery:gal';}
 
     function go(){
-      var prov=provider.value, k=key.value.trim(), sc=scene.value.trim()||'bubble:gal-1', ch=channel.value.trim()||BLOCK||'gallery:gal';
+      var prov=provider.value, k=key.value.trim(), sc=scene.value.trim()||'bubble:gal-1', ch=channel.value.trim()||BLOCK||'gallery:gal', sh=shot.value.trim();
       if(prov!=='free' && !k){hint.className='make__hint err';hint.textContent='paste your '+prov+' key, or switch to Free.';return;}
-      try{localStorage.setItem('gallery:provider',prov);localStorage.setItem('gallery:key',k);localStorage.setItem('gallery:scene',sc);localStorage.setItem('gallery:channel',ch);}catch(e){}
+      try{localStorage.setItem('gallery:provider',prov);localStorage.setItem('gallery:key',k);localStorage.setItem('gallery:scene',sc);localStorage.setItem('gallery:channel',ch);localStorage.setItem('gallery:shot',sh);}catch(e){}
       btn.disabled=true;hint.className='make__hint';hint.textContent='reading the scene…';
-      Promise.all([readBlock(sc),readBlock(STYLE).catch(function(){return null;})])
+      Promise.all([sh?Promise.resolve(null):readBlock(sc),readBlock(STYLE).catch(function(){return null;})])
         .then(function(res){
-          var faces=facesOf(res[0]); var prompt=composePrompt(faces,lookOf(res[1]));
+          var faces=sh||facesOf(res[0]); var prompt=composePrompt(faces,lookOf(res[1]));
           hint.textContent=(prov==='free'?'rendering (free service, ~20s)…':'rendering on your key…');
           return generate(prov,prompt,k).then(function(image){
             hint.textContent='storing the still…';
