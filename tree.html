@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The tree — one node at a time</title>
+<meta name="description" content="Walk any shared field one node at a time — the spine's words at each position, every mirror's voice beside them, silence named honestly.">
+<meta property="og:title" content="The tree — one node at a time">
+<meta property="og:description" content="A field met as an experience, not a diagram: one position at a time, every voice beside it.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --abyss:#06171E; --deep:#0A2129; --card:#123742; --card-hi:#17434F;
+    --vapour:#C4DBDF; --vapour-dim:#82A0A8;
+    --liquid:#33C2D2; --liquid-deep:#1B8B99;
+    --solid:#E7B24C; --solid-deep:#C58F2C;
+    --foam:#EFF6F5;
+    --line:rgba(196,219,223,0.13); --line-strong:rgba(196,219,223,0.24);
+    --display:'Syne',system-ui,sans-serif;
+    --body:'Newsreader',Georgia,serif;
+    --mono:'Space Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{
+    font-family:var(--body); color:var(--foam); font-size:17.5px; line-height:1.58;
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(51,194,210,0.10), transparent 60%),
+      linear-gradient(180deg,#0C2932 0%, var(--deep) 30%, var(--abyss) 100%);
+    background-attachment:fixed; -webkit-font-smoothing:antialiased;
+    min-height:100dvh;
+  }
+  ::selection{background:rgba(51,194,210,0.30);color:var(--foam)}
+  a{color:var(--liquid);text-decoration:none;border-bottom:1px solid rgba(51,194,210,0.35)}
+  a:hover{color:var(--foam);border-color:var(--foam)}
+  .hidden{display:none !important}
+  .wrap{max-width:680px;margin:0 auto;padding:0 18px}
+
+  .bar{display:flex;align-items:center;gap:10px;padding:14px 18px 10px;font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim);max-width:680px;margin:0 auto}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar a{border-bottom:none;color:var(--vapour-dim)} .bar a:hover{color:var(--liquid)}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px;cursor:pointer}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+
+  .head{padding:10px 0 2px}
+  .head h1{font-family:var(--display);font-weight:800;font-size:clamp(1.4rem,5vw,2rem);line-height:1.12;margin:0 0 10px}
+  .head h1 .cool{color:var(--liquid)}
+  .meta{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:var(--vapour-dim);margin:0 0 4px}
+  .meta b{color:var(--liquid);font-weight:700}
+
+  .walknav{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:14px 0}
+  .walknav a{border:1px solid var(--line);border-radius:6px;padding:7px 12px;color:var(--vapour);border-bottom-width:1px}
+  .walknav a:hover{border-color:var(--liquid);color:var(--foam)}
+  .walknav .gap{flex:1}
+  .walknav .pos{white-space:nowrap}
+
+  .node{background:linear-gradient(165deg,rgba(23,67,79,0.55) 0%,rgba(18,55,66,0.55) 100%);border:1px solid var(--line);border-radius:14px;padding:20px 22px 18px;margin:0 0 14px}
+  .node__addr{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:0 0 10px;display:flex;gap:10px;align-items:baseline}
+  .node__addr b{color:var(--solid);font-weight:700}
+  .node__text{font-size:1.16rem;line-height:1.5;font-weight:500;margin:0}
+  .node__text.absent{color:var(--vapour-dim);font-style:italic;font-weight:400}
+
+  .kids{margin:6px 0 16px}
+  .kids__head{font-family:var(--mono);font-size:11.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--liquid);margin:18px 0 8px}
+  .kid{display:flex;gap:12px;align-items:baseline;padding:9px 4px;border-bottom:1px solid var(--line)}
+  .kid:last-child{border-bottom:none}
+  .kid__no{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);flex:none;min-width:52px}
+  .kid__text{flex:1;font-size:0.98rem;color:var(--vapour)}
+  .kid__text a{border-bottom:none;color:var(--foam)} .kid__text a:hover{color:var(--liquid)}
+  .kid.ghost .kid__text{color:var(--vapour-dim)}
+  .kid .tag{font-family:var(--mono);font-size:10px;color:var(--solid);border:1px solid rgba(231,178,76,0.4);border-radius:4px;padding:1px 6px;flex:none}
+
+  .mirrors{margin:4px 0 0}
+  .mrow{display:flex;gap:12px;align-items:baseline;padding:10px 4px;border-bottom:1px solid var(--line)}
+  .mrow:last-child{border-bottom:none}
+  .mwho{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:104px;text-align:right}
+  .mtext{flex:1;min-width:0;color:var(--foam);font-size:1rem}
+  .mtext.deeper{color:var(--vapour-dim);font-size:0.92rem}
+  .silence{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);padding:12px 4px 2px}
+
+  .oplines{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);border:1px dashed var(--line-strong);border-radius:8px;padding:10px 14px;margin:16px 0 0;line-height:1.9}
+
+  .fam{display:flex;gap:12px;align-items:baseline;padding:12px 4px;border-bottom:1px solid var(--line)}
+  .fam__name{font-family:var(--mono);font-size:13px;flex:none;min-width:150px}
+  .fam__voice{flex:1;color:var(--vapour);font-size:0.95rem}
+  .fam__n{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);flex:none}
+  .seek{display:flex;gap:8px;margin:18px 0 6px}
+  .seek input{flex:1;background:rgba(6,23,30,0.6);border:1px solid var(--line-strong);border-radius:8px;color:var(--foam);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none}
+  .seek input:focus{border-color:var(--liquid)}
+  .seek button{background:var(--liquid);border:none;border-radius:8px;color:var(--abyss);font-family:var(--mono);font-weight:700;font-size:12px;padding:10px 16px;cursor:pointer}
+
+  .state{padding:60px 26px;text-align:center;max-width:480px;margin:0 auto}
+  .state h2{font-family:var(--display);font-size:1.4rem;margin:0 0 10px}
+  .state p{color:var(--vapour-dim)}
+
+  .foot{max-width:680px;margin:0 auto;padding:26px 18px 44px;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;color:var(--vapour-dim);display:flex;gap:16px;flex-wrap:wrap}
+  .foot a{border-bottom:none;color:var(--vapour-dim)} .foot a:hover{color:var(--liquid)}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.remove('no-js');</script>
+
+<div class="bar">
+  <span class="dot"></span>
+  <span>the walk · <b id="bar-field">—</b></span>
+  <span class="spacer"></span>
+  <a href="/tree" id="bar-all">all fields</a>
+  <button id="btn-refresh" title="re-read the field">↻</button>
+</div>
+
+<main class="wrap hidden" id="main"></main>
+
+<div id="state" class="state hidden">
+  <h2 id="state-title"></h2>
+  <p id="state-body"></p>
+</div>
+
+<div class="foot" id="foot"></div>
+
+<script>
+(function(){
+'use strict';
+const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+const PAGE = /\.html$/.test(location.pathname) ? location.pathname : '/tree';
+const HANDLE = /^[A-Za-z][A-Za-z0-9 _-]*$/;
+const Q = new URLSearchParams(location.search);
+const FAMILY = ((Q.get('family')
+  || (location.pathname.match(/\/tree\/([^\/]+)\/?$/) || [])[1]
+  || '')).replace(/[^a-z0-9-]/gi,'');
+const NODE_RAW = Q.get('node') || '';
+
+/* ---------- beach reads ---------- */
+async function readBlock(name){
+  const r = await fetch(BEACH + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('beach read failed: ' + r.status);
+  return r.json();
+}
+async function readIndex(){
+  const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (!r.ok) throw new Error('beach index failed: ' + r.status);
+  return r.json();
+}
+
+/* ---------- walking (client-side, floor-agnostic: raw digits, 0 steps into the underscore) ---------- */
+function floorOf(block){
+  let n = 0, node = block;
+  while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
+  return n;
+}
+function voiceOf(node){
+  let n = node;
+  while (n && typeof n === 'object') { if (!('_' in n)) return null; n = n['_']; }
+  return typeof n === 'string' ? n : null;
+}
+function digitKeys(node){
+  if (!node || typeof node !== 'object') return [];
+  return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort();
+}
+function walkTo(block, walk){
+  let n = block;
+  for (const ch of walk){
+    if (!n || typeof n !== 'object') return undefined;
+    n = (ch === '0') ? n['_'] : n[ch];
+  }
+  return n;
+}
+/* children of a node, including those across zero rungs (a step may be '02': into the underscore, then digit 2) */
+function childSteps(node){
+  const steps = digitKeys(node).slice();
+  let z = (node && typeof node === 'object') ? node['_'] : null, pre = '0';
+  while (z && typeof z === 'object'){
+    for (const d of digitKeys(z)) steps.push(pre + d);
+    z = z['_']; pre += '0';
+  }
+  return steps.sort();  /* lexicographic: '02' < '1' — matches numeric order of addresses */
+}
+function textAt(node){
+  if (node === undefined || node === null) return null;
+  if (typeof node === 'string') return node.trim() || null;
+  return voiceOf(node);  /* the all-zero suffix is the same address */
+}
+function hasAnyText(node){
+  if (node === undefined || node === null) return false;
+  if (typeof node === 'string') return !!node.trim();
+  if (typeof node !== 'object') return false;
+  if (hasAnyText(node['_'])) return true;
+  return digitKeys(node).some(d => hasAnyText(node[d]));
+}
+function deeperSpeech(node, out, base, cap){
+  /* nearest descendant addresses (beyond the zero suffix) where a voice stands */
+  if (!node || typeof node !== 'object' || out.length >= cap) return out;
+  for (const s of childSteps(node)){
+    if (out.length >= cap) break;
+    const kid = walkTo(node, s);
+    const t = textAt(kid);
+    if (t) out.push({ walk: base + s, text: t });
+    else deeperSpeech(kid, out, base + s, cap);
+  }
+  return out;
+}
+/* canonical address form: pad right to the floor, or one decimal at the floor boundary */
+function fmtAddr(walk, floor){
+  if (!walk) return 'root';
+  if (walk.length <= floor) return walk + '0'.repeat(floor - walk.length);
+  return walk.slice(0, floor) + '.' + walk.slice(floor);
+}
+function parseNode(raw){
+  const s = String(raw).replace(/[^0-9.]/g,'');
+  if ((s.match(/\./g) || []).length > 1) return { error: 'An address carries at most one decimal point — ' + s + ' has more. Try the digits with a single dot, or none.' }
+  return { walk: s.replace('.','').replace(/0+$/,'') };
+}
+
+const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : s; return d.innerHTML; };
+const $ = id => document.getElementById(id);
+const short = (s,n) => { s = s || ''; return s.length > n ? s.slice(0,n).replace(/\s+\S*$/,'') + ' …' : s; };
+function nodeHref(walk){ return PAGE + '?family=' + encodeURIComponent(FAMILY) + (walk ? '&node=' + walk : ''); }
+function famHref(f){ return PAGE + '?family=' + encodeURIComponent(f); }
+
+function showState(title, body){
+  $('main').classList.add('hidden');
+  $('state-title').textContent = title;
+  $('state-body').innerHTML = body;
+  $('state').classList.remove('hidden');
+}
+
+/* ---------- the family index (no ?family=) ---------- */
+async function loadIndex(){
+  $('bar-field').textContent = 'every field';
+  let index;
+  try { index = await readIndex(); } catch(e){ return showState('The beach is out of reach.', esc(String(e.message || e))); }
+  const blocks = index.blocks || [];
+  const spineFams = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)).sort();
+  /* bare-name spines: a block with no colon whose handle-shaped siblings mirror it (e.g. situating-pscale) */
+  const bare = blocks.filter(b => !b.includes(':') && !spineFams.includes(b))
+    .filter(b => blocks.filter(x => x.startsWith(b + ':') && HANDLE.test(x.slice(b.length + 1))).length >= 2)
+    .sort();
+  const roots = {};
+  await Promise.all(spineFams.map(async f => { try { roots[f] = await readBlock('spine:' + f); } catch(e){} }));
+  await Promise.all(bare.map(async f => { try { roots[f] = await readBlock(f); } catch(e){} }));
+  const row = f => {
+    const mirrors = blocks.filter(x => x.startsWith(f + ':') && HANDLE.test(x.slice(f.length + 1)));
+    return '<div class="fam"><span class="fam__name"><a href="' + famHref(f) + '">' + esc(f) + '</a></span>' +
+      '<span class="fam__voice">' + esc(short(voiceOf(roots[f]) || '', 110)) + '</span>' +
+      '<span class="fam__n">' + mirrors.length + ' mirror' + (mirrors.length === 1 ? '' : 's') + '</span></div>';
+  };
+  const out = [];
+  out.push('<div class="head"><h1>Every shared <span class="cool">field</span>, walkable.</h1>' +
+    '<p class="meta"><span><b>' + spineFams.length + '</b> spined fields</span><span><b>' + bare.length + '</b> bare-name fields</span></p></div>');
+  out.push('<div class="seek"><input id="seek-in" placeholder="walk a field by name…" autocomplete="off"><button id="seek-go">walk</button></div>');
+  out.push('<div class="kids__head">fields with a shared spine</div>');
+  for (const f of spineFams) out.push(row(f));
+  if (bare.length){
+    out.push('<div class="kids__head">fields whose base carries the bare name</div>');
+    for (const f of bare) out.push(row(f));
+  }
+  $('main').innerHTML = out.join('');
+  $('main').classList.remove('hidden'); $('state').classList.add('hidden');
+  const go = () => { const v = $('seek-in').value.replace(/[^a-z0-9-]/gi,''); if (v) location.href = famHref(v); };
+  $('seek-go').addEventListener('click', go);
+  $('seek-in').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  $('foot').innerHTML = '<a href="/found">found a field of your own →</a><a href="/decks">how decks work →</a><span>public reads only — nothing here needs a key</span>';
+}
+
+/* ---------- one node of one family ---------- */
+async function loadFamily(){
+  $('bar-field').textContent = FAMILY;
+  const parsed = parseNode(NODE_RAW);
+  if (parsed.error) return showState('That address does not parse.', esc(parsed.error));
+  const WALK = parsed.walk;
+
+  let index;
+  try { index = await readIndex(); } catch(e){ return showState('The beach is out of reach.', esc(String(e.message || e))); }
+  const blocks = index.blocks || [];
+  const spineName = blocks.includes('spine:' + FAMILY) ? 'spine:' + FAMILY : (blocks.includes(FAMILY) ? FAMILY : null);
+  if (!spineName){
+    const near = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)).filter(f => f.includes(FAMILY.slice(0,4))).slice(0,6);
+    return showState('No such field.', esc(FAMILY) + ' has no spine on the beach.' + (near.length ? '<br><br>Near it: ' + near.map(f => '<a href="' + famHref(f) + '">' + esc(f) + '</a>').join(' · ') : ' <a href="' + PAGE + '">See every field →</a>'));
+  }
+
+  const mirrorNames = blocks.filter(b => b.startsWith(FAMILY + ':') && HANDLE.test(b.slice(FAMILY.length + 1))).sort();
+  let spine;
+  const mirrors = {};
+  try {
+    const reads = [readBlock(spineName)].concat(mirrorNames.map(n => readBlock(n).catch(() => null)));
+    const got = await Promise.all(reads);
+    spine = got[0];
+    mirrorNames.forEach((n, i) => { if (got[i + 1]) mirrors[n.slice(FAMILY.length + 1)] = got[i + 1]; });
+  } catch(e){ return showState('The beach is out of reach.', esc(String(e.message || e))); }
+  if (!spine) return showState('No such field.', esc(spineName) + ' is not on the beach.');
+
+  const FLOOR = floorOf(spine) || 1;
+  /* operator at 9 — deck fields declare mode/respond/disarm/access there; renderers read it, never deal it */
+  const opLines = [];
+  if (spine['9']){
+    const collect = n => { if (typeof n === 'string'){ const m = n.match(/^(mode|respond|disarm|access):\s*.+/i); if (m) opLines.push(m[0]); } else if (n && typeof n === 'object'){ const v = voiceOf(n); if (v){ const m = v.match(/^(mode|respond|disarm|access):\s*.+/i); if (m) opLines.push(m[0]); } for (const d of digitKeys(n)) collect(n[d]); } };
+    collect(spine['9']);
+  }
+  const isDeck = opLines.length > 0;
+
+  /* the walk order: preorder over the spine, root first (operator stem excluded when it is one) */
+  const order = [];
+  (function dfs(node, walk){
+    if (order.length > 600) return;
+    order.push(walk);
+    for (const s of childSteps(node)){
+      if (walk === '' && isDeck && s === '9') continue;
+      dfs(walkTo(node, s), walk + s);
+    }
+  })(spine, '');
+
+  const here = walkTo(spine, WALK);
+  const idx = order.indexOf(WALK);
+  const names = Object.keys(mirrors).sort();
+
+  const out = [];
+  out.push('<div class="head"><h1>The <span class="cool">' + esc(FAMILY) + '</span> field, one node at a time.</h1>');
+  if (WALK === '') out.push('<p class="meta"><span><b>' + (order.length - 1) + '</b> positions</span><span><b>' + names.length + '</b> mirror' + (names.length === 1 ? '' : 's') + '</span>' + (names.length ? '<span>' + esc(names.join(' · ')) + '</span>' : '') + '</p>');
+  out.push('</div>');
+
+  /* prev / next by address */
+  const nav = [];
+  if (idx > 0) nav.push('<a href="' + nodeHref(order[idx - 1]) + '">← ' + esc(fmtAddr(order[idx - 1], FLOOR)) + '</a>');
+  if (WALK !== '') nav.push('<a href="' + nodeHref(WALK.slice(0, -1).replace(/0+$/,'')) + '">↑ up</a>');
+  nav.push('<span class="gap"></span>');
+  if (idx >= 0) nav.push('<span class="pos">' + (idx + 1) + ' of ' + order.length + '</span>');
+  if (idx >= 0 && idx < order.length - 1) nav.push('<a href="' + nodeHref(order[idx + 1]) + '">' + esc(fmtAddr(order[idx + 1], FLOOR)) + ' →</a>');
+  out.push('<div class="walknav">' + nav.join('') + '</div>');
+
+  /* the spine at this node */
+  const spineText = textAt(here);
+  out.push('<div class="node"><p class="node__addr"><b>' + esc(fmtAddr(WALK, FLOOR)) + '</b><span>the shared spine' + (spineName === FAMILY ? ' (the bare name carries it)' : '') + '</span></p>');
+  if (here === undefined){
+    out.push('<p class="node__text absent">The spine has no position here yet — what stands below was voiced from a mirror, an offer the keeper may adopt.</p>');
+  } else {
+    out.push('<p class="node__text">' + esc(spineText || '(this position stands unvoiced)') + '</p>');
+  }
+  out.push('</div>');
+
+  /* children — the spine's own, then any spoken only in mirrors */
+  const spineKids = here === undefined ? [] : childSteps(here).filter(s => !(WALK === '' && isDeck && s === '9'));
+  const ghost = {};
+  for (const who of names){
+    const mnode = walkTo(mirrors[who], WALK);
+    if (!mnode || typeof mnode !== 'object') continue;
+    for (const s of childSteps(mnode)){
+      if (spineKids.includes(s)) continue;
+      if (WALK === '' && isDeck && s === '9') continue;
+      if (!hasAnyText(walkTo(mnode, s))) continue;
+      (ghost[s] = ghost[s] || []).push(who);
+    }
+  }
+  const ghostSteps = Object.keys(ghost).sort();
+  if (spineKids.length || ghostSteps.length){
+    out.push('<div class="kids"><div class="kids__head">below this node</div>');
+    for (const s of spineKids){
+      const kid = walkTo(here, s);
+      out.push('<div class="kid"><span class="kid__no">' + esc(fmtAddr(WALK + s, FLOOR)) + '</span>' +
+        '<span class="kid__text"><a href="' + nodeHref(WALK + s) + '">' + esc(short(textAt(kid) || '(unvoiced)', 96)) + '</a></span></div>');
+    }
+    for (const s of ghostSteps){
+      const who = ghost[s][0];
+      const t = textAt(walkTo(mirrors[who], WALK + s)) || (deeperSpeech(walkTo(mirrors[who], WALK + s), [], WALK + s, 1)[0] || {}).text || '';
+      out.push('<div class="kid ghost"><span class="kid__no">' + esc(fmtAddr(WALK + s, FLOOR)) + '</span>' +
+        '<span class="kid__text"><a href="' + nodeHref(WALK + s) + '">' + esc(short(t, 80)) + '</a></span>' +
+        '<span class="tag">only in ' + esc(ghost[s].join(', ')) + '’s mirror</span></div>');
+    }
+    out.push('</div>');
+  }
+
+  /* every mirror's voice at this node */
+  out.push('<div class="kids__head">at this node, each voice</div><div class="mirrors">');
+  const silent = [];
+  let spoke = 0;
+  for (const who of names){
+    const mnode = walkTo(mirrors[who], WALK);
+    const t = textAt(mnode);
+    if (t){
+      spoke++;
+      out.push('<div class="mrow"><span class="mwho">' + esc(who) + '</span><span class="mtext">' + esc(t) + '</span></div>');
+    } else {
+      const deep = deeperSpeech(mnode, [], WALK, 3);
+      if (deep.length){
+        spoke++;
+        out.push('<div class="mrow"><span class="mwho">' + esc(who) + '</span><span class="mtext deeper">speaks deeper — ' +
+          deep.map(d => '<a href="' + nodeHref(d.walk) + '">' + esc(fmtAddr(d.walk, FLOOR)) + '</a>').join(' · ') + '</span></div>');
+      } else silent.push(who);
+    }
+  }
+  if (!names.length){
+    out.push('<div class="silence">No mirrors yet — this field is young. Standing in it is one write: voice an address in a mirror of your own.</div>');
+  } else if (silent.length){
+    out.push('<div class="silence">' + silent.length + ' of ' + names.length + ' have not stood here — ' + esc(silent.join(', ')) + '. Silence is honest absence.</div>');
+  }
+  out.push('</div>');
+
+  /* operator, shown at the root only, never dealt */
+  if (WALK === '' && isDeck){
+    out.push('<div class="oplines">' + opLines.map(esc).join('<br>') + '</div>');
+  }
+
+  $('main').innerHTML = out.join('');
+  $('main').classList.remove('hidden'); $('state').classList.add('hidden');
+
+  const foot = [];
+  foot.push('<a href="/fold?field=' + encodeURIComponent(FAMILY) + '">the whole field, folded →</a>');
+  if (isDeck) foot.push('<a href="/next?field=' + encodeURIComponent(FAMILY) + '">flick it as a deck →</a>');
+  foot.push('<a href="/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(spineName) + (WALK ? '&spindle=' + WALK : '') + '">the raw walk →</a>');
+  foot.push('<a href="/found">found a field of your own →</a>');
+  foot.push('<span>public reads only — silence is honest absence</span>');
+  $('foot').innerHTML = foot.join('');
+}
+
+$('bar-all').href = PAGE;
+$('btn-refresh').addEventListener('click', () => location.reload());
+if (FAMILY) loadFamily(); else loadIndex();
+})();
+</script>
+</body>
+</html>
