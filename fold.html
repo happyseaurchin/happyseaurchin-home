@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>The fold</title>
-<meta name="description" content="A field folded — the spine and every mirror laid side by side at the same addresses. The tally with no machinery: public reads, nothing else.">
-<meta property="og:title" content="The fold">
-<meta property="og:description" content="A field folded — everyone's marks side by side at the spine's own addresses.">
+<title>What everyone said</title>
+<meta name="description" content="What everyone said: the cards of a deck with each person's answer beside them. Free to read, nothing to sign in to.">
+<meta property="og:title" content="What everyone said">
+<meta property="og:description" content="Every card of a deck, with what each person said beside it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
@@ -92,14 +92,14 @@
 
 <div class="bar">
   <span class="dot"></span>
-  <span>the fold · <b id="bar-field">—</b></span>
+  <span>everyone · <b id="bar-field">—</b></span>
   <span class="spacer"></span>
   <button id="btn-refresh" title="re-read the field">↻</button>
 </div>
 
 <main class="wrap" id="main">
   <div class="head">
-    <h1>The <span class="cool" id="h-field">field</span>, folded.</h1>
+    <h1>What everyone said about <span class="cool" id="h-field">this deck</span>.</h1>
     <p class="voicing" id="h-voicing"></p>
     <p class="meta" id="h-meta"></p>
   </div>
@@ -112,10 +112,10 @@
 </div>
 
 <div class="foot">
-  <a id="link-flick">flick this field →</a>
-  <a id="link-raw">the raw spine →</a>
+  <a id="link-flick">open the cards →</a>
+  <a id="link-raw">all the cards →</a>
   <a href="/decks">how decks work →</a>
-  <span>public reads only — the fold is concatenation, not judgment</span>
+  <span>free to read — this only lays the answers side by side; nothing is scored or judged</span>
 </div>
 
 <script>
@@ -229,8 +229,18 @@ async function load(){
   const out = [];
   for (const s of stems){
     const stem = spine[s];
-    out.push('<section class="stem"><p class="stem__head">field ' + s + '</p><p class="stem__voice">' + esc(voice(stem) || '') + '</p>');
     const leaves = childDigits(stem);
+    /* A one-level deck — every position IS a card, nothing beneath it — is as
+       legitimate as a two-level one; spine:neighbour-gifts is the live example.
+       Walking for leaves alone reported such a field as entirely empty however
+       many people had answered it, so a childless stem stands as its own card. */
+    const flat = leaves.length === 0;
+    const cards = flat
+      ? [{ digits: [s], no: String(s), text: (typeof stem === 'string' ? stem : voice(stem) || '') }]
+      : leaves.map(l => ({ digits: [s, l], no: s + '·' + l,
+          text: (typeof stem[l] === 'string' ? stem[l] : voice(stem[l]) || '') }));
+    out.push('<section class="stem"><p class="stem__head">field ' + s + '</p>' +
+      (flat ? '' : '<p class="stem__voice">' + esc(voice(stem) || '') + '</p>'));
     const proposedLeaves = [];
     for (const who in mirrors){
       const mstem = mirrors[who][s];
@@ -240,12 +250,11 @@ async function load(){
         if (/^proposed\b/i.test(t.trim())) proposedLeaves.push({ l, who, text: whyOf(t) || t });
       }
     }
-    for (const l of leaves){
-      const leaf = stem[l];
-      const text = typeof leaf === 'string' ? leaf : (voice(leaf) || '');
+    for (const card of cards){
+      const text = card.text;
       if (!text) continue;
       cardCount++;
-      const digits = [s, l];
+      const digits = card.digits;
       const rows = [];
       const ratings = [];
       let ups = 0, downs = 0, replies = 0, settled = false;
@@ -278,23 +287,23 @@ async function load(){
         agg = replies + ' replied';
       }
       out.push('<div class="fcard' + (settled ? ' settled' : '') + (rows.length ? '' : ' quiet') + '">' +
-        '<div class="fcard__row"><span class="fcard__no">' + s + '·' + l + '</span>' +
+        '<div class="fcard__row"><span class="fcard__no">' + card.no + '</span>' +
         '<span class="fcard__text">' + esc(text) + '</span>' +
         (agg ? '<span class="fcard__avg">' + esc(agg) + '</span>' : '') + '</div>' +
-        (rows.length ? '<div class="marks">' + rows.join('') + '</div>' : '<p class="mnone">no marks yet — silence is honest absence</p>') +
+        (rows.length ? '<div class="marks">' + rows.join('') + '</div>' : '<p class="mnone">nobody has answered this one yet</p>') +
         '</div>');
     }
     for (const p of proposedLeaves){
       out.push('<div class="fcard quiet"><div class="fcard__row"><span class="fcard__no">' + s + '·' + p.l + '</span>' +
         '<span class="fcard__text">' + esc(p.text) + '</span></div>' +
-        '<div class="marks"><div class="mrow"><span class="mwho">' + esc(p.who) + '</span><span class="mverb proposed">proposed</span><span class="mwhy">not yet in the spine — the keeper adopts from the deck</span></div></div></div>');
+        '<div class="marks"><div class="mrow"><span class="mwho">' + esc(p.who) + '</span><span class="mverb proposed">proposed</span><span class="mwhy">suggested — not added to the deck yet</span></div></div></div>');
     }
     out.push('</section>');
   }
   const op = [];
   const opNode = spine['9'];
   if (opNode) for (const t of textsOf(opNode, [], 1)){ const m = t.match(/^(mode|respond|disarm|access):\s*\S+/i); if (m) op.push(m[0].toLowerCase()); }
-  $('h-meta').innerHTML = '<span><b>' + cardCount + '</b> cards</span><span><b>' + Object.keys(mirrors).length + '</b> mirrors</span><span><b>' + markCount + '</b> marks</span>' + (op.length ? '<span>' + esc(op.join(' · ')) + '</span>' : '');
+  $('h-meta').innerHTML = '<span><b>' + cardCount + '</b> cards</span><span><b>' + Object.keys(mirrors).length + '</b> people</span><span><b>' + markCount + '</b> answers</span>' + (op.length ? '<span>' + esc(op.join(' · ')) + '</span>' : '');
   $('stems').innerHTML = out.join('');
 }
 $('btn-refresh').addEventListener('click', load);
