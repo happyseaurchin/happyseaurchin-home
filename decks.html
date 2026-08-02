@@ -86,6 +86,7 @@
   .op-live{border:1px solid rgba(231,178,76,0.3);border-radius:10px;padding:16px 18px;margin:16px 0;background:radial-gradient(500px 200px at 20% 0%, rgba(231,178,76,0.06), transparent 60%)}
   .op-live h3{font-family:var(--mono);font-size:11.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--solid);margin:0 0 10px}
   .op-live .opline{font-family:var(--mono);font-size:14.5px;color:var(--foam);padding:3px 0}
+  .op-live .opfrom{font-style:normal;font-size:11.5px;opacity:0.5;margin-left:10px}
   .op-live p{font-size:0.98rem;margin:10px 0 0;color:var(--vapour-dim)}
 
   .paths{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:18px 0}
@@ -298,9 +299,9 @@
 
   <h2><span class="n">05</span>A live operator — a real field's dials</h2>
   <div class="op-live">
-    <h3>spine:pulse · position 9 — read live</h3>
+    <h3>deck:pulse — read live, machine and all</h3>
     <div id="op-lines"><span class="opline">reading…</span></div>
-    <p>These lines are the entire configuration of the pulse deck — parsed by the pages, readable by anyone, editable only by the keeper. Change a line, and every lens changes behaviour.</p>
+    <p>These lines are the entire configuration of the pulse deck — parsed by the pages, readable by anyone, editable only by the keeper. Change a line, and every lens changes behaviour. The mount names a shared machine and the deck's own lines override it, so the common case is authored once and worn by many fields.</p>
   </div>
 
   <h2><span class="n">06</span>Three ways in</h2>
@@ -442,16 +443,22 @@ readBlock('ways:deck').then(b => {
   box.innerHTML = html || '<p class="src">the convention block is empty — which would be news</p>';
 }).catch(e => { $('convention').innerHTML = '<p class="src">could not read ways:deck — ' + esc(String(e.message || e)) + '</p>'; });
 
-/* a live operator */
-readBlock('spine:pulse').then(b => {
-  const op = b && b['9'];
-  const lines = [];
-  for (const d of digits(op)){
-    const t = typeof op[d] === 'string' ? op[d] : voice(op[d]);
-    if (t) lines.push('<span class="opline">' + esc(t) + '</span>');
+/* a live operator — the mount, then the machine it names, in the order they apply */
+const opLines = (b, tag) => digits(b).map(d => {
+  const t = typeof b[d] === 'string' ? b[d] : voice(b[d]);
+  return t ? '<span class="opline">' + esc(t) + '<i class="opfrom">' + esc(tag) + '</i></span>' : '';
+}).filter(Boolean);
+readBlock('deck:pulse').then(async mount => {
+  if (!mount) throw new Error('no mount');
+  const ref = (voice(mount) || '').trim();
+  let lines = [];
+  if (/^[a-z][a-z0-9-]*:[a-z0-9:-]+$/i.test(ref)){
+    const machine = await readBlock(ref).catch(() => null);
+    if (machine) lines = opLines(machine, ref);
   }
-  $('op-lines').innerHTML = lines.join('<br>') || '<span class="opline">no operator declared — defaults hold (mode: doing · disarm: field)</span>';
-}).catch(() => { $('op-lines').innerHTML = '<span class="opline">spine:pulse is not answering — the example sleeps</span>'; });
+  lines = lines.concat(opLines(mount, 'deck:pulse'));
+  $('op-lines').innerHTML = lines.join('<br>') || '<span class="opline">nothing declared — defaults hold (mode: doing · disarm: field)</span>';
+}).catch(() => { $('op-lines').innerHTML = '<span class="opline">deck:pulse is not answering — the example sleeps</span>'; });
 
 /* the living count */
 readIndex().then(ix => {
