@@ -203,6 +203,20 @@ function linkify(s){
   return out + esc(s.slice(last));
 }
 const short = (s,n) => { s = s || ''; return s.length > n ? s.slice(0,n).replace(/\s+\S*$/,'') + ' …' : s; };
+/* A liquid slot's FIRST-STAGED arrival stamp (block-conventions:4.51). Field 6
+   since the 2026-08-02 settlement, field 2 on a slot staged while that held the
+   stamp, else last-touched at 3. Told apart by ISO SHAPE, never Date.parse: a
+   temporal spine address like "2026" parses as a perfectly good year. Reading
+   only field 2 is why staged voices here rendered with no age at all — every
+   slot xstream wrote kept its location there, so ago() saw a block name. */
+function liquidArrival(slot){
+  if (!slot || typeof slot !== 'object') return '';
+  for (const f of ['6','2','3']){
+    const v = slot[f];
+    if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(v)) return v;
+  }
+  return '';
+}
 function ago(ts){
   const t = Date.parse(ts); if (!Number.isFinite(t)) return '';
   const s = Math.max(0, (Date.now() - t) / 1000);
@@ -389,7 +403,7 @@ const MODES = {
       const text = textAt(slot);
       if (!text) continue;
       const who = (slot && typeof slot === 'object' && typeof slot['1'] === 'string') ? slot['1'] : '—';
-      const arrived = (slot && typeof slot === 'object' && typeof slot['2'] === 'string') ? slot['2'] : '';
+      const arrived = liquidArrival(slot);
       rows.push('<div class="vrow"><span class="vwho">' + esc(who) + '</span><span class="vtext">' + linkify(short(text, 180)) + '</span>' + (arrived ? '<span class="vago">' + esc(ago(arrived)) + '</span>' : '') + '</div>');
     }
     e.live = true;  /* liquid sections re-read on the 30s tick */
