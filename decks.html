@@ -396,7 +396,12 @@ async function loadDoor(){
   catch(e){ $('decks').innerHTML = '<p class="src">The beach is not answering just now — try again in a moment.</p>'; return; }
 
   const blocks = ix.blocks || [];
-  const fields = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6));
+  /* A deck is a field with a deck over it. spine:<field> alone is a tree family — the beach
+   * has plenty (a game's props, an onboarding sequence, a test battery) and none of them deal
+   * cards. The mount block deck:<field> is the bond that makes the molecule a deck, so it is
+   * also the only honest test: listing every spine offered strangers doors onto nothing. */
+  const fields = blocks.filter(b => b.startsWith('deck:')).map(b => b.slice(5))
+                       .filter(f => blocks.includes('spine:' + f));
   if (!fields.length){ $('decks').innerHTML = '<p class="src">No decks here yet — yours would be the first.</p>'; return; }
 
   const roots = {};
@@ -452,11 +457,13 @@ readBlock('spine:pulse').then(b => {
 readIndex().then(ix => {
   const blocks = ix.blocks || [];
   const spines = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6));
+  const decks = spines.filter(s => blocks.includes('deck:' + s));
   const mirrors = {};
   for (const s of spines) mirrors[s] = blocks.filter(b => b.startsWith(s + ':')).length;
-  const withM = spines.filter(s => mirrors[s] > 0);
-  $('live-count').innerHTML = 'live right now: <b>' + spines.length + '</b> fields on this beach' +
-    (withM.length ? ' · <b>' + withM.reduce((a,s)=>a+mirrors[s],0) + '</b> mirrors across ' + withM.length + ' of them' : '') +
+  const withM = decks.filter(s => mirrors[s] > 0);
+  $('live-count').innerHTML = 'live right now: <b>' + decks.length + '</b> decks on this beach' +
+    ', over <b>' + spines.length + '</b> tree families — the rest carry their content without dealing it' +
+    (withM.length ? ' · <b>' + withM.reduce((a,s)=>a+mirrors[s],0) + '</b> mirrors across ' + withM.length + ' of the decks' : '') +
     ' — this line is read from the beach as the page loads';
 }).catch(() => { $('live-count').textContent = 'the beach is quiet from here — the page still explains, the counts wait'; });
 }

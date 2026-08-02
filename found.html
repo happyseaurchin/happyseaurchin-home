@@ -276,21 +276,29 @@ async function found(){
     s.items.forEach((it, j) => { node[String(j + 1)] = it; });
     content[String(i + 1)] = node;
   });
-  const opLines = ['mode: ' + t.op.mode];
-  if (t.op.mode === 'respond') opLines.push('respond: ' + t.op.respond);
-  opLines.push('disarm: ' + t.op.disarm);
-  opLines.push('access: ' + access);
-  const opNode = { '_': 'Operator — ' + t.label + ': ' + t.note + ' Declared per tree:9.1; renderers read this branch, never deal it.' };
-  opLines.forEach((l, i) => { opNode[String(i + 1)] = l; });
-  content['9'] = opNode;
+  /* The mount — deck:<field> beside spine:<field>, bonded by name as liquid:pool:<x> bonds
+   * to pool:<x>. Its underscore names the shared machine; its digits are this deck's own
+   * terms, and they override the machine. Position 9 of the spine stays content, and the
+   * mount standing is what tells /decks this field deals cards at all. */
+  const machine = t.op.mode === 'respond' ? 'function:respond' : 'function:flick';
+  const mount = { '_': machine };
+  const local = [];
+  if (t.op.mode === 'respond' && t.op.respond !== 'rate') local.push('respond: ' + t.op.respond);
+  if (t.op.mode !== 'respond' && t.op.disarm !== 'field') local.push('disarm: ' + t.op.disarm);
+  local.push('access: ' + access);
+  local.forEach((l, i) => { mount[String(i + 1)] = l; });
 
-  hint('one write — founding…');
-  try {
+  hint('two writes — founding…');
+  const put = async (block, body) => {
     const r = await fetch(BEACH, { method:'POST', cache:'no-store',
       headers:{'Content-Type':'application/json', Accept:'application/json'},
-      body: JSON.stringify({ block: 'spine:' + name, content, new_lock: key }) });
+      body: JSON.stringify({ block, content: body, new_lock: key }) });
     const d = await r.json().catch(() => null);
     if (!r.ok) throw new Error((d && (d.error || d.code)) || ('the beach refused: ' + r.status));
+  };
+  try {
+    await put('spine:' + name, content);
+    await put('deck:' + name, mount);
   } catch(e){ hint(String(e.message || e), true); $('btn-found').disabled = false; return; }
 
   $('form').classList.add('hidden');
