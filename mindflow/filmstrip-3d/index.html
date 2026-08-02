@@ -164,15 +164,22 @@
     highlight:
     <button data-mode="all" class="active">all</button>
     <button data-mode="touched">touched</button>
+    <button data-mode="block" title="Everything in the named block, nothing outside it">block</button>
     <button data-mode="point">point</button>
     <button data-mode="spindle">spindle</button>
     <button data-mode="ring">ring</button>
     <button data-mode="disc">disc</button>
   </div>
   <div class="row">
+    find: <input id="find-input" type="text" list="find-list" placeholder="block name — e.g. passport:weft">
+    <button id="find-go">go</button>
+    <datalist id="find-list"></datalist>
+  </div>
+  <div class="row">
     addr: <input id="addr-input" type="text" placeholder="e.g. 12 or 1.2">
     <button id="addr-go">go</button>
   </div>
+  <div class="row" id="find-hint" style="color:#888;"></div>
   <div class="row" style="color:#888;">drag to orbit · scroll to zoom · right-drag to pan</div>
 </div>
 
@@ -615,9 +622,17 @@ function clearBlocks() {
   tileMeshes.length = 0;
   nodesByAddr.clear();
   allNodes = [];
+  blockTiles.clear();
   _descCache.clear();
   _packCache.clear();
 }
+
+// Where each block's tile sits on the floor, by block id. A surface of 395
+// siblings is unreadable by orbiting for it — the find control needs to know
+// where a NAME landed, which only the layout knows. Written by both layout
+// paths (the stable filmstrip tiles and the packed shelf) so `find` works
+// whatever produced the field.
+const blockTiles = new Map();
 
 function addBlock(block, tileX, tileZ, blockId, tileIdx, opts = {}) {
   const { nodes, maxDepth: maxD, C0, cubeSize } =
@@ -846,6 +861,7 @@ function renderBlocks(blocks) {
     const present = new Map(blocks.map(b => [b.id, b]));
     for (const [id, t] of stripLayout.tiles) {
       const b = present.get(id);
+      blockTiles.set(id, { tx: t.tx, tz: t.tz, foot: tileFootprintFor(Math.max(t.depth, 1)) });
       if (b) {
         addBlock(b.block, t.tx, t.tz, id, t.hueIdx, { fixedDepth: t.depth, ghostSet: b.ghost });
       } else {
@@ -857,6 +873,7 @@ function renderBlocks(blocks) {
       fitCameraTo(stripLayout.extentX, stripLayout.extentZ, stripLayout.maxD);
       stripLayout.fitted = true;
     }
+    syncFindList();
     return;
   }
 
@@ -895,6 +912,7 @@ function renderBlocks(blocks) {
     const cz = z + r.h / 2;
     for (const it of r.items) {
       const cx = x + (it.foot + TILE_GAP) / 2;
+      blockTiles.set(it.b.id, { tx: cx, tz: cz, foot: it.foot });
       placed.push({ ...addBlock(it.b.block, cx, cz, it.b.id, it.i, { ghostSet: it.b.ghost, layout: ov }), tx: cx, tz: cz });
       x += it.foot + TILE_GAP;
     }
@@ -903,6 +921,7 @@ function renderBlocks(blocks) {
 
   const maxD = placed.length ? Math.max(...placed.map(p => p.maxD)) : 1;
   fitCameraTo(extentX, extentZ, maxD);
+  syncFindList();
 }
 
 // ---------------------------------------------------------------------------
@@ -959,14 +978,39 @@ function applyHighlight() {
   }
 }
 
+// focus is "<blockId>:<digits>" — but a beach block NAME is itself colon-bearing
+// (`passport:weft`, `liquid:pool:this-hour`), so splitting at the FIRST colon
+// read the handle as an address and scoped the focus to a block that does not
+// exist. Split at the LAST colon, and only when what follows it is digits —
+// otherwise the whole string is a block name with no address. A loaded block
+// whose own name ends in digits wins over the split, so `game:1` stays a block.
+// Parsed once per focus string; applyHighlight calls this for every cube.
+let _focusSplit = { key: null, block: null, addr: '' };
+function splitFocus(focus) {
+  if (_focusSplit.key === focus) return _focusSplit;
+  let block = null, addr = focus;
+  if (blockTiles.has(focus)) { block = focus; addr = ''; }
+  else {
+    const colon = focus.lastIndexOf(':');
+    if (colon >= 0) {
+      const tail = focus.slice(colon + 1);
+      if (/^\d*$/.test(tail)) { block = focus.slice(0, colon); addr = tail; }
+      else { block = focus; addr = ''; }
+    }
+  }
+  _focusSplit = { key: focus, block, addr };
+  return _focusSplit;
+}
+
 function isInFocus(node, mode, focus) {
   if (mode === 'all') return true;
   if (mode === 'touched') return touchedSet.has(node.fullAddr);
-  // focus is "blockId:digits" — split for per-block scoping
-  const colon = focus.indexOf(':');
-  const focusBlock = colon >= 0 ? focus.slice(0, colon) : null;
-  const focusAddrStr = colon >= 0 ? focus.slice(colon + 1) : focus;
+  const { block: focusBlock, addr: focusAddrStr } = splitFocus(focus);
   if (focusBlock !== null && node.blockId !== focusBlock) return false;
+  // `all` returns above, before scoping, so it cannot mean "all of ONE block" —
+  // which is exactly what arriving at a found block wants. That is this mode:
+  // the block entire, everything else dimmed.
+  if (mode === 'block') return true;
   if (mode === 'point') return node.addr === focusAddrStr;
   if (mode === 'spindle') return focusAddrStr.startsWith(node.addr);
   if (mode === 'ring') {
@@ -1054,13 +1098,98 @@ document.querySelectorAll('#panel button[data-layout]').forEach(btn => {
   });
 });
 
-document.getElementById('addr-go').addEventListener('click', () => {
-  // Accept "block:1.2.3" or "block:123" or just "123" (defaults to first block)
-  let v = document.getElementById('addr-input').value.trim();
-  if (!v.includes(':')) v = (allNodes[0]?.blockId || '0') + ':' + v;
-  const colon = v.indexOf(':');
-  focusAddr = v.slice(0, colon + 1) + v.slice(colon + 1).replace(/\./g, '');
+// ---------------------------------------------------------------------------
+// Find a block by name
+//
+// A surface of several hundred sibling tiles cannot be searched by orbiting.
+// The address field answers "where in a block"; this answers the prior
+// question — "where IS the block" — by flying the camera to the tile the
+// layout gave it and dimming everything else to it.
+// ---------------------------------------------------------------------------
+
+/** Move the camera to sit over one block's tile. Returns false if the name
+ *  names nothing loaded, so the caller can say so rather than fly nowhere. */
+function flyToBlock(id) {
+  const t = blockTiles.get(id);
+  if (!t) return false;
+  // Frame the tile with room around it: a one-cube block still wants context,
+  // a wide one wants to fit. Same three-quarter view the whole-field fit uses,
+  // so arriving at a block reads as the same world, closer.
+  const dist = Math.max(t.foot, CUBE_SIZE * 2) * 2.4 + CUBE_SIZE * 5;
+  controls.target.set(t.tx, 0, t.tz);
+  camera.position.set(t.tx + dist * 0.5, dist * 0.75, t.tz + dist * 0.8);
+  camera.far = Math.max(camera.far, dist * 6);
+  camera.updateProjectionMatrix();
+  controls.update();
+  return true;
+}
+
+function findHint(msg, bad) {
+  const el = document.getElementById('find-hint');
+  el.textContent = msg || '';
+  el.style.color = bad ? '#b44' : '#888';
+}
+
+/** Fill the name list from whatever is loaded — beach index, shelf, or upload. */
+function syncFindList() {
+  const dl = document.getElementById('find-list');
+  if (!dl) return;
+  const names = [...blockTiles.keys()].sort();
+  dl.innerHTML = names.map(n => `<option value="${n.replace(/"/g, '&quot;')}">`).join('');
+  findHint(names.length ? `${names.length} blocks — type a name, or part of one` : '');
+}
+
+function runFind() {
+  const raw = document.getElementById('find-input').value.trim();
+  if (!raw) { findHint('type a block name'); return; }
+  // Exact first, then unique case-insensitive substring — so "bagnall" or
+  // "weft" reaches its block without the full name being remembered.
+  const names = [...blockTiles.keys()];
+  let id = names.find(n => n === raw);
+  if (!id) {
+    const hits = names.filter(n => n.toLowerCase().includes(raw.toLowerCase()));
+    if (hits.length === 1) id = hits[0];
+    else if (hits.length > 1) {
+      const exactish = hits.find(n => n.toLowerCase() === raw.toLowerCase());
+      if (exactish) id = exactish;
+      else { findHint(`${hits.length} match: ${hits.slice(0, 6).join(', ')}${hits.length > 6 ? '…' : ''}`); return; }
+    }
+  }
+  if (!id) { findHint(`no block matching "${raw}"`, true); return; }
+  if (!flyToBlock(id)) { findHint(`"${id}" has no tile on this layout`, true); return; }
+  document.getElementById('find-input').value = id;
+  // Dim the rest to it. `spindle` with an empty address matches only the
+  // block's root, so `disc` at depth 0 is wrong too — `all` scoped to the
+  // block is what "show me this one" means, and per-block scoping is what
+  // isInFocus already does once the name parses.
+  focusAddr = id;
+  mode = 'block';
+  document.querySelectorAll('#panel button[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === 'block'));
   applyHighlight();
+  findHint(`${id} — camera moved; addr field walks inside it`);
+}
+
+document.getElementById('find-go').addEventListener('click', runFind);
+document.getElementById('find-input').addEventListener('keydown', e => { if (e.key === 'Enter') runFind(); });
+document.getElementById('find-input').addEventListener('change', runFind);
+
+document.getElementById('addr-go').addEventListener('click', () => {
+  // Accept "block:1.2.3" or "block:123" or just "123" — a bare address walks
+  // into whichever block find last flew to, else the first loaded.
+  let v = document.getElementById('addr-input').value.trim().replace(/\./g, '');
+  const found = document.getElementById('find-input').value.trim();
+  const base = blockTiles.has(found) ? found : (allNodes[0]?.blockId || '0');
+  focusAddr = /^\d*$/.test(v) ? base + ':' + v : v;
+  // Arriving via find leaves the whole block lit; an address then has nothing
+  // to show unless the mode narrows with it. Walking an address means the
+  // spindle — root down to the position — and clearing it means the block again.
+  const { addr } = splitFocus(focusAddr);
+  if (mode === 'block' || mode === 'spindle') mode = addr ? 'spindle' : 'block';
+  document.querySelectorAll('#panel button[data-mode]').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  applyHighlight();
+});
+document.getElementById('addr-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') document.getElementById('addr-go').click();
 });
 
 // ---------------------------------------------------------------------------
