@@ -86,6 +86,7 @@
   .op-live{border:1px solid rgba(231,178,76,0.3);border-radius:10px;padding:16px 18px;margin:16px 0;background:radial-gradient(500px 200px at 20% 0%, rgba(231,178,76,0.06), transparent 60%)}
   .op-live h3{font-family:var(--mono);font-size:11.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--solid);margin:0 0 10px}
   .op-live .opline{font-family:var(--mono);font-size:14.5px;color:var(--foam);padding:3px 0}
+  .op-live .opfrom{font-style:normal;font-size:11.5px;opacity:0.5;margin-left:10px}
   .op-live p{font-size:0.98rem;margin:10px 0 0;color:var(--vapour-dim)}
 
   .paths{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:18px 0}
@@ -300,7 +301,7 @@
   <div class="op-live">
     <h3>spine:pulse · position 9 — read live</h3>
     <div id="op-lines"><span class="opline">reading…</span></div>
-    <p>These lines are the entire configuration of the pulse deck — parsed by the pages, readable by anyone, editable only by the keeper. Change a line, and every lens changes behaviour.</p>
+    <p>These lines are the entire configuration of the pulse deck — readable by anyone, editable only by its keeper. Change a line and every page over this deck changes behaviour. A deck can also name an operator block here instead, and use settings someone else wrote.</p>
   </div>
 
   <h2><span class="n">06</span>Three ways in</h2>
@@ -337,6 +338,14 @@ async function readIndex(){
 }
 function voice(n){ let x=n; while(x && typeof x==='object'){ if(!('_' in x)) return null; x=x['_']; } return typeof x==='string'?x:null; }
 const digits = n => (n && typeof n==='object') ? Object.keys(n).filter(k=>/^[1-9]$/.test(k)).sort() : [];
+/* every line a node carries — its own voice, then one level of digit children */
+function texts(n){
+  if (typeof n === 'string') return n.trim() ? [n] : [];
+  if (!n || typeof n !== 'object') return [];
+  const out = []; const v = voice(n); if (v) out.push(v);
+  for (const d of digits(n)){ const t = typeof n[d] === 'string' ? n[d] : voice(n[d]); if (t) out.push(t); }
+  return out;
+}
 
 /* ════════ THE DOOR ════════ */
 const HANDLE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
@@ -396,11 +405,18 @@ async function loadDoor(){
   catch(e){ $('decks').innerHTML = '<p class="src">The beach is not answering just now — try again in a moment.</p>'; return; }
 
   const blocks = ix.blocks || [];
-  const fields = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6));
-  if (!fields.length){ $('decks').innerHTML = '<p class="src">No decks here yet — yours would be the first.</p>'; return; }
-
+  /* Not every spine is a deck. The beach has plenty of families that carry content without
+   * dealing it — a game's props, an onboarding sequence, a test battery — and offering them
+   * here sent strangers through doors onto nothing. A deck is a spine that says at position 9
+   * how its cards behave, and has cards to deal. Both are read from the spine itself. */
+  const all = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6));
   const roots = {};
-  await Promise.all(fields.map(async f => { try { roots[f] = await readBlock('spine:' + f); } catch(e){ roots[f] = null; } }));
+  await Promise.all(all.map(async f => { try { roots[f] = await readBlock('spine:' + f); } catch(e){ roots[f] = null; } }));
+  const declares = b => /^(mode|respond|disarm|access):|^(function|ways):[a-z0-9:-]+$/im
+    .test(texts(b && b['9']).join('\n'));
+  const dealsCards = b => digits(b).filter(d => d !== '9').some(s => digits(b[s]).length);
+  const fields = all.filter(f => roots[f] && declares(roots[f]) && dealsCards(roots[f]));
+  if (!fields.length){ $('decks').innerHTML = '<p class="src">No decks here yet — yours would be the first.</p>'; return; }
 
   const people = f => blocks.filter(b => b.startsWith(f + ':') && HANDLE.test(b.slice(f.length + 1))).length;
   fields.sort((a, b) => people(b) - people(a) || a.localeCompare(b));
@@ -439,24 +455,23 @@ readBlock('ways:deck').then(b => {
 
 /* a live operator */
 readBlock('spine:pulse').then(b => {
-  const op = b && b['9'];
-  const lines = [];
-  for (const d of digits(op)){
-    const t = typeof op[d] === 'string' ? op[d] : voice(op[d]);
-    if (t) lines.push('<span class="opline">' + esc(t) + '</span>');
-  }
-  $('op-lines').innerHTML = lines.join('<br>') || '<span class="opline">no operator declared — defaults hold (mode: doing · disarm: field)</span>';
+  const lines = texts(b && b['9'])
+    .filter(t => /^(mode|respond|disarm|access):/i.test(t))
+    .map(t => '<span class="opline">' + esc(t) + '</span>');
+  $('op-lines').innerHTML = lines.join('<br>') || '<span class="opline">nothing said here — defaults hold (mode: doing · disarm: field)</span>';
 }).catch(() => { $('op-lines').innerHTML = '<span class="opline">spine:pulse is not answering — the example sleeps</span>'; });
 
 /* the living count */
 readIndex().then(ix => {
   const blocks = ix.blocks || [];
   const spines = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6));
+  const decks = spines.filter(s => blocks.includes('deck:' + s));
   const mirrors = {};
   for (const s of spines) mirrors[s] = blocks.filter(b => b.startsWith(s + ':')).length;
-  const withM = spines.filter(s => mirrors[s] > 0);
-  $('live-count').innerHTML = 'live right now: <b>' + spines.length + '</b> fields on this beach' +
-    (withM.length ? ' · <b>' + withM.reduce((a,s)=>a+mirrors[s],0) + '</b> mirrors across ' + withM.length + ' of them' : '') +
+  const withM = decks.filter(s => mirrors[s] > 0);
+  $('live-count').innerHTML = 'live right now: <b>' + decks.length + '</b> decks on this beach' +
+    ', over <b>' + spines.length + '</b> tree families — the rest carry their content without dealing it' +
+    (withM.length ? ' · <b>' + withM.reduce((a,s)=>a+mirrors[s],0) + '</b> mirrors across ' + withM.length + ' of the decks' : '') +
     ' — this line is read from the beach as the page loads';
 }).catch(() => { $('live-count').textContent = 'the beach is quiet from here — the page still explains, the counts wait'; });
 }

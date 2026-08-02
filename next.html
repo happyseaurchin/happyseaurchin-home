@@ -409,18 +409,33 @@ function fmtElapsed(ms){
   return Math.floor(m/60) + 'h' + String(m%60).padStart(2,'0');
 }
 
-/* ── operator ── */
-function parseOperator(spine){
-  const op = { mode:'doing', respond:'rate', disarm:'field', access:'open', member:true };
-  const node = spine['9'];
-  if (node) for (const t of textsOf(node, [], 1)){
+/* ── the operator ──
+ * Position 9 of the spine is where a deck says how its cards behave. It holds either
+ * the settings themselves, or the name of an operator block that holds them — one a
+ * designer wrote once, that any number of decks may use, the way an o-page is written
+ * once and anyone may link to it. An author picks an operator; a designer makes one. */
+const OPERATOR_REF = /^(function|ways):[a-z0-9:-]+$/i;
+function applyLines(op, lines){
+  let got = false;
+  for (const t of lines){
     let m;
-    if ((m = t.match(/^mode:\s*(doing|respond)/i))) op.mode = m[1].toLowerCase();
-    else if ((m = t.match(/^respond:\s*(rate|thumbs|reply)/i))) op.respond = m[1].toLowerCase();
-    else if ((m = t.match(/^disarm:\s*(field|person)/i))) op.disarm = m[1].toLowerCase();
-    else if ((m = t.match(/^access:\s*(open|latched|sed:[a-z0-9-]+)/i))) op.access = m[1].toLowerCase();
+    if ((m = t.match(/^mode:\s*(doing|respond)/i))) { op.mode = m[1].toLowerCase(); got = true; }
+    else if ((m = t.match(/^respond:\s*(rate|thumbs|reply)/i))) { op.respond = m[1].toLowerCase(); got = true; }
+    else if ((m = t.match(/^disarm:\s*(field|person)/i))) { op.disarm = m[1].toLowerCase(); got = true; }
+    else if ((m = t.match(/^access:\s*(open|latched|sed:[a-z0-9-]+)/i))) { op.access = m[1].toLowerCase(); got = true; }
   }
-  if (op.mode === 'respond') op.disarm = 'person';
+  return got;
+}
+async function readOperator(spine){
+  const op = { mode:'doing', respond:'rate', disarm:'field', access:'open', member:true, declared:false };
+  const lines = textsOf(spine['9'], [], 1);
+  const ref = lines.map(t => t.trim()).find(t => OPERATOR_REF.test(t));
+  if (ref){
+    const block = await readBlock(ref).catch(() => null);
+    if (block && applyLines(op, textsOf(block, [], 1))) op.declared = true;
+  }
+  if (applyLines(op, lines)) op.declared = true;            /* said here beats named elsewhere */
+  if (op.mode === 'respond') op.disarm = 'person';          /* answering is always once per reader */
   return op;
 }
 
@@ -431,7 +446,7 @@ async function loadField(){
   if (!spine) throw new Error(SPINE + ' not found at the beach');
   SPINE_BLOCK = spine;
   FLOOR = floorOf(spine) || 3;
-  OP = parseOperator(spine);
+  OP = await readOperator(spine);
   /* sed-gating is convention, not enforcement — the check is a courteous read */
   if (OP.access.startsWith('sed:')){
     OP.member = false;
@@ -484,7 +499,8 @@ async function loadField(){
       if (card.proposed && who === card.by) continue;
       const entry = nodeAt(mirrors[who], card.digits);
       for (const t of textsOf(entry)){
-        if (isDone(t) || isDrop(t)) { if (!card.done) card.done = { who, text: t, kind: isDrop(t) ? 'drop' : 'done' }; }
+        /* your own DONE outranks anyone else's — under disarm:person it is the one that counts */
+        if (isDone(t) || isDrop(t)) { if (!card.done || who === HANDLE) card.done = { who, text: t, kind: isDrop(t) ? 'drop' : 'done' }; }
         else if (isDoing(t)) card.doing.push(who);
         else if (isResponse(t)){ card.responses.push({ who, text: t }); if (who === HANDLE) card.myResponse = t; }
         else if (deferUntil(t)){ if (who === HANDLE) card.myDefer = deferUntil(t); }
@@ -500,7 +516,12 @@ function makeCard(digits, text, stemNo, cardNo, stemText, proposed, by){
 }
 function armed(card){
   if (card.myDefer && card.myDefer > today()) return false;
-  if (card.done) return false;
+  /* disarm says WHOSE mark retires a card. field: anyone's DONE retires it for all, because
+   * the field tracks shared work. person: only your own, because the field tracks each
+   * reader's own passage through it — a personal list is not finished by someone else
+   * finishing it. Until now 'disarm: person' was honoured for responses and silently
+   * ignored for DONE, so a doing-mode personal deck behaved as shared. */
+  if (card.done && (OP.disarm !== 'person' || card.done.who === HANDLE)) return false;
   if (OP.disarm === 'person' && card.myResponse) return false;
   return true;
 }
@@ -574,9 +595,21 @@ function renderDeck(){
   $('foot-hint').textContent = OP.mode === 'doing'
     ? 'swipe → browse · ↑ tomorrow · ↓ drop' : 'swipe → browse · ↑ later · answer on the card';
   if (!DECK.length){
-    showState(OP.mode === 'respond' ? 'All answered.' : 'Field clear.',
-      OP.mode === 'respond' ? 'Every card in this field carries your answer. The fold of mirrors is the tally.'
-                            : 'Nothing armed at hour-rung. Add to the spine, or look up a rung.');
+    /* three different silences, and calling them all 'clear' was a lie: a field with no
+     * mount is not a deck at all, and one with cards nobody has reached is not finished. */
+    if (!CARDS.length && !OP.declared)
+      showState('Not a deck.',
+        esc(FIELD) + ' is a field on this beach, but nothing here says how its cards behave and none of its content '
+        + 'sits where a card sits. Read it whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
+        + encodeURIComponent(FIELD) + '">spine:' + esc(FIELD) + '</a>, or <a href="/decks">see the decks that do deal</a>.');
+    else if (!CARDS.length)
+      showState('No cards yet.',
+        'The ' + esc(FIELD) + ' spine carries its content, but none of it sits where a card sits — a card is a leaf '
+        + 'under a stem. Add one to the spine and it deals here immediately.');
+    else
+      showState(OP.mode === 'respond' ? 'All answered.' : 'Field clear.',
+        OP.mode === 'respond' ? 'Every card in this field carries your answer. The fold of mirrors is the tally.'
+                              : 'Nothing armed at hour-rung. Add to the spine, or look up a rung.');
     renderDone(); return;
   }
   hideState();
@@ -615,7 +648,8 @@ function renderDone(){
     '<div class="drow' + (c.done.kind === 'drop' ? ' dropped' : '') + '"><span class="dwho">' + esc(c.done.who) + (c.done.kind === 'drop' ? ' ✕' : ' ✓') + '</span><span class="dtext">' + esc(c.text) + '</span></div>').join('');
 }
 function showState(title, body){
-  $('state-title').textContent = title; $('state-body').textContent = body;
+  /* body is HTML — every caller escapes what it interpolates */
+  $('state-title').textContent = title; $('state-body').innerHTML = body;
   $('state').classList.remove('hidden');
 }
 function hideState(){ $('state').classList.add('hidden'); }
@@ -1011,7 +1045,7 @@ async function reload(){
   try { await loadField(); renderDeck(); }
   catch (e){
     $('app').classList.add('hidden');
-    showState('The beach is out of reach.', String(e.message || e));
+    showState('The beach is out of reach.', esc(String(e.message || e)));
   }
 }
 boot();
