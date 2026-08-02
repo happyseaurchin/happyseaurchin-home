@@ -173,6 +173,28 @@ function childSteps(node){
 }
 const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : s; return d.innerHTML; };
 const $ = id => document.getElementById(id);
+
+/* A link inside a voice is a DOOR — the host posts a room and the reader walks in.
+ * Escaped text is safe but dead, so split the RAW string on link-shaped runs, escape
+ * every piece, and build each anchor from its own match: nothing unescaped reaches the
+ * DOM. A bare host must carry a path (xstream.onen.ai/?room=count) so pscale addresses
+ * — block-conventions:4.22, a date, a floor — are never mistaken for the web. */
+const LINK = /(https?:\/\/[^\s<>"']+|(?:[a-z0-9][a-z0-9-]*\.)+[a-z]{2,}\/[^\s<>"']*)/gi;
+function linkify(s){
+  s = s == null ? '' : String(s);
+  let out = '', last = 0, m;
+  LINK.lastIndex = 0;
+  while ((m = LINK.exec(s))){
+    out += esc(s.slice(last, m.index));
+    let url = m[0], tail = '';
+    const t = url.match(/[.,;:!?)\]]+$/);            /* sentence punctuation is not the URL */
+    if (t){ tail = t[0]; url = url.slice(0, -tail.length); }
+    const href = /^https?:\/\//i.test(url) ? url : 'https://' + url;
+    out += '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(url) + '</a>' + esc(tail);
+    last = m.index + m[0].length;
+  }
+  return out + esc(s.slice(last));
+}
 const short = (s,n) => { s = s || ''; return s.length > n ? s.slice(0,n).replace(/\s+\S*$/,'') + ' …' : s; };
 function ago(ts){
   const t = Date.parse(ts); if (!Number.isFinite(t)) return '';
@@ -238,7 +260,7 @@ const MODES = {
   async value(e){
     const b = await readBlock(e.host, e.target);
     const t = b ? textAt(walkTo(b, e.addr)) : null;
-    return '<p class="quote">' + esc(t || '(nothing stands at this address)') + '</p>' + srcLine(e);
+    return '<p class="quote">' + linkify(t || '(nothing stands at this address)') + '</p>' + srcLine(e);
   },
   async walk(e){
     const b = await readBlock(e.host, e.target);
@@ -251,9 +273,14 @@ const MODES = {
     const here = walkTo(b, e.addr);
     const out = [];
     if (crumbs.length) out.push('<p class="crumb">' + crumbs.join('<br>') + '</p>');
-    out.push('<p class="quote">' + esc(textAt(here) || '(unvoiced)') + '</p>');
-    for (const s of childSteps(here).slice(0, 4)){
-      out.push('<div class="kidline"><span class="no">·' + esc(s) + '</span><span>' + esc(short(textAt(walkTo(here, s)) || '', 110)) + '</span></div>');
+    out.push('<p class="quote">' + linkify(textAt(here) || '(unvoiced)') + '</p>');
+    /* Walked to an address, the children are CONTEXT — a glance below where you stand,
+     * so four short lines. Walked to the root, they are the CONTENT: this is a spine
+     * read as its own catalogue, and clipping it hides entries entirely. The spine
+     * author sets the length of a line; the page shows the line. */
+    const root = !e.addr;
+    for (const s of childSteps(here).slice(0, root ? 12 : 4)){
+      out.push('<div class="kidline"><span class="no">·' + esc(s) + '</span><span>' + linkify(short(textAt(walkTo(here, s)) || '', root ? 600 : 110)) + '</span></div>');
     }
     return out.join('') + srcLine(e);
   },
@@ -264,7 +291,7 @@ const MODES = {
     const slots = slotsOf(node);
     slots.sort((a, x) => (x.ts || '').localeCompare(a.ts || ''));
     const rows = slots.slice(0, 8).map(s =>
-      '<div class="vrow"><span class="vwho">' + esc(s.who || '—') + '</span><span class="vtext">' + esc(short(s.text, 220)) + '</span>' + (s.ts ? '<span class="vago">' + esc(ago(s.ts)) + '</span>' : '') + '</div>');
+      '<div class="vrow"><span class="vwho">' + esc(s.who || '—') + '</span><span class="vtext">' + linkify(short(s.text, 220)) + '</span>' + (s.ts ? '<span class="vago">' + esc(ago(s.ts)) + '</span>' : '') + '</div>');
     return (rows.join('') || '<p class="vnone">no voices here yet — silence is honest absence</p>') +
       srcLine(e, slots.length > 8 ? [esc(String(slots.length)) + ' in all — newest 8 shown'] : []);
   },
@@ -313,10 +340,10 @@ const MODES = {
   async explain(e){
     const b = await readBlock(e.host, e.target);
     if (!b) return '<p class="vnone">' + esc(e.target) + ' is not on this beach</p>';
-    const out = ['<p class="quote">' + esc(short(voiceOf(b) || '', 240)) + '</p>'];
+    const out = ['<p class="quote">' + linkify(short(voiceOf(b) || '', 240)) + '</p>'];
     for (const d of digitKeys(b)){
       const t = textAt(b[d]);
-      if (t) out.push('<div class="kidline"><span class="no">·' + d + '</span><span>' + esc(short(t, 100)) + '</span></div>');
+      if (t) out.push('<div class="kidline"><span class="no">·' + d + '</span><span>' + linkify(short(t, 100)) + '</span></div>');
     }
     return out.join('') + srcLine(e, ['<a href="https://happyseaurchin.com/explain?block=' + encodeURIComponent(e.target) + '">explained in full →</a>']);
   },
@@ -330,7 +357,7 @@ const MODES = {
       if (!text) continue;
       const who = (slot && typeof slot === 'object' && typeof slot['1'] === 'string') ? slot['1'] : '—';
       const arrived = (slot && typeof slot === 'object' && typeof slot['2'] === 'string') ? slot['2'] : '';
-      rows.push('<div class="vrow"><span class="vwho">' + esc(who) + '</span><span class="vtext">' + esc(short(text, 180)) + '</span>' + (arrived ? '<span class="vago">' + esc(ago(arrived)) + '</span>' : '') + '</div>');
+      rows.push('<div class="vrow"><span class="vwho">' + esc(who) + '</span><span class="vtext">' + linkify(short(text, 180)) + '</span>' + (arrived ? '<span class="vago">' + esc(ago(arrived)) + '</span>' : '') + '</div>');
     }
     e.live = true;  /* liquid sections re-read on the 30s tick */
     return (rows.join('') || '<p class="vnone">nobody staged here right now — the liquid mirror is empty</p>') +
