@@ -68,11 +68,18 @@
   .vago{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:none}
   .vnone{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);padding:6px 0}
 
-  .frow{display:flex;gap:10px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line);font-size:0.94rem}
-  .frow:last-child{border-bottom:none}
+  .frow{display:flex;gap:10px;align-items:baseline;padding:7px 0;font-size:0.94rem}
+  .fgroup{border-bottom:1px solid var(--line);padding-bottom:6px}
+  .fgroup:last-child{border-bottom:none}
   .frow .no{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:none;min-width:44px}
   .frow .txt{flex:1;color:var(--vapour)}
   .frow .agg{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;white-space:nowrap}
+  /* fold-lens voice rows — deliberately NOT .vrow, which the voices lens already owns */
+  .mrow{display:flex;gap:10px;align-items:baseline;padding:3px 0;font-size:0.9rem}
+  .mrow .mwho{font-family:var(--mono);font-size:10.5px;color:var(--solid);flex:none;min-width:74px;text-align:right}
+  .mrow .msaid{flex:1;color:var(--vapour);min-width:0}
+  .mrow .mmore{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim)}
+  .frow + .mrow{padding-top:6px}
 
   .compose textarea{width:100%;background:rgba(6,23,30,0.6);border:1px solid var(--line-strong);border-radius:8px;color:var(--foam);font-family:var(--body);font-size:15px;padding:10px 12px;outline:none;resize:vertical;min-height:64px}
   .compose textarea:focus{border-color:var(--liquid)}
@@ -277,19 +284,40 @@ const MODES = {
     const mirrorNames = blocks.filter(x => x.startsWith(family + ':') && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(x.slice(family.length + 1)));
     const got = await Promise.all([readBlock(e.host, spineName)].concat(mirrorNames.map(n => readBlock(e.host, n).catch(() => null))));
     const spine = got[0];
-    const mirrors = got.slice(1).filter(Boolean);
     if (!spine) return '<p class="vnone">' + esc(spineName) + ' would not read</p>';
+    /* Keep each mirror's handle beside its block. An Observer page shows only what
+       people WROTE (ways:views:5) — a fold lens rendering nothing but tallies fails
+       the register it declares, and the words are the whole point of a fold. */
+    const voices = mirrorNames
+      .map((n, i) => ({ who: n.slice(family.length + 1), block: got[i + 1] }))
+      .filter(v => v.block);
+    const VOICE_CAP = 6;
     const out = [];
     let marks = 0;
     for (const s of digitKeys(spine).filter(d => d !== '9')){
-      for (const l of digitKeys(spine[s])){
-        const text = textAt(spine[s][l]);
+      /* A one-level family — every position its own card with nothing beneath it,
+         which is what spine:neighbour-gifts is — rendered as nothing at all while
+         this walked for leaves only. A childless stem stands as its own card. */
+      const leaves = digitKeys(spine[s]);
+      const stem = { addr: s, no: String(s), text: textAt(spine[s]) };
+      /* A stem stands as a card in its own right when childless, and ALSO when
+         somebody answered at the stem itself — a reading about a whole band
+         rather than one item in it. Walking leaves only, such an answer was
+         collected by nobody and the page read as empty while the words sat there. */
+      const cards = leaves.length
+        ? (voices.some(v => textAt(walkTo(v.block, s))) ? [stem] : [])
+            .concat(leaves.map(l => ({ addr: s + l, no: s + '·' + l, text: textAt(spine[s][l]) })))
+        : [stem];
+      for (const card of cards){
+        const text = card.text;
         if (!text) continue;
         const ratings = []; let ups = 0, downs = 0, replies = 0, notes = 0;
-        for (const m of mirrors){
-          const t = textAt(walkTo(m, s + l));
+        const said = [];
+        for (const v of voices){
+          const t = textAt(walkTo(v.block, card.addr));
           if (!t) continue;
           marks++;
+          said.push({ who: v.who, text: t });
           let mm;
           if ((mm = t.match(/^rated\s+(\d{1,2})/i))) ratings.push(+mm[1]);
           else if (/^up\b/i.test(t)) ups++;
@@ -301,12 +329,17 @@ const MODES = {
         if (ratings.length) agg = 'avg ' + (Math.round(ratings.reduce((a,x)=>a+x,0)/ratings.length*10)/10) + ' · ' + ratings.length;
         else if (ups || downs) agg = '👍' + ups + ' 👎' + downs;
         else if (replies) agg = replies + ' replied';
-        else if (notes) agg = notes + ' spoke';
-        out.push('<div class="frow"><span class="no">' + s + '·' + l + '</span><span class="txt">' + esc(short(text, 96)) + '</span>' + (agg ? '<span class="agg">' + esc(agg) + '</span>' : '') + '</div>');
+        else if (notes) agg = notes + ' answered';
+        const shown = said.slice(0, VOICE_CAP);
+        out.push('<div class="fgroup"><div class="frow"><span class="no">' + card.no + '</span><span class="txt">' + esc(short(text, 96)) + '</span>' + (agg ? '<span class="agg">' + esc(agg) + '</span>' : '') + '</div>' +
+          shown.map(v => '<div class="mrow"><span class="mwho">' + esc(v.who) + '</span><span class="msaid">' + esc(short(v.text, 170)) + '</span></div>').join('') +
+          (said.length > shown.length
+            ? '<div class="mrow"><span class="mwho"></span><span class="msaid mmore">and ' + (said.length - shown.length) + ' more — see them all →</span></div>'
+            : '') + '</div>');
       }
     }
     return '<p class="crumb">' + esc(short(voiceOf(spine) || '', 150)) + '</p>' + out.join('') +
-      srcLine(e, ['<b>' + mirrors.length + '</b> mirrors', '<b>' + marks + '</b> marks',
+      srcLine(e, ['<b>' + voices.length + '</b> people', '<b>' + marks + '</b> answers',
         '<a href="https://happyseaurchin.com/fold?field=' + encodeURIComponent(family) + '">the whole fold →</a>',
         '<a href="https://happyseaurchin.com/tree?family=' + encodeURIComponent(family) + '">walk it →</a>']);
   },
