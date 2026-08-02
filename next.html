@@ -409,46 +409,44 @@ function fmtElapsed(ms){
   return Math.floor(m/60) + 'h' + String(m%60).padStart(2,'0');
 }
 
-/* ── operator ──
- * The deck molecule is spine:<field> + <field>:<handle> mirrors + deck:<field>,
- * bonded by name exactly as liquid:pool:<x> bonds to pool:<x>. deck:<field>'s
- * underscore names a shared machine (function:flick, function:respond) which the
- * deck's own digit lines then override — so one operator serves many fields and
- * position 9 of a spine is content like any other. The mount block existing IS
- * what makes a field a deck; nothing else is sniffed. */
-const BARE_REF = /^[a-z][a-z0-9-]*:[a-z0-9:-]+$/i;
+/* ── the operator ──
+ * Position 9 of the spine is where a deck says how its cards behave. It holds either
+ * the settings themselves, or the name of an operator block that holds them — one a
+ * designer wrote once, that any number of decks may use, the way an o-page is written
+ * once and anyone may link to it. An author picks an operator; a designer makes one. */
+const OPERATOR_REF = /^(function|ways):[a-z0-9:-]+$/i;
 function applyLines(op, lines){
+  let got = false;
   for (const t of lines){
     let m;
-    if ((m = t.match(/^mode:\s*(doing|respond)/i))) op.mode = m[1].toLowerCase();
-    else if ((m = t.match(/^respond:\s*(rate|thumbs|reply)/i))) op.respond = m[1].toLowerCase();
-    else if ((m = t.match(/^disarm:\s*(field|person)/i))) op.disarm = m[1].toLowerCase();
-    else if ((m = t.match(/^access:\s*(open|latched|sed:[a-z0-9-]+)/i))) op.access = m[1].toLowerCase();
+    if ((m = t.match(/^mode:\s*(doing|respond)/i))) { op.mode = m[1].toLowerCase(); got = true; }
+    else if ((m = t.match(/^respond:\s*(rate|thumbs|reply)/i))) { op.respond = m[1].toLowerCase(); got = true; }
+    else if ((m = t.match(/^disarm:\s*(field|person)/i))) { op.disarm = m[1].toLowerCase(); got = true; }
+    else if ((m = t.match(/^access:\s*(open|latched|sed:[a-z0-9-]+)/i))) { op.access = m[1].toLowerCase(); got = true; }
   }
+  return got;
 }
-async function readOperator(){
-  const op = { mode:'doing', respond:'rate', disarm:'field', access:'open', member:true, mounted:false };
-  const mount = await readBlock('deck:' + FIELD).catch(() => null);
-  if (!mount) return op;                                    /* no mount → not a deck */
-  op.mounted = true;
-  const ref = (voice(mount) || '').trim();
-  if (BARE_REF.test(ref)){                                  /* the shared machine, first */
-    const machine = await readBlock(ref).catch(() => null);
-    if (machine) applyLines(op, childDigits(machine).map(d => textsOf(machine[d], [], 0)[0] || ''));
+async function readOperator(spine){
+  const op = { mode:'doing', respond:'rate', disarm:'field', access:'open', member:true, declared:false };
+  const lines = textsOf(spine['9'], [], 1);
+  const ref = lines.map(t => t.trim()).find(t => OPERATOR_REF.test(t));
+  if (ref){
+    const block = await readBlock(ref).catch(() => null);
+    if (block && applyLines(op, textsOf(block, [], 1))) op.declared = true;
   }
-  applyLines(op, childDigits(mount).map(d => textsOf(mount[d], [], 0)[0] || ''));  /* local wins */
-  if (op.mode === 'respond') op.disarm = 'person';          /* respond disarms per reader, always */
+  if (applyLines(op, lines)) op.declared = true;            /* said here beats named elsewhere */
+  if (op.mode === 'respond') op.disarm = 'person';          /* answering is always once per reader */
   return op;
 }
 
 /* ── load the field ── */
 let SPINE_BLOCK = null;
 async function loadField(){
-  const [spine, index, op] = await Promise.all([readBlock(SPINE), readIndex(), readOperator()]);
+  const [spine, index] = await Promise.all([readBlock(SPINE), readIndex()]);
   if (!spine) throw new Error(SPINE + ' not found at the beach');
   SPINE_BLOCK = spine;
   FLOOR = floorOf(spine) || 3;
-  OP = op;
+  OP = await readOperator(spine);
   /* sed-gating is convention, not enforcement — the check is a courteous read */
   if (OP.access.startsWith('sed:')){
     OP.member = false;
@@ -599,11 +597,11 @@ function renderDeck(){
   if (!DECK.length){
     /* three different silences, and calling them all 'clear' was a lie: a field with no
      * mount is not a deck at all, and one with cards nobody has reached is not finished. */
-    if (!OP.mounted)
+    if (!CARDS.length && !OP.declared)
       showState('Not a deck.',
-        esc(FIELD) + ' is a field on this beach, but no deck stands over it — nothing declares how its cards are '
-        + 'dealt or disarmed. Read it whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
-        + encodeURIComponent(FIELD) + '">spine:' + esc(FIELD) + '</a>, or <a href="/decks">see the decks that do stand</a>.');
+        esc(FIELD) + ' is a field on this beach, but nothing here says how its cards behave and none of its content '
+        + 'sits where a card sits. Read it whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
+        + encodeURIComponent(FIELD) + '">spine:' + esc(FIELD) + '</a>, or <a href="/decks">see the decks that do deal</a>.');
     else if (!CARDS.length)
       showState('No cards yet.',
         'The ' + esc(FIELD) + ' spine carries its content, but none of it sits where a card sits — a card is a leaf '

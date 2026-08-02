@@ -299,9 +299,9 @@
 
   <h2><span class="n">05</span>A live operator — a real field's dials</h2>
   <div class="op-live">
-    <h3>deck:pulse — read live, machine and all</h3>
+    <h3>spine:pulse · position 9 — read live</h3>
     <div id="op-lines"><span class="opline">reading…</span></div>
-    <p>These lines are the entire configuration of the pulse deck — parsed by the pages, readable by anyone, editable only by the keeper. Change a line, and every lens changes behaviour. The mount names a shared machine and the deck's own lines override it, so the common case is authored once and worn by many fields.</p>
+    <p>These lines are the entire configuration of the pulse deck — readable by anyone, editable only by its keeper. Change a line and every page over this deck changes behaviour. A deck can also name an operator block here instead, and use settings someone else wrote.</p>
   </div>
 
   <h2><span class="n">06</span>Three ways in</h2>
@@ -338,6 +338,14 @@ async function readIndex(){
 }
 function voice(n){ let x=n; while(x && typeof x==='object'){ if(!('_' in x)) return null; x=x['_']; } return typeof x==='string'?x:null; }
 const digits = n => (n && typeof n==='object') ? Object.keys(n).filter(k=>/^[1-9]$/.test(k)).sort() : [];
+/* every line a node carries — its own voice, then one level of digit children */
+function texts(n){
+  if (typeof n === 'string') return n.trim() ? [n] : [];
+  if (!n || typeof n !== 'object') return [];
+  const out = []; const v = voice(n); if (v) out.push(v);
+  for (const d of digits(n)){ const t = typeof n[d] === 'string' ? n[d] : voice(n[d]); if (t) out.push(t); }
+  return out;
+}
 
 /* ════════ THE DOOR ════════ */
 const HANDLE = /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/;
@@ -397,16 +405,18 @@ async function loadDoor(){
   catch(e){ $('decks').innerHTML = '<p class="src">The beach is not answering just now — try again in a moment.</p>'; return; }
 
   const blocks = ix.blocks || [];
-  /* A deck is a field with a deck over it. spine:<field> alone is a tree family — the beach
-   * has plenty (a game's props, an onboarding sequence, a test battery) and none of them deal
-   * cards. The mount block deck:<field> is the bond that makes the molecule a deck, so it is
-   * also the only honest test: listing every spine offered strangers doors onto nothing. */
-  const fields = blocks.filter(b => b.startsWith('deck:')).map(b => b.slice(5))
-                       .filter(f => blocks.includes('spine:' + f));
-  if (!fields.length){ $('decks').innerHTML = '<p class="src">No decks here yet — yours would be the first.</p>'; return; }
-
+  /* Not every spine is a deck. The beach has plenty of families that carry content without
+   * dealing it — a game's props, an onboarding sequence, a test battery — and offering them
+   * here sent strangers through doors onto nothing. A deck is a spine that says at position 9
+   * how its cards behave, and has cards to deal. Both are read from the spine itself. */
+  const all = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6));
   const roots = {};
-  await Promise.all(fields.map(async f => { try { roots[f] = await readBlock('spine:' + f); } catch(e){ roots[f] = null; } }));
+  await Promise.all(all.map(async f => { try { roots[f] = await readBlock('spine:' + f); } catch(e){ roots[f] = null; } }));
+  const declares = b => /^(mode|respond|disarm|access):|^(function|ways):[a-z0-9:-]+$/im
+    .test(texts(b && b['9']).join('\n'));
+  const dealsCards = b => digits(b).filter(d => d !== '9').some(s => digits(b[s]).length);
+  const fields = all.filter(f => roots[f] && declares(roots[f]) && dealsCards(roots[f]));
+  if (!fields.length){ $('decks').innerHTML = '<p class="src">No decks here yet — yours would be the first.</p>'; return; }
 
   const people = f => blocks.filter(b => b.startsWith(f + ':') && HANDLE.test(b.slice(f.length + 1))).length;
   fields.sort((a, b) => people(b) - people(a) || a.localeCompare(b));
@@ -443,22 +453,13 @@ readBlock('ways:deck').then(b => {
   box.innerHTML = html || '<p class="src">the convention block is empty — which would be news</p>';
 }).catch(e => { $('convention').innerHTML = '<p class="src">could not read ways:deck — ' + esc(String(e.message || e)) + '</p>'; });
 
-/* a live operator — the mount, then the machine it names, in the order they apply */
-const opLines = (b, tag) => digits(b).map(d => {
-  const t = typeof b[d] === 'string' ? b[d] : voice(b[d]);
-  return t ? '<span class="opline">' + esc(t) + '<i class="opfrom">' + esc(tag) + '</i></span>' : '';
-}).filter(Boolean);
-readBlock('deck:pulse').then(async mount => {
-  if (!mount) throw new Error('no mount');
-  const ref = (voice(mount) || '').trim();
-  let lines = [];
-  if (/^[a-z][a-z0-9-]*:[a-z0-9:-]+$/i.test(ref)){
-    const machine = await readBlock(ref).catch(() => null);
-    if (machine) lines = opLines(machine, ref);
-  }
-  lines = lines.concat(opLines(mount, 'deck:pulse'));
-  $('op-lines').innerHTML = lines.join('<br>') || '<span class="opline">nothing declared — defaults hold (mode: doing · disarm: field)</span>';
-}).catch(() => { $('op-lines').innerHTML = '<span class="opline">deck:pulse is not answering — the example sleeps</span>'; });
+/* a live operator */
+readBlock('spine:pulse').then(b => {
+  const lines = texts(b && b['9'])
+    .filter(t => /^(mode|respond|disarm|access):/i.test(t))
+    .map(t => '<span class="opline">' + esc(t) + '</span>');
+  $('op-lines').innerHTML = lines.join('<br>') || '<span class="opline">nothing said here — defaults hold (mode: doing · disarm: field)</span>';
+}).catch(() => { $('op-lines').innerHTML = '<span class="opline">spine:pulse is not answering — the example sleeps</span>'; });
 
 /* the living count */
 readIndex().then(ix => {
