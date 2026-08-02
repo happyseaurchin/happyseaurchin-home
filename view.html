@@ -81,6 +81,16 @@
   .mrow .mmore{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim)}
   .frow + .mrow{padding-top:6px}
 
+  /* pools lens — one row per gathering: what it is for, what was said, who is staged */
+  .prow{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .prow:last-child{border-bottom:none}
+  .prow .pname{font-family:var(--mono);font-size:11.5px;color:var(--solid);flex:none;min-width:150px}
+  .prow .pname a{border-bottom:none}
+  .prow .pwhat{flex:1;min-width:200px;color:var(--vapour);font-size:0.94rem}
+  .prow .pstate{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:none;white-space:nowrap;text-align:right;min-width:132px}
+  .prow .pstate .live{color:var(--liquid)}
+  .prow .pstate .stale{color:var(--solid)}
+
   .compose textarea{width:100%;background:rgba(6,23,30,0.6);border:1px solid var(--line-strong);border-radius:8px;color:var(--foam);font-family:var(--body);font-size:15px;padding:10px 12px;outline:none;resize:vertical;min-height:64px}
   .compose textarea:focus{border-color:var(--liquid)}
   .compose .row{display:flex;gap:8px;margin-top:8px}
@@ -203,6 +213,21 @@ function linkify(s){
   return out + esc(s.slice(last));
 }
 const short = (s,n) => { s = s || ''; return s.length > n ? s.slice(0,n).replace(/\s+\S*$/,'') + ' …' : s; };
+/* A liquid slot's FIRST-STAGED arrival stamp (block-conventions:4.51). Field 6
+   since the 2026-08-02 settlement, field 2 on a slot staged while that held the
+   stamp, else last-touched at 3. Told apart by ISO SHAPE, never Date.parse: a
+   temporal spine address like "2026" parses as a perfectly good year. Reading
+   only field 2 is why staged voices here rendered with no age at all — every
+   slot xstream wrote kept its location there, so ago() saw a block name. */
+const ISO_STAMP = /^\d{4}-\d{2}-\d{2}T/;
+function liquidArrival(slot){
+  if (!slot || typeof slot !== 'object') return '';
+  for (const f of ['6','2','3']){
+    const v = slot[f];
+    if (typeof v === 'string' && ISO_STAMP.test(v)) return v;
+  }
+  return '';
+}
 function ago(ts){
   const t = Date.parse(ts); if (!Number.isFinite(t)) return '';
   const s = Math.max(0, (Date.now() - t) / 1000);
@@ -389,12 +414,85 @@ const MODES = {
       const text = textAt(slot);
       if (!text) continue;
       const who = (slot && typeof slot === 'object' && typeof slot['1'] === 'string') ? slot['1'] : '—';
-      const arrived = (slot && typeof slot === 'object' && typeof slot['2'] === 'string') ? slot['2'] : '';
+      const arrived = liquidArrival(slot);
       rows.push('<div class="vrow"><span class="vwho">' + esc(who) + '</span><span class="vtext">' + linkify(short(text, 180)) + '</span>' + (arrived ? '<span class="vago">' + esc(ago(arrived)) + '</span>' : '') + '</div>');
     }
     e.live = true;  /* liquid sections re-read on the 30s tick */
     return (rows.join('') || '<p class="vnone">nobody staged here right now — the liquid mirror is empty</p>') +
       srcLine({ ...e, target: 'liquid:pool:' + name, addr: '' }, ['re-read every 30s']);
+  },
+  /* Every gathering at a beach, in one lens: what each pool is for, what was
+     last said in it, and who is staged there NOW. The last column is the point
+     — a liquid slot has no clock on it, so a stage from three weeks ago reads
+     as presence until something says otherwise. This is what says otherwise. */
+  async pools(e){
+    /* `pools` alone takes a bare host as its target, because the entry grammar
+       only reads a host when a target follows it. */
+    const bare = HOSTLIKE.test(e.target) && !e.target.includes(':');
+    const host = bare ? e.target : e.host;
+    const prefix = bare ? '' : e.target.replace(/^pool:/, '');
+    const index = await readIndex(host);
+    const names = (index.blocks || [])
+      .filter(b => b.startsWith('pool:') && b.indexOf(':', 5) === -1)
+      .filter(b => !prefix || b.slice(5).startsWith(prefix))
+      .sort();
+    if (!names.length) return '<p class="vnone">no pools at ' + esc(host) + (prefix ? ' under ' + esc(prefix) : '') + '</p>';
+
+    /* Two reads per pool — the spool and its liquid buffer — in small batches,
+       so a beach with dozens of gatherings still answers promptly. */
+    const got = [];
+    for (let i = 0; i < names.length; i += 8){
+      got.push(...await Promise.all(names.slice(i, i + 8).map(async n => {
+        const [pool, liq] = await Promise.all([
+          readBlock(host, n).catch(() => null),
+          readBlock(host, 'liquid:' + n).catch(() => null),
+        ]);
+        const voices = pool ? slotsOf(pool) : [];
+        /* ISO-shaped stamps only. A pool whose field 3 holds something else —
+           prose, a tag, a test fixture — has no readable clock, and taking it as
+           one both dated the row wrongly and sorted it above every pool that IS
+           dated, because 't' outranks '2'. Undated is undated; say so. */
+        const said = voices.map(v => v.ts).filter(t => t && ISO_STAMP.test(t)).sort().pop() || '';
+        const staged = [];
+        if (liq) for (const d of digitKeys(liq)){
+          const slot = liq[d];
+          if (!textAt(slot)) continue;                    /* withdrawn — a tombstone is not presence */
+          staged.push(liquidArrival(slot));
+        }
+        const stamps = staged.filter(Boolean).sort();
+        /* OLDEST is the staleness signal shown in the row; NEWEST is what the
+           sort reads, so a gathering holding one fresh stage beside one old one
+           still reads as alive rather than sinking to the age of its residue. */
+        return { name: n, what: voiceOf(pool) || '', voices: voices.length, said,
+                 staged: staged.length, oldest: stamps[0] || '', newest: stamps[stamps.length - 1] || '' };
+      })));
+    }
+    /* Liveliest first — a pool nobody has touched sinks rather than shouting.
+       Liveliness is the later of its last committed voice and its newest stage. */
+    const touched = p => (p.said > p.newest ? p.said : p.newest) || '';
+    got.sort((a, b) => touched(b).localeCompare(touched(a)));
+
+    const DAY = 86400000;
+    const rows = got.map(p => {
+      const bits = [];
+      if (p.staged){
+        const age = p.oldest ? Date.now() - Date.parse(p.oldest) : 0;
+        const cls = (age > DAY) ? 'stale' : 'live';
+        const oldAge = ago(p.oldest);
+        bits.push('<span class="' + cls + '">' + p.staged + ' staged' + (oldAge ? ' · ' + esc(oldAge) : '') + '</span>');
+      }
+      const saidAge = ago(p.said);
+      bits.push(p.voices ? p.voices + ' voice' + (p.voices === 1 ? '' : 's') + (saidAge ? ' · ' + esc(saidAge) : ' · undated') : 'unspoken');
+      return '<div class="prow"><span class="pname"><a href="https://happyseaurchin.com/render?beach=' + encodeURIComponent(host) + '&block=' + encodeURIComponent(p.name) + '">' + esc(p.name) + '</a></span>' +
+        '<span class="pwhat">' + esc(short(p.what, 150) || '(no purpose written)') + '</span>' +
+        '<span class="pstate">' + bits.join('<br>') + '</span></div>';
+    });
+    const stale = got.filter(p => p.staged && p.oldest && (Date.now() - Date.parse(p.oldest)) > DAY).length;
+    return rows.join('') +
+      '<div class="sect__src"><b>' + got.length + ' pools</b>' +
+      (e.host !== host || bare ? '<span>·</span>@ ' + esc(host) : '') +
+      '<span>·</span>' + (stale ? esc(String(stale)) + ' holding staged voices over a day old' : 'nothing staged is stale') +
+      '<span>·</span><a href="https://happyseaurchin.com/render?beach=' + encodeURIComponent(host) + '">the beach index →</a></div>';
   },
   async form(e){
     const kind = e.target.startsWith('pool:') ? 'Add your voice' : 'Leave a mark';
@@ -465,11 +563,11 @@ async function loadCatalogue(){
      Create-if-absent is race-safe at the beach: a name already standing refuses. */
   out.push('<div class="sect" id="maker" style="margin-top:26px">' +
     '<p class="quote" style="font-size:1.05rem;margin-bottom:4px">Make your own — one write, no code, no account.</p>' +
-    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · voices · fold · explain · liquid · form. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
+    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · voices · fold · explain · liquid · pools · form. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
     '<div class="compose">' +
     '<div class="row" style="margin-top:0"><input data-mk-name placeholder="a name — lowercase, dashes (becomes view:<name>)" spellcheck="false"></div>' +
     '<textarea data-mk-voicing rows="2" style="margin-top:8px" placeholder="the voicing — what this view shows, for whom (doubles as its card text)"></textarea>' +
-    '<textarea data-mk-lenses rows="4" style="margin-top:8px;font-family:var(--mono);font-size:13px" placeholder="one lens per line, e.g.&#10;walk spine:experiences 5&#10;voices marks&#10;liquid pool:this-hour"></textarea>' +
+    '<textarea data-mk-lenses rows="4" style="margin-top:8px;font-family:var(--mono);font-size:13px" placeholder="one lens per line, e.g.&#10;walk spine:experiences 5&#10;voices marks&#10;liquid pool:this-hour&#10;pools"></textarea>' +
     '<div class="row"><select data-mk-register style="flex:1;background:rgba(6,23,30,0.6);border:1px solid var(--line);border-radius:8px;color:var(--foam);font-family:var(--mono);font-size:12.5px;padding:8px 12px;outline:none">' +
     '<option value="observer">for anyone — observer register</option>' +
     '<option value="author">for authors — content and structure</option>' +
