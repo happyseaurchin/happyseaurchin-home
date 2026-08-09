@@ -101,6 +101,34 @@
   .compose .hint{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);margin-top:8px}
   .compose .hint.ok{color:var(--liquid)} .compose .hint.err{color:var(--solid)}
 
+  /* steps lens — a page for a person WITH THINGS TO DO rather than things to read.
+   * One card per act, numbered, and every link in the text becomes a button, because
+   * a link buried in a paragraph is a thing to notice and a button is a thing to press.
+   * The prose is what remains once the URLs are lifted out of it. */
+  .step{display:flex;gap:14px;align-items:flex-start;padding:15px 0;border-bottom:1px solid var(--line)}
+  .step:last-child{border-bottom:none}
+  .step__n{font-family:var(--display);font-weight:800;font-size:0.95rem;color:var(--abyss);background:var(--liquid);
+    width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;margin-top:2px}
+  .step__b{flex:1;min-width:0}
+  .step__t{font-size:1.03rem;color:var(--foam);margin:0;line-height:1.45}
+  .step__do{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .btn{display:inline-block;background:var(--liquid);color:var(--abyss);font-family:var(--mono);font-weight:700;
+    font-size:12px;letter-spacing:0.03em;padding:8px 14px;border-radius:8px;border-bottom:none;cursor:pointer}
+  .btn:hover{background:var(--foam);color:var(--abyss);border-bottom:none}
+  .btn--ghost{background:none;color:var(--liquid);border:1px solid var(--line-strong)}
+  .btn--ghost:hover{background:none;color:var(--foam);border-color:var(--foam)}
+
+  /* copy lens — a body of text whose whole purpose is to leave this page and land
+   * in an assistant. Selectable and scrollable, with the button doing the work. */
+  .copy pre{background:rgba(6,23,30,0.6);border:1px solid var(--line-strong);border-radius:8px;color:var(--vapour);
+    font-family:var(--mono);font-size:12.5px;line-height:1.52;padding:12px 14px;margin:0;white-space:pre-wrap;max-height:280px;overflow:auto}
+  .copy .row{display:flex;gap:10px;margin-top:9px;align-items:center}
+  .copy button{background:var(--liquid);border:none;border-radius:8px;color:var(--abyss);font-family:var(--mono);
+    font-weight:700;font-size:12px;padding:8px 16px;cursor:pointer}
+  .copy button:hover{background:var(--foam)}
+  .copy .hint{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim)}
+  .copy .hint.ok{color:var(--liquid)}
+
   .raw{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);border:1px dashed var(--line-strong);border-radius:8px;padding:10px 14px}
 
   .fam{display:flex;gap:12px;align-items:baseline;padding:12px 4px;border-bottom:1px solid var(--line)}
@@ -277,6 +305,17 @@ function slotsOf(node, out){
   }
   if (node['_'] && typeof node['_'] === 'object') slotsOf(node['_'], out);  /* the supernest wrap holds the older slots */
   return out;
+}
+
+/* A button says where it goes. The host is the honest label — not a verb invented by
+ * the renderer, and not a word the block author has to remember to supply — so someone
+ * can see they are about to leave for github.com before they press it. */
+function btnLabel(u){
+  try {
+    const x = new URL(u);
+    const host = x.hostname.replace(/^www\./, '');
+    return x.hash ? host + ' · ' + x.hash.slice(1).replace(/-/g, ' ') : host;
+  } catch(err){ return 'open'; }
 }
 
 function srcLine(e, extra){
@@ -494,6 +533,47 @@ const MODES = {
       '<span>·</span>' + (stale ? esc(String(stale)) + ' holding staged voices over a day old' : 'nothing staged is stale') +
       '<span>·</span><a href="https://happyseaurchin.com/render?beach=' + encodeURIComponent(host) + '">the beach index →</a></div>';
   },
+  /* steps — the DOING lens. Every other mode here renders something to read; this one
+   * renders a short list of acts a person performs, one card each. Position 9 is skipped
+   * exactly as the spec loop skips it: by convention that slot carries the block's own
+   * payload or metadata, not another step. */
+  async steps(e){
+    const b = await readBlock(e.host, e.target);
+    if (!b) return '<p class="vnone">' + esc(e.target) + ' is not on this beach</p>';
+    const here = walkTo(b, e.addr);
+    const lead = textAt(here);
+    const out = [];
+    if (lead) out.push('<p class="quote" style="font-size:1.05rem;margin:0 0 4px">' + linkify(lead) + '</p>');
+    let n = 0;
+    for (const d of childSteps(here)){
+      if (d === '9') continue;
+      const t = textAt(walkTo(here, d));
+      if (!t) continue;
+      n++;
+      const urls = String(t).match(/https?:\/\/[^\s<>()]*[^\s<>().,;:]/g) || [];
+      const prose = urls.reduce((s, u) => s.replace(u, ''), String(t))
+        .replace(/\s{2,}/g, ' ').replace(/\s+([.,;:])/g, '$1').trim();
+      const btns = urls.map((u, i) =>
+        '<a class="btn' + (i ? ' btn--ghost' : '') + '" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">'
+        + esc(btnLabel(u)) + ' ↗</a>').join('');
+      out.push('<div class="step"><div class="step__n">' + n + '</div><div class="step__b">'
+        + '<p class="step__t">' + esc(prose) + '</p>'
+        + (btns ? '<div class="step__do">' + btns + '</div>' : '') + '</div></div>');
+    }
+    if (!n) out.push('<p class="vnone">no steps stand under this address yet</p>');
+    return out.join('') + srcLine(e);
+  },
+  /* copy — text whose purpose is to LEAVE this page. The prompt a person hands to their
+   * assistant is the single highest-value thing on a how-to page, and asking someone to
+   * select a paragraph by hand is where they give up. */
+  async copy(e){
+    const b = await readBlock(e.host, e.target);
+    const t = b ? textAt(walkTo(b, e.addr)) : null;
+    if (!t) return '<p class="vnone">nothing stands at this address to copy</p>';
+    return '<div class="copy"><pre data-copytext>' + esc(t) + '</pre>'
+      + '<div class="row"><button data-copy type="button">Copy</button>'
+      + '<span class="hint" data-copyhint>paste this to your assistant</span></div></div>' + srcLine(e);
+  },
   async form(e){
     const kind = e.target.startsWith('pool:') ? 'Add your voice' : 'Leave a mark';
     return '<div class="compose"><p class="quote" style="font-size:1rem;margin-bottom:8px">' + kind + ' — it lands at ' + esc(e.target) + ', public and signed.</p>' +
@@ -503,6 +583,26 @@ const MODES = {
       '<div class="hint" data-hint>Reads are free; posting needs nothing. Sent only to ' + esc(e.host) + '.</div></div>' + srcLine(e);
   },
 };
+
+function wireCopy(sect){
+  const btn = sect.querySelector('[data-copy]'), pre = sect.querySelector('[data-copytext]');
+  const hint = sect.querySelector('[data-copyhint]');
+  if (!btn) return;
+  const idle = hint.textContent;
+  btn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(pre.textContent);
+      hint.className = 'hint ok'; hint.textContent = 'copied ✓';
+    } catch(err){
+      /* clipboard refused (insecure context, or permission) — select it instead, so the
+       * keyboard shortcut still works and the person is never left with nothing */
+      const r = document.createRange(); r.selectNodeContents(pre);
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      hint.className = 'hint'; hint.textContent = 'selected — press ⌘C';
+    }
+    setTimeout(() => { hint.className = 'hint'; hint.textContent = idle; }, 2600);
+  });
+}
 
 function wireForm(sect, e){
   const note = sect.querySelector('[data-note]'), who = sect.querySelector('[data-who]');
@@ -563,7 +663,7 @@ async function loadCatalogue(){
      Create-if-absent is race-safe at the beach: a name already standing refuses. */
   out.push('<div class="sect" id="maker" style="margin-top:26px">' +
     '<p class="quote" style="font-size:1.05rem;margin-bottom:4px">Make your own — one write, no code, no account.</p>' +
-    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · voices · fold · explain · liquid · pools · form. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
+    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · steps · copy · voices · fold · explain · liquid · pools · form. Two of those are for a reader with something to DO rather than to read — <span style="color:var(--vapour)">steps</span> turns a block\'s positions into numbered cards with every link a button, and <span style="color:var(--vapour)">copy</span> puts text behind a copy button so it can leave the page. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
     '<div class="compose">' +
     '<div class="row" style="margin-top:0"><input data-mk-name placeholder="a name — lowercase, dashes (becomes view:<name>)" spellcheck="false"></div>' +
     '<textarea data-mk-voicing rows="2" style="margin-top:8px" placeholder="the voicing — what this view shows, for whom (doubles as its card text)"></textarea>' +
@@ -676,6 +776,7 @@ async function load(){
     const d = sect.getAttribute('data-entry');
     const r = rendered.find(x => x.d === d);
     if (r && r.e.mode === 'form') wireForm(sect, r.e);
+    if (r && r.e.mode === 'copy') wireCopy(sect);
   });
   $('foot').innerHTML = '<a href="https://happyseaurchin.com/render?beach=' + encodeURIComponent(HOME) + '&block=' + encodeURIComponent(SPEC) + '">the raw spec →</a>' +
     '<a href="/next?field=views">reply to this view as a card →</a>' +
