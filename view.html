@@ -22,6 +22,32 @@
     --body:'Newsreader',Georgia,serif;
     --mono:'Space Mono',ui-monospace,monospace;
   }
+  /* The light register. Every colour on this page is one of the variables above, so a
+   * second register is a swap of that list rather than a second stylesheet — the cards,
+   * the buttons and the step numerals all follow without knowing it happened. --abyss
+   * is the button TEXT colour as well as the page ground, which is why it inverts here
+   * to near-white and the buttons stay legible with no rule of their own. */
+  :root[data-theme="light"]{
+    --abyss:#FBF8F2; --deep:#F3EEE3; --card:#FFFFFF; --card-hi:#FFFDF8;
+    --vapour:#3C5A63; --vapour-dim:#6B848D;
+    --liquid:#0D6B79; --liquid-deep:#0A5561;
+    --solid:#8E6210; --solid-deep:#6F4C08;
+    --foam:#12333C;
+    --line:rgba(18,51,60,0.14); --line-strong:rgba(18,51,60,0.28);
+  }
+  :root[data-theme="light"] body{
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(13,107,121,0.07), transparent 60%),
+      linear-gradient(180deg,#FFFDF8 0%, var(--deep) 45%, #EBE4D6 100%);
+  }
+  :root[data-theme="light"] .sect{
+    background:linear-gradient(165deg,rgba(255,255,255,0.92) 0%,rgba(255,253,248,0.72) 100%);
+    box-shadow:0 1px 3px rgba(18,51,60,0.06);
+  }
+  :root[data-theme="light"] ::selection{background:rgba(13,107,121,0.20)}
+  :root[data-theme="light"] .copy pre,
+  :root[data-theme="light"] .compose textarea,
+  :root[data-theme="light"] .compose input{background:rgba(255,255,255,0.88)}
+
   *{box-sizing:border-box} html,body{margin:0}
   body{
     font-family:var(--body); color:var(--foam); font-size:17.5px; line-height:1.58;
@@ -145,13 +171,26 @@
 </style>
 </head>
 <body>
-<script>document.documentElement.classList.remove('no-js');</script>
+<script>
+document.documentElement.classList.remove('no-js');
+/* Set before first paint, or the page flashes the wrong register. A stored choice
+ * wins; otherwise follow whatever the reader's system already asked for. */
+(function(){
+  var saved = null;
+  try { saved = localStorage.getItem('view:theme'); } catch(e){}
+  var dark = saved ? saved === 'dark'
+    : !(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+  document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+})();
+</script>
 
 <div class="bar">
   <span class="dot"></span>
   <span>the view · <b id="bar-name">—</b></span>
   <span class="spacer"></span>
   <a href="/view" id="bar-all">every view</a>
+  <button id="btn-depth" class="hidden" title="how much of this page to show">simple</button>
+  <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
 </div>
 
@@ -273,10 +312,23 @@ function showState(title, body){
 
 /* ---------- the entry grammar: <mode> [<host>] <target> [<addr>] ---------- */
 const HOSTLIKE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+/* CADO in front of the mode — an optional tag saying WHO a line is for.
+ * character/observer are the simple registers and author/designer the working ones,
+ * so the two-position control in the bar is really a face switch: a page shows its
+ * plain face by default and its working face when a reader asks for it. Untagged
+ * lines belong to everyone, which is what most lines are and should stay. */
+const SIMPLE_FACES = ['character', 'observer'];
+const FACE_TAG = /^(character|author|designer|observer):$/i;
+
 function parseEntry(line){
   const t = String(line).trim().split(/\s+/);
   if (!t[0]) return null;
-  const e = { mode: t[0].toLowerCase(), host: HOME, target: '', addr: '', raw: line };
+  let face = '';
+  const glued = t[0].match(/^(character|author|designer|observer):(\S+)$/i);   /* author:walk … */
+  if (FACE_TAG.test(t[0])) { face = t.shift().slice(0, -1).toLowerCase(); }
+  else if (glued) { face = glued[1].toLowerCase(); t[0] = glued[2]; }
+  if (!t[0]) return null;
+  const e = { mode: t[0].toLowerCase(), face, host: HOME, target: '', addr: '', raw: line };
   let i = 1;
   if (t[i] && HOSTLIKE.test(t[i]) && !t[i].includes(':') && t[i+1]) e.host = t[i++].toLowerCase();
   e.target = t[i++] || '';
@@ -663,7 +715,7 @@ async function loadCatalogue(){
      Create-if-absent is race-safe at the beach: a name already standing refuses. */
   out.push('<div class="sect" id="maker" style="margin-top:26px">' +
     '<p class="quote" style="font-size:1.05rem;margin-bottom:4px">Make your own — one write, no code, no account.</p>' +
-    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · steps · copy · voices · fold · explain · liquid · pools · form. Two of those are for a reader with something to DO rather than to read — <span style="color:var(--vapour)">steps</span> turns a block\'s positions into numbered cards with every link a button, and <span style="color:var(--vapour)">copy</span> puts text behind a copy button so it can leave the page. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
+    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · steps · copy · voices · fold · explain · liquid · pools · form. Two of those are for a reader with something to DO rather than to read — <span style="color:var(--vapour)">steps</span> turns a block\'s positions into numbered cards with every link a button, and <span style="color:var(--vapour)">copy</span> puts text behind a copy button so it can leave the page. Put a face in front of a line — <span style="color:var(--vapour)">author: walk …</span> — and it hides behind the simple/full switch: character and observer are the plain registers, author and designer the working ones, so one page serves the person passing through and the person building it. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
     '<div class="compose">' +
     '<div class="row" style="margin-top:0"><input data-mk-name placeholder="a name — lowercase, dashes (becomes view:<name>)" spellcheck="false"></div>' +
     '<textarea data-mk-voicing rows="2" style="margin-top:8px" placeholder="the voicing — what this view shows, for whom (doubles as its card text)"></textarea>' +
@@ -749,9 +801,32 @@ async function load(){
     '<p class="meta">' + (register ? '<span class="badge">' + esc(register) + ' register</span>' : '') +
     '<span>rendered live — every section is one line of <b>' + esc(SPEC) + '</b></span></p></div>');
 
-  const entries = digitKeys(spec).filter(d => d !== '9')
+  const all = digitKeys(spec).filter(d => d !== '9')
     .map(d => ({ d, e: parseEntry(typeof spec[d] === 'string' ? spec[d] : (voiceOf(spec[d]) || '')) }))
     .filter(x => x.e);
+
+  /* A page whose register at 9 is a working face opens at its working depth; anything
+   * else opens plain. The reader's own choice, once made, outranks the page's. */
+  const deep = all.filter(x => x.e.face && !SIMPLE_FACES.includes(x.e.face));
+  let stored = null;
+  try { stored = localStorage.getItem('view:depth:' + SPEC); } catch(e){}
+  const wantsFull = stored ? stored === 'full'
+    : !!(register && !SIMPLE_FACES.includes(register));
+  const full = deep.length ? wantsFull : true;
+  const entries = full ? all : all.filter(x => !x.e.face || SIMPLE_FACES.includes(x.e.face));
+
+  const depthBtn = $('btn-depth');
+  if (deep.length){
+    depthBtn.classList.remove('hidden');
+    depthBtn.textContent = full ? 'full' : 'simple';
+    depthBtn.title = full
+      ? 'showing everything, including the ' + [...new Set(deep.map(x => x.e.face))].join(' and ') + ' parts'
+      : 'showing the plain page — ' + deep.length + ' more ' + (deep.length === 1 ? 'section' : 'sections') + ' for anyone working on it';
+    depthBtn.onclick = () => {
+      try { localStorage.setItem('view:depth:' + SPEC, full ? 'simple' : 'full'); } catch(e){}
+      load();
+    };
+  } else depthBtn.classList.add('hidden');
   LIVE_ENTRIES = [];
 
   const rendered = await Promise.all(entries.map(async ({ d, e }) => {
@@ -797,6 +872,12 @@ setInterval(async () => {
 
 $('bar-all').href = PAGE;
 $('btn-refresh').addEventListener('click', () => location.reload());
+$('btn-theme').addEventListener('click', () => {
+  const root = document.documentElement;
+  const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-theme', next);
+  try { localStorage.setItem('view:theme', next); } catch(e){}
+});
 if (SPEC) load(); else loadCatalogue();
 })();
 </script>
