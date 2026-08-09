@@ -131,13 +131,17 @@
    * One card per act, numbered, and every link in the text becomes a button, because
    * a link buried in a paragraph is a thing to notice and a button is a thing to press.
    * The prose is what remains once the URLs are lifted out of it. */
-  .step{display:flex;gap:14px;align-items:flex-start;padding:15px 0;border-bottom:1px solid var(--line)}
-  .step:last-child{border-bottom:none}
-  .step__n{font-family:var(--display);font-weight:800;font-size:0.95rem;color:var(--abyss);background:var(--liquid);
-    width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;margin-top:2px}
+  .step{display:flex;gap:13px;align-items:flex-start;padding:14px 16px;
+    border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,0.028)}
+  :root[data-theme="light"] .step{background:rgba(18,51,60,0.022)}
+  .step__n{font-family:var(--display);font-weight:800;font-size:0.9rem;color:var(--abyss);background:var(--liquid);
+    width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px}
   .step__b{flex:1;min-width:0}
-  .step__t{font-size:1.03rem;color:var(--foam);margin:0;line-height:1.45}
-  .step__do{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .step__h{font-family:var(--display);font-weight:700;font-size:1.06rem;line-height:1.25;color:var(--foam);margin:0}
+  .step__s{font-size:0.93rem;line-height:1.42;color:var(--vapour);margin:5px 0 0}
+  /* the sequence made visible — quiet, and only ever between two cards */
+  .step__arrow{display:block;text-align:center;color:var(--vapour-dim);font-size:15px;line-height:1;padding:7px 0;opacity:0.55}
+  .step__do{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px}
   .btn{display:inline-block;background:var(--liquid);color:var(--abyss);font-family:var(--mono);font-weight:700;
     font-size:12px;letter-spacing:0.03em;padding:8px 14px;border-radius:8px;border-bottom:none;cursor:pointer}
   .btn:hover{background:var(--foam);color:var(--abyss);border-bottom:none}
@@ -599,17 +603,29 @@ const MODES = {
     let n = 0;
     for (const d of childSteps(here)){
       if (d === '9') continue;
-      const t = textAt(walkTo(here, d));
-      if (!t) continue;
+      const node = walkTo(here, d);
+      const title = textAt(node);
+      if (!title) continue;
+      /* A card is a TITLE and, under it, the one line of detail. That is depth doing the
+       * work: the position's own voice is what a person scanning reads, and its first
+       * child is what they read if the title did not settle it. A position written as a
+       * bare string is all title and no detail, which is why the older specs still render. */
+      const detail = (node && typeof node === 'object') ? textAt(node['1']) : '';
       n++;
-      const urls = String(t).match(/https?:\/\/[^\s<>()]*[^\s<>().,;:]/g) || [];
-      const prose = urls.reduce((s, u) => s.replace(u, ''), String(t))
-        .replace(/\s{2,}/g, ' ').replace(/\s+([.,;:])/g, '$1').trim();
+      const strip = s => {
+        const urls = String(s || '').match(/https?:\/\/[^\s<>()]*[^\s<>().,;:]/g) || [];
+        return { urls, prose: urls.reduce((a, u) => a.replace(u, ''), String(s || ''))
+          .replace(/\s{2,}/g, ' ').replace(/\s+([.,;:])/g, '$1').trim() };
+      };
+      const h = strip(title), s = strip(detail);
+      const urls = [...h.urls, ...s.urls];
       const btns = urls.map((u, i) =>
         '<a class="btn' + (i ? ' btn--ghost' : '') + '" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">'
         + esc(btnLabel(u)) + ' ↗</a>').join('');
+      if (n > 1) out.push('<div class="step__arrow">↓</div>');
       out.push('<div class="step"><div class="step__n">' + n + '</div><div class="step__b">'
-        + '<p class="step__t">' + esc(prose) + '</p>'
+        + '<h3 class="step__h">' + esc(h.prose) + '</h3>'
+        + (s.prose ? '<p class="step__s">' + esc(s.prose) + '</p>' : '')
         + (btns ? '<div class="step__do">' + btns + '</div>' : '') + '</div></div>');
     }
     if (!n) out.push('<p class="vnone">no steps stand under this address yet</p>');
