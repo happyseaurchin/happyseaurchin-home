@@ -290,14 +290,17 @@
 (function(){
 'use strict';
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
-const FIELD = (new URLSearchParams(location.search).get('field') || 'doing').replace(/[^a-z0-9-]/gi,'');
+/* The field comes from ?field=, else from the path when a personal deck is being
+ * flicked at its own URL, else the shared default. */
+const FIELD = (new URLSearchParams(location.search).get('field')
+  || (/^\/today-beach-deck(\/|$)/.test(location.pathname) ? 'today-beach-deck' : 'doing')).replace(/[^a-z0-9-]/gi,'');
 const SPINE = 'spine:' + FIELD;
 
 /* ── handle from /next/<handle> or ?h= ── */
 function handleFromUrl(){
   const q = new URLSearchParams(location.search).get('h');
   if (q) return q.trim();
-  const m = location.pathname.match(/\/next\/([^\/]+)\/?$/);
+  const m = location.pathname.match(/\/(?:next|today-beach-deck)\/([^\/]+)\/?$/);
   if (m) return decodeURIComponent(m[1]).trim();
   return null;
 }
@@ -432,6 +435,26 @@ async function readOperator(spine){
 
 /* ── load the field ── */
 let SPINE_BLOCK = null;
+let PERSONAL = false;
+/* Read an operator to any depth — dials may sit beneath a branch that says what
+ * they are for, and a one-level read would punish the deeper authoring. */
+function deepText(n, out){
+  out = out || [];
+  if (typeof n === 'string'){ if (n.trim()) out.push(n); return out; }
+  if (!n || typeof n !== 'object') return out;
+  const v = voice(n); if (v) out.push(v);
+  for (const d of childDigits(n)) deepText(n[d], out);
+  if (n['_'] && typeof n['_'] === 'object') deepText(n['_'], out);
+  return out.join('\n');
+}
+/* On a personal deck the card and its mark are ONE position, so a mark that wrote
+ * only its stamp would erase the card it was marking. Keep the verb and stamp,
+ * restore the card's own words after them. */
+function personalise(content, card){
+  if (!PERSONAL || !card) return content;
+  const head = String(content).split(' — ')[0];
+  return head + ' — ' + card.text;
+}
 async function loadField(){
   const [spine, index] = await Promise.all([readBlock(SPINE), readIndex()]);
   if (!spine) throw new Error(SPINE + ' not found at the beach');
@@ -460,6 +483,43 @@ async function loadField(){
     try { const b = await readBlock(n); if (b) mirrors[n.slice(FIELD.length + 1)] = b; } catch(e){}
   }));
 
+  /* WHERE THE CARDS LIVE. A shared-content deck keeps them in the spine and every
+   * mirror answers at the spine's addresses. A PERSONAL deck keeps them in each
+   * holder's own mirror, and the spine holds only the template — so the deck is
+   * simply what this holder is holding, and the leading word of a card is its own
+   * mark rather than a separate entry elsewhere. Recognised the way it is built:
+   * an operator block of its own carrying the dials, and no dials at the spine's 9. */
+  let opBlock = null;
+  try { opBlock = await readBlock('function:' + FIELD); } catch(e){}
+  PERSONAL = !!opBlock && !!OP && !OP.declared && /^(mode|respond|disarm|access):/im.test(deepText(opBlock));
+  if (PERSONAL){
+    /* The dials live in the operator block here, not at a spine 9, so OP must take
+     * them from there — otherwise the deck would run the defaults and 'disarm:
+     * field' would let one holder's DONE retire a card in somebody else's deck. */
+    applyLines(OP, deepText(opBlock).split('\n'));
+    OP.declared = true;
+    const mine = mirrors[HANDLE] || null;
+    CARDS = [];
+    if (mine){
+      const mfloor = floorOf(mine) || 1;
+      for (const d of childDigits(mine)){
+        const raw = (typeof mine[d] === 'string' ? mine[d] : (voice(mine[d]) || '')).trim();
+        if (!raw) continue;
+        const verb = (raw.split(/\s+/)[0] || '').toUpperCase();
+        const known = ['DONE','DOING','TOMORROW','DROP'].includes(verb);
+        const body = known ? raw.slice(verb.length).replace(/^[\s—–-]+/, '') : raw;
+        const card = makeCard([d], body, 0, Number(d), '', false, HANDLE);
+        card.addr = spindleFor([d], mfloor);
+        card.raw = raw;
+        if (verb === 'DONE' || verb === 'DROP') card.done = { who: HANDLE, text: raw };
+        else if (verb === 'DOING') card.doing.push(HANDLE);
+        else if (verb === 'TOMORROW') card.myDefer = deferUntil(raw);
+        CARDS.push(card);
+      }
+    }
+    rebuildDeck(true);
+    return;
+  }
   CARDS = [];
   const stems = childDigits(spine).filter(d => d !== '9');
   for (const s of stems){
@@ -560,7 +620,11 @@ function cardEl(card, layer){
   if (layer === 'top' && card.proposed && keeperLatch())
     act = '<div class="adoptrow"><button id="btn-adopt">✓ add to the deck</button></div>';
   el.innerHTML =
-    '<p class="card__stem"><span>field ' + card.stemNo + '</span><span class="n">card ' + card.cardNo + '</span>' + tally + '</p>' +
+    /* A personal card has no stem to belong to — the deck IS the holder's mirror —
+     * so naming a field number there prints a coordinate that means nothing. */
+    '<p class="card__stem">' + (PERSONAL
+      ? '<span>my deck</span><span class="n">card ' + card.cardNo + '</span>'
+      : '<span>field ' + card.stemNo + '</span><span class="n">card ' + card.cardNo + '</span>') + tally + '</p>' +
     doingBadge + propBadge +
     '<p class="card__lineage">' + esc(card.stemText) + '</p>' +
     '<div class="card__text">' + esc(card.text) + '</div>' + notes + act +
@@ -600,7 +664,9 @@ function renderDeck(){
     else
       showState(OP.mode === 'respond' ? 'All answered.' : 'Field clear.',
         OP.mode === 'respond' ? 'Every card in this field carries your answer. The fold of mirrors is the tally.'
-                              : 'Nothing armed at hour-rung. Add to the spine, or look up a rung.');
+                              : PERSONAL
+                                ? 'Nothing being held. Add a card with ＋ and it becomes the deck.'
+                                : 'Nothing armed at hour-rung. Add to the spine, or look up a rung.');
     renderDone(); return;
   }
   hideState();
@@ -747,7 +813,7 @@ function gestureTomorrow(el){
   const go = () => { rebuildDeck(false); renderDeck(); };
   if (el) flyVert(el, true, go); else go();
   undoable('↑ thrown into tomorrow',
-    async () => { const w = await writeMark(card.addr, 'TOMORROW ' + date + ' — ' + iso()); if (!w.ok && !w.quiet) toast('the defer did not land', true); },
+    async () => { const w = await writeMark(card.addr, personalise('TOMORROW ' + date + ' — ' + iso(), card)); if (!w.ok && !w.quiet) toast('the defer did not land', true); },
     () => { card.myDefer = prev; rebuildDeck(false); renderDeck(); });
 }
 /* down = drop (doing mode; field-level) */
@@ -759,7 +825,7 @@ function gestureDrop(el){
   const go = () => { rebuildDeck(false); renderDeck(); };
   if (el) flyVert(el, false, go); else go();
   undoable('✕ dropped from the field',
-    async () => { const w = await writeMark(card.addr, 'DROP ' + iso() + ' — from /next'); if (!w.ok && !w.quiet) toast('the drop did not land', true); },
+    async () => { const w = await writeMark(card.addr, personalise('DROP ' + iso() + ' — from /next', card)); if (!w.ok && !w.quiet) toast('the drop did not land', true); },
     () => { card.done = prev; rebuildDeck(false); renderDeck(); });
 }
 
@@ -852,7 +918,7 @@ async function commitSheet(){
   if (kind === 'respond') stamp = mark + ' ' + iso() + (note ? ' — ' + note : '');
   else stamp = 'DONE ' + iso() + (note ? ' — ' + note : '') + (kind === 'finish' ? ' (' + fmtElapsed(elapsedMs()) + ')' : '');
   try {
-    const w = await writeMark(addr, stamp);
+    const w = await writeMark(addr, personalise(stamp, card));
     if (!w.ok){
       if (!w.quiet){ $('sheet-hint').classList.add('err'); $('sheet-hint').textContent = (w.data && (w.data.error || w.data.code)) || ('write failed ' + w.status); }
       BUSY = false; $('sheet-go').disabled = false; return;
@@ -941,7 +1007,7 @@ function startDoing(){
   if (!TIMER){
     TIMER = { addr: card.addr, text: card.text, stemNo: card.stemNo, cardNo: card.cardNo, started: Date.now(), acc: 0, paused: false };
     saveTimer();
-    writeMark(card.addr, 'DOING ' + iso() + ' — from /next').then(w => {
+    writeMark(card.addr, personalise('DOING ' + iso() + ' — from /next', card)).then(w => {
       if (w.ok) toast('claimed — DOING written to ' + FIELD + ':' + HANDLE);
     });
   }
