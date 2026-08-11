@@ -275,7 +275,7 @@
 <div id="cap-veil" class="veil hidden">
   <div class="sheet">
     <h3>Add a card</h3>
-    <p class="sub">Into which part of the field?</p>
+    <p class="sub" id="cap-sub">Into which part of the field?</p>
     <div class="stems" id="cap-stems"></div>
     <textarea id="cap-text" placeholder="the card — one doable thing, or one question"></textarea>
     <div class="sheet__row">
@@ -969,16 +969,39 @@ function openCapture(){
   $('cap-stems').innerHTML = stems.map((s,i) =>
     '<label><input type="radio" name="cap-stem" value="' + s + '"' + (i===0?' checked':'') + '><span class="sno">' + s + '</span><span>' + esc((voice(SPINE_BLOCK[s]) || '').slice(0,80)) + '</span></label>').join('');
   $('cap-text').value = '';
-  $('cap-hint').textContent = keeperLatch()
-    ? 'The keeper key is on this device — the card lands straight in the spine.'
-    : 'Without the keeper key it rides your mirror as PROPOSED until the keeper adopts it.';
+  $('cap-stems').classList.toggle('hidden', PERSONAL);
+  $('cap-sub').textContent = PERSONAL ? 'One thing you can pick up and put down inside a day.' : 'Into which part of the field?';
+  $('cap-hint').textContent = PERSONAL
+    ? 'It lands in your own deck straight away — nobody adopts it, because nobody else can see it as theirs.'
+    : keeperLatch()
+      ? 'The keeper key is on this device — the card lands straight in the spine.'
+      : 'Without the keeper key it rides your mirror as PROPOSED until the keeper adopts it.';
   $('cap-veil').classList.remove('hidden');
 }
 function closeCapture(){ $('cap-veil').classList.add('hidden'); }
 async function commitCapture(){
-  const sEl = document.querySelector('input[name="cap-stem"]:checked');
   const text = $('cap-text').value.trim();
-  if (!sEl || !text){ toast('a card needs words', true); return; }
+  if (!text){ toast('a card needs words', true); return; }
+  /* A PERSONAL deck has no stems to choose and nothing to propose to: a card is
+   * simply voiced at a free position in the holder's OWN mirror, which is both the
+   * add and the whole of it. Sending it down the spine path would land it at a
+   * two-level address under a stem that does not exist, marked PROPOSED, waiting
+   * on a keeper who is the person who wrote it. */
+  if (PERSONAL){
+    const used = CARDS.map(c => String(c.cardNo));
+    let slot = 0;
+    for (let d = 1; d <= 9; d++) if (!used.includes(String(d))){ slot = d; break; }
+    if (!slot){ toast('nine cards is a full hand — close one before adding another', true); return; }
+    const mine = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
+    const w = await writeMark(spindleFor([String(slot)], floorOf(mine) || 1), text);
+    if (!w.ok){ if (!w.quiet) toast('the card did not land', true); return; }
+    toast('✓ added to your deck');
+    closeCapture();
+    await reload();
+    return;
+  }
+  const sEl = document.querySelector('input[name="cap-stem"]:checked');
+  if (!sEl){ toast('pick a part of the field', true); return; }
   const s = sEl.value;
   const taken = childDigits(SPINE_BLOCK[s]).concat(
     CARDS.filter(c => c.stemNo === s && c.proposed).map(c => c.cardNo));
@@ -1034,9 +1057,18 @@ async function releaseClaim(){
   if (!TIMER) return;
   const held = fmtElapsed(elapsedMs());
   const addr = TIMER.addr;
+  const text = TIMER.text;
   TIMER = null; saveTimer(); hideDoing();
-  const w = await writeMark(addr, 'held ' + held + ', released ' + iso());
-  toast(w.ok ? 'released — the card re-arms for everyone' : 'released here; the release note did not land', !w.ok);
+  /* ON A PERSONAL DECK THE CARD AND ITS MARK ARE ONE POSITION, so a release note
+   * written alone DESTROYS the card — observed live 2026-08-11, a card replaced by
+   * 'held under a minute, released …' and its words gone from the mirror. Putting a
+   * card down there means exactly what the mirror's own underscore says: it returns
+   * to being held, unmarked. The elapsed time is not worth a card's words, so it is
+   * simply not recorded on this kind of deck. */
+  const w = await writeMark(addr, PERSONAL ? text : ('held ' + held + ', released ' + iso()));
+  toast(w.ok
+    ? (PERSONAL ? 'put down — the card is yours again, unmarked' : 'released — the card re-arms for everyone')
+    : 'released here; the write did not land', !w.ok);
   reload();
 }
 function tickClocks(){
