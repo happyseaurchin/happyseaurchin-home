@@ -151,6 +151,20 @@ const $ = id => document.getElementById(id);
 const esc = s => { const d = document.createElement('span'); d.textContent = s; return d.innerHTML; };
 
 const TEMPLATES = {
+  /* The PERSONAL kind — the one shape on this page whose cards do NOT live in
+   * the spine. Everyone holds their own deck in their own mirror; the spine is
+   * only a template saying what a card is here, so it stays thin forever and
+   * nobody's list is anybody else's to fill. It is also the one kind whose
+   * operator is its OWN block rather than lines at the spine's position 9: a
+   * spine accumulates, and a slot spent on machinery is a slot the deck can
+   * never grow into — so the operator names its family and the family never
+   * names back. */
+  personal: {
+    label: 'personal', personalDeck: true,
+    note: 'Your own deck of cards, flicked one at a time — everyone who joins keeps their own, nobody fills anybody else\'s, and closing a card writes it into your reading of whatever it serves.',
+    op: { mode:'doing', disarm:'person' },
+    stems: []
+  },
   doing: {
     label: 'doing', note: 'Shared work, one card at a time — done by one retires the card for all; do-now claims are visible; ↑ defers personally.',
     op: { mode:'doing', disarm:'field' },
@@ -205,6 +219,12 @@ function stemEl(v, items){
 function seedStems(){
   const box = $('stems'); box.innerHTML = '';
   for (const s of TEMPLATES[TPL].stems) box.appendChild(stemEl(s.v, s.items));
+  /* A personal deck has no shared cards to seed — each holder writes their own
+   * in their own mirror — so the whole cards section stands down rather than
+   * offering a box whose contents would go nowhere. */
+  const personal = !!TEMPLATES[TPL].personalDeck;
+  const sec = $('stems').closest('.sec');
+  if (sec) sec.classList.toggle('hidden', personal);
 }
 $('add-stem').addEventListener('click', () => {
   if ($('stems').children.length >= 8){ hint('eight parts is the room the fan law leaves — deepen, not widen', true); return; }
@@ -247,7 +267,9 @@ async function found(){
     if (items.length > 9) return hint('nine cards is a part’s room — split the part', true);
     stems.push({ v, items });
   }
-  if (!stems.length) return hint('seed at least one part with one card', true);
+  // A personal deck seeds no shared cards by design — each holder writes their
+  // own — so the founding floor that every other kind needs does not apply.
+  if (!stems.length && !TEMPLATES[TPL].personalDeck) return hint('seed at least one part with one card', true);
   if (stems.length > 8) return hint('eight parts is the room the fan law leaves', true);
 
   $('btn-found').disabled = true; hint('checking the beach…');
@@ -278,13 +300,54 @@ async function found(){
   opLines.forEach((l, i) => { opNode[String(i + 1)] = l; });
   content['9'] = opNode;
 
-  hint('one write — founding…');
+  /* A PERSONAL deck is founded as TWO blocks, not one. The spine carries only
+   * the template — what a card is here — and carries no position 9, because a
+   * spine accumulates and machinery in a slot is a slot the deck cannot grow
+   * into. The operator is its own block naming its spine: the reference runs
+   * from the law to its family, never back. */
+  const personal = !!t.personalDeck;
+  const writes = personal
+    ? [
+        { block: 'spine:' + name, new_lock: key, content: {
+            _: why + ' A template, not a list: it says what a card IS in this field and holds nobody\'s work, '
+             + 'so any number of people keep their own deck against the same understanding without ever writing in '
+             + 'one another\'s. A card is one thing a person can pick up and put down inside a day. '
+             + 'Founded ' + today + ' from /found, keeper ' + keeper + '. Flick yours at happyseaurchin.com/today-beach-deck/'
+             + keeper + '?field=' + name + '.',
+            '1': 'A card that cannot be finished or abandoned within a day is an objective rather than a card, and '
+             + 'belongs wherever this field\'s objectives live, at the scale matching its size. Growth is by '
+             + 'proposal-by-mirror: voice the address you need in your own deck and it stands, whether or not this '
+             + 'template ever adopts it.' } },
+        { block: 'function:' + name, new_lock: key, content: {
+            _: 'The loop law of ' + name + ' — a personal deck of cards flicked one at a time, whose whole content is '
+             + 'what its holder has voiced in their own mirror. Order carries no meaning: the cards are simply the ones '
+             + 'being held, and flicking is how serial attention takes up a field that is parallel. A card is added by '
+             + 'voicing it at a free address, put down by falling silent there, and closed by rewriting it in place — '
+             + 'there is no separate staging, because a mirror is revisable by its holder forever.',
+            '1': 'The spine is spine:' + name + ' and holds only the template. Every card lives in its holder\'s own '
+             + 'mirror at ' + name + ':<handle>, at whatever address that holder chooses. Addresses are slots and never '
+             + 'an ordering. No spine carries a position 9 for machinery; this block is what names its family, and the '
+             + 'family never names back.',
+            '2': 'A card\'s leading word is its state and the rest is the record: bare is armed and waiting, DOING '
+             + 'claims it visibly, DONE closes it with what happened, TOMORROW hides it from the next flick, DROP '
+             + 'retires it. Disarm is per person — a mark moves only its own holder\'s deck, because finishing '
+             + 'something for oneself finishes nothing for anybody else.',
+            '3': 'access: ' + access,
+            '9': 'PROVENANCE — founded ' + today + ' from /found by ' + keeper + ', on the personal-deck kind. Sibling '
+             + 'shape to today-beach-deck; the shared-content kinds on that page keep their cards in the spine and their '
+             + 'dials at its position 9, and this one does neither.' } },
+      ]
+    : [ { block: 'spine:' + name, new_lock: key, content } ];
+
+  hint(personal ? 'two writes — founding…' : 'one write — founding…');
   try {
-    const r = await fetch(BEACH, { method:'POST', cache:'no-store',
-      headers:{'Content-Type':'application/json', Accept:'application/json'},
-      body: JSON.stringify({ block: 'spine:' + name, content, new_lock: key }) });
-    const d = await r.json().catch(() => null);
-    if (!r.ok) throw new Error((d && (d.error || d.code)) || ('the beach refused: ' + r.status));
+    for (const w of writes){
+      const r = await fetch(BEACH, { method:'POST', cache:'no-store',
+        headers:{'Content-Type':'application/json', Accept:'application/json'},
+        body: JSON.stringify(w) });
+      const d = await r.json().catch(() => null);
+      if (!r.ok) throw new Error((d && (d.error || d.code)) || ('the beach refused: ' + r.status));
+    }
   } catch(e){ hint(String(e.message || e), true); $('btn-found').disabled = false; return; }
 
   $('form').classList.add('hidden');
@@ -292,6 +355,17 @@ async function found(){
     (access === 'open' ? 'Anyone with the link can answer.' :
      access === 'latched' ? 'People set a key of their own before answering.' :
      'It belongs to ' + access + ' — others can read it, but their answers stay outside the results.');
+  if (personal){
+    $('born-what').textContent = 'The ' + name + ' deck is live — a template and its law, both locked under your key. '
+      + 'Everyone who joins keeps their own cards; nobody fills anybody else\'s.';
+    $('born-links').innerHTML =
+      '<a href="/today-beach-deck/' + encodeURIComponent(keeper) + '?field=' + encodeURIComponent(name) + '"><b>your deck</b> — /today-beach-deck/' + esc(keeper) + '?field=' + esc(name) + '</a>' +
+      '<a href="/today-beach-deck?field=' + encodeURIComponent(name) + '"><b>the share link</b> — each person opens their own by name</a>' +
+      '<a href="/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('function:' + name) + '"><b>the law</b> — function:' + esc(name) + '</a>' +
+      '<a href="/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + name) + '"><b>the template</b> — spine:' + esc(name) + '</a>';
+    $('born').classList.remove('hidden');
+    return;
+  }
   $('born-links').innerHTML =
     '<a href="/next/' + encodeURIComponent(keeper) + '?field=' + encodeURIComponent(name) + '"><b>your deck</b> — /next/' + esc(keeper) + '?field=' + esc(name) + '</a>' +
     '<a href="/next?field=' + encodeURIComponent(name) + '"><b>the share link</b> — /next?field=' + esc(name) + ' (each person enters their own handle)</a>' +
