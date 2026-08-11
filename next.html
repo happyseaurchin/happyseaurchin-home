@@ -447,13 +447,36 @@ function deepText(n, out){
   if (n['_'] && typeof n['_'] === 'object') deepText(n['_'], out);
   return out.join('\n');
 }
-/* On a personal deck the card and its mark are ONE position, so a mark that wrote
- * only its stamp would erase the card it was marking. Keep the verb and stamp,
- * restore the card's own words after them. */
-function personalise(content, card){
-  if (!PERSONAL || !card) return content;
-  const head = String(content).split(' — ')[0];
-  return head + ' — ' + card.text;
+/* THE PERSONAL WRITE CHOKE POINT.
+ *
+ * On a personal deck a card and its mark are ONE position, so any write to a
+ * card's address that does not carry the card's words DESTROYS it. That was
+ * handled by wrapping each call site, and it failed exactly the way a discipline
+ * fails: five sites, four wrapped, and the fifth — release — ate a card in live
+ * use. Wrapping the sixth would have been the same bet again.
+ *
+ * So the rule moves to the ONE function every mirror write already passes
+ * through, and it derives the card from the ADDRESS it was handed rather than
+ * from an argument a caller must remember to pass. There is nothing left to
+ * forget: a call site cannot opt out, because it no longer opts in.
+ *
+ * The invariant, stated so it can be checked: A WRITE AT A PERSONAL CARD'S
+ * ADDRESS ALWAYS ENDS HOLDING THAT CARD'S WORDS, and only a known verb may
+ * stand in front of them. A content with no known verb is not a mark at all —
+ * it is the card being put back down, so the bare words are what land. That is
+ * why the old release string, 'held …, released …', is now harmless rather than
+ * fixed: it leads with no verb, so the choke point returns the card. */
+const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED'];
+function leadingVerb(text){
+  const w = (String(text).trim().split(/\s+/)[0] || '').toUpperCase();
+  return MARK_VERBS.includes(w) ? w : null;
+}
+function personalContent(addr, content){
+  if (!PERSONAL) return content;
+  const card = CARDS.find(c => c.addr === addr);
+  if (!card) return content;
+  if (!leadingVerb(content)) return card.text;
+  return String(content).includes(card.text) ? content : content + ' — ' + card.text;
 }
 async function loadField(){
   const [spine, index] = await Promise.all([readBlock(SPINE), readIndex()]);
@@ -505,9 +528,8 @@ async function loadField(){
       for (const d of childDigits(mine)){
         const raw = (typeof mine[d] === 'string' ? mine[d] : (voice(mine[d]) || '')).trim();
         if (!raw) continue;
-        const verb = (raw.split(/\s+/)[0] || '').toUpperCase();
-        const known = ['DONE','DOING','TOMORROW','DROP'].includes(verb);
-        const body = known ? raw.slice(verb.length).replace(/^[\s—–-]+/, '') : raw;
+        const verb = leadingVerb(raw);
+        const body = verb ? raw.slice(verb.length).replace(/^[\s—–-]+/, '') : raw;
         const card = makeCard([d], body, 0, Number(d), '', false, HANDLE);
         card.addr = spindleFor([d], mfloor);
         card.raw = raw;
@@ -822,7 +844,7 @@ function gestureTomorrow(el){
   const go = () => { rebuildDeck(false); renderDeck(); };
   if (el) flyVert(el, true, go); else go();
   undoable('↑ thrown into tomorrow',
-    async () => { const w = await writeMark(card.addr, personalise('TOMORROW ' + date + ' — ' + iso(), card)); if (!w.ok && !w.quiet) toast('the defer did not land', true); },
+    async () => { const w = await writeMark(card.addr, 'TOMORROW ' + date + ' — ' + iso()); if (!w.ok && !w.quiet) toast('the defer did not land', true); },
     () => { card.myDefer = prev; rebuildDeck(false); renderDeck(); });
 }
 /* down = drop (doing mode; field-level) */
@@ -834,7 +856,7 @@ function gestureDrop(el){
   const go = () => { rebuildDeck(false); renderDeck(); };
   if (el) flyVert(el, false, go); else go();
   undoable('✕ dropped from the field',
-    async () => { const w = await writeMark(card.addr, personalise('DROP ' + iso() + ' — from /next', card)); if (!w.ok && !w.quiet) toast('the drop did not land', true); },
+    async () => { const w = await writeMark(card.addr, 'DROP ' + iso() + ' — from /next'); if (!w.ok && !w.quiet) toast('the drop did not land', true); },
     () => { card.done = prev; rebuildDeck(false); renderDeck(); });
 }
 
@@ -858,7 +880,7 @@ async function ensureMirror(){
 }
 async function writeMark(addr, content){
   await ensureMirror();
-  const body = { block: FIELD + ':' + HANDLE, spindle: addr, content };
+  const body = { block: FIELD + ':' + HANDLE, spindle: addr, content: personalContent(addr, content) };
   const latch = localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
@@ -927,7 +949,7 @@ async function commitSheet(){
   if (kind === 'respond') stamp = mark + ' ' + iso() + (note ? ' — ' + note : '');
   else stamp = 'DONE ' + iso() + (note ? ' — ' + note : '') + (kind === 'finish' ? ' (' + fmtElapsed(elapsedMs()) + ')' : '');
   try {
-    const w = await writeMark(addr, personalise(stamp, card));
+    const w = await writeMark(addr, stamp);
     if (!w.ok){
       if (!w.quiet){ $('sheet-hint').classList.add('err'); $('sheet-hint').textContent = (w.data && (w.data.error || w.data.code)) || ('write failed ' + w.status); }
       BUSY = false; $('sheet-go').disabled = false; return;
@@ -1041,7 +1063,7 @@ function startDoing(){
   if (!TIMER){
     TIMER = { addr: card.addr, text: card.text, stemNo: card.stemNo, cardNo: card.cardNo, started: Date.now(), acc: 0, paused: false };
     saveTimer();
-    writeMark(card.addr, personalise('DOING ' + iso() + ' — from /next', card)).then(w => {
+    writeMark(card.addr, 'DOING ' + iso() + ' — from /next').then(w => {
       if (w.ok) toast('claimed — DOING written to ' + FIELD + ':' + HANDLE);
     });
   }
@@ -1065,7 +1087,7 @@ async function releaseClaim(){
    * card down there means exactly what the mirror's own underscore says: it returns
    * to being held, unmarked. The elapsed time is not worth a card's words, so it is
    * simply not recorded on this kind of deck. */
-  const w = await writeMark(addr, PERSONAL ? text : ('held ' + held + ', released ' + iso()));
+  const w = await writeMark(addr, 'held ' + held + ', released ' + iso());
   toast(w.ok
     ? (PERSONAL ? 'put down — the card is yours again, unmarked' : 'released — the card re-arms for everyone')
     : 'released here; the write did not land', !w.ok);
