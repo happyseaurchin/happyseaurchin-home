@@ -365,10 +365,16 @@ function you(){
   const v = ($('you') && $('you').value || '').trim();
   return HANDLE.test(v) ? v : '';
 }
+/* Which page deals a field depends on WHERE ITS CARDS LIVE. A shared-content deck
+ * keeps them in the spine and is flicked at /next; a personal deck keeps them in
+ * each holder's own mirror and is flicked at /today-beach-deck. Populated by the
+ * listing pass, which is the only place that reads the beach index. */
+const PERSONAL = new Set();
 function useHref(field){
   const h = you();
-  return h ? '/next/' + encodeURIComponent(h) + '?field=' + encodeURIComponent(field)
-           : '/next?field=' + encodeURIComponent(field);
+  const page = PERSONAL.has(field) ? '/today-beach-deck' : '/next';
+  return h ? page + '/' + encodeURIComponent(h) + '?field=' + encodeURIComponent(field)
+           : page + '?field=' + encodeURIComponent(field);
 }
 function paintHrefs(){
   document.querySelectorAll('[data-use]').forEach(a => { a.href = useHref(a.getAttribute('data-use')); });
@@ -394,10 +400,47 @@ async function loadDoor(){
   const all = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6));
   const roots = {};
   await Promise.all(all.map(async f => { try { roots[f] = await readBlock('spine:' + f); } catch(e){ roots[f] = null; } }));
-  const declares = b => /^(mode|respond|disarm|access):|^(function|ways):[a-z0-9:-]+$/im
-    .test(texts(b && b['9']).join('\n'));
+  const DIALS = /^(mode|respond|disarm|access):|^(function|ways):[a-z0-9:-]+$/im;
+  const declares = b => DIALS.test(texts(b && b['9']).join('\n'));
   const dealsCards = b => digits(b).filter(d => d !== '9').some(s => digits(b[s]).length);
-  const fields = all.filter(f => roots[f] && declares(roots[f]) && dealsCards(roots[f]));
+  /* A PERSONAL deck satisfies neither test above, by design: its cards live in each
+   * holder's own mirror rather than in the spine, and its operator is its own block
+   * naming the spine instead of lines at a position 9 the spine does not spend. It
+   * is recognised by BOTH halves of how it is built: function:<field> standing beside
+   * the spine, AND the spine declaring nothing at 9. One half alone is not enough —
+   * a shared-content deck may also have a function:<field>, because a GENERIC operator
+   * is a block that any number of spines name at their own position 9 (function:doing
+   * is exactly that), and testing only for the block's existence reads those as
+   * personal and sends their players to the wrong page. */
+  /* A field is a DECK when its operator declares card behaviour — the mode/disarm
+   * dials — and it makes no difference where that operator lives. A shared-content
+   * deck keeps the dials at its spine's position 9; a personal deck keeps them in
+   * its own function:<field>. Testing for the operator BLOCK alone is not enough:
+   * every modern family has one (function:beach-venture, function:molequle), and
+   * admitting those sends people flicking at a venture ladder. The dials are the
+   * discriminator because only a deck has cards to behave. */
+  const ops = {};
+  await Promise.all(all.map(async f => {
+    if (!blocks.includes('function:' + f)) return;
+    try { ops[f] = await readBlock('function:' + f); } catch(e){ ops[f] = null; }
+  }));
+  /* Scan the operator to any depth. texts() reads one level, which is right for a
+   * spine's position 9 — a flat handful of dial lines — but wrong for an operator
+   * block, where the dials may sit beneath a branch that says what they are for.
+   * Reading only the surface would punish the deeper authoring, so the reader goes
+   * as deep as the block does. */
+  const deepTexts = (n, out) => {
+    out = out || [];
+    if (typeof n === 'string') { if (n.trim()) out.push(n); return out; }
+    if (!n || typeof n !== 'object') return out;
+    const v = voice(n); if (v) out.push(v);
+    for (const d of digits(n)) deepTexts(n[d], out);
+    return out;
+  };
+  const declaresOp = f => !!ops[f] && DIALS.test(deepTexts(ops[f]).join('\n'));
+  const isPersonal = f => declaresOp(f) && !declares(roots[f]);
+  all.forEach(f => { if (isPersonal(f)) PERSONAL.add(f); });
+  const fields = all.filter(f => roots[f] && (isPersonal(f) || (declares(roots[f]) && dealsCards(roots[f]))));
   if (!fields.length){ $('decks').innerHTML = '<p class="src">No decks here yet — yours would be the first.</p>'; return; }
 
   const people = f => blocks.filter(b => b.startsWith(f + ':') && HANDLE.test(b.slice(f.length + 1))).length;
@@ -405,14 +448,17 @@ async function loadDoor(){
 
   $('decks').innerHTML = fields.map(f => {
     const n = people(f);
+    const mine = PERSONAL.has(f);
     const line = opener(voice(roots[f]) || '', f);
     return '<div class="deckrow">' +
       '<h3>' + esc(f.replace(/-/g, ' ')) + '</h3>' +
       (line ? '<p>' + esc(line) + '</p>' : '') +
-      '<span class="who">' + (n ? n + (n === 1 ? ' person has' : ' people have') + ' answered' : 'nobody has answered yet — you would be first') + '</span>' +
+      '<span class="who">' + (mine
+          ? (n ? n + (n === 1 ? ' person keeps' : ' people keep') + ' their own deck here' : 'nobody keeps one here yet — yours would be first')
+          : (n ? n + (n === 1 ? ' person has' : ' people have') + ' answered' : 'nobody has answered yet — you would be first')) + '</span>' +
       '<div class="acts">' +
-        '<a class="btn primary" data-use="' + esc(f) + '" href="' + esc(useHref(f)) + '">Open the cards →</a>' +
-        (n ? '<a class="btn ghost" href="/fold?field=' + encodeURIComponent(f) + '">See what everyone said →</a>' : '') +
+        '<a class="btn primary" data-use="' + esc(f) + '" href="' + esc(useHref(f)) + '">' + (mine ? 'Open my deck →' : 'Open the cards →') + '</a>' +
+        (n && !mine ? '<a class="btn ghost" href="/fold?field=' + encodeURIComponent(f) + '">See what everyone said →</a>' : '') +
       '</div></div>';
   }).join('');
   paintHrefs();
