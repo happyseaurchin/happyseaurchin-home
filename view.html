@@ -313,7 +313,9 @@ function parseEntry(line){
   e.target = t[i++] || '';
   if (t[i] !== undefined){
     const a = t[i];
-    if ((a.match(/\./g) || []).length > 1) e.badAddr = a;      /* one decimal point only */
+    const w = a.match(/^(\d+)d$/i);                             /* a day-window — marks marks 7d */
+    if (w) e.days = Math.max(1, parseInt(w[1], 10));
+    else if ((a.match(/\./g) || []).length > 1) e.badAddr = a;  /* one decimal point only */
     else if (/^[0-9.]+$/.test(a)) e.addr = a.replace('.','').replace(/0+$/,'');
     else if (namedRung(a)) e.addr = namedRung(a).replace(/0+$/,'');
   }
@@ -415,6 +417,47 @@ const MODES = {
       '<div class="vrow"><span class="vwho">' + esc(s.who || '—') + '</span><span class="vtext">' + linkify(short(s.text, 220)) + '</span>' + (s.ts ? '<span class="vago">' + esc(ago(s.ts)) + '</span>' : '') + '</div>');
     return (rows.join('') || '<p class="vnone">no voices here yet — silence is honest absence</p>') +
       srcLine(e, slots.length > 8 ? [esc(String(slots.length)) + ' in all — newest 8 shown'] : []);
+  },
+  /* marks — the board through a time window: what landed in the last N days,
+   * newest first, attributed and stamped. Named from the room (pool:weft, the
+   * soft-LLM's gap, 2026-08-12): "recent marks, past 7 days" had no lens —
+   * a board accumulates forever, so a news page needs a WINDOW, not an
+   * address. Line grammar: `marks [host] [target] [Nd]`; target defaults to
+   * the board itself, the window to seven days. Span-summaries and anything
+   * unstamped fall outside the window's filter by construction. */
+  async marks(e){
+    const target = e.target || 'marks';
+    const days = e.days || 7;
+    const b = await readBlock(e.host, target);
+    if (!b) return '<p class="vnone">' + esc(target) + ' is not on this beach</p>';
+    const cutoff = Date.now() - days * 86400000;
+    /* The board's own walk, not slotsOf: a summarised span is a container
+     * VOICED at its underscore — the span summary — and slotsOf treats any
+     * voiced node as a leaf, which hid every mark beneath the newest
+     * summaries (found live, 2026-08-12: a board carrying same-day marks
+     * read as empty). A mark is attributed AND stamped — string fields 1
+     * and 3; everything else object-shaped is ground to walk, voiced or not. */
+    const found = [];
+    (function dig(node){
+      if (!node || typeof node !== 'object') return;
+      for (const d of digitKeys(node)){
+        const kid = node[d];
+        if (!kid || typeof kid !== 'object') continue;
+        const text = textAt(kid);
+        if (text && typeof kid['1'] === 'string' && typeof kid['3'] === 'string'){
+          found.push({ who: kid['1'], ts: kid['3'], text });
+        }
+        dig(kid);
+      }
+      if (node['_'] && typeof node['_'] === 'object') dig(node['_']);
+    })(b);
+    const slots = found.filter(s =>
+      s.who.length <= 40 && isFinite(Date.parse(s.ts)) && Date.parse(s.ts) >= cutoff);
+    slots.sort((a, x) => (x.ts || '').localeCompare(a.ts || ''));
+    const rows = slots.map(s =>
+      '<div class="vrow"><span class="vwho">' + esc(s.who) + '</span><span class="vtext">' + linkify(short(s.text, 220)) + '</span><span class="vago">' + esc(ago(s.ts)) + '</span></div>');
+    return (rows.join('') || '<p class="vnone">nothing landed here in the last ' + days + ' day' + (days === 1 ? '' : 's') + ' — a quiet board is honest</p>') +
+      srcLine({ ...e, target, addr: '' }, ['<b>' + slots.length + '</b> in the last ' + days + 'd']);
   },
   async readings(e){
     /* every mirror of a family at ONE address, side by side and attributed — the
@@ -787,7 +830,7 @@ async function loadCatalogue(){
      Create-if-absent is race-safe at the beach: a name already standing refuses. */
   out.push('<div class="sect" id="maker" style="margin-top:26px">' +
     '<p class="quote" style="font-size:1.05rem;margin-bottom:4px">Make your own — one write, no code, no account.</p>' +
-    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · steps · copy · voices · fold · explain · liquid · pools · form. Two of those are for a reader with something to DO rather than to read — <span style="color:var(--vapour)">steps</span> turns a block\'s positions into numbered cards with every link a button, and <span style="color:var(--vapour)">copy</span> puts text behind a copy button so it can leave the page. Put a face in front of a line — <span style="color:var(--vapour)">author: walk …</span> — and it hides behind the simple/full switch: character and observer are the plain registers, author and designer the working ones, so one page serves the person passing through and the person building it. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
+    '<p class="vnone" style="padding-bottom:8px">Name it, say what it shows, one line per lens — <span style="color:var(--vapour)">mode target address</span>, modes: value · walk · steps · copy · voices · marks · fold · explain · liquid · pools · form. Two of those are for a reader with something to DO rather than to read — <span style="color:var(--vapour)">steps</span> turns a block\'s positions into numbered cards with every link a button, and <span style="color:var(--vapour)">copy</span> puts text behind a copy button so it can leave the page. <span style="color:var(--vapour)">marks</span> takes a day-window — <span style="color:var(--vapour)">marks marks 7d</span> — recent landings as one page. Put a face in front of a line — <span style="color:var(--vapour)">author: walk …</span> — and it hides behind the simple/full switch: character and observer are the plain registers, author and designer the working ones, so one page serves the person passing through and the person building it. The latch you invent stays yours: it is the edit-latch on your page, not a login. <a href="/views">How the page system works →</a></p>' +
     '<div class="compose">' +
     '<div class="row" style="margin-top:0"><input data-mk-name placeholder="a name — lowercase, dashes (becomes view:<name>)" spellcheck="false"></div>' +
     '<textarea data-mk-voicing rows="2" style="margin-top:8px" placeholder="the voicing — what this view shows, for whom (doubles as its card text)"></textarea>' +
