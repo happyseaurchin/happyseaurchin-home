@@ -63,6 +63,8 @@
     <h1 id="open-title">Today's deck</h1>
     <p class="lede" id="open-lede"></p>
     <div id="open-template"></div>
+    <h1 style="font-size:22px;margin-top:34px">What landed today</h1>
+    <ul class="roster" id="open-landed"><li class="quiet">reading the beach…</li></ul>
     <h1 style="font-size:22px;margin-top:34px">Decks being held</h1>
     <ul class="roster" id="open-roster"><li class="quiet">reading the beach…</li></ul>
     <p class="note" style="margin-top:26px">
@@ -80,6 +82,7 @@
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 const FIELD = (new URLSearchParams(location.search).get('field') || 'today-beach-deck').replace(/[^a-z0-9-]/gi,'');
 const SPINE = 'spine:' + FIELD;
+const VENTURE = (new URLSearchParams(location.search).get('venture') || 'beach-venture').replace(/[^a-z0-9-]/gi,'');
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -109,8 +112,47 @@ function voiceOf(node){
   return null;
 }
 
+/* WHAT LANDED TODAY — every venture reading at the day's rung, attributed.
+ * The bond writes a closed card's words into the holder's venture mirror at the
+ * rung of the day it was done (function:today-beach-deck branch 3); this section
+ * is the same address read across every mirror, so the front door shows the
+ * day's work with nothing stored and nobody reporting. */
+function dayRung(){
+  const d = new Date(), y = d.getUTCFullYear(), mo = d.getUTCMonth(), dom = d.getUTCDate();
+  return [Math.floor(y/1000)%10, Math.floor(y/100)%10, Math.floor(y/10)%10, y%10,
+          Math.floor(mo/3)+1, (mo%3)+1, Math.floor((dom-1)/7)+1, ((dom-1)%7)+1].join('');
+}
+function walkZeroAware(block, addr){
+  let n = block;
+  for (const ch of String(addr).replace(/0+$/, '')){
+    if (!n || typeof n !== 'object') return undefined;
+    n = (ch === '0') ? n['_'] : n[ch];
+  }
+  return n;
+}
+async function loadLanded(index){
+  const names = ((index && index.blocks) || []).filter(b => b.startsWith(VENTURE + ':')
+    && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(b.slice(VENTURE.length + 1)));
+  const addr = dayRung();
+  const rows = [];
+  await Promise.all(names.map(async n => {
+    const who = n.slice(VENTURE.length + 1);
+    const b = await readBlock(n).catch(() => null);
+    if (!b) return;
+    const node = walkZeroAware(b, addr);
+    const t = typeof node === 'string' ? node : voiceOf(node);
+    if (t && t.trim()) rows.push({ who, t: t.trim() });
+  }));
+  rows.sort((a, b) => a.who.localeCompare(b.who));
+  $('open-landed').innerHTML = rows.length
+    ? rows.map(r => '<li><span class="n">' + esc(r.who) + '</span><br>'
+        + esc(r.t).replace(/\n/g, '<br>') + '</li>').join('')
+    : '<li class="quiet">Nothing has landed yet today — close a card DONE and it appears here.</li>';
+}
+
 async function loadOpen(){
   const [spine, index] = await Promise.all([readBlock(SPINE).catch(()=>null), readIndex().catch(()=>null)]);
+  loadLanded(index);   /* fire-and-forget: the landed section fills as reads land */
   $('open-title').textContent = FIELD;
   $('open-lede').textContent = spine ? (voiceOf(spine) || '') : (FIELD + ' has no template at this beach yet.');
   const parts = [];

@@ -61,7 +61,7 @@
 
   .vrow{display:flex;gap:12px;align-items:baseline;padding:9px 0;border-bottom:1px solid var(--line)}
   .vrow:last-child{border-bottom:none}
-  .vwho{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:96px;text-align:right}
+  .vwho{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:96px;max-width:180px;text-align:right;overflow-wrap:anywhere}
   .vtext{flex:1;min-width:0;color:var(--foam);font-size:0.97rem}
   .vago{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:none}
   .vnone{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);padding:6px 0}
@@ -401,9 +401,15 @@ const MODES = {
     const b = await readBlock(e.host, e.target);
     if (!b) return '<p class="vnone">' + esc(e.target) + ' is not on this beach</p>';
     const node = e.addr ? walkTo(b, e.addr) : b;
-    /* a voice is attributed or stamped; a slot with neither is scaffold (a design
-     * note, a superseded plan) and reads as nobody having said it — because nobody did */
-    const slots = slotsOf(node).filter(s => s.who || s.ts);
+    /* A VOICE IS ATTRIBUTED AND STAMPED — both, and the stamp must parse as a time.
+     * 'either' was not enough: a scaffold position with digit children (the pool's
+     * architecture notes, its superseded-design record) hands slotsOf its child 1 as
+     * a 'who', so a whole design note rendered as an author name — a paragraph-long
+     * attribution overflowing its box on the live board (caught by the keeper,
+     * 2026-08-12). The strict pair is the same isVoice test /venture has always run:
+     * field 1 a name, field 3 a real time; structure is never shown as speech. */
+    const slots = slotsOf(node).filter(s =>
+      s.who && s.who.length <= 40 && s.ts && isFinite(Date.parse(s.ts)));
     slots.sort((a, x) => (x.ts || '').localeCompare(a.ts || ''));
     const rows = slots.slice(0, 8).map(s =>
       '<div class="vrow"><span class="vwho">' + esc(s.who || '—') + '</span><span class="vtext">' + linkify(short(s.text, 220)) + '</span>' + (s.ts ? '<span class="vago">' + esc(ago(s.ts)) + '</span>' : '') + '</div>');
