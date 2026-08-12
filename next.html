@@ -48,6 +48,13 @@
   .ask__hint{font-family:var(--mono);font-size:11px;letter-spacing:0.03em;color:var(--vapour-dim);max-width:46ch;margin:12px 0 0;line-height:1.6}
 
   .gatebar{max-width:640px;margin:0 auto;padding:8px 18px;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;color:var(--solid);text-align:center;border-bottom:1px solid rgba(var(--solid-rgb),0.25)}
+  .toward{width:min(480px,100%);margin:0 auto;padding:6px 18px 0;font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour-dim);line-height:1.6}
+  .toward a{color:inherit;border-bottom:none}
+  .toward a:hover{color:var(--foam)}
+  .toward .rung{color:var(--liquid)}
+  .sweepbar{width:min(480px,100%);margin:0 auto;padding:7px 18px;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;color:var(--vapour-dim);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .sweepbar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour);font-family:var(--mono);font-size:11px;padding:5px 9px;cursor:pointer}
+  .sweepbar button:hover{color:var(--foam);border-color:var(--line-strong)}
 
   /* ── stage ── */
   .stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 18px 10px;position:relative;min-height:0}
@@ -208,6 +215,8 @@
     <button id="btn-refresh" title="refresh the field">↻</button>
   </div>
   <div id="gatebar" class="gatebar hidden"></div>
+  <div id="toward" class="toward hidden"></div>
+  <div id="sweepbar" class="sweepbar hidden"></div>
 
   <div class="stage">
     <div class="deckwrap" id="deckwrap">
@@ -417,6 +426,11 @@ function applyLines(op, lines){
     else if ((m = t.match(/^respond:\s*(rate|thumbs|reply)/i))) { op.respond = m[1].toLowerCase(); got = true; }
     else if ((m = t.match(/^disarm:\s*(field|person)/i))) { op.disarm = m[1].toLowerCase(); got = true; }
     else if ((m = t.match(/^access:\s*(open|latched|sed:[a-z0-9-]+)/i))) { op.access = m[1].toLowerCase(); got = true; }
+    /* the bond target (function:today-beach-deck branch 3): which venture family a
+     * closed card feeds. 'venture: none' switches the bond off for a deck that
+     * stands alone. Proposed as dial 5.4 of the operator; until adopted, personal
+     * decks default to beach-venture because the law already names it in prose. */
+    else if ((m = t.match(/^venture:\s*(none|[a-z0-9-]+)/i))) { op.venture = m[1].toLowerCase() === 'none' ? null : m[1].toLowerCase(); got = true; }
   }
   return got;
 }
@@ -521,6 +535,7 @@ async function loadField(){
      * field' would let one holder's DONE retire a card in somebody else's deck. */
     applyLines(OP, deepText(opBlock).split('\n'));
     OP.declared = true;
+    if (OP.venture === undefined) OP.venture = 'beach-venture';
     const mine = mirrors[HANDLE] || null;
     CARDS = [];
     if (mine){
@@ -539,6 +554,7 @@ async function loadField(){
         CARDS.push(card);
       }
     }
+    loadToward();   /* fire-and-forget: the ladder strip fills as the read lands */
     rebuildDeck(true);
     return;
   }
@@ -668,6 +684,7 @@ function renderDeck(){
   const wrap = $('deckwrap');
   wrap.querySelectorAll('.cardface').forEach(e => e.remove());
   closeMenu();
+  renderSweep();
   $('count').textContent = DECK.length ? ((POS % DECK.length) + 1) + ' / ' + DECK.length : '';
   const canAct = DECK.length > 0;
   const gated = !OP.member;
@@ -913,6 +930,126 @@ async function writeSpine(addr, content){
   return w;
 }
 
+/* ── THE BOND (function:today-beach-deck branch 3) ──
+ * A card marked DONE lands, as its own words, in the holder's venture mirror at
+ * the rung of the day it was done — computed from the clock, never typed — so a
+ * day of flicking accumulates into what this person did today with no second act.
+ * One direction only: the deck knows its venture; the venture knows no decks.
+ * This lived in one page (today-beach-deck.html) while the routed page did not
+ * carry it, so the bond held or dropped depending on which URL a holder came in
+ * by — the exact drift the operator block exists to prevent. It runs here now,
+ * on the page every deck URL actually reaches.
+ * A refusal is SAID: the old page returned silence when the venture mirror's
+ * latch differed, and the holder read 'closed' as landed when nothing landed. */
+function ventureDayRung(){
+  const d = new Date(), y = d.getUTCFullYear(), mo = d.getUTCMonth(), dom = d.getUTCDate();
+  return [Math.floor(y/1000)%10, Math.floor(y/100)%10, Math.floor(y/10)%10, y%10,
+          Math.floor(mo/3)+1, (mo%3)+1, Math.floor((dom-1)/7)+1, ((dom-1)%7)+1].join('') + '00';
+}
+function walkZeroAware(block, addr){
+  let n = block;
+  for (const ch of String(addr).replace(/0+$/, '')){
+    if (!n || typeof n !== 'object') return undefined;
+    n = (ch === '0') ? n['_'] : n[ch];
+  }
+  return n;
+}
+async function feedVenture(cardText){
+  if (!PERSONAL || !OP.venture) return { skipped: true };
+  const name = OP.venture + ':' + HANDLE;
+  const block = await readBlock(name).catch(() => null);
+  if (!block) return { skipped: true };   // no venture reading yet — the deck stands alone
+  const addr = ventureDayRung();
+  const prior = (function(){ const n = walkZeroAware(block, addr);
+    return typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null); })();
+  const line = '· ' + bodyText(cardText);
+  const content = prior && prior.trim() ? prior + '\n' + line : line;
+  const secret = localStorage.getItem(latchKey());
+  const w = await writeBlock(Object.assign({ block: name, spindle: addr, content }, secret ? { secret } : {}));
+  if (w.ok) return { addr, name };
+  return { refused: true, name, why: (w.data && (w.data.error || w.data.code)) || w.status };
+}
+function bodyText(raw){
+  const verb = leadingVerb(raw);
+  let s = verb ? String(raw).trim().slice(verb.length) : String(raw).trim();
+  /* strip the stamps the mark carries — a card re-armed from TOMORROW wears more
+   * than one — the venture line is the words, dated by the rung it lands at */
+  for (let i = 0; i < 4; i++){
+    const t = s.replace(/^[\s—–-]*(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?|\(.{1,24}\))\s*[—–-]*\s*/, '');
+    if (t === s) break; s = t;
+  }
+  return s.trim() || String(raw).trim();
+}
+
+/* ── the ladder above the deck — what today is toward.
+ * Setting up a deck is choosing today's acts against objectives that live at
+ * coarser rungs of the venture spine; showing those rungs while the cards are in
+ * hand is the whole of the hookup — the card points at the objective in its own
+ * words, and the fold reads the pointing. Nothing is written here. ── */
+async function loadToward(){
+  const el = $('toward');
+  if (!PERSONAL || !OP.venture){ el.classList.add('hidden'); return; }
+  const spine = await readBlock('spine:' + OP.venture).catch(() => null);
+  if (!spine){ el.classList.add('hidden'); return; }
+  const day = ventureDayRung();
+  const rungs = [
+    { label: 'today',      addr: day },
+    { label: 'this week',  addr: day.slice(0, 7).padEnd(10, '0') },
+    { label: 'this month', addr: day.slice(0, 6).padEnd(10, '0') },
+  ];
+  const lines = [];
+  for (const r of rungs){
+    const n = walkZeroAware(spine, r.addr);
+    const t = typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null);
+    if (t && t.trim()) lines.push('<span class="rung">' + esc(r.label) + '</span> ' + esc(t.length > 110 ? t.slice(0, 107) + '…' : t));
+  }
+  if (!lines.length){ el.classList.add('hidden'); return; }
+  el.innerHTML = '<a href="/tree/' + encodeURIComponent(OP.venture) + '">' + lines.join('<br>') + '</a>';
+  el.classList.remove('hidden');
+}
+
+/* ── the morning sweep — yesterday's closed cards give back their slots.
+ * A closed card stays in the mirror (silence is the holder's act, never the
+ * page's), so nine lifetime cards would jam the hand. The sweep is the holder's
+ * one tap: cards marked DONE or DROP on an earlier day fall silent at their
+ * addresses. A DONE already landed in the venture reading on its own day; a DROP
+ * was retired and claims nothing. TOMORROW cards are not touched — they re-arm
+ * by date on their own. ── */
+function sweepable(){
+  if (!PERSONAL) return [];
+  const t = today();
+  return CARDS.filter(c => {
+    const verb = leadingVerb(c.raw || '');
+    if (verb !== 'DONE' && verb !== 'DROP') return false;
+    const m = (c.raw || '').match(/\b(\d{4}-\d{2}-\d{2})/);
+    return !!m && m[1] < t;
+  });
+}
+function renderSweep(){
+  const el = $('sweepbar');
+  const gone = sweepable();
+  if (!gone.length){ el.classList.add('hidden'); return; }
+  el.innerHTML = gone.length + ' closed before today still holding slots '
+    + '<button id="btn-sweep">sweep — free the hand</button>';
+  el.classList.remove('hidden');
+  $('btn-sweep').addEventListener('click', doSweep);
+}
+async function doSweep(){
+  const gone = sweepable();
+  if (!gone.length) return;
+  const secret = localStorage.getItem(latchKey());
+  toast('sweeping…');
+  for (const c of gone){
+    /* an empty write IS the put-down; it goes around the personal choke point on
+     * purpose — the choke restores a card's words to any verbless write, and
+     * silence is the one write that must not carry them */
+    const w = await writeBlock(Object.assign({ block: FIELD + ':' + HANDLE, spindle: c.addr, content: '' }, secret ? { secret } : {}));
+    if (!w.ok){ toast('the sweep was refused at a card (latch ⚿?)', true); return; }
+  }
+  toast('✓ swept — ' + gone.length + ' slot' + (gone.length > 1 ? 's' : '') + ' free');
+  await reload();
+}
+
 /* ── sheet: done-already / finish / respond ── */
 function openSheet(kind, mark, title){
   if (!OP.member){ toast('marks from outside ' + OP.access + ' stay outside its fold', true); return; }
@@ -956,6 +1093,11 @@ async function commitSheet(){
     }
     if (kind === 'respond'){ card.myResponse = stamp; card.responses.push({ who: HANDLE, text: stamp }); }
     else if (card.addr) card.done = { who: HANDLE, text: stamp, kind: 'done' };
+    /* the bond fires on DONE alone — a DROP retires without landing anywhere.
+     * personalContent is what the mirror actually stores (the choke point adds the
+     * card's words), so the venture receives the same words the deck keeps. */
+    let landed = null;
+    if (kind !== 'respond' && PERSONAL) landed = await feedVenture(personalContent(addr, stamp));
     closeSheet();
     if (kind === 'finish'){ TIMER = null; saveTimer(); hideDoing(); }
     const top = document.querySelector('.cardface.top');
@@ -967,7 +1109,9 @@ async function commitSheet(){
     }
     setTimeout(() => {
       rebuildDeck(false); renderDeck();
-      toast('✓ written to ' + FIELD + ':' + HANDLE);
+      if (landed && landed.addr) toast('✓ closed — landed in your ' + OP.venture + ' reading at today’s rung');
+      else if (landed && landed.refused) toast('closed — but the landing at ' + landed.name + ' was refused (latch ⚿ differs?)', true);
+      else toast('✓ written to ' + FIELD + ':' + HANDLE);
     }, kind === 'finish' ? 0 : 430);
   } catch (e){
     toast(String(e.message || e), true);

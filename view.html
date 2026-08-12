@@ -276,6 +276,21 @@ function showState(title, body){
 
 /* ---------- the entry grammar: <mode> [<host>] <target> [<addr>] ---------- */
 const HOSTLIKE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/i;
+/* an address may be a WORD — today, week, month, season, year, now — resolved
+ * against the clock at render, the same arithmetic /tree uses (its NAMED_RUNGS):
+ * a view line over a temporal family never goes stale, and nobody types a date.
+ * The ten rungs are the sundial's; trailing zeros are floor padding. */
+const NAMED_RUNGS = { now:10, beat:10, gathering:9, hour:9, today:8, day:8, week:7, month:6, season:5, quarter:5, year:4 };
+function momentAddress(){
+  const d = new Date(), y = d.getUTCFullYear(), mo = d.getUTCMonth(), dom = d.getUTCDate();
+  return [Math.floor(y/1000)%10, Math.floor(y/100)%10, Math.floor(y/10)%10, y%10,
+          Math.floor(mo/3)+1, (mo%3)+1, Math.floor((dom-1)/7)+1, ((dom-1)%7)+1, 1, 1].join('');
+}
+function namedRung(word){
+  const keep = NAMED_RUNGS[String(word).trim().toLowerCase().replace(/^this\s+/, '')];
+  if (!keep) return null;
+  return momentAddress().slice(0, keep);
+}
 /* CADO in front of the mode — an optional tag saying WHO a line is for.
  * character/observer are the simple registers and author/designer the working ones,
  * so the two-position control in the bar is really a face switch: a page shows its
@@ -300,6 +315,7 @@ function parseEntry(line){
     const a = t[i];
     if ((a.match(/\./g) || []).length > 1) e.badAddr = a;      /* one decimal point only */
     else if (/^[0-9.]+$/.test(a)) e.addr = a.replace('.','').replace(/0+$/,'');
+    else if (namedRung(a)) e.addr = namedRung(a).replace(/0+$/,'');
   }
   return e;
 }
@@ -363,7 +379,9 @@ const MODES = {
     const crumbs = [];
     for (let i = 1; i < e.addr.length; i++){
       const t = textAt(walkTo(b, e.addr.slice(0, i)));
-      if (t) crumbs.push(esc(short(t, 130)));
+      /* voiceOf drills through unvoiced rungs to the first spoken descendant, so
+       * adjacent prefixes can answer with the same sentence — say it once */
+      if (t && esc(short(t, 130)) !== crumbs[crumbs.length - 1]) crumbs.push(esc(short(t, 130)));
     }
     const here = walkTo(b, e.addr);
     const out = [];
@@ -383,12 +401,76 @@ const MODES = {
     const b = await readBlock(e.host, e.target);
     if (!b) return '<p class="vnone">' + esc(e.target) + ' is not on this beach</p>';
     const node = e.addr ? walkTo(b, e.addr) : b;
-    const slots = slotsOf(node);
+    /* a voice is attributed or stamped; a slot with neither is scaffold (a design
+     * note, a superseded plan) and reads as nobody having said it — because nobody did */
+    const slots = slotsOf(node).filter(s => s.who || s.ts);
     slots.sort((a, x) => (x.ts || '').localeCompare(a.ts || ''));
     const rows = slots.slice(0, 8).map(s =>
       '<div class="vrow"><span class="vwho">' + esc(s.who || '—') + '</span><span class="vtext">' + linkify(short(s.text, 220)) + '</span>' + (s.ts ? '<span class="vago">' + esc(ago(s.ts)) + '</span>' : '') + '</div>');
     return (rows.join('') || '<p class="vnone">no voices here yet — silence is honest absence</p>') +
       srcLine(e, slots.length > 8 ? [esc(String(slots.length)) + ' in all — newest 8 shown'] : []);
+  },
+  async readings(e){
+    /* every mirror of a family at ONE address, side by side and attributed — the
+     * stream snapshot (function:beach-venture branch 4) as a lens: mechanical,
+     * lossless, never synthesised. Silence is named, not guessed at. With a named
+     * rung for the address this is 'what every hand says today', live forever. */
+    const family = e.target;
+    const index = await readIndex(e.host);
+    const names = (index.blocks || []).filter(x => x.startsWith(family + ':') && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(x.slice(family.length + 1)));
+    if (!names.length) return '<p class="vnone">' + esc(family) + ' has no mirrors at ' + esc(e.host) + '</p>';
+    const got = await Promise.all(names.map(n => readBlock(e.host, n).catch(() => null)));
+    const rows = [], silent = [];
+    names.forEach((n, i) => {
+      const who = n.slice(family.length + 1);
+      const t = got[i] ? textAt(walkTo(got[i], e.addr)) : null;
+      if (t) rows.push('<div class="vrow"><span class="vwho">' + esc(who) + '</span><span class="vtext">' + linkify(t) + '</span></div>');
+      else silent.push(who);
+    });
+    const tail = silent.length ? ['silent here: ' + esc(silent.join(', '))] : [];
+    return (rows.join('') || '<p class="vnone">every mirror is silent at this address — honest absence, not a gap to be filled</p>')
+      + srcLine(e, tail);
+  },
+  async decks(e){
+    /* what each holder of a personal deck is holding NOW. Cards live in the
+     * holders' mirrors (function:today-beach-deck branch 1); the leading word is
+     * the card's state — DONE and DROP have left the hand, and a TOMORROW card is
+     * out until its date arrives, exactly as /next deals it. */
+    const field = e.target;
+    const index = await readIndex(e.host);
+    const names = (index.blocks || []).filter(x => x.startsWith(field + ':') && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(x.slice(field.length + 1)));
+    if (!names.length) return '<p class="vnone">nobody holds a ' + esc(field) + ' at ' + esc(e.host) + '</p>';
+    const got = await Promise.all(names.map(n => readBlock(e.host, n).catch(() => null)));
+    const t0 = new Date().toISOString().slice(0, 10);
+    const rows = [];
+    names.forEach((n, i) => {
+      const who = n.slice(field.length + 1), b = got[i];
+      if (!b) return;
+      const doing = [], held = [];
+      for (const d of digitKeys(b)){
+        const raw = (typeof b[d] === 'string' ? b[d] : (voiceOf(b[d]) || '')).trim();
+        if (!raw) continue;
+        const w = (raw.split(/\s+/)[0] || '').toUpperCase();
+        if (w === 'DONE' || w === 'DROP') continue;
+        let text = raw;
+        if (w === 'DOING') text = raw.slice(5).replace(/^[\s—–-]+/, '');
+        else if (w === 'TOMORROW'){
+          const dm = raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
+          if (dm && dm[1] > t0) continue;
+          text = raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
+        }
+        /* a card wears the stamps of its marks; the board wants the words */
+        for (let k = 0; k < 4; k++){
+          const t2 = text.replace(/^[\s—–-]*(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?|from \/next)\s*[—–-]*\s*/, '');
+          if (t2 === text) break; text = t2;
+        }
+        (w === 'DOING' ? doing : held).push(short(text, 130));
+      }
+      const bits = doing.map(x => '<b>▶ ' + esc(x) + '</b>').concat(held.map(x => esc(x)));
+      rows.push('<div class="vrow"><span class="vwho">' + esc(who) + '</span><span class="vtext">'
+        + (bits.length ? bits.join(' <span style="opacity:.45">·</span> ') : '<i>hand empty</i>') + '</span></div>');
+    });
+    return rows.join('') + srcLine(e);
   },
   async fold(e){
     const family = e.target;
