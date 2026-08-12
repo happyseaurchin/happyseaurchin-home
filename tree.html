@@ -267,7 +267,7 @@ async function loadIndex(){
   out.push('<div class="head"><h1>Every shared <span class="cool">field</span>, walkable.</h1>' +
     '<p class="meta"><span><b>' + spineFams.length + '</b> spined fields</span><span><b>' + bare.length + '</b> bare-name fields</span></p></div>');
   out.push('<div class="seek"><input id="seek-in" placeholder="walk a field by name…" autocomplete="off"><button id="seek-go">walk</button></div>');
-  out.push('<div class="kids__head">shared decks</div>');
+  out.push('<div class="kids__head">spined fields</div>');
   for (const f of spineFams) out.push(row(f));
   if (bare.length){
     out.push('<div class="kids__head">fields whose base carries the bare name</div>');
@@ -340,8 +340,18 @@ async function loadFamily(){
   const idx = order.indexOf(WALK);
   const names = Object.keys(mirrors).sort();
 
+  /* THE REGISTER IS THE FAMILY'S OWN. A deck field (dials at the spine's 9) deals
+   * shared cards, and a mirror entry there is a proposal waiting on the keeper.
+   * Every other family — a venture ladder, a status spine, any mirrors-as-readings
+   * field — has NO cards: the spine is the shared frame (a rung's objective, a
+   * part's meaning) and a mirror entry is that person's SOVEREIGN READING, never
+   * a suggestion waiting to be added. Speaking deck words at a venture turned a
+   * landed reading into a phantom suggestion and an unvoiced rung into an empty
+   * deck (caught live by the keeper, 2026-08-12). */
+  const isTemporal = FLOOR >= 9;
+  const todayWalk = isTemporal ? namedRung('today').replace(/0+$/, '') : null;
   const out = [];
-  out.push('<div class="head"><h1>The <span class="cool">' + esc(FAMILY) + '</span> deck, one part at a time.</h1>');
+  out.push('<div class="head"><h1>The <span class="cool">' + esc(FAMILY) + '</span> ' + (isDeck ? 'deck' : 'family') + ', one part at a time.</h1>');
   if (WALK === '') out.push('<p class="meta"><span><b>' + (order.length - 1) + '</b> parts</span><span><b>' + names.length + '</b> ' + (names.length === 1 ? 'person' : 'people') + '</span>' + (names.length ? '<span>' + esc(names.join(' · ')) + '</span>' : '') + '</p>');
   out.push('</div>');
 
@@ -356,11 +366,17 @@ async function loadFamily(){
 
   /* the spine at this node */
   const spineText = textAt(here);
-  out.push('<div class="node"><p class="node__addr"><b>' + esc(fmtAddr(WALK, FLOOR)) + '</b><span>the shared cards</span></p>');
-  if (here === undefined){
-    out.push('<p class="node__text absent">Nothing here in the deck itself — what is below was suggested by someone, waiting to be added.</p>');
+  const nodeLabel = isDeck ? 'the shared cards'
+    : (isTemporal ? 'the spine at this rung' + (WALK === todayWalk ? ' — today' : '') : 'the spine at this address');
+  out.push('<div class="node"><p class="node__addr"><b>' + esc(fmtAddr(WALK, FLOOR)) + '</b><span>' + nodeLabel + '</span></p>');
+  if (here === undefined || !spineText){
+    out.push('<p class="node__text absent">' + (isDeck
+      ? 'Nothing here in the deck itself — what is below was suggested by someone, waiting to be added.'
+      : 'The spine is unvoiced ' + (isTemporal ? 'at this rung' : 'here') + ' — an address is never missing, only unspoken. '
+        + 'What people said standing here is below; to propose ' + (isTemporal ? 'the rung’s objective' : 'a voicing')
+        + ', say it in your own reading and the keeper may adopt it into the spine.') + '</p>');
   } else {
-    out.push('<p class="node__text">' + esc(spineText || '(this position stands unvoiced)') + '</p>');
+    out.push('<p class="node__text">' + esc(spineText) + '</p>');
   }
   out.push('</div>');
 
@@ -379,7 +395,7 @@ async function loadFamily(){
   }
   const ghostSteps = Object.keys(ghost).sort();
   if (spineKids.length || ghostSteps.length){
-    out.push('<div class="kids"><div class="kids__head">the cards here</div>');
+    out.push('<div class="kids"><div class="kids__head">' + (isDeck ? 'the cards here' : 'below this ' + (isTemporal ? 'rung' : 'address')) + '</div>');
     for (const s of spineKids){
       const kid = walkTo(here, s);
       out.push('<div class="kid"><span class="kid__no">' + esc(fmtAddr(WALK + s, FLOOR)) + '</span>' +
@@ -415,7 +431,9 @@ async function loadFamily(){
     }
   }
   if (!names.length){
-    out.push('<div class="silence">Nobody has answered yet — this deck is new. Open the cards and you would be the first.</div>');
+    out.push('<div class="silence">' + (isDeck
+      ? 'Nobody has answered yet — this deck is new. Open the cards and you would be the first.'
+      : 'Nobody has a reading here yet — a mirror is born on its first entry, and yours would be the first.') + '</div>');
   } else if (silent.length){
     out.push('<div class="silence">' + silent.length + ' of ' + names.length + ' have not stood here — ' + esc(silent.join(', ')) + '. Silence is honest absence.</div>');
   }
