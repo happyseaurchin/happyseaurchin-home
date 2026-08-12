@@ -538,19 +538,48 @@ async function loadField(){
     if (OP.venture === undefined) OP.venture = 'beach-venture';
     const mine = mirrors[HANDLE] || null;
     CARDS = [];
+    /* CARDS ARE THE FLOOR PLANE, not the top-level keys.
+     *
+     * An accumulator grows past nine by SUPERNEST: the whole block is wrapped
+     * {_: old}, the floor rises by one, and the next entry lands at 11. Reading
+     * raw keys at depth 1 sees only what arrived AFTER that wrap — every earlier
+     * card vanishes inside the underscore — which capped this deck at nine and
+     * would have silently emptied it at the tenth.
+     *
+     * Pscale 0 is the floor plane BY DEFINITION (floor − depth = 0), so walking
+     * to depth == floor collects every card whatever the block's history, and a
+     * card keeps its address across the wrap: '5' parses to ['5'] at floor 1 and
+     * to ['0','5'] at floor 2 — the same position, because left-padding tracks
+     * the floor. That is the whole of the sync between a spine, its mirrors and
+     * their folds, and it needs no floor comparison between blocks: an address
+     * written at one floor still finds its position at any later one.
+     *
+     * A path of all zeros is the block's own underscore chain — its description,
+     * not a card — and is the one position on the plane to skip. */
     if (mine){
       const mfloor = floorOf(mine) || 1;
-      for (const d of childDigits(mine)){
-        const raw = (typeof mine[d] === 'string' ? mine[d] : (voice(mine[d]) || '')).trim();
-        if (!raw) continue;
-        const verb = leadingVerb(raw);
-        const body = verb ? raw.slice(verb.length).replace(/^[\s—–-]+/, '') : raw;
-        const card = makeCard([d], body, 0, Number(d), '', false, HANDLE);
-        card.addr = spindleFor([d], mfloor);
-        card.raw = raw;
-        if (verb === 'DONE' || verb === 'DROP') card.done = { who: HANDLE, text: raw };
+      const found = [];
+      (function plane(node, digits){
+        if (digits.length === mfloor){
+          if (digits.every(d => d === '0')) return;          /* the block's own voice */
+          const raw = (typeof node === 'string' ? node : (voice(node) || '')).trim();
+          if (raw) found.push({ digits: digits.slice(), raw });
+          return;
+        }
+        if (!node || typeof node !== 'object') return;
+        if (node['_'] !== undefined) plane(node['_'], digits.concat('0'));
+        for (const d of childDigits(node)) plane(node[d], digits.concat(d));
+      })(mine, []);
+      found.sort((a, b) => Number(a.digits.join('')) - Number(b.digits.join('')));
+      for (const f of found){
+        const verb = leadingVerb(f.raw);
+        const body = verb ? f.raw.slice(verb.length).replace(/^[\s—–-]+/, '') : f.raw;
+        const card = makeCard(f.digits, body, 0, Number(f.digits.join('')), '', false, HANDLE);
+        card.addr = f.digits.join('');
+        card.raw = f.raw;
+        if (verb === 'DONE' || verb === 'DROP') card.done = { who: HANDLE, text: f.raw };
         else if (verb === 'DOING') card.doing.push(HANDLE);
-        else if (verb === 'TOMORROW') card.myDefer = deferUntil(raw);
+        else if (verb === 'TOMORROW') card.myDefer = deferUntil(f.raw);
         CARDS.push(card);
       }
     }
@@ -897,7 +926,12 @@ async function ensureMirror(){
 }
 async function writeMark(addr, content){
   await ensureMirror();
-  const body = { block: FIELD + ':' + HANDLE, spindle: addr, content: personalContent(addr, content) };
+  /* addr === null is an APPEND: the beach picks the slot and supernests when the
+   * ladder fills. There is no card at the address yet, so the personal transform
+   * has nothing to protect and stands aside — the content IS the new card. */
+  const body = addr === null
+    ? { block: FIELD + ':' + HANDLE, append: true, content }
+    : { block: FIELD + ':' + HANDLE, spindle: addr, content: personalContent(addr, content) };
   const latch = localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
@@ -1154,12 +1188,13 @@ async function commitCapture(){
    * two-level address under a stem that does not exist, marked PROPOSED, waiting
    * on a keeper who is the person who wrote it. */
   if (PERSONAL){
-    const used = CARDS.map(c => String(c.cardNo));
-    let slot = 0;
-    for (let d = 1; d <= 9; d++) if (!used.includes(String(d))){ slot = d; break; }
-    if (!slot){ toast('nine cards is a full hand — close one before adding another', true); return; }
-    const mine = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
-    const w = await writeMark(spindleFor([String(slot)], floorOf(mine) || 1), text);
+    /* THE BEACH ALLOCATES, the client does not count. Append takes the next free
+     * zero-free slot — 1 to 9, then 11, 12 — and SUPERNESTS when the ladder
+     * fills, atomically, so two hands adding at once cannot land on one slot and
+     * a tenth card is not a wall. The old client-side scan stopped dead at nine
+     * because it could only see nine; the ceiling was in the counting, never in
+     * the deck. */
+    const w = await writeMark(null, text);
     if (!w.ok){ if (!w.quiet) toast('the card did not land', true); return; }
     toast('✓ added to your deck');
     closeCapture();
