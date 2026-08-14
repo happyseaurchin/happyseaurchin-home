@@ -89,6 +89,7 @@
   .tile .moved{border-top:1px solid var(--line);padding-top:8px;display:flex;flex-direction:column;gap:4px}
   .tile .mv{font-family:var(--mono);font-size:11px;color:var(--vapour);display:flex;gap:8px;align-items:baseline}
   .tile .mv .who{color:var(--solid);flex:none}
+  .tile .mv .who.you{color:var(--foam)}
   .tile .mv .ago{color:var(--vapour-dim);margin-left:auto;flex:none}
   .tile .quiet{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
 
@@ -111,10 +112,12 @@
   .rcard .lab .addr{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);margin-left:auto;font-weight:400}
   .rcard .say{font-size:0.9rem;line-height:1.45;color:var(--vapour);
     display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:3.6em}
-  .rcard.sel .say{color:var(--foam)}
+  .rcard.sel .say{color:var(--foam);display:block;-webkit-line-clamp:unset;overflow:visible}
   .rcard.empty .say{color:var(--vapour-dim);font-style:italic}
   .badges{display:flex;gap:8px;min-height:16px}
   .b{font-family:var(--mono);font-size:10px;letter-spacing:0.05em;border-radius:4px;padding:1px 7px}
+  .b{cursor:pointer}
+  .b:hover{filter:brightness(1.25)}
   .b.bv{color:var(--liquid);border:1px solid rgba(var(--liquid-rgb),0.35)}
   .b.bc{color:var(--solid);border:1px solid rgba(var(--solid-rgb),0.35)}
 
@@ -131,6 +134,7 @@
   .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim)}
   .vrow{display:flex;gap:10px;align-items:baseline;font-size:0.92rem}
   .vrow .who{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:96px;text-align:right}
+  .vrow .who.you{color:var(--foam)}
   .vrow .said{flex:1;color:var(--vapour);min-width:0;white-space:pre-line}
   .vrow .ago{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:none}
   .silent{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
@@ -202,10 +206,10 @@
 
 <div class="bar">
   <span class="dot"></span>
-  <span>the morning · <b id="bar-who">—</b></span>
+  <span>the morning · <b id="bar-who">—</b><span id="bar-fam"></span></span>
   <span class="spacer"></span>
   <a href="#sweep">1 sweep</a><a href="#review">2 review</a><a href="#intend">3 intend</a>
-  <button id="btn-work" title="show the workings — addresses, blocks, acts">workings</button>
+  <button id="btn-work" title="show the address each card stands at">address</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
 </div>
@@ -244,7 +248,12 @@
       <p>Slide sideways through time; tap a card to stand there. Each row follows the one above it — the year you choose decides the months you see, down to the day. A card says what the venture has written for that time; the small counts say who has spoken there and what is held toward it.</p>
     </div>
     <p class="toward" id="toward"></p>
-    <div class="rack" id="rack"></div>
+    <div class="rack" id="rack">
+      <div class="rowlab">year</div><div class="carousel" id="row-y"></div>
+      <div class="rowlab">month</div><div class="carousel" id="row-m"></div>
+      <div class="rowlab">week</div><div class="carousel" id="row-w"></div>
+      <div class="rowlab">day</div><div class="carousel" id="row-d"></div>
+    </div>
     <div class="drawerwrap">
       <details class="drawer" id="stance">
         <summary><span>standing at</span> <span class="where" id="st-where">—</span><span class="counts" id="st-counts"></span></summary>
@@ -364,6 +373,7 @@ function textAt(block, addr){
 }
 const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : s; return d.innerHTML; };
 const short = (s, n) => { s = s || ''; return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + ' …' : s; };
+const whoName = w => w === HANDLE ? 'you' : w;
 const ISO = /\d{4}-\d{2}-\d{2}(?:[T ][\d:]+Z?)?/g;
 const iso = () => new Date().toISOString().slice(0,16) + 'Z';
 function ago(ts){ const t = Date.parse(ts); if (!Number.isFinite(t)) return '';
@@ -389,7 +399,8 @@ const pad10 = a => String(a).padEnd(10, '0');
 
 /* ── state ── */
 let HANDLE = null;
-let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [], VENTURE = 'beach-venture';
+const VENTURE = ((new URLSearchParams(location.search).get('v') || 'beach-venture').replace(/[^a-z0-9-]/gi, '') || 'beach-venture');
+let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
@@ -472,7 +483,7 @@ function voicesAt(addr){
   return out;
 }
 /* a card names the stretch it serves in its own words; today holds the rest */
-function cardsAt(addr){
+function cardHomes(){
   const out = [];
   DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
     const m = c.text.match(/toward\s+(this\s+week|january|february|march|april|may|june|july|august|september|october|november|december)/i);
@@ -482,10 +493,12 @@ function cardsAt(addr){
       home = s === 'this week' ? weekAddr(TODAY.y, TODAY.m0, TODAY.band)
            : monthAddr(TODAY.y, MN.findIndex(n => n.toLowerCase() === s));
     }
-    if (home === addr || (addr === TODAY_ADDR && home === TODAY_ADDR)) { if (home === addr) out.push({ who, ...c }); }
+    out.push({ who, home, ...c });
   }));
   return out;
 }
+const cardsAt = addr => cardHomes().filter(c => c.home === addr);
+const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) === addr).length;
 
 /* ── writes — the deck page's write path, held to exactly ── */
 async function writeWithLatch(body, what){
@@ -543,11 +556,15 @@ async function load(){
   TODAY = { y: d.getUTCFullYear(), m0: d.getUTCMonth(), d: d.getUTCDate() };
   TODAY.band = Math.floor((TODAY.d - 1) / 7) + 1;
   TODAY_ADDR = dayAddr(TODAY.y, TODAY.m0, TODAY.d);
-  Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d });
+  Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, level: 'd' });
 
   const [spine, index] = await Promise.all([readBlock('spine:' + VENTURE), readIndex()]);
   if (!spine) throw new Error('spine:' + VENTURE + ' is not on the beach');
   SPINE = spine;
+  if (floorOf(spine) !== 10){
+    showState('Not on the clock.', 'spine:' + esc(VENTURE) + ' stands on the beach, but its addresses are not dates, so the morning cannot walk it as time. Walk it node by node at <a href="/tree/' + encodeURIComponent(VENTURE) + '">/tree/' + esc(VENTURE) + '</a>.');
+    return;
+  }
   const blocks = (index && index.blocks) || [];
   const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
   const mNames = blocks.filter(b => b.startsWith(VENTURE + ':') && nameOk(b.slice(VENTURE.length + 1)));
@@ -590,20 +607,22 @@ async function load(){
 /* ── render ── */
 function render(){
   $('bar-who').textContent = HANDLE;
+  $('bar-fam').textContent = VENTURE === 'beach-venture' ? '' : ' · ' + VENTURE;
+  $('foot-tree').href = '/tree/' + encodeURIComponent(VENTURE);
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const dn = new Date();
   $('mast-title').innerHTML = esc(DAYS[dn.getUTCDay()] + ' ' + dn.getUTCDate() + ' ' + MN[dn.getUTCMonth()]) + ', <span class="cool">before the day</span>.';
   $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
-  renderTiles(); renderRack(false); renderGather(); renderIntend();
+  renderTiles(); renderRack(); renderGather(); renderIntend();
 }
 function renderTiles(){
   const sweep = [
-    { word: 'today',        addr: TODAY_ADDR },
-    { word: 'this week',    addr: weekAddr(TODAY.y, TODAY.m0, TODAY.band) },
-    { word: MN[TODAY.m0],   addr: monthAddr(TODAY.y, TODAY.m0) },
-    { word: 'the season',   addr: TODAY_ADDR.slice(0, 5) },
-    { word: 'the year',     addr: yearAddr(TODAY.y) },
-    { word: 'the reach',    addr: TODAY_ADDR.slice(0, 3) },
+    { word: 'today',        addr: TODAY_ADDR,                              lv: 'd' },
+    { word: 'this week',    addr: weekAddr(TODAY.y, TODAY.m0, TODAY.band), lv: 'w' },
+    { word: MN[TODAY.m0],   addr: monthAddr(TODAY.y, TODAY.m0),            lv: 'm' },
+    { word: 'the season',   addr: TODAY_ADDR.slice(0, 5),                  lv: 'm' },
+    { word: 'the year',     addr: yearAddr(TODAY.y),                       lv: 'y' },
+    { word: 'the reach',    addr: TODAY_ADDR.slice(0, 3),                  lv: 'y' },
   ];
   const frag = [];
   sweep.forEach(r => {
@@ -620,10 +639,10 @@ function renderTiles(){
       if (n) moved.push({ who, note: n + ' card' + (n > 1 ? 's' : '') + ' landed', ts: '' });
     });
     const movedHtml = moved.length
-      ? '<div class="moved">' + moved.slice(0, 4).map(m => '<span class="mv"><span class="who">' + esc(m.who) + '</span><span>' + esc(m.note) + '</span>' + (m.ts ? '<span class="ago">' + esc(ago(m.ts)) + '</span>' : '') + '</span>').join('') + '</div>'
+      ? '<div class="moved">' + moved.slice(0, 4).map(m => '<span class="mv"><span class="who' + (m.who === HANDLE ? ' you' : '') + '">' + esc(whoName(m.who)) + '</span><span>' + esc(m.note) + '</span>' + (m.ts ? '<span class="ago">' + esc(ago(m.ts)) + '</span>' : '') + '</span>').join('') + '</div>'
       : '<div class="moved"><span class="quiet">quiet</span></div>';
-    frag.push('<div class="tile" role="button" tabindex="0">' +
-      '<span class="rung">' + esc(r.word) + '<span class="addr work">' + esc(r.addr) + '</span></span>' +
+    frag.push('<div class="tile" role="button" tabindex="0" data-lv="' + r.lv + '">' +
+      '<span class="rung">' + esc(r.word) + '<span class="addr work">' + esc(pad10(r.addr)) + '</span></span>' +
       '<span class="obj">' + esc(obj || 'nothing written here yet') + '</span>' + movedHtml + '</div>');
   });
   const un = POOL_VOICES.filter(v => !v.at);
@@ -635,8 +654,8 @@ function renderTiles(){
   document.querySelectorAll('#tiles .tile').forEach(t => {
     const go = () => {
       if (t.dataset.gather){ $('gather').open = true; $('gather').scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
-      Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d });
-      renderRack(false);
+      Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, level: t.dataset.lv || 'd' });
+      renderRowsFrom('y');
       $('review').scrollIntoView({ behavior: 'smooth' });
     };
     t.addEventListener('click', go);
@@ -652,67 +671,117 @@ function rcard(label, addr, isSel, isNow, data){
   const t = textAt(SPINE, addr);
   const vs = voicesAt(addr).length, cs = cardsAt(addr).length;
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
-    '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(addr) + '</span></span>' +
-    '<span class="say">' + esc(t ? short(t, 200) : 'nothing written here yet') + '</span>' +
-    '<div class="badges">' + (vs ? '<span class="b bv">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
-    (cs ? '<span class="b bc">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
+    '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(pad10(addr)) + '</span></span>' +
+    '<span class="say">' + esc(t ? short(t, 240) : 'nothing written here yet') + '</span>' +
+    '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
+    (cs ? '<span class="b bc" title="open the detail below">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
 }
-function renderRack(smooth){
+/* ── the rows. Each shows its FULL sibling set — every month of the year, every
+ * year of the decade — so nothing vanishes as you click. A click highlights in
+ * place and re-renders only the rows BENEATH; a row never scrolls itself. ── */
+const LEVELS = ['y', 'm', 'w', 'd'];
+function buildRow(lv){
+  const cards = [];
+  if (lv === 'y'){
+    const d0 = Math.floor(SEL.y / 10) * 10;
+    cards.push(rcard('‹ ' + (d0 - 1), yearAddr(d0 - 1), false, d0 - 1 === TODAY.y, 'data-lv="y" data-y="' + (d0 - 1) + '"'));
+    for (let y = d0; y < d0 + 10; y++)
+      cards.push(rcard(String(y), yearAddr(y), y === SEL.y, y === TODAY.y, 'data-lv="y" data-y="' + y + '"'));
+    cards.push(rcard((d0 + 10) + ' ›', yearAddr(d0 + 10), false, d0 + 10 === TODAY.y, 'data-lv="y" data-y="' + (d0 + 10) + '"'));
+  } else if (lv === 'm'){
+    for (let m0 = 0; m0 < 12; m0++)
+      cards.push(rcard(MN[m0], monthAddr(SEL.y, m0), m0 === SEL.m0,
+        SEL.y === TODAY.y && m0 === TODAY.m0, 'data-lv="m" data-m0="' + m0 + '"'));
+  } else if (lv === 'w'){
+    for (let b = 1; b <= bandsIn(SEL.y, SEL.m0); b++){
+      const d1 = (b - 1) * 7 + 1, d2 = Math.min(b * 7, daysInMonth(SEL.y, SEL.m0));
+      cards.push(rcard(d1 + '–' + d2 + ' ' + MN[SEL.m0].slice(0, 3), weekAddr(SEL.y, SEL.m0, b),
+        b === SEL.band, SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && b === TODAY.band, 'data-lv="w" data-band="' + b + '"'));
+    }
+  } else {
+    const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
+    for (let d = d1; d <= d2; d++)
+      cards.push(rcard(wd(SEL.y, SEL.m0, d) + ' ' + d, dayAddr(SEL.y, SEL.m0, d),
+        d === SEL.d, SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && d === TODAY.d, 'data-lv="d" data-d="' + d + '"'));
+  }
+  return cards.join('');
+}
+function positionRow(lv){
+  const c = $('row-' + lv);
+  const el = c.querySelector('.rcard.sel');
+  if (el) c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.offsetWidth) / 2, behavior: 'auto' });
+}
+function selMatches(lv, el){
+  if (lv === 'y') return +el.dataset.y === SEL.y;
+  if (lv === 'm') return +el.dataset.m0 === SEL.m0;
+  if (lv === 'w') return +el.dataset.band === SEL.band;
+  return +el.dataset.d === SEL.d;
+}
+function paintSel(lv){
+  $('row-' + lv).querySelectorAll('.rcard').forEach(el => el.classList.toggle('sel', selMatches(lv, el)));
+}
+function renderRowsFrom(lv){
   clampSel();
-  const rows = [];
-  rows.push({ lab: 'year', cards: [-1, 0, 1, 2].map(k => {
-    const y = SEL.y + k;
-    return rcard(String(y), yearAddr(y), y === SEL.y, y === TODAY.y, 'data-lv="y" data-y="' + y + '"');
-  })});
-  rows.push({ lab: 'month', cards: [-1, 0, 1, 2].map(k => {
-    const dt = new Date(Date.UTC(SEL.y, SEL.m0 + k, 1));
-    const y = dt.getUTCFullYear(), m0 = dt.getUTCMonth();
-    return rcard(MN[m0] + (y !== SEL.y ? ' ' + y : ''), monthAddr(y, m0),
-      y === SEL.y && m0 === SEL.m0, y === TODAY.y && m0 === TODAY.m0, 'data-lv="m" data-y="' + y + '" data-m0="' + m0 + '"');
-  })});
-  const wcards = [];
-  for (let b = 1; b <= bandsIn(SEL.y, SEL.m0); b++){
-    const d1 = (b - 1) * 7 + 1, d2 = Math.min(b * 7, daysInMonth(SEL.y, SEL.m0));
-    wcards.push(rcard(d1 + '–' + d2 + ' ' + MN[SEL.m0].slice(0, 3), weekAddr(SEL.y, SEL.m0, b),
-      b === SEL.band, SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && b === TODAY.band, 'data-lv="w" data-band="' + b + '"'));
+  for (let i = LEVELS.indexOf(lv); i < LEVELS.length; i++){
+    $('row-' + LEVELS[i]).innerHTML = buildRow(LEVELS[i]);
+    positionRow(LEVELS[i]);
   }
-  rows.push({ lab: 'week', cards: wcards });
-  const dcards = [];
-  const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
-  for (let d = d1; d <= d2; d++){
-    dcards.push(rcard(wd(SEL.y, SEL.m0, d) + ' ' + d, dayAddr(SEL.y, SEL.m0, d),
-      d === SEL.d, SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && d === TODAY.d, 'data-lv="d" data-d="' + d + '"'));
-  }
-  rows.push({ lab: 'day', cards: dcards });
-
-  $('toward').innerHTML = 'toward · <b>' + esc(short(textAt(SPINE, TODAY_ADDR.slice(0, 3)) || '', 150)) + '</b>';
-  $('rack').innerHTML = rows.map(r =>
-    '<div class="rowlab">' + r.lab + '</div><div class="carousel">' + r.cards.join('') + '</div>').join('');
-
-  document.querySelectorAll('#rack .carousel').forEach(c => {
-    const el = c.querySelector('.rcard.sel');
-    if (el) c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.offsetWidth) / 2,
-      behavior: (smooth && !matchMedia('(prefers-reduced-motion: reduce)').matches) ? 'smooth' : 'auto' });
-  });
-  document.querySelectorAll('#rack .rcard').forEach(el => {
-    const go = () => {
-      const lv = el.dataset.lv;
-      if (lv === 'y') SEL.y = +el.dataset.y;
-      else if (lv === 'm'){ SEL.y = +el.dataset.y; SEL.m0 = +el.dataset.m0; }
-      else if (lv === 'w') SEL.band = +el.dataset.band;
-      else if (lv === 'd') SEL.d = +el.dataset.d;
-      renderRack(true);
-    };
-    el.addEventListener('click', go);
-    el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
-  });
   renderStance();
 }
-const selAddr = () => dayAddr(SEL.y, SEL.m0, SEL.d);
-const selLabel = () => wd(SEL.y, SEL.m0, SEL.d) + ' ' + SEL.d + ' ' + MN[SEL.m0] + ' ' + SEL.y;
+function renderRack(){
+  $('toward').innerHTML = 'toward · <b>' + esc(short(textAt(SPINE, TODAY_ADDR.slice(0, 3)) || '', 150)) + '</b>';
+  renderRowsFrom('y');
+}
+$('rack').addEventListener('click', e => {
+  const card = e.target.closest('.rcard'); if (!card) return;
+  const badge = e.target.closest('.b');
+  const lv = card.dataset.lv;
+  if (lv === 'y'){
+    const y = +card.dataset.y;
+    const crossed = Math.floor(y / 10) !== Math.floor(SEL.y / 10);
+    SEL.y = y; SEL.level = 'y';
+    if (crossed) renderRowsFrom('y'); else { paintSel('y'); renderRowsFrom('m'); }
+  } else if (lv === 'm'){
+    SEL.m0 = +card.dataset.m0; SEL.level = 'm';
+    paintSel('m'); renderRowsFrom('w');
+  } else if (lv === 'w'){
+    SEL.band = +card.dataset.band; SEL.level = 'w';
+    paintSel('w'); renderRowsFrom('d');
+  } else {
+    SEL.d = +card.dataset.d; SEL.level = 'd';
+    paintSel('d'); renderStance();
+  }
+  if (badge){
+    $('stance').open = true;
+    $('stance').scrollIntoView({ block: 'nearest',
+      behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }
+});
+$('rack').addEventListener('keydown', e => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const card = e.target.closest('.rcard'); if (!card) return;
+  e.preventDefault(); card.click();
+});
+/* where you stand follows the deepest card you touched — year, month, week or day */
+function selAddr(){
+  if (SEL.level === 'y') return yearAddr(SEL.y);
+  if (SEL.level === 'm') return monthAddr(SEL.y, SEL.m0);
+  if (SEL.level === 'w') return weekAddr(SEL.y, SEL.m0, SEL.band);
+  return dayAddr(SEL.y, SEL.m0, SEL.d);
+}
+function selLabel(){
+  if (SEL.level === 'y') return String(SEL.y);
+  if (SEL.level === 'm') return MN[SEL.m0] + ' ' + SEL.y;
+  if (SEL.level === 'w'){
+    const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
+    return d1 + '–' + d2 + ' ' + MN[SEL.m0] + ' ' + SEL.y;
+  }
+  return wd(SEL.y, SEL.m0, SEL.d) + ' ' + SEL.d + ' ' + MN[SEL.m0] + ' ' + SEL.y;
+}
 function renderStance(){
   const addr = selAddr();
   const vs = voicesAt(addr), cs = cardsAt(addr);
+  const finer = cardsUnder(addr) - cs.length;
   $('st-where').textContent = selLabel();
   $('st-counts').textContent = (vs.length || cs.length)
     ? (vs.length + (vs.length === 1 ? ' voice' : ' voices') + ' · ' + cs.length + (cs.length === 1 ? ' card' : ' cards'))
@@ -720,18 +789,19 @@ function renderStance(){
   const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
   const own = mine ? (textAt(mine, addr) || '') : '';
   const b = [];
-  b.push('<div class="sub">readings and suggestions here</div>');
+  b.push('<div class="sub">readings and suggestions here — each hand’s own words at this time</div>');
   b.push(vs.length
-    ? vs.map(v => '<div class="vrow"><span class="who">' + esc(v.who) + '</span><span class="said">' + esc(short(v.t, 420)) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
+    ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(short(v.t, 420)) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
     : '<span class="silent">nobody has written here — the first voice starts it</span>');
-  b.push('<div class="sub">held toward this, today</div>');
+  b.push('<div class="sub">cards held toward this</div>');
   b.push(cs.length
-    ? cs.map(c => '<div class="vrow"><span class="who">' + esc(c.who) + '</span><span class="said">' + esc(short(c.text, 200)) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</span></div>').join('')
+    ? cs.map(c => '<div class="vrow"><span class="who' + (c.who === HANDLE ? ' you' : '') + '">' + esc(whoName(c.who)) + '</span><span class="said">' + esc(short(c.text, 200)) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</span></div>').join('')
     : '<span class="silent">no cards held toward this right now</span>');
+  if (finer > 0) b.push('<span class="silent">and ' + finer + ' held at finer times beneath — stand there to see them</span>');
   b.push('<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
     '<textarea id="mir-text" placeholder="a comment, or a suggestion to change what’s written — yours, at this time"></textarea>' +
     '<div class="row"><span class="hint">signed with your key, so it stays yours' +
-    '<span class="work"> · <b>' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(addr) + '</b></span></span>' +
+    '<span class="work"> · <b>' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(pad10(addr)) + '</b></span></span>' +
     '<button id="mir-go">into your mirror</button></div></div>');
   $('st-body').innerHTML = b.join('');
   if (own) $('mir-text').value = own;
@@ -786,7 +856,8 @@ function renderIntend(){
     '<b>2 · append · ' + esc(FIELD) + ':' + esc(HANDLE) + '</b> — each new card, the beach picking its slot<br>' +
     'tomorrow’s sweep measures “since” from act 1 — the day voicing is also the marker.';
   $('foot-work').innerHTML = '<br><br><b>the blocks</b> — spine:' + esc(VENTURE) + ' · ' + esc(VENTURE) + ':&lt;handle&gt; · ' +
-    esc(FIELD) + ':&lt;handle&gt; · pool:' + esc(VENTURE);
+    esc(FIELD) + ':&lt;handle&gt; · pool:' + esc(VENTURE) +
+    '<br><b>the address</b> — one number on the sundial clock, its digits walking coarse to fine (millennium · century · decade · year · season · month-in-season · week band · day-in-band · gathering · beat), so 2026322600 reads Thursday 13 August 2026, to the day.';
   $('foot-next').href = '/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD;
 }
 function renderIntend2(){ /* re-wire after chip re-render */
