@@ -133,7 +133,7 @@
 <div id="app" class="hidden">
   <div class="masthead">
     <h1>Every card, <span class="cool">by what it aims at</span>.</h1>
-    <p>Today at the top — the hand you'll actually flick. Below it, your holdings per project, and the cards aiming at nothing. Cards are born at each project's review page; here you choose today, hold back, or let go.</p>
+    <p>Your hand at the top — every card you're holding right now, gathered across decks. Below it, each deck: yours aimed at its project, and the shared ones dealing. +hand takes a card up, −hand sets it down, and letting go is a mark in your own mirror — the deck itself is never touched.</p>
   </div>
   <div id="rows"></div>
   <div class="foot">
@@ -288,20 +288,22 @@ async function loadDealt(blocks){
       }
       if (!cards.length) return;
       const t0 = new Date().toISOString().slice(0, 10);
-      const retired = {};
+      const retired = {}, mine = {};
       const mnames = blocks.filter(b => b.startsWith(f + ':') && (disarm === 'field' || b === f + ':' + HANDLE));
+      if (!mnames.includes(f + ':' + HANDLE) && blocks.includes(f + ':' + HANDLE)) mnames.push(f + ':' + HANDLE);
       await Promise.all(mnames.map(async n => {
         const who = n.slice(f.length + 1);
         const mb = await readBlock(n).catch(() => null); if (!mb) return;
         cards.forEach(c => { const t = textAt(mb, c.addr); if (!t) return;
           const w = t.trim().split(/\s+/)[0].toUpperCase();
+          if (who === HANDLE && (w === 'HELD' || w === 'DOING')) mine[c.addr] = w.toLowerCase();
           if (mode === 'respond'){ if (who === HANDLE) retired[c.addr] = true; }
           else if (w === 'DONE' || w === 'DROP'){ if (disarm === 'field' || who === HANDLE) retired[c.addr] = true; }
           else if (w === 'TOMORROW' && who === HANDLE){ const dm = t.match(/(\d{4}-\d{2}-\d{2})/); if (dm && dm[1] > t0) retired[c.addr] = true; }
         });
       }));
       const open = cards.filter(c => !retired[c.addr]);
-      if (open.length) DEALT.push({ field: f, cards: open });
+      if (open.length) DEALT.push({ field: f, cards: open, mine });
     } catch (e){}
   }));
   DEALT.sort((a, b) => a.field.localeCompare(b.field));
@@ -323,6 +325,31 @@ async function writeCard(addr, content){
   return w;
 }
 
+/* the deal on a shared deck — +hand writes held, \u2212hand writes released, always in
+ * MY mirror of that field at the card's own address; the deck is never touched */
+async function writeFieldMark(f, addr, content){
+  const name = f + ':' + HANDLE;
+  const lk = 'next-latch:' + f + ':' + HANDLE;
+  const existing = await readBlock(name).catch(() => null);
+  if (!existing){
+    const body0 = { block: name, content: { _: 'MIRROR \u2014 ' + HANDLE + "'s marks on the " + f + ' field (spine:' + f + '), at the spine\u2019s own addresses. Born from /my-decks.' } };
+    const l0 = localStorage.getItem(lk);
+    if (l0) body0.new_lock = l0;
+    await writeBlock(body0);
+  }
+  const body = { block: name, spindle: addr, content };
+  const latch = localStorage.getItem(lk);
+  if (latch) body.secret = latch;
+  let w = await writeBlock(body);
+  if (lockRequired(w)){
+    const v = prompt(name + ' is latched \u2014 enter your key for this field (kept on this device):');
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    body.secret = v.trim(); w = await writeBlock(body);
+    if (w.ok) localStorage.setItem(lk, v.trim());
+  }
+  return w;
+}
+
 async function load(){
   const index = await readIndex();
   const blocks = (index && index.blocks) || [];
@@ -334,7 +361,7 @@ async function load(){
 
 function dcardEl(c, fam, acts){
   const style = fam ? ' style="--fam-h:' + famHue(fam) + '"' : '';
-  const st = c.state === 'held' ? 'held · back ' + c.until : c.state === 'doing' ? 'doing now' : 'in today';
+  const st = c.state === 'held' ? 'resting · back ' + c.until : c.state === 'doing' ? 'doing now' : 'in hand';
   return '<div class="dcard' + (fam ? ' fam' : '') + '"' + style + ' data-addr="' + esc(c.addr) + '">' +
     '<span class="aim">' + esc(fam || 'unattached') + '<span class="st">' + esc(st) + '</span></span>' +
     '<span class="txt">' + esc(c.text) + '</span>' +
@@ -356,13 +383,22 @@ function render(){
   const unattached = all.filter(c => !c.fam);
 
   const rows = [];
-  /* today — the hand you'll flick, composed across every aim */
+  /* my hand — the mixed hand: every card held right now, gathered across decks */
+  const heldShared = [];
+  DEALT.forEach(f => f.cards.forEach(c => { if (f.mine && f.mine[c.addr]) heldShared.push({ f: f.field, c, doing: f.mine[c.addr] === 'doing' }); }));
   rows.push('<div class="rowhead"><span class="fdot plain" style="background:var(--liquid)"></span>' +
-    '<span class="name">today</span><span class="n">' + today.length + (today.length === 1 ? ' card' : ' cards') + '</span>' +
+    '<span class="name">my hand</span><span class="n">' + (today.length + heldShared.length) + (today.length + heldShared.length === 1 ? ' card' : ' cards') + '</span>' +
     '<div class="links"><a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '">flick →</a></div></div>');
-  rows.push(today.length
-    ? '<div class="carousel">' + today.map(c => dcardEl(c, c.fam, '<button data-act="hold">not today</button><button class="x" data-act="drop">✕</button>')).join('') + '</div>'
-    : '<div class="empty-row">nothing armed — pick from your holdings below, or add at a review page</div>');
+  const handCards = today.map(c => dcardEl(c, c.fam, '<button data-act="hold">\u2212 hand</button><button class="x" data-act="drop">✕</button>'))
+    .concat(heldShared.map(h =>
+      '<div class="dcard fam" style="--fam-h:' + famHue(h.f) + '" data-addr="' + esc(h.c.addr) + '" data-field="' + esc(h.f) + '">' +
+      '<span class="aim">' + esc(h.f) + '<span class="st">' + (h.doing ? 'doing now' : 'in my hand') + '</span></span>' +
+      '<span class="txt">' + esc(short(h.c.text, 180)) + '</span>' +
+      '<div class="acts"><button data-fact="release">\u2212 hand</button>' +
+      '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(h.f) + '">act →</a></div></div>'));
+  rows.push(handCards.length
+    ? '<div class="carousel">' + handCards.join('') + '</div>'
+    : '<div class="empty-row">an empty hand — take a card up from the decks below</div>');
 
   /* one row per project — your cards aiming there, plus what its own deck deals you */
   fams.forEach(f => {
@@ -372,33 +408,43 @@ function render(){
       '<span class="name">' + esc(f) + '</span><span class="n">' + (mine.length + dealt.length) + '</span>' +
       '<div class="links">' +
       (f === VENTURE
-        ? '<a href="/morning/' + encodeURIComponent(HANDLE) + '">review · add →</a>'
+        ? '<a href="/morning/' + encodeURIComponent(HANDLE) + '">review · add →</a>' +
+          (mine.length ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '&aim=' + encodeURIComponent(f) + '">flick →</a>' : '')
         : dealt.length
           ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(f) + '">flick · add →</a>'
-          : '<a href="/tree/' + encodeURIComponent(f) + '">the family →</a>') +
+          : '<a href="/tree/' + encodeURIComponent(f) + '">the family →</a>' +
+            (mine.length ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '&aim=' + encodeURIComponent(f) + '">flick →</a>' : '')) +
       '</div></div>');
+    const df = DEALT.find(x => x.field === f);
+    const dmine = (df && df.mine) || {};
+    const dsort = dealt.slice(0, 9).sort((a, b) => (dmine[b.addr] ? 1 : 0) - (dmine[a.addr] ? 1 : 0));
     const cards = mine.map(c => dcardEl(c, f,
-        (c.state === 'held' ? '<button data-act="arm">into today</button>' : '<button data-act="hold">not today</button>') +
+        (c.state === 'held' ? '<button data-act="arm">+ hand</button>' : '<button data-act="hold">\u2212 hand</button>') +
         '<button class="x" data-act="drop">✕</button>'))
-      .concat(dealt.slice(0, 6).map(c =>
-        '<div class="dcard fam" style="--fam-h:' + famHue(f) + '"><span class="aim">' + esc(f) + '<span class="st">dealt to you</span></span>' +
+      .concat(dsort.map(c => {
+        const held = !!dmine[c.addr];
+        return '<div class="dcard fam" style="--fam-h:' + famHue(f) + '" data-addr="' + esc(c.addr) + '" data-field="' + esc(f) + '">' +
+        '<span class="aim">' + esc(f) + '<span class="st">' + (held ? (dmine[c.addr] === 'doing' ? 'doing now' : 'in my hand') : 'in the deck') + '</span></span>' +
         '<span class="txt">' + esc(short(c.text, 180)) + '</span>' +
-        '<div class="acts"><a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(f) + '">act on it →</a></div></div>'));
+        '<div class="acts">' + (held ? '<button data-fact="release">\u2212 hand</button>' : '<button data-fact="hold">+ hand</button>') +
+        '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(f) + '">act →</a></div></div>';
+      }));
     rows.push('<div class="carousel">' + cards.join('') + '</div>');
   });
 
   /* the unattached — cards aiming at nothing, in the standard colour */
   rows.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">unattached</span>' +
-    '<span class="n">' + unattached.length + '</span></div>');
+    '<span class="n">' + unattached.length + '</span>' +
+    '<div class="links"><a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '" title="the ＋ on the flick births a card aiming at nothing">add →</a></div></div>');
   rows.push(unattached.length
     ? '<div class="carousel">' + unattached.map(c => dcardEl(c, null,
-        (c.state === 'held' ? '<button data-act="arm">into today</button>' : '<button data-act="hold">not today</button>') +
+        (c.state === 'held' ? '<button data-act="arm">+ hand</button>' : '<button data-act="hold">\u2212 hand</button>') +
         '<button class="x" data-act="drop">✕</button>')).join('') + '</div>'
     : '<div class="empty-row">every card you hold aims at something</div>');
 
   $('rows').innerHTML = rows.join('');
 
-  /* acts — arm, hold, let go; a second tap confirms letting go */
+  /* acts — take up, set down, let go; a second tap confirms letting go */
   $('rows').querySelectorAll('.dcard [data-act]').forEach(b => b.addEventListener('click', async () => {
     if (BUSY) return;
     const card = b.closest('.dcard');
@@ -417,7 +463,19 @@ function render(){
     BUSY = true; b.disabled = true;
     const w = await writeCard(addr, content);
     BUSY = false;
-    if (w.ok){ toast(act === 'arm' ? '✓ in today' : act === 'hold' ? '✓ held — offers itself tomorrow' : '✓ let go'); await load(); }
+    if (w.ok){ toast(act === 'arm' ? '✓ in hand' : act === 'hold' ? '✓ resting — offers itself tomorrow' : '✓ let go'); await load(); }
+    else { b.disabled = false; if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true); }
+  }));
+  /* the deal on shared decks — a held/released mark in MY mirror of that field */
+  $('rows').querySelectorAll('.dcard [data-fact]').forEach(b => b.addEventListener('click', async () => {
+    if (BUSY) return;
+    const card = b.closest('.dcard');
+    const f = card.dataset.field, addr = card.dataset.addr;
+    const content = b.dataset.fact === 'hold' ? 'held ' + iso() : 'released ' + iso();
+    BUSY = true; b.disabled = true;
+    const w = await writeFieldMark(f, addr, content);
+    BUSY = false;
+    if (w.ok){ toast(b.dataset.fact === 'hold' ? '✓ in your hand' : '✓ set down'); await load(); }
     else { b.disabled = false; if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true); }
   }));
 }
