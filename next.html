@@ -432,18 +432,25 @@ function applyLines(op, lines){
      * stands alone. Proposed as dial 5.4 of the operator; until adopted, personal
      * decks default to beach-venture because the law already names it in prose. */
     else if ((m = t.match(/^venture:\s*(none|[a-z0-9-]+)/i))) { op.venture = m[1].toLowerCase() === 'none' ? null : m[1].toLowerCase(); got = true; }
+    else if ((m = t.match(/^cards:\s*(spine|mirror)/i))) { op.cards = m[1].toLowerCase(); got = true; }
   }
   return got;
 }
-async function readOperator(spine){
-  const op = { mode:'doing', respond:'rate', disarm:'field', access:'open', member:true, declared:false };
-  const lines = textsOf(spine['9'], [], 1);
+async function readOperator(){
+  /* A deck's law lives in its OWN operator block — function:<field> — never at the
+   * spine's position 9 (that pattern was obliterated 2026-08-15; a spine
+   * accumulates). cards: mirror is the default when the dial is unsaid — the
+   * personal-deck shape; shared decks declare cards: spine. */
+  const op = { mode:'doing', respond:'rate', disarm:'field', access:'open', member:true, declared:false, cards:'mirror' };
+  const ob = await readBlock('function:' + FIELD).catch(() => null);
+  if (!ob) return op;
+  let lines = deepText(ob).split('\n');
   const ref = lines.map(t => t.trim()).find(t => OPERATOR_REF.test(t));
   if (ref){
     const block = await readBlock(ref).catch(() => null);
-    if (block && applyLines(op, textsOf(block, [], 1))) op.declared = true;
+    if (block) lines = lines.concat(deepText(block).split('\n'));
   }
-  if (applyLines(op, lines)) op.declared = true;            /* said here beats named elsewhere */
+  if (applyLines(op, lines.map(t => t.trim()))) op.declared = true;
   if (op.mode === 'respond') op.disarm = 'person';          /* answering is always once per reader */
   return op;
 }
@@ -498,7 +505,7 @@ async function loadField(){
   if (!spine) throw new Error(SPINE + ' not found at the beach');
   SPINE_BLOCK = spine;
   FLOOR = floorOf(spine) || 3;
-  OP = await readOperator(spine);
+  OP = await readOperator();
   /* sed-gating is convention, not enforcement — the check is a courteous read */
   if (OP.access.startsWith('sed:')){
     OP.member = false;
@@ -527,15 +534,8 @@ async function loadField(){
    * simply what this holder is holding, and the leading word of a card is its own
    * mark rather than a separate entry elsewhere. Recognised the way it is built:
    * an operator block of its own carrying the dials, and no dials at the spine's 9. */
-  let opBlock = null;
-  try { opBlock = await readBlock('function:' + FIELD); } catch(e){}
-  PERSONAL = !!opBlock && !!OP && !OP.declared && /^(mode|respond|disarm|access):/im.test(deepText(opBlock));
+  PERSONAL = !!OP && OP.declared && OP.cards === 'mirror';
   if (PERSONAL){
-    /* The dials live in the operator block here, not at a spine 9, so OP must take
-     * them from there — otherwise the deck would run the defaults and 'disarm:
-     * field' would let one holder's DONE retire a card in somebody else's deck. */
-    applyLines(OP, deepText(opBlock).split('\n'));
-    OP.declared = true;
     if (OP.venture === undefined) OP.venture = 'beach-venture';
     const mine = mirrors[HANDLE] || null;
     CARDS = [];
@@ -589,7 +589,9 @@ async function loadField(){
     return;
   }
   CARDS = [];
-  const stems = childDigits(spine).filter(d => d !== '9');
+  /* no operator, no deck — a field's behaviour comes from function:<field>, and a
+   * field without one is content to read, never cards to deal on guessed defaults */
+  const stems = OP.declared ? childDigits(spine).filter(d => d !== '9') : [];
   for (const s of stems){
     const stem = spine[s];
     const stemText = voice(stem) || '';
@@ -732,8 +734,8 @@ function renderDeck(){
      * mount is not a deck at all, and one with cards nobody has reached is not finished. */
     if (!CARDS.length && !OP.declared)
       showState('Not a deck.',
-        esc(FIELD) + ' is a field on this beach, but nothing here says how its cards behave and none of its content '
-        + 'sits where a card sits. Read it whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
+        esc(FIELD) + ' is a field on this beach, but no operator block (function:' + esc(FIELD) + ') says how its '
+        + 'cards behave, so nothing deals. Found one per ways:deck, or read the field whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
         + encodeURIComponent(FIELD) + '">spine:' + esc(FIELD) + '</a>, or <a href="/decks">see the decks that do deal</a>.');
     else if (!CARDS.length)
       showState('No cards yet.',
