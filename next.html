@@ -305,6 +305,12 @@ const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 const FIELD = (new URLSearchParams(location.search).get('field')
   || (/^\/today-beach-deck(\/|$)/.test(location.pathname) ? 'today-beach-deck' : 'doing')).replace(/[^a-z0-9-]/gi,'');
 const SPINE = 'spine:' + FIELD;
+/* aim filter — flick one hand of the personal deck: cards aiming at ?aim=<family>
+ * (a time-shaped aim — this week, August, 20xx — belongs to the deck's venture) */
+const AIM = ((new URLSearchParams(location.search).get('aim') || '').replace(/[^a-z0-9-]/gi, '')).toLowerCase();
+const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
+const aimMatch = text => !AIM ? true :
+  (new RegExp('toward\\s+' + AIM, 'i').test(text) || (AIM === ((OP && OP.venture) || 'beach-venture') && TIME_AIM.test(text)));
 
 /* ── handle from /next/<handle> or ?h= ── */
 function handleFromUrl(){
@@ -583,6 +589,7 @@ async function loadField(){
         else if (verb === 'TOMORROW') card.myDefer = deferUntil(f.raw);
         CARDS.push(card);
       }
+      if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));   /* flick one hand: only the cards aiming there */
     }
     loadToward();   /* fire-and-forget: the ladder strip fills as the read lands */
     rebuildDeck(true);
@@ -1308,7 +1315,7 @@ async function boot(){
   }
   $('app').classList.remove('hidden');
   $('bar-who').textContent = HANDLE;
-  $('bar-field').textContent = 'the ' + FIELD + ' field';
+  $('bar-field').textContent = 'the ' + FIELD + ' field' + (AIM ? ' \u00b7 ' + AIM : '');
   $('link-field').href = '/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(SPINE);
   $('link-fold').href = '/fold?field=' + encodeURIComponent(FIELD);
   $('link-decks').href = '/my-decks/' + encodeURIComponent(HANDLE);
