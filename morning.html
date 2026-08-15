@@ -321,24 +321,14 @@
     <div class="band-head">
       <p class="eyebrow"><span class="n">3</span>intend</p>
       <h2>Set the day.</h2>
-      <p>Drafted from what you were already holding and the week above — rewrite it until it is yours, then set the day. Your cards follow you to the deck.</p>
+      <p>Your intention for the day, in your own words — drafted from the week standing above; rewrite it until it is yours. Setting it lands it as your voice at today, and tomorrow measures “since” from it. Cards live elsewhere: born at the rack’s detail, held at my decks.</p>
     </div>
     <div class="compose">
       <div class="panel">
         <textarea id="draft"></textarea>
-        <div class="hand" id="hand"></div>
-        <div class="addrow">
-          <input id="add-text" type="text" placeholder="a card — one thing you can pick up and put down inside a day">
-          <span class="scale" id="add-scale">
-            <button data-s="today" class="on">today</button>
-            <button data-s="week">this week</button>
-            <button data-s="month">this month</button>
-          </span>
-          <button id="add-go">add</button>
-        </div>
         <div class="setday">
           <button id="btn-set">set the day</button>
-          <span class="why" id="set-why">writes as you, on the beach — then the day runs at /next</span>
+          <span class="why" id="set-why">one write, as you — your voice at today</span>
           <button id="btn-deck" class="ghost" title="every card you hold for this project">show card-deck</button>
         </div>
         <div class="acts work" id="acts"></div>
@@ -456,9 +446,6 @@ let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
-let NEWCARDS = [];                   /* {text, suffix} staged by the add row */
-let OFFERS = [];                     /* {who, text, keep} cards other hands left for this handle */
-let DEALT = [];                      /* other decks currently dealing to this hand */
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
 let BUSY = false;
 const $ = id => document.getElementById(id);
@@ -654,56 +641,6 @@ function holdingsOf(deck){
   });
   return out;
 }
-function nodeLines(n, out){ out = out || [];
-  if (typeof n === 'string'){ if (n.trim()) out.push(n.trim()); }
-  else if (n && typeof n === 'object'){ const v = voice(n); if (v) out.push(v.trim());
-    for (const d of childDigits(n)) nodeLines(n[d], out); }
-  return out; }
-
-/* ── the shuffle — every deck currently dealing to this hand, gathered at load.
- * A field deals if the holder keeps a mirror in it AND its operator declares deck
- * dials (mode/respond/disarm/access — ways:deck). A family without dials — a
- * venture, a loop, a register — is not a deck and stays out of the hand. ── */
-async function loadDealt(blocks){
-  DEALT = [];
-  const cands = blocks.filter(b => b.endsWith(':' + HANDLE)).map(b => b.slice(0, -(HANDLE.length + 1)))
-    .filter(f => f && f !== FIELD && f !== VENTURE && !f.includes(':') && blocks.includes('spine:' + f));
-  await Promise.all(cands.slice(0, 8).map(async f => {
-    try {
-      const spine = await readBlock('spine:' + f); if (!spine) return;
-      let lines = nodeLines(spine['9']);
-      const ref = lines.find(t => /^(function|ways):[a-z0-9:-]+$/i.test(t));
-      if (ref){ const ob = await readBlock(ref).catch(() => null); if (ob) lines = lines.concat(nodeLines(ob)); }
-      if (!lines.some(t => /^(mode|respond|disarm|access):/i.test(t))) return;
-      const mode = lines.some(t => /^mode:\s*respond/i.test(t)) ? 'respond' : 'doing';
-      const disarm = mode === 'respond' || lines.some(t => /^disarm:\s*person/i.test(t)) ? 'person' : 'field';
-      const cards = [];
-      for (const d of childDigits(spine)){ if (d === '9') continue;
-        const kids = childDigits(spine[d]);
-        if (!kids.length){ const t = textAt(spine, d); if (t) cards.push({ addr: d, text: t }); }
-        else kids.forEach(l => { const t = textAt(spine, d + l); if (t) cards.push({ addr: d + l, text: t }); });
-      }
-      if (!cards.length) return;
-      const t0 = new Date().toISOString().slice(0, 10);
-      const retired = {};
-      const mnames = blocks.filter(b => b.startsWith(f + ':') && (disarm === 'field' || b === f + ':' + HANDLE));
-      await Promise.all(mnames.map(async n => {
-        const who = n.slice(f.length + 1);
-        const mb = await readBlock(n).catch(() => null); if (!mb) return;
-        cards.forEach(c => { const t = textAt(mb, c.addr); if (!t) return;
-          const w = t.trim().split(/\s+/)[0].toUpperCase();
-          if (mode === 'respond'){ if (who === HANDLE) retired[c.addr] = true; }
-          else if (w === 'DONE' || w === 'DROP'){ if (disarm === 'field' || who === HANDLE) retired[c.addr] = true; }
-          else if (w === 'TOMORROW' && who === HANDLE){ const dm = t.match(/(\d{4}-\d{2}-\d{2})/); if (dm && dm[1] > t0) retired[c.addr] = true; }
-        });
-      }));
-      const open = cards.filter(c => !retired[c.addr]);
-      if (open.length) DEALT.push({ field: f, cards: open });
-    } catch (e){}
-  }));
-  DEALT.sort((a, b) => a.field.localeCompare(b.field));
-}
-
 /* ── load ── */
 async function load(){
   const d = new Date();
@@ -728,7 +665,6 @@ async function load(){
   DECKS = dNames.map((n, i) => [n.slice(FIELD.length + 1), got[mNames.length + i]]).filter(x => x[1]);
 
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
-  await loadDealt(blocks);
 
   const pool = await readBlock('pool:' + VENTURE).catch(() => null);
   POOL_VOICES = [];
@@ -757,15 +693,6 @@ async function load(){
   const own = stampsUnder(mineM).concat(stampsUnder(mineD)).sort().pop() || 0;
   SINCE = Math.max(own, Date.now() - 48 * 3600 * 1000);
   if (!own) SINCE = Date.now() - 24 * 3600 * 1000;
-
-  /* cards other hands left for this handle — adopt with a tap, never written for you */
-  OFFERS = [];
-  DECKS.forEach(([who, deck]) => { if (who === HANDLE) return;
-    openCardsOf(deck).forEach(c => {
-      const m = c.text.match(new RegExp('^for\\s+' + HANDLE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b[\\s—–:,-]*(.*)$', 'is'));
-      if (m && m[1]) OFFERS.push({ who, text: m[1].trim(), keep: true });
-    });
-  });
 
   render();
 }
@@ -1071,100 +998,41 @@ $('sh-tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || !SHEET || SHEET.gather) return;
   SHEET.pane = b.dataset.p; paintSheet();
 });
-/* ── intend ── */
-let SCALE = 'today';
-function chipRows(){
-  const mine = openCardsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
-  const rows = [];
-  mine.forEach(c => {
-    const fam = famOf(c.text);
-    rows.push('<div class="chip' + (fam ? ' fam' : '') + '"' + (fam ? ' style="--fam-h:' + famHue(fam) + '"' : '') + '>' +
-      ((fam || c.held) ? '<span class="tag">' + esc(fam || c.held) + '</span>' : '') +
-      '<span class="txt">' + esc(short(c.text, 160)) + '</span></div>');
-  });
-  DEALT.forEach(f => f.cards.slice(0, 5).forEach(c =>
-    rows.push('<div class="chip fam" style="--fam-h:' + famHue(f.field) + '"><span class="tag">' + esc(f.field) + '</span>' +
-      '<span class="txt">' + esc(short(c.text, 150)) + '</span>' +
-      '<a class="go" href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(f.field) + '" title="act on it at its own deck">→</a></div>')));
-  OFFERS.forEach((o, i) => rows.push('<div class="chip' + (o.keep ? '' : ' off') + '"><span class="tag offer">from ' + esc(o.who) + '</span>' +
-    '<span class="txt">' + esc(short(o.text, 160)) + '</span><button class="x" data-offer="' + i + '" title="take it or leave it">' + (o.keep ? '×' : '+') + '</button></div>'));
-  NEWCARDS.forEach((c, i) => rows.push('<div class="chip"><span class="tag">new</span>' +
-    '<span class="txt">' + esc(short(c.text + (c.suffix || ''), 160)) + '</span><button class="x" data-new="' + i + '" title="remove">×</button></div>'));
-  return rows.join('') || '<span class="silent">nothing held — add a card below, or let the day stay light</span>';
-}
+/* ── intend — one act: the day voicing, in your own words ── */
 function renderIntend(){
-  const weekObj = textAt(SPINE, weekAddr(TODAY.y, TODAY.m0, TODAY.band)) || '';
+  const weekObj = textAt(SPINE, weekAddr(TODAY.y, TODAY.m0, TODAY.band));
+  const monthObj = textAt(SPINE, monthAddr(TODAY.y, TODAY.m0));
+  const toward = weekObj ? 'the week — ' + short(weekObj, 150) : monthObj ? 'the month — ' + short(monthObj, 150) : 'what stands above';
   const mine = openCardsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
   if (!$('draft').value.trim()){
-    $('draft').value = 'Today is toward the week — ' + short(weekObj, 150) + '\n\n' +
+    $('draft').value = 'Today is toward ' + toward + '\n\n' +
       'I will ' + (mine.length ? mine.map(c => short(c.text, 90)).join('; and ') : '…') + '.';
   }
-  $('hand').innerHTML = chipRows();
-  $('hand').querySelectorAll('[data-offer]').forEach(x => x.addEventListener('click', () => {
-    OFFERS[+x.dataset.offer].keep = !OFFERS[+x.dataset.offer].keep; $('hand').innerHTML = chipRows(); renderIntend2();
-  }));
-  $('hand').querySelectorAll('[data-new]').forEach(x => x.addEventListener('click', () => {
-    NEWCARDS.splice(+x.dataset.new, 1); $('hand').innerHTML = chipRows(); renderIntend2();
-  }));
   $('acts').innerHTML =
-    'setting the day performs, with your key, in your own blocks:<br>' +
-    '<b>1 · write · ' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(TODAY_ADDR) + '</b> — the words above, dated<br>' +
-    '<b>2 · append · ' + esc(FIELD) + ':' + esc(HANDLE) + '</b> — each new card, the beach picking its slot<br>' +
-    'tomorrow’s sweep measures “since” from act 1 — the day voicing is also the marker.';
+    'setting the day performs one write, with your key, in your own block:<br>' +
+    '<b>write · ' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(TODAY_ADDR) + '</b> — the words above, dated — the marker tomorrow\u2019s sweep measures from.';
   $('foot-work').innerHTML = '<br><br><b>the blocks</b> — spine:' + esc(VENTURE) + ' · ' + esc(VENTURE) + ':&lt;handle&gt; · ' +
     esc(FIELD) + ':&lt;handle&gt; · pool:' + esc(VENTURE) +
     '<br><b>the address</b> — one number on the sundial clock, its digits walking coarse to fine (millennium · century · decade · year · season · month-in-season · week band · day-in-band · gathering · beat), so 2026322600 reads Thursday 13 August 2026, to the day.';
   $('foot-next').href = '/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD;
 }
-function renderIntend2(){ /* re-wire after chip re-render */
-  $('hand').querySelectorAll('[data-offer]').forEach(x => x.addEventListener('click', () => {
-    OFFERS[+x.dataset.offer].keep = !OFFERS[+x.dataset.offer].keep; $('hand').innerHTML = chipRows(); renderIntend2();
-  }));
-  $('hand').querySelectorAll('[data-new]').forEach(x => x.addEventListener('click', () => {
-    NEWCARDS.splice(+x.dataset.new, 1); $('hand').innerHTML = chipRows(); renderIntend2();
-  }));
-}
-document.getElementById('add-scale').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  SCALE = b.dataset.s;
-  document.querySelectorAll('#add-scale button').forEach(x => x.classList.toggle('on', x === b));
-});
-document.getElementById('add-go').addEventListener('click', () => {
-  const t = $('add-text').value.trim();
-  if (!t){ toast('a card needs words', true); return; }
-  const suffix = SCALE === 'week' ? ' — toward this week' : SCALE === 'month' ? ' — toward ' + MN[TODAY.m0] : '';
-  NEWCARDS.push({ text: t, suffix });
-  $('add-text').value = '';
-  $('hand').innerHTML = chipRows(); renderIntend2();
-});
 document.getElementById('btn-set').addEventListener('click', async () => {
   if (BUSY) return; BUSY = true;
   const btn = $('btn-set'); btn.disabled = true;
   try {
     const draft = $('draft').value.trim();
-    let landedV = false, landedC = 0, refusals = [];
-    if (draft){
+    if (!draft){ toast('write the day first', true); }
+    else {
       const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
       const prior = mine ? (textAt(mine, TODAY_ADDR) || '') : '';
       const content = prior && prior.trim() && !prior.includes(draft) ? draft + '\n' + prior : draft;
       const w = await writeMirrorAt(TODAY_ADDR, content);
-      if (w.ok) landedV = true;
-      else if (!w.quiet) refusals.push('the day voicing (' + ((w.data && (w.data.error || w.data.code)) || w.status) + ')');
+      if (w.ok){
+        toast('\u2713 the day is set');
+        $('set-why').innerHTML = '\u2713 set — your words stand at today · <a href="/my-decks/' + encodeURIComponent(HANDLE) + '">my decks →</a> · <a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '">flick →</a>';
+        await load();
+      } else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
     }
-    const toAdd = NEWCARDS.map(c => c.text + (c.suffix || ''))
-      .concat(OFFERS.filter(o => o.keep).map(o => o.text));
-    for (const text of toAdd){
-      const w = await appendCard(text);
-      if (w.ok) landedC++;
-      else if (!w.quiet) refusals.push('a card (' + ((w.data && (w.data.error || w.data.code)) || w.status) + ')');
-    }
-    if (refusals.length) toast('refused: ' + refusals.join(' · '), true);
-    else if (landedV || landedC){
-      NEWCARDS = [];
-      toast('✓ the day is set — ' + (landedV ? 'voiced at today' : '') + (landedV && landedC ? ', ' : '') + (landedC ? landedC + ' card' + (landedC > 1 ? 's' : '') + ' dealt' : ''));
-      $('set-why').innerHTML = 'set — <a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '">the day runs at /next →</a>';
-      await load();
-    } else toast('nothing to set — write the day, or add a card', true);
   } catch(e){ toast(String(e.message || e), true); }
   BUSY = false; btn.disabled = false;
 });
