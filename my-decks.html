@@ -272,10 +272,12 @@ async function loadDealt(blocks){
   await Promise.all(cands.slice(0, 8).map(async f => {
     try {
       const spine = await readBlock('spine:' + f); if (!spine) return;
-      let lines = nodeLines(spine['9']);
+      const ob = await readBlock('function:' + f).catch(() => null); if (!ob) return;   /* the law lives in the operator block, never at spine 9 */
+      let lines = nodeLines(ob);
       const ref = lines.find(t => /^(function|ways):[a-z0-9:-]+$/i.test(t));
-      if (ref){ const ob = await readBlock(ref).catch(() => null); if (ob) lines = lines.concat(nodeLines(ob)); }
+      if (ref){ const rb = await readBlock(ref).catch(() => null); if (rb) lines = lines.concat(nodeLines(rb)); }
       if (!lines.some(t => /^(mode|respond|disarm|access):/i.test(t))) return;
+      if (!lines.some(t => /^cards:\s*spine/i.test(t))) return;   /* only shared decks deal into the hand */
       const mode = lines.some(t => /^mode:\s*respond/i.test(t)) ? 'respond' : 'doing';
       const disarm = mode === 'respond' || lines.some(t => /^disarm:\s*person/i.test(t)) ? 'person' : 'field';
       const cards = [];
