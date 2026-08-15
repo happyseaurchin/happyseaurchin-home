@@ -447,6 +447,8 @@ let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
+let MODE = 'clock';                  /* 'clock' — a floor-10 sundial spine walks as time; 'tree' — any other spine walks as branches */
+const wireAddr = a => MODE === 'clock' ? pad10(a) : String(a);   /* full width is the clock's convention; a tree writes its digits bare */
 let BUSY = false;
 const $ = id => document.getElementById(id);
 
@@ -539,7 +541,9 @@ function cardHomes(){
   }));
   return out;
 }
-const cardsAt = addr => cardHomes().filter(c => c.home === addr);
+const cardsAt = addr => MODE === 'tree' ? [] : cardHomes().filter(c => c.home === addr);
+/* in a tree walk, a card aims at the FAMILY in its own words; the sheet lists them at any branch */
+const famCards = () => cardHomes().filter(c => famOf(c.text) === VENTURE);
 const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) === addr).length;
 
 /* ── writes — the deck page's write path, held to exactly ── */
@@ -573,12 +577,12 @@ async function ensureVentureMirror(){
 async function writeMirrorAt(addr, content){
   const ok = await ensureVentureMirror();
   if (!ok) return { ok: false };
-  return writeWithLatch({ block: VENTURE + ':' + HANDLE, spindle: pad10(addr), content }, VENTURE + ':' + HANDLE);
+  return writeWithLatch({ block: VENTURE + ':' + HANDLE, spindle: wireAddr(addr), content }, VENTURE + ':' + HANDLE);
 }
 /* the keeper's key — the spine's own lock, a different key from the deck latch */
 const keeperKey = () => 'morning-keeper:spine:' + VENTURE;
 async function writeSpine(addr, content){
-  const body = { block: 'spine:' + VENTURE, spindle: pad10(addr), content };
+  const body = { block: 'spine:' + VENTURE, spindle: wireAddr(addr), content };
   let latch = localStorage.getItem(keeperKey());
   if (!latch){
     latch = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device):');
@@ -617,7 +621,7 @@ async function appendCard(text){
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
 /* the mirror's own invite-link law: a place, never a person */
-const mirrorUrl = addr => 'https://mirror.onen.ai/?block=' + encodeURIComponent('spine:' + VENTURE) + '&at=' + pad10(addr);
+const mirrorUrl = addr => 'https://mirror.onen.ai/?block=' + encodeURIComponent('spine:' + VENTURE) + '&at=' + wireAddr(addr);
 const famOf = text => { const m = String(text).match(/toward\s+([a-z0-9-]{3,})/i);
   return m && FIELDS.has(m[1].toLowerCase()) ? m[1].toLowerCase() : null; };
 /* a time-shaped aim (this week, August, 2027) belongs to the venture the card was born on */
@@ -652,9 +656,11 @@ async function load(){
   const [spine, index] = await Promise.all([readBlock('spine:' + VENTURE), readIndex()]);
   if (!spine) throw new Error('spine:' + VENTURE + ' is not on the beach');
   SPINE = spine;
-  if (floorOf(spine) !== 10){
-    showState('Not on the clock.', 'spine:' + esc(VENTURE) + ' stands on the beach, but its addresses are not dates, so the morning cannot walk it as time. Walk it node by node at <a href="/tree/' + encodeURIComponent(VENTURE) + '">/tree/' + esc(VENTURE) + '</a>.');
-    return;
+  /* the same page walks every family: a floor-10 sundial spine as time, any other as its own branches */
+  MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
+  if (MODE === 'tree'){
+    SEL.path = [childDigits(spine).filter(d => d !== '9')[0]].filter(Boolean);
+    SEL.level = 't';
   }
   const blocks = (index && index.blocks) || [];
   const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
@@ -703,11 +709,19 @@ function render(){
   $('bar-fam').textContent = VENTURE === 'beach-venture' ? '' : ' · ' + VENTURE;
   $('bar-decks').href = '/my-decks/' + encodeURIComponent(HANDLE);
   $('foot-tree').href = '/tree/' + encodeURIComponent(VENTURE);
-  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-  const dn = new Date();
-  $('mast-title').innerHTML = esc(DAYS[dn.getUTCDay()] + ' ' + dn.getUTCDate() + ' ' + MN[dn.getUTCMonth()]) + ', <span class="cool">before the day</span>.';
+  $('sweep').classList.toggle('hidden', MODE === 'tree');
+  $('intend').classList.toggle('hidden', MODE === 'tree');
+  if (MODE === 'tree'){
+    $('mast-title').innerHTML = esc(VENTURE) + ', <span class="cool">walked</span>.';
+  } else {
+    const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const dn = new Date();
+    $('mast-title').innerHTML = esc(DAYS[dn.getUTCDay()] + ' ' + dn.getUTCDate() + ' ' + MN[dn.getUTCMonth()]) + ', <span class="cool">before the day</span>.';
+  }
   $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
-  renderTiles(); renderRack(); renderIntend();
+  if (MODE === 'clock'){ renderTiles(); }
+  renderRack();
+  if (MODE === 'clock'){ renderIntend(); }
 }
 function renderTiles(){
   const sweep = [
@@ -765,7 +779,7 @@ function rcard(label, addr, isSel, isNow, data){
   const t = textAt(SPINE, addr);
   const vs = voicesAt(addr).length, cs = cardsAt(addr).length;
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
-    '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(pad10(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
+    '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : 'nothing written here yet') + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="open the detail below">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
@@ -822,14 +836,53 @@ function renderRowsFrom(lv){
   }
 }
 function renderRack(){
+  if (MODE === 'tree'){
+    $('toward').innerHTML = 'the family\u2019s own line · <b>' + esc(short(voice(SPINE) || '', 170)) + '</b>';
+    renderTreeRack();
+    return;
+  }
   $('toward').innerHTML = 'toward · <b>' + esc(short(textAt(SPINE, TODAY_ADDR.slice(0, 3)) || '', 150)) + '</b>';
   renderRowsFrom('y');
+}
+/* ── the tree rack — the same rows, grown from the spine's own branches: row one
+ * is the stems, each further row the children of the branch chosen above it ── */
+function renderTreeRack(){
+  const rows = [];
+  let node = SPINE, addrSoFar = '';
+  for (let depth = 0; ; depth++){
+    const kids = childDigits(node).filter(d => !(depth === 0 && d === '9'));
+    if (!kids.length) break;
+    const cards = kids.map(d => {
+      const a = addrSoFar + d;
+      return rcard('\u00b7' + d, a, SEL.path[depth] === d, false, 'data-lv="t" data-depth="' + depth + '" data-d="' + d + '"');
+    });
+    rows.push('<div class="rowlab">' + (depth === 0 ? 'branches' : 'beneath \u00b7' + SEL.path.slice(0, depth).join('\u00b7')) + '</div><div class="carousel">' + cards.join('') + '</div>');
+    const chosen = SEL.path[depth];
+    if (!chosen) break;
+    node = node[chosen]; addrSoFar += chosen;
+    if (!node || typeof node !== 'object') break;
+  }
+  $('rack').innerHTML = rows.join('');
+  document.querySelectorAll('#rack .carousel').forEach(c => {
+    const el = c.querySelector('.rcard.sel');
+    if (el) c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.offsetWidth) / 2, behavior: 'auto' });
+  });
 }
 $('rack').addEventListener('click', e => {
   if (e.target.closest('a')) return;                        /* a link is a link — no selection ride-along */
   const card = e.target.closest('.rcard'); if (!card) return;
   const badge = e.target.closest('.b');
   const lv = card.dataset.lv;
+  if (lv === 't'){
+    const depth = +card.dataset.depth, d = card.dataset.d;
+    const again = SEL.path[depth] === d && SEL.path.length === depth + 1;
+    SEL.path = SEL.path.slice(0, depth).concat(d);
+    SEL.level = 't';
+    renderTreeRack();
+    if (badge) openSheet(badge.classList.contains('bv') ? 'voices' : 'cards');
+    else if (again) openSheet('text');
+    return;
+  }
   const again = selMatches(lv, card) && SEL.level === lv;   /* tapping where you already stand */
   if (lv === 'y'){
     const y = +card.dataset.y;
@@ -857,12 +910,17 @@ $('rack').addEventListener('keydown', e => {
 });
 /* where you stand follows the deepest card you touched — year, month, week or day */
 function selAddr(){
+  if (SEL.level === 't') return SEL.path.join('');
   if (SEL.level === 'y') return yearAddr(SEL.y);
   if (SEL.level === 'm') return monthAddr(SEL.y, SEL.m0);
   if (SEL.level === 'w') return weekAddr(SEL.y, SEL.m0, SEL.band);
   return dayAddr(SEL.y, SEL.m0, SEL.d);
 }
 function selLabel(){
+  if (SEL.level === 't'){
+    const t = textAt(SPINE, SEL.path.join(''));
+    return '\u00b7' + SEL.path.join('\u00b7') + (t ? ' \u2014 ' + short(t, 60) : '');
+  }
   if (SEL.level === 'y') return String(SEL.y);
   if (SEL.level === 'm') return MN[SEL.m0] + ' ' + SEL.y;
   if (SEL.level === 'w'){
@@ -906,7 +964,7 @@ function paintSheet(){
     return;
   }
   tabs.classList.remove('hidden');
-  const addr = selAddr(), vs = voicesAt(addr), cs = cardsAt(addr);
+  const addr = selAddr(), vs = voicesAt(addr), cs = MODE === 'tree' ? famCards() : cardsAt(addr);
   $('sh-where').textContent = selLabel();
   $('sh-mirror').classList.remove('hidden');
   $('sh-mirror').href = mirrorUrl(addr);
@@ -919,8 +977,8 @@ function paintSheet(){
   if (SHEET.pane === 'text'){
     b.push('<div class="fulltext">' + esc(textAt(SPINE, addr) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
     b.push('<button class="editbtn" id="sp-edit">edit what’s written — keeper’s key</button>');
-    b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(pad10(addr)) +
-      ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + pad10(addr) + '">the raw walk →</a></span>');
+    b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(wireAddr(addr)) +
+      ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
     b.push(vs.length
       ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
@@ -928,7 +986,7 @@ function paintSheet(){
     b.push('<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
       '<textarea id="mir-text" placeholder="a comment, or a suggestion to change what’s written — yours, at this time"></textarea>' +
       '<div class="row"><span class="hint">signed with your key, so it stays yours' +
-      '<span class="work"> · <b>' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(pad10(addr)) + '</b></span></span>' +
+      '<span class="work"> · <b>' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(wireAddr(addr)) + '</b></span></span>' +
       '<button id="mir-go">into your mirror</button></div></div>');
   } else {
     const finer = cardsUnder(addr) - cs.length;
@@ -980,7 +1038,8 @@ function paintSheet(){
       if (BUSY) return;
       const t = $('addto-text').value.trim();
       if (!t){ toast('a card needs words', true); return; }
-      const suffix = SEL.level === 'd' ? ''
+      const suffix = SEL.level === 't' ? ' — toward ' + VENTURE
+        : SEL.level === 'd' ? ''
         : SEL.level === 'w' ? (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? ' — toward this week' : ' — toward ' + selLabel())
         : SEL.level === 'm' ? ' — toward ' + MN[SEL.m0]
         : ' — toward ' + SEL.y;
