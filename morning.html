@@ -141,6 +141,26 @@
   .sheet__body{overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:120px}
   .sheet__body .fulltext{font-size:1rem;line-height:1.55;color:var(--foam);white-space:pre-line}
 
+  /* mirror links — hidden until the bar's mirror toggle; a link is a place, never a person */
+  .mlink{display:none;font-family:var(--mono);font-size:10px;color:var(--vapour-dim);border-bottom:none;
+    border:1px solid var(--line);border-radius:5px;padding:2px 7px;flex:none}
+  .mlink:hover{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+  body.mirrorlinks .mlink{display:inline-block}
+  body.mirrorlinks .bar #btn-mirror{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}
+
+  /* the keeper's edit — the author face, gated by the spine's own key at the beach */
+  .editbtn{align-self:flex-start;background:none;border:1px solid var(--line);border-radius:7px;color:var(--vapour-dim);
+    font-size:10.5px;letter-spacing:0.04em;padding:7px 11px;cursor:pointer;font-family:var(--mono)}
+  .editbtn:hover{color:var(--foam);border-color:var(--line-strong)}
+  .spineedit{display:flex;flex-direction:column;gap:8px}
+  .spineedit textarea{width:100%;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:8px;
+    color:var(--foam);font-family:var(--body);font-size:0.98rem;line-height:1.5;padding:10px 12px;resize:vertical;min-height:120px}
+  .spineedit .row{display:flex;gap:10px;align-items:center}
+  .spineedit button{background:var(--liquid);border:none;border-radius:7px;color:var(--abyss);
+    font-size:11px;font-weight:700;letter-spacing:0.05em;padding:9px 14px;cursor:pointer;flex:none}
+  .spineedit button:disabled{opacity:0.5;cursor:wait}
+  .spineedit .hint{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:1;line-height:1.6}
+
   /* family colour tokens (--fam-s/l/line-l/ink-l) live in theme.css, pastel in both
    * registers; a page sets only --fam-h per family, and always writes the name */
   .chip.fam{background:hsl(var(--fam-h) var(--fam-s) var(--fam-l));border-color:hsl(var(--fam-h) var(--fam-s) var(--fam-line-l))}
@@ -236,6 +256,8 @@
   <span class="spacer"></span>
   <a id="bar-decks" href="/my-decks">my decks</a>
   <a href="#sweep">1 sweep</a><a href="#review">2 review</a><a href="#intend">3 intend</a>
+  <button id="btn-latch" title="your keeper key for this spine — lets you edit what’s written">key</button>
+  <button id="btn-mirror" title="show links to the mirror — the live shared surface">mirror</button>
   <button id="btn-work" title="show the address each card stands at">address</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
@@ -285,7 +307,7 @@
 
   <div id="sheet-veil" class="veil hidden">
     <div class="sheet">
-      <div class="sheet__head"><span class="sheet__where" id="sh-where">—</span><button class="sheet__close" id="sh-close" title="close">×</button></div>
+      <div class="sheet__head"><span class="sheet__where" id="sh-where">—</span><a id="sh-mirror" class="mlink" target="_blank" rel="noopener">mirror ↗</a><button class="sheet__close" id="sh-close" title="close">×</button></div>
       <div class="tabs" id="sh-tabs">
         <button data-p="text">what’s written</button>
         <button data-p="voices">voices</button>
@@ -566,6 +588,27 @@ async function writeMirrorAt(addr, content){
   if (!ok) return { ok: false };
   return writeWithLatch({ block: VENTURE + ':' + HANDLE, spindle: pad10(addr), content }, VENTURE + ':' + HANDLE);
 }
+/* the keeper's key — the spine's own lock, a different key from the deck latch */
+const keeperKey = () => 'morning-keeper:spine:' + VENTURE;
+async function writeSpine(addr, content){
+  const body = { block: 'spine:' + VENTURE, spindle: pad10(addr), content };
+  let latch = localStorage.getItem(keeperKey());
+  if (!latch){
+    latch = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device):');
+    if (latch === null || !latch.trim()) return { ok: false, quiet: true };
+    latch = latch.trim();
+  }
+  body.secret = latch;
+  let w = await writeBlock(body);
+  if (lockRequired(w)){
+    const v = prompt('That key was refused. Keeper key for spine:' + VENTURE + ':');
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    body.secret = v.trim();
+    w = await writeBlock(body);
+    if (w.ok) localStorage.setItem(keeperKey(), v.trim());
+  } else if (w.ok) localStorage.setItem(keeperKey(), latch);
+  return w;
+}
 async function ensureDeck(){
   const name = FIELD + ':' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
@@ -586,6 +629,8 @@ async function appendCard(text){
 /* families and their colours — one steady hue per family, its name always written beside it */
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
+/* the mirror's own invite-link law: a place, never a person */
+const mirrorUrl = addr => 'https://mirror.onen.ai/?block=' + encodeURIComponent('spine:' + VENTURE) + '&at=' + pad10(addr);
 const famOf = text => { const m = String(text).match(/toward\s+([a-z0-9-]{3,})/i);
   return m && FIELDS.has(m[1].toLowerCase()) ? m[1].toLowerCase() : null; };
 /* a time-shaped aim (this week, August, 2027) belongs to the venture the card was born on */
@@ -793,7 +838,7 @@ function rcard(label, addr, isSel, isNow, data){
   const t = textAt(SPINE, addr);
   const vs = voicesAt(addr).length, cs = cardsAt(addr).length;
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
-    '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(pad10(addr)) + '</span></span>' +
+    '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(pad10(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : 'nothing written here yet') + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="open the detail below">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
@@ -854,6 +899,7 @@ function renderRack(){
   renderRowsFrom('y');
 }
 $('rack').addEventListener('click', e => {
+  if (e.target.closest('a')) return;                        /* a link is a link — no selection ride-along */
   const card = e.target.closest('.rcard'); if (!card) return;
   const badge = e.target.closest('.b');
   const lv = card.dataset.lv;
@@ -909,6 +955,7 @@ function paintSheet(){
   const tabs = $('sh-tabs');
   if (SHEET.deck){
     tabs.classList.add('hidden');
+    $('sh-mirror').classList.add('hidden');
     $('sh-where').textContent = 'your card-deck — ' + (VENTURE === 'beach-venture' ? 'the venture' : VENTURE);
     const all = holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1])
       .filter(c => VENTURE === 'beach-venture' ? true : aimOf(c.text) === VENTURE);
@@ -923,16 +970,19 @@ function paintSheet(){
   }
   if (SHEET.gather){
     tabs.classList.add('hidden');
+    $('sh-mirror').classList.add('hidden');
     $('sh-where').textContent = 'the gathering — talk without a time';
     const un = POOL_VOICES.filter(v => !v.at);
     $('sh-body').innerHTML = (un.slice(0, 12).map(v =>
-      '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(short(v.t, 300)) + '</span><span class="ago">' + esc(ago(v.ts)) + '</span></div>').join('') ||
+      '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span><span class="ago">' + esc(ago(v.ts)) + '</span></div>').join('') ||
       '<span class="silent">nothing unplaced — every voice in the room carries a time</span>');
     return;
   }
   tabs.classList.remove('hidden');
   const addr = selAddr(), vs = voicesAt(addr), cs = cardsAt(addr);
   $('sh-where').textContent = selLabel();
+  $('sh-mirror').classList.remove('hidden');
+  $('sh-mirror').href = mirrorUrl(addr);
   tabs.querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.p === SHEET.pane);
     if (b.dataset.p === 'voices') b.textContent = 'voices' + (vs.length ? ' · ' + vs.length : '');
@@ -940,11 +990,13 @@ function paintSheet(){
   });
   const b = [];
   if (SHEET.pane === 'text'){
-    b.push('<div class="fulltext">' + esc(textAt(SPINE, addr) || 'nothing written here yet — the first voice starts it') + '</div>');
-    b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(pad10(addr)) + '</span>');
+    b.push('<div class="fulltext">' + esc(textAt(SPINE, addr) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
+    b.push('<button class="editbtn" id="sp-edit">edit what’s written — keeper’s key</button>');
+    b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(pad10(addr)) +
+      ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + pad10(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
     b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(short(v.t, 600)) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
       : '<span class="silent">nobody has written here yet</span>');
     b.push('<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
       '<textarea id="mir-text" placeholder="a comment, or a suggestion to change what’s written — yours, at this time"></textarea>' +
@@ -954,7 +1006,7 @@ function paintSheet(){
   } else {
     const finer = cardsUnder(addr) - cs.length;
     b.push(cs.length
-      ? cs.map(c => '<div class="vrow"><span class="who' + (c.who === HANDLE ? ' you' : '') + '">' + esc(whoName(c.who)) + '</span><span class="said">' + esc(short(c.text, 240)) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</span></div>').join('')
+      ? cs.map(c => '<div class="vrow"><span class="who' + (c.who === HANDLE ? ' you' : '') + '">' + esc(whoName(c.who)) + '</span><span class="said">' + esc(c.text) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</span></div>').join('')
       : '<span class="silent">no cards held toward this right now</span>');
     if (finer > 0) b.push('<span class="silent">and ' + finer + ' held at finer times beneath — stand there to see them</span>');
     b.push('<div class="addto"><input id="addto-text" placeholder="one thing you can pick up and put down inside a day">' +
@@ -974,6 +1026,26 @@ function paintSheet(){
       BUSY = false; $('mir-go').disabled = false;
       if (w.ok){ toast('✓ yours, at ' + selLabel()); await load(); paintSheet(); }
       else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
+    });
+  }
+  if (SHEET.pane === 'text'){
+    $('sp-edit').addEventListener('click', () => {
+      const cur = textAt(SPINE, addr) || '';
+      $('sh-body').innerHTML = '<div class="spineedit">' +
+        '<textarea id="sp-text"></textarea>' +
+        '<div class="row"><span class="hint">the spine is keeper-held — this write lands only if your key holds spine:' + esc(VENTURE) + '; everyone else proposes in voices</span>' +
+        '<button id="sp-go">write the spine</button></div></div>';
+      $('sp-text').value = cur;
+      $('sp-go').addEventListener('click', async () => {
+        if (BUSY) return;
+        const text = $('sp-text').value.trim();
+        if (!text){ toast('nothing to write', true); return; }
+        BUSY = true; $('sp-go').disabled = true;
+        const w = await writeSpine(addr, text);
+        BUSY = false;
+        if (w.ok){ toast('✓ the spine speaks at ' + selLabel()); await load(); paintSheet(); }
+        else { $('sp-go').disabled = false; if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true); }
+      });
     });
   }
   if (SHEET.pane === 'cards'){
@@ -1100,6 +1172,13 @@ document.getElementById('btn-set').addEventListener('click', async () => {
 /* ── chrome ── */
 document.getElementById('btn-deck').addEventListener('click', openDeckSheet);
 document.getElementById('btn-work').addEventListener('click', () => document.body.classList.toggle('workings'));
+document.getElementById('btn-mirror').addEventListener('click', () => document.body.classList.toggle('mirrorlinks'));
+document.getElementById('btn-latch').addEventListener('click', () => {
+  const v = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; blank clears):');
+  if (v === null) return;
+  if (!v.trim()){ localStorage.removeItem(keeperKey()); toast('key cleared'); }
+  else { localStorage.setItem(keeperKey(), v.trim()); toast('key kept on this device'); }
+});
 document.getElementById('btn-refresh').addEventListener('click', () => load().then(() => toast('re-read')));
 
 /* ── boot ── */
