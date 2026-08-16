@@ -93,6 +93,32 @@
   .tile .mv .ago{color:var(--vapour-dim);margin-left:auto;flex:none}
   .tile .quiet{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
 
+  /* stats — the beach in numbers, then the numbers that are yours */
+  .stats{max-width:720px;margin:0 auto;padding:0 18px 8px;display:flex;gap:8px;flex-wrap:wrap}
+  .stat{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour);
+    border:1px solid var(--line);border-radius:8px;padding:8px 12px;display:flex;gap:7px;align-items:baseline}
+  .stat b{color:var(--foam);font-weight:700;font-size:14px}
+  .stat.mine{border-color:rgba(var(--liquid-rgb),0.35)}
+  .stat.mine b{color:var(--liquid)}
+
+  /* the collage — areas steady in place, dilated by how much they carry */
+  .collage{max-width:720px;margin:0 auto;padding:0 18px 10px;display:flex;gap:12px;flex-wrap:wrap}
+  .abox{border:1px solid var(--line);border-radius:13px;padding:13px 15px;cursor:pointer;
+    background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.45) 0%,rgba(var(--card-rgb),0.45) 100%);
+    display:flex;flex-direction:column;gap:7px;transition:border-color .2s;min-width:0}
+  .abox:hover{border-color:var(--liquid-deep)}
+  .abox.fam{background:hsl(var(--fam-h) var(--fam-s) var(--fam-l));border-color:hsl(var(--fam-h) var(--fam-s) var(--fam-line-l))}
+  .abox .aname{font-family:var(--display);font-weight:700;font-size:1rem;color:var(--foam);display:flex;gap:8px;align-items:baseline}
+  .abox .apulse{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);margin-left:auto}
+  .abox.fam .apulse{color:hsl(var(--fam-h) var(--fam-s) var(--fam-ink-l))}
+  .abox .alatest{font-size:0.88rem;line-height:1.45;color:var(--vapour);
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .abox.l{flex:1 1 100%}
+  .abox.m{flex:1 1 46%}
+  .abox.s{flex:1 1 29%}
+  .abox.s .alatest{display:none}
+  @media (max-width:560px){ .abox.s{flex-basis:46%} .abox.m{flex-basis:100%} }
+
   /* ── the rack: one row of time per scale, each row following the one above ── */
   .pstrip{max-width:720px;margin:0 auto;padding:0 18px 8px;display:flex;gap:10px;flex-wrap:wrap}
   .pstrip a{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:9px;
@@ -269,10 +295,28 @@
   <section id="sweep">
     <div class="band-head">
       <p class="eyebrow"><span class="n">1</span>sweep</p>
-      <h2>What moved, where.</h2>
-      <p>Each tile is one stretch of time. What changed there since you last stood here rides under its heading. Tap a tile to stand there below.</p>
+      <h2>The beach at a glance.</h2>
+      <p>What the whole beach did, and what of it touches you — numbers first, stories below.</p>
     </div>
-    <div class="carousel" id="tiles"></div>
+    <div class="stats" id="stats"></div>
+  </section>
+
+  <section id="temporal">
+    <div class="band-head">
+      <p class="eyebrow"><span class="n">2</span>this morning</p>
+      <h2>Today, under its ladder.</h2>
+      <p>The stretches of time standing over this morning — tap one for what stands there: the objective, the voices, your cards aiming at it.</p>
+    </div>
+    <div class="carousel" id="temporal-row"></div>
+  </section>
+
+  <section id="review2">
+    <div class="band-head">
+      <p class="eyebrow"><span class="n">3</span>review</p>
+      <h2>Your areas.</h2>
+      <p>The places you're working, steady in position, each sized by how much has moved there — like currents dilated by what they carry. Tap for the detail.</p>
+    </div>
+    <div class="collage" id="collage"></div>
   </section>
 
   <div id="sheet-veil" class="veil hidden">
@@ -284,16 +328,16 @@
 
   <section id="projects">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">2</span>projects</p>
+      <p class="eyebrow"><span class="n">4</span>projects</p>
       <h2>Your projects.</h2>
-      <p>Each project you're carrying, its walk one tap away — the honed look. This band is young: shape it when you know what it should show.</p>
+      <p>The projects you have deliberately chosen — each with its pulse, its walk one tap away. Your list lives in your own block; the page just reads it.</p>
     </div>
     <div class="pstrip" id="pstrip"></div>
   </section>
 
   <section id="intend">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">3</span>intend</p>
+      <p class="eyebrow"><span class="n">5</span>intend</p>
       <h2>Set the day.</h2>
       <p>Your intention for the day, in your own words — drafted from the week standing above; rewrite it until it is yours. Setting it lands it as your voice at today, and tomorrow measures “since” from it. Cards live elsewhere: born at the rack’s detail, held at my decks.</p>
     </div>
@@ -427,6 +471,7 @@ let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
+let EXTRA = { blocksTotal: 0, newBlocks: 0, marks24: 0, areas: [], dashboard: null };
 let MODE = 'clock';                  /* 'clock' — a floor-10 sundial spine walks as time; 'tree' — any other spine walks as branches */
 const wireAddr = a => MODE === 'clock' ? pad10(a) : String(a);   /* full width is the clock's convention; a tree writes its digits bare */
 let BUSY = false;
@@ -601,6 +646,15 @@ async function load(){
 
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
+  /* the beach in numbers: totals, what's new to this hand (a local cursor), the marks tide */
+  EXTRA.blocksTotal = blocks.length;
+  try {
+    const seenKey = 'seen-blocks:' + HANDLE;
+    const seen = new Set(JSON.parse(localStorage.getItem(seenKey) || '[]'));
+    EXTRA.newBlocks = seen.size ? blocks.filter(b => !seen.has(b)).length : 0;
+    localStorage.setItem(seenKey, JSON.stringify(blocks));
+  } catch(e){ EXTRA.newBlocks = 0; }
+
   const pool = await readBlock('pool:' + VENTURE).catch(() => null);
   POOL_VOICES = [];
   /* slots past nine sit at two-digit paths (11, 12 …) and older ones inside the
@@ -629,6 +683,67 @@ async function load(){
   SINCE = Math.max(own, Date.now() - 48 * 3600 * 1000);
   if (!own) SINCE = Date.now() - 24 * 3600 * 1000;
 
+  /* the areas — steady set, each with a pulse, a latest line, items for its popup */
+  const now = Date.now();
+  const [marksB, vdSpine, vdMine, doSpine, doMine, dashB] = await Promise.all([
+    readBlock('marks').catch(() => null),
+    readBlock('spine:beach-venture-deck').catch(() => null),
+    readBlock('beach-venture-deck:' + HANDLE).catch(() => null),
+    readBlock('spine:doing').catch(() => null),
+    readBlock('doing:' + HANDLE).catch(() => null),
+    readBlock('dashboard:' + HANDLE).catch(() => null),
+  ]);
+  EXTRA.dashboard = dashB ? childDigits(dashB).map(d => (typeof dashB[d] === 'string' ? dashB[d] : voice(dashB[d]) || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '')).filter(Boolean) : null;
+  const markSlots = marksB ? collectSlots(marksB).filter(m => m.ts && Number.isFinite(Date.parse(m.ts))) : [];
+  markSlots.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+  EXTRA.marks24 = markSlots.filter(m => now - Date.parse(m.ts) < H24).length;
+
+  function spineLeaves(sp){
+    const out = [];
+    if (!sp) return out;
+    for (const d of childDigits(sp)){ if (d === '9') continue;
+      const kids = childDigits(sp[d]);
+      if (!kids.length){ const t = textAt(sp, d); if (t) out.push({ addr: d, t }); }
+      else kids.forEach(l => { const t = textAt(sp, d + l); if (t) out.push({ addr: d + l, t }); });
+    }
+    return out;
+  }
+  const vMoved = [];
+  MIRRORS.forEach(([w, b]) => stampsUnder(b).filter(t => now - t < H48).forEach(t => vMoved.push({ who: w, ts: t })));
+  const locVoices = POOL_VOICES.filter(v => v.at && now - Date.parse(v.ts) < H48);
+  const unVoices = POOL_VOICES.filter(v => !v.at);
+  const vdLeaves = spineLeaves(vdSpine), doLeaves = spineLeaves(doSpine);
+  const myHold = (mb, leaves) => !mb ? [] : leaves.filter(c => { const t = textAt(mb, c.addr); return t && /^(held|doing)\b/i.test(t.trim()); });
+  const vdHeld = myHold(vdMine, vdLeaves), doHeld = myHold(doMine, doLeaves);
+
+  EXTRA.areas = [
+    { name: 'beach-venture', fam: 'beach-venture', events: vMoved.length + locVoices.length,
+      pulse: vMoved.length + ' moved \u00b7 48h',
+      latest: locVoices[0] ? locVoices[0].t : (vMoved[0] ? whoName(vMoved[0].who) + ' wrote on the ladder' : ''),
+      items: locVoices.map(v => ({ who: v.who, t: v.t, ts: v.ts })),
+      links: [{ href: '/walk/beach-venture/' + encodeURIComponent(HANDLE), label: 'walk' }] },
+    { name: 'beach-venture-deck', fam: 'beach-venture-deck', events: vdHeld.length * 2 + Math.floor(vdLeaves.length / 4),
+      pulse: vdLeaves.length + ' cards \u00b7 ' + vdHeld.length + ' in your hand',
+      latest: vdLeaves[0] ? vdLeaves[0].t : '',
+      items: vdLeaves.map(c => ({ who: '', t: c.t, ts: '' })),
+      links: [{ href: '/next/' + encodeURIComponent(HANDLE) + '?field=beach-venture-deck', label: 'flick' }, { href: '/fold?field=beach-venture-deck', label: 'the fold' }] },
+    { name: 'doing', fam: 'doing', events: doHeld.length * 2 + Math.floor(doLeaves.length / 5),
+      pulse: doLeaves.length + ' cards \u00b7 ' + doHeld.length + ' in your hand',
+      latest: doLeaves[0] ? doLeaves[0].t : '',
+      items: doLeaves.map(c => ({ who: '', t: c.t, ts: '' })),
+      links: [{ href: '/next/' + encodeURIComponent(HANDLE) + '?field=doing', label: 'flick' }, { href: '/fold?field=doing', label: 'the fold' }] },
+    { name: 'the gathering', fam: null, events: POOL_VOICES.filter(v => now - Date.parse(v.ts) < H24).length,
+      pulse: POOL_VOICES.length + ' voices',
+      latest: unVoices[0] ? whoName(unVoices[0].who) + ': ' + unVoices[0].t : '',
+      items: POOL_VOICES.slice(0, 8).map(v => ({ who: v.who, t: v.t, ts: v.ts })),
+      links: [{ href: '/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('pool:beach-venture'), label: 'the raw pool' }] },
+    { name: 'marks', fam: null, events: EXTRA.marks24,
+      pulse: EXTRA.marks24 + ' \u00b7 24h',
+      latest: markSlots[0] ? (markSlots[0].who ? markSlots[0].who + ': ' : '') + markSlots[0].t : '',
+      items: markSlots.slice(0, 8).map(m => ({ who: m.who, t: m.t, ts: m.ts })),
+      links: [{ href: '/render?beach=beach.happyseaurchin.com&block=marks', label: 'the raw marks' }] },
+  ];
+
   render();
 }
 
@@ -643,62 +758,125 @@ function render(){
   const dn = new Date();
   $('mast-title').innerHTML = esc(DAYS[dn.getUTCDay()] + ' ' + dn.getUTCDate() + ' ' + MN[dn.getUTCMonth()]) + ', <span class="cool">before the day</span>.';
   $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
-  renderTiles();
+  renderStats();
+  renderTemporal();
+  renderCollage();
   renderProjects();
   renderIntend();
 }
-/* the projects strip — each family you're carrying, its walk one tap away */
-function renderProjects(){
-  const fams = [...new Set(holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).map(c => aimOf(c.text)).filter(Boolean))];
-  if (!fams.includes(VENTURE)) fams.unshift(VENTURE);
-  $('pstrip').innerHTML = fams.map(f =>
-    '<a class="fam" style="--fam-h:' + famHue(f) + '" href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">' + esc(f) + ' →</a>').join('') +
-    '<a href="/my-decks/' + encodeURIComponent(HANDLE) + '">every deck →</a>';
+/* ── helpers the dashboard reads with ── */
+const H24 = 24 * 3600 * 1000, H48 = 48 * 3600 * 1000;
+function locVoicesAt(addr){
+  const out = [];
+  MIRRORS.forEach(([who, blk]) => { const t = textAt(blk, addr); if (t) out.push({ who, t, ts: '' }); });
+  POOL_VOICES.forEach(v => { if (v.at && v.at.slice(0, addr.length) === addr) out.push({ who: v.who, t: v.t, ts: v.ts }); });
+  return out;
 }
-function renderTiles(){
-  const sweep = [
-    { word: 'today',        addr: TODAY_ADDR,                              lv: 'd' },
-    { word: 'this week',    addr: weekAddr(TODAY.y, TODAY.m0, TODAY.band), lv: 'w' },
-    { word: MN[TODAY.m0],   addr: monthAddr(TODAY.y, TODAY.m0),            lv: 'm' },
-    { word: 'the season',   addr: TODAY_ADDR.slice(0, 5),                  lv: 'm' },
-    { word: 'the year',     addr: yearAddr(TODAY.y),                       lv: 'y' },
-    { word: 'the reach',    addr: TODAY_ADDR.slice(0, 3),                  lv: 'y' },
+function homeFor(text){
+  const m = String(text).match(TIME_AIM);
+  if (m){
+    const w = m[1].toLowerCase();
+    if (w === 'this week') return weekAddr(TODAY.y, TODAY.m0, TODAY.band);
+    if (/^20\d\d$/.test(w)) return yearAddr(+w);
+    const mi = MN.findIndex(n => n.toLowerCase() === w);
+    if (mi >= 0) return monthAddr(TODAY.y, mi);
+  }
+  return TODAY_ADDR;
+}
+function myAimedAt(addr){
+  return holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).filter(c => homeFor(c.text) === addr);
+}
+/* generic slot collector — pools, marks: attributed, stamped, any depth */
+function collectSlots(block){
+  const out = [];
+  (function slots(node){
+    if (!node || typeof node !== 'object') return;
+    for (const k of childDigits(node)){
+      const sl = node[k];
+      const t = (typeof sl === 'string' ? sl : voice(sl));
+      if (t){
+        const who = (sl && typeof sl === 'object' && typeof sl['1'] === 'string') ? sl['1'] : '';
+        const ts = (sl && typeof sl === 'object' && typeof sl['3'] === 'string') ? sl['3'] : '';
+        out.push({ who, t: t.trim(), ts });
+      } else if (sl && typeof sl === 'object') slots(sl);
+    }
+    if (node['_'] && typeof node['_'] === 'object') slots(node['_']);
+  })(block);
+  return out;
+}
+
+/* ── 1 · sweep: the beach in numbers, then yours ── */
+function renderStats(){
+  const chips = [];
+  const beach = [
+    ['blocks on the beach', EXTRA.blocksTotal, ''],
+    ['new to you', EXTRA.newBlocks, ''],
+    ['marks · 24h', EXTRA.marks24, ''],
+    ['venture voices · 24h', POOL_VOICES.filter(v => Date.now() - Date.parse(v.ts) < H24).length, ''],
+    ['hands moved · 24h', MIRRORS.filter(([w, b]) => stampsUnder(b).some(t => Date.now() - t < H24)).length, ''],
   ];
-  const frag = [];
-  sweep.forEach(r => {
+  const mine = [
+    ['in your hand', openCardsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).length, 'mine'],
+    ['moved near you', MIRRORS.filter(([w, b]) => w !== HANDLE && stampsUnder(b).some(t => t > SINCE)).length, 'mine'],
+  ];
+  beach.concat(mine).forEach(([label, n, cls]) =>
+    chips.push('<span class="stat ' + cls + '"><b>' + esc(String(n)) + '</b>' + esc(label) + '</span>'));
+  $('stats').innerHTML = chips.join('');
+}
+
+/* ── 2 · this morning: today under its ladder ── */
+function renderTemporal(){
+  const rungs = [
+    { word: 'today',      addr: TODAY_ADDR,                              label: 'today' },
+    { word: 'this week',  addr: weekAddr(TODAY.y, TODAY.m0, TODAY.band), label: 'this week' },
+    { word: MN[TODAY.m0], addr: monthAddr(TODAY.y, TODAY.m0),            label: MN[TODAY.m0] },
+    { word: 'the season', addr: TODAY_ADDR.slice(0, 5),                  label: 'the season' },
+    { word: String(TODAY.y), addr: yearAddr(TODAY.y),                    label: String(TODAY.y) },
+  ];
+  const frag = rungs.map((r, i) => {
     const obj = textAt(SPINE, r.addr);
-    const moved = [];
-    MIRRORS.forEach(([who, blk]) => {
-      const mnode = walkZeroAware(blk, r.addr);
-      if (!mnode) return;
-      const fresh = stampsUnder(mnode).filter(t => t > SINCE).sort().pop();
-      if (fresh) moved.push({ who, note: 'wrote here', ts: new Date(fresh).toISOString() });
-    });
-    if (r.word === 'this week') DECKS.forEach(([who, deck]) => {
-      const n = doneCount(deck, SINCE);
-      if (n) moved.push({ who, note: n + ' card' + (n > 1 ? 's' : '') + ' landed', ts: '' });
-    });
-    const movedHtml = moved.length
-      ? '<div class="moved">' + moved.slice(0, 4).map(m => '<span class="mv"><span class="who' + (m.who === HANDLE ? ' you' : '') + '">' + esc(whoName(m.who)) + '</span><span>' + esc(m.note) + '</span>' + (m.ts ? '<span class="ago">' + esc(ago(m.ts)) + '</span>' : '') + '</span>').join('') + '</div>'
-      : '<div class="moved"><span class="quiet">quiet</span></div>';
-    frag.push('<div class="tile" role="button" tabindex="0" data-lv="' + r.lv + '">' +
+    const vs = locVoicesAt(r.addr).length, cs = myAimedAt(r.addr).length;
+    return '<div class="tile" role="button" tabindex="0" data-rung="' + i + '">' +
       '<span class="rung">' + esc(r.word) + '<span class="addr work">' + esc(pad10(r.addr)) + '</span></span>' +
-      '<span class="obj">' + esc(obj || 'nothing written here yet') + '</span>' + movedHtml + '</div>');
+      '<span class="obj">' + esc(obj ? short(obj, 130) : 'nothing written here yet') + '</span>' +
+      '<div class="moved"><span class="quiet">' + vs + (vs === 1 ? ' voice' : ' voices') + ' · ' + cs + (cs === 1 ? ' card of yours' : ' cards of yours') + '</span></div></div>';
   });
-  const un = POOL_VOICES.filter(v => !v.at);
-  frag.push('<div class="tile" role="button" tabindex="0" data-gather="1">' +
-    '<span class="rung">the gathering</span>' +
-    '<span class="obj">' + esc(short(un[0] ? un[0].who + ': ' + un[0].t : 'the open room around the venture', 120)) + '</span>' +
-    '<div class="moved">' + (un.slice(0, 3).map(v => '<span class="mv"><span class="who">' + esc(v.who) + '</span><span>' + esc(short(v.t, 34)) + '</span><span class="ago">' + esc(ago(v.ts)) + '</span></span>').join('') || '<span class="quiet">no voices</span>') + '</div></div>');
-  $('tiles').innerHTML = frag.join('');
-  document.querySelectorAll('#tiles .tile').forEach(t => {
-    const go = () => {
-      if (t.dataset.gather){ openGatherSheet(); return; }
-      location.href = '/walk/beach-venture/' + encodeURIComponent(HANDLE);
-    };
+  $('temporal-row').innerHTML = frag.join('');
+  window.__RUNGS = rungs;
+  document.querySelectorAll('#temporal-row .tile').forEach(t => {
+    const go = () => { SHEET = { rung: window.__RUNGS[+t.dataset.rung] }; paintSheet(); $('sheet-veil').classList.remove('hidden'); };
     t.addEventListener('click', go);
     t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
   });
+}
+
+/* ── 3 · review: the areas, steady in place, dilated by movement ── */
+function renderCollage(){
+  const A = EXTRA.areas;
+  const size = ev => ev >= 8 ? 'l' : ev >= 3 ? 'm' : 's';
+  $('collage').innerHTML = A.map((a, i) =>
+    '<div class="abox ' + size(a.events) + (a.fam ? ' fam" style="--fam-h:' + famHue(a.fam) + '"' : '"') + ' role="button" tabindex="0" data-area="' + i + '">' +
+    '<span class="aname">' + esc(a.name) + '<span class="apulse">' + esc(a.pulse) + '</span></span>' +
+    (a.latest ? '<span class="alatest">' + esc(short(a.latest, 150)) + '</span>' : '') + '</div>').join('');
+  document.querySelectorAll('#collage .abox').forEach(b => {
+    const go = () => { SHEET = { area: EXTRA.areas[+b.dataset.area] }; paintSheet(); $('sheet-veil').classList.remove('hidden'); };
+    b.addEventListener('click', go);
+    b.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
+  });
+}
+
+/* ── 4 · projects: the deliberately chosen list, from your own block ── */
+function renderProjects(){
+  let fams = EXTRA.dashboard;
+  if (!fams || !fams.length){
+    fams = [...new Set(holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).map(c => aimOf(c.text)).filter(Boolean))];
+    if (!fams.includes(VENTURE)) fams.unshift(VENTURE);
+  }
+  $('pstrip').innerHTML = fams.map(f => {
+    const moved = f === VENTURE ? MIRRORS.filter(([w, b]) => stampsUnder(b).some(t => Date.now() - t < H48)).length : null;
+    return '<a class="fam" style="--fam-h:' + famHue(f) + '" href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">' +
+      esc(f) + (moved !== null ? ' · ' + moved + ' moved' : '') + ' →</a>';
+  }).join('') + '<a href="/my-decks/' + encodeURIComponent(HANDLE) + '">every deck →</a>';
 }
 /* ── the sheet — one popup over the rack, three panes; where you tapped chooses the pane ── */
 let SHEET = null;                    /* {pane:'text'|'voices'|'cards'} at the standing address, or {gather:true} */
@@ -708,6 +886,33 @@ function openDeckSheet(){ SHEET = { deck: true }; paintSheet(); $('sheet-veil').
 function closeSheet(){ SHEET = null; $('sheet-veil').classList.add('hidden'); }
 function paintSheet(){
   if (!SHEET) return;
+  if (SHEET.rung){
+    const r = SHEET.rung;
+    const obj = textAt(SPINE, r.addr);
+    const vs = locVoicesAt(r.addr), cs = myAimedAt(r.addr);
+    $('sh-where').textContent = r.label;
+    const b = [];
+    b.push('<div class="fulltext">' + esc(obj || 'nothing written here yet — this line belongs to the venture\u2019s keeper') + '</div>');
+    b.push('<div class="sub">voices here</div>');
+    b.push(vs.length ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
+      : '<span class="silent">silent — honest absence</span>');
+    b.push('<div class="sub">your cards aiming here</div>');
+    b.push(cs.length ? cs.map(c => '<div class="vrow"><span class="who you">you</span><span class="said">' + esc(short(c.text, 180)) + '</span></div>').join('')
+      : '<span class="silent">none aimed at this stretch</span>');
+    b.push('<span class="silent"><a href="/walk/' + encodeURIComponent(VENTURE) + '/' + encodeURIComponent(HANDLE) + '">stand here on the walk \u2192</a></span>');
+    $('sh-body').innerHTML = b.join('');
+    return;
+  }
+  if (SHEET.area){
+    const a = SHEET.area;
+    $('sh-where').textContent = a.name;
+    $('sh-body').innerHTML =
+      (a.items && a.items.length
+        ? a.items.slice(0, 8).map(it => '<div class="vrow">' + (it.who ? '<span class="who' + (it.who === HANDLE ? ' you' : '') + '">' + esc(whoName(it.who)) + '</span>' : '') + '<span class="said">' + esc(short(it.t, 260)) + '</span>' + (it.ts ? '<span class="ago">' + esc(ago(it.ts)) + '</span>' : '') + '</div>').join('')
+        : '<span class="silent">quiet here</span>') +
+      '<span class="silent">' + a.links.map(l => '<a href="' + l.href + '">' + esc(l.label) + ' \u2192</a>').join(' \u00b7 ') + '</span>';
+    return;
+  }
   if (SHEET.deck){
     $('sh-where').textContent = 'your card-deck — the venture';
     const all = holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
