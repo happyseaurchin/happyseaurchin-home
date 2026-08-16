@@ -176,6 +176,10 @@
     font-size:11px;font-weight:700;letter-spacing:0.05em;padding:9px 14px;cursor:pointer;flex:none}
   .addto button:hover{background:var(--foam)}
   .addto button:disabled{opacity:0.5;cursor:wait}
+  .addwrap{border-top:1px solid var(--line);padding-top:10px}
+  .addwrap .addto{border-top:none;padding-top:0}
+  .keepnow{display:flex;gap:7px;align-items:flex-start;margin-top:8px;font-size:11px;color:var(--vapour-dim);cursor:pointer}
+  .keepnow input{margin:2px 0 0;flex:none;accent-color:var(--liquid)}
   .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim)}
   .vrow{display:flex;gap:10px;align-items:baseline;font-size:0.92rem}
   .vrow .who{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:96px;text-align:right}
@@ -474,14 +478,20 @@ function openCardsOf(deck){
   planeCards(deck).forEach(c => {
     const w = (c.raw.split(/\s+/)[0] || '').toUpperCase();
     if (w === 'DONE' || w === 'DROP') return;
-    let held = '', text = c.raw;
+    let held = '', until = '', text = c.raw;
     if (w === 'DOING'){ held = 'doing now'; text = c.raw.slice(5).replace(/^[\s—–-]+/, ''); }
     else if (w === 'TOMORROW'){
       const dm = c.raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
-      if (dm && dm[1] > t0) return;
-      held = 'held over'; text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
+      /* A CARD HELD FOR A LATER DAY STANDS AT THAT DAY, rather than vanishing.
+       * Dropping it here left it nowhere on the walk at all: not in today, and
+       * not on the day it was made for — which is why writing one for a future
+       * day looked like writing into nothing. The defer still holds (it is out
+       * of the hand until its date); the walk simply shows where it is waiting. */
+      if (dm && dm[1] > t0){ until = dm[1]; held = 'held until ' + dm[1]; }
+      else held = 'held over';
+      text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
     }
-    out.push({ addr: c.addr, held, text: cleanCard(text) });
+    out.push({ addr: c.addr, held, until, text: cleanCard(text) });
   });
   return out;
 }
@@ -511,6 +521,12 @@ function cardHomes(){
   DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
     const m = c.text.match(/toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i);
     let home = TODAY_ADDR;
+    /* a day it is held for outranks any coarser aim: that day IS where it stands */
+    if (c.until){
+      const [uy, um, ud] = c.until.split('-').map(Number);
+      out.push({ who, home: dayAddr(uy, um - 1, ud), ...c });
+      return;
+    }
     if (m){
       const s = m[1].toLowerCase();
       home = s === 'this week' ? weekAddr(TODAY.y, TODAY.m0, TODAY.band)
@@ -864,6 +880,15 @@ $('rack').addEventListener('keydown', e => {
   const card = e.target.closest('.rcard'); if (!card) return;
   e.preventDefault(); card.click();
 });
+/* the day being stood at, as a date — and whether it is still ahead */
+function selDate(){
+  if (MODE !== 'clock' || SEL.level !== 'd') return '';
+  return new Date(Date.UTC(SEL.y, SEL.m0, SEL.d)).toISOString().slice(0, 10);
+}
+function futureDay(){
+  const s = selDate();
+  return !!s && s > new Date().toISOString().slice(0, 10);
+}
 /* where you stand follows the deepest card you touched — year, month, week or day */
 function selAddr(){
   if (SEL.level === 't') return SEL.path.join('');
@@ -945,8 +970,13 @@ function paintSheet(){
       : '<span class="silent">no cards held toward this right now</span>');
     if (finer > 0) b.push('<span class="silent">and ' + finer + ' held at finer times beneath — stand there to see them</span>');
     if (HANDLE)
-      b.push('<div class="addto"><input id="addto-text" placeholder="one thing you can pick up and put down inside a day">' +
-        '<button id="addto-go">add to my deck</button></div>');
+      b.push('<div class="addwrap"><div class="addto"><input id="addto-text" placeholder="one thing you can pick up and put down inside a day">' +
+        '<button id="addto-go">add to my deck</button></div>' +
+        /* a card written at a later day WAITS there — the tick brings it into
+         * the hand you are actually holding today instead */
+        (futureDay() ? '<label class="keepnow"><input type="checkbox" id="addto-now">' +
+          '<span>keep it in today’s hand — otherwise it waits at ' + esc(selLabel()) + ' and stays out of your way until then</span></label>' : '') +
+        '</div>');
     else
       b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
   }
@@ -1026,10 +1056,15 @@ function paintSheet(){
         : SEL.level === 'w' ? (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? ' — toward this week' : ' — toward ' + selLabel())
         : SEL.level === 'm' ? ' — toward ' + MN[SEL.m0]
         : ' — toward ' + SEL.y;
+      /* a card written at a day still ahead is DEFERRED to it by the deck's own
+       * grammar (ways:deck 3), so it waits there and stays out of the hand until
+       * the day comes — unless the tick says to hold it today after all */
+      const keepNow = !!(document.getElementById('addto-now') || {}).checked;
+      const defer = futureDay() && !keepNow ? 'TOMORROW ' + selDate() + ' — ' : '';
       BUSY = true; $('addto-go').disabled = true;
       try {
-        const w = await appendCard(t + suffix);
-        if (w.ok){ toast('✓ in your deck'); await load(); paintSheet(); }
+        const w = await appendCard(defer + t + suffix);
+        if (w.ok){ toast(defer ? '✓ waiting at ' + selLabel() : '✓ in your deck'); await load(); paintSheet(); }
         else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
       } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
       finally { BUSY = false; const g = document.getElementById('addto-go'); if (g) g.disabled = false; }
