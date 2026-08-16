@@ -43,6 +43,8 @@
     font-size:12px;padding:6px 10px;cursor:pointer}
   .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
   body.workings .bar #btn-work{color:var(--solid);border-color:rgba(var(--solid-rgb),0.4)}
+  body.minelens .bar #btn-lens{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}
+  body.minelens .rcard .say{font-style:italic}
 
   /* ── ask (no handle) ── */
   .ask{padding:80px 26px;max-width:560px;margin:0 auto}
@@ -256,6 +258,7 @@
   <span class="spacer"></span>
   <a id="bar-decks" href="/my-decks">my decks</a>
   <a id="bar-morning" href="/morning">the morning</a>
+  <button id="btn-lens" title="flick the cards between the spine’s words and your own">mine</button>
   <button id="btn-latch" title="your keeper key for this spine — lets you edit what’s written">key</button>
   <button id="btn-mirror" title="show links to the mirror — the live shared surface">mirror</button>
   <button id="btn-work" title="show the address each card stands at">address</button>
@@ -494,7 +497,9 @@ function doneCount(deck, sinceMs){
 function voicesAt(addr){
   const out = [];
   MIRRORS.forEach(([who, blk]) => { const t = textAt(blk, addr); if (t) out.push({ who, t, ts: '' }); });
-  POOL_VOICES.forEach(v => { if (v.at && v.at.slice(0, addr.length) === addr) out.push({ who: v.who, t: v.t, ts: v.ts }); });
+  /* located room talk answers ONLY at its exact address — a brief at a day must
+   * never also speak for the week, the month and the year above it */
+  POOL_VOICES.forEach(v => { if (v.at && v.at === wireAddr(addr)) out.push({ who: v.who, t: v.t, ts: v.ts, room: true }); });
   return out;
 }
 /* a card names the stretch it serves in its own words; today holds the rest */
@@ -697,12 +702,20 @@ function clampSel(){
   const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
   SEL.d = Math.min(Math.max(SEL.d, d1), d2);
 }
+let LENS = 'spine';                  /* 'spine' — the family's words; 'mine' — your own mirror at each point */
+function lensText(addr){
+  if (LENS === 'mine'){
+    const mine = HANDLE ? (MIRRORS.find(x => x[0] === HANDLE) || [])[1] : null;
+    return mine ? textAt(mine, addr) : null;
+  }
+  return textAt(SPINE, addr);
+}
 function rcard(label, addr, isSel, isNow, data){
-  const t = textAt(SPINE, addr);
+  const t = lensText(addr);
   const vs = voicesAt(addr).length, cs = cardsAt(addr).length;
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
-    '<span class="say">' + esc(t ? short(t, 240) : 'nothing written here yet') + '</span>' +
+    '<span class="say">' + esc(t ? short(t, 240) : (LENS === 'mine' ? 'you have not voiced here' : 'nothing written here yet')) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="open the detail below">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
 }
@@ -887,7 +900,7 @@ function paintSheet(){
       ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
     b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
       : '<span class="silent">nobody has written here yet</span>');
     if (HANDLE)
       b.push('<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
@@ -1003,6 +1016,12 @@ $('sh-tabs').addEventListener('click', e => {
 });
 /* ── chrome ── */
 document.getElementById('btn-work').addEventListener('click', () => document.body.classList.toggle('workings'));
+document.getElementById('btn-lens').addEventListener('click', () => {
+  LENS = LENS === 'spine' ? 'mine' : 'spine';
+  document.body.classList.toggle('minelens', LENS === 'mine');
+  document.getElementById('btn-lens').textContent = LENS === 'mine' ? 'spine' : 'mine';
+  renderRack();
+});
 document.getElementById('btn-mirror').addEventListener('click', () => document.body.classList.toggle('mirrorlinks'));
 document.getElementById('btn-latch').addEventListener('click', () => {
   const v = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; blank clears):');
