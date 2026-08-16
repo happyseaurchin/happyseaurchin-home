@@ -180,6 +180,7 @@
   .vrow .who.you{color:var(--foam)}
   .vrow .said{flex:1;color:var(--vapour);min-width:0;white-space:pre-line}
   .vrow .ago{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:none}
+  .vrow .mlink{flex:none}
   .silent{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
   .mirrorbox{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
   .mirrorbox textarea{width:100%;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:8px;
@@ -493,8 +494,9 @@ function doneCount(deck, sinceMs){
 /* what stands attached to an address: each hand's words there, plus placed gathering voices */
 function voicesAt(addr){
   const out = [];
-  MIRRORS.forEach(([who, blk]) => { const t = textAt(blk, addr); if (t) out.push({ who, t, ts: '' }); });
-  POOL_VOICES.forEach(v => { if (v.at && v.at.slice(0, addr.length) === addr) out.push({ who: v.who, t: v.t, ts: v.ts }); });
+  /* a reading carries the block it stands in, so it can be opened where it lives */
+  MIRRORS.forEach(([who, blk]) => { const t = textAt(blk, addr); if (t) out.push({ who, t, ts: '', blk: VENTURE + ':' + who }); });
+  POOL_VOICES.forEach(v => { if (v.at && v.at.slice(0, addr.length) === addr) out.push({ who: v.who, t: v.t, ts: v.ts, blk: null }); });
   return out;
 }
 /* a card names the stretch it serves in its own words; today holds the rest */
@@ -592,8 +594,13 @@ async function appendCard(text){
 /* families and their colours — one steady hue per family, its name always written beside it */
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
-/* the mirror's own invite-link law: a place, never a person */
-const mirrorUrl = addr => 'https://mirror.onen.ai/?block=' + encodeURIComponent('spine:' + VENTURE) + '&at=' + wireAddr(addr);
+/* the mirror's own invite-link law: a place, never a person.
+ * A LINK LANDS ON THE BLOCK BEING LOOKED AT, at the address being stood at —
+ * one URL fixed at the spine served the spine's own line and misdirected
+ * everything else, so a reading opened somewhere nobody had been reading. The
+ * address is optional: a deck is entered whole, having no time in it. */
+const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
+  encodeURIComponent(block || ('spine:' + VENTURE)) + (addr ? '&at=' + wireAddr(addr) : '');
 const famOf = text => { const m = String(text).match(/toward\s+([a-z0-9-]{3,})/i);
   return m && FIELDS.has(m[1].toLowerCase()) ? m[1].toLowerCase() : null; };
 /* a time-shaped aim (this week, August, 2027) belongs to the venture the card was born on */
@@ -618,19 +625,25 @@ function holdingsOf(deck){
   return out;
 }
 /* ── load ── */
+/* A RE-READ MUST NOT MOVE WHERE YOU STAND. Every write handler calls load() to
+ * see its own result, and the selection was reset to today on every one of
+ * them — so editing anything at a day other than today threw the rack, and the
+ * sheet standing over it, straight back to today's card. Today is the OPENING
+ * position, not the position: it is set once, when there is nowhere to keep. */
 async function load(){
+  const first = SEL.level === undefined;
   const d = new Date();
   TODAY = { y: d.getUTCFullYear(), m0: d.getUTCMonth(), d: d.getUTCDate() };
   TODAY.band = Math.floor((TODAY.d - 1) / 7) + 1;
   TODAY_ADDR = dayAddr(TODAY.y, TODAY.m0, TODAY.d);
-  Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, level: 'd' });
+  if (first) Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, level: 'd' });
 
   const [spine, index] = await Promise.all([readBlock('spine:' + VENTURE), readIndex()]);
   if (!spine) throw new Error('spine:' + VENTURE + ' is not on the beach');
   SPINE = spine;
   /* the same page walks every family: a floor-10 sundial spine as time, any other as its own branches */
   MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
-  if (MODE === 'tree'){
+  if (MODE === 'tree' && first){
     SEL.path = [childDigits(spine).filter(d => d !== '9')[0]].filter(Boolean);
     SEL.level = 't';
   }
@@ -763,7 +776,14 @@ function renderRack(){
     renderTreeRack();
     return;
   }
-  $('toward').innerHTML = 'toward · <b>' + esc(short(textAt(SPINE, TODAY_ADDR.slice(0, 3)) || '', 150)) + '</b>';
+  /* the aim overhead is the COARSEST rung that has actually been spoken — a
+   * young family whose decade is unvoiced showed a bare label and read as
+   * broken, when the honest answer is simply the next rung down that speaks */
+  let tw = '';
+  for (const n of [3, 4, 5, 6]){ tw = textAt(SPINE, TODAY_ADDR.slice(0, n)); if (tw) break; }
+  $('toward').innerHTML = tw
+    ? 'toward · <b>' + esc(short(tw, 150)) + '</b>'
+    : '<span class="silent">nothing written above today yet — stand at a year or a month and say what this is toward</span>';
   renderRowsFrom('y');
 }
 /* ── the tree rack — the same rows, grown from the spine's own branches: row one
@@ -872,8 +892,13 @@ function paintSheet(){
   tabs.classList.remove('hidden');
   const addr = selAddr(), vs = voicesAt(addr), cs = MODE === 'tree' ? famCards() : cardsAt(addr);
   $('sh-where').textContent = selLabel();
-  $('sh-mirror').classList.remove('hidden');
-  $('sh-mirror').href = mirrorUrl(addr);
+  /* the head link follows the PANE: the spine's own line where the spine is
+   * read, your own mirror where readings stand, your own deck where cards do */
+  const mtarget = SHEET.pane === 'voices' ? (HANDLE ? VENTURE + ':' + HANDLE : VENTURE)
+                : SHEET.pane === 'cards'  ? (HANDLE ? FIELD + ':' + HANDLE : null)
+                : 'spine:' + VENTURE;
+  $('sh-mirror').classList.toggle('hidden', !mtarget);
+  if (mtarget) $('sh-mirror').href = mirrorUrl(SHEET.pane === 'cards' ? '' : addr, mtarget);
   tabs.querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.p === SHEET.pane);
     if (b.dataset.p === 'voices') b.textContent = 'voices' + (vs.length ? ' · ' + vs.length : '');
@@ -887,7 +912,9 @@ function paintSheet(){
       ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
     b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') +
+          /* each reading opens where it actually lives — its holder's own mirror, at this point */
+          (v.blk ? '<a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr, v.blk)) + '">mirror ↗</a>' : '') + '</div>').join('')
       : '<span class="silent">nobody has written here yet</span>');
     if (HANDLE)
       b.push('<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
