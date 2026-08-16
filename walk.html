@@ -149,6 +149,7 @@
   .mlink:hover{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
   body.mirrorlinks .mlink{display:inline-block}
   body.mirrorlinks .bar #btn-mirror{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}
+  .bar button.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}
 
   /* the keeper's edit — the author face, gated by the spine's own key at the beach */
   .editbtn{align-self:flex-start;background:none;border:1px solid var(--line);border-radius:7px;color:var(--vapour-dim);
@@ -266,6 +267,7 @@
   <button id="btn-lens" title="flick the cards between the spine’s words and your own">mine</button>
   <button id="btn-latch" title="your keeper key for this spine — lets you edit what’s written">key</button>
   <button id="btn-mirror" title="show links to the mirror — the live shared surface">mirror</button>
+  <button id="btn-cast" title="everyone’s voices, or the cast’s — a view, never a gate">everyone</button>
   <button id="btn-work" title="show the address each card stands at">address</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
@@ -427,6 +429,8 @@ let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
+let CAST = null;                     /* sed:<family>-cast — member handles, or null while nobody has settled */
+let CASTLENS = 'all';                /* 'all' — every voice stands; 'formal' — members stand, the rest are named aside. Distinct from LENS below, which chooses whose WORDS the rack shows; this chooses whose voices COUNT at a point. */
 let MODE = 'clock';                  /* 'clock' — a floor-10 sundial spine walks as time; 'tree' — any other spine walks as branches */
 const wireAddr = a => MODE === 'clock' ? pad10(a) : String(a);   /* full width is the clock's convention; a tree writes its digits bare */
 let BUSY = false;
@@ -504,6 +508,38 @@ function doneCount(deck, sinceMs){
   return n;
 }
 
+/* ── the cast register — sed:<family>-cast, the members whose voices stand at the
+ * formal setting. Every settled position names a handle, by its pointer
+ * (shell:<handle>@<beach>) or failing that by the first word of its own line.
+ * AN EMPTY REGISTER MEANS EVERYONE: a lens with nobody in it would silently
+ * empty the room, which is the one thing a lens must never do. ── */
+function castMembers(block){
+  if (!block) return null;
+  const out = new Set();
+  (function reg(node){
+    if (!node || typeof node !== 'object') return;
+    for (const d of childDigits(node)){
+      const p = node[d];
+      if (!p || typeof p !== 'object') continue;
+      const ptr = typeof p['1'] === 'string' ? p['1'] : '';
+      const m = ptr.match(/^[a-z-]+:([^@\s]+)/i);
+      if (m) out.add(m[1]);
+      else { const w = (voice(p) || '').split(/[\s—–-]/)[0]; if (w) out.add(w); }
+      reg(p);
+    }
+    if (node['_'] && typeof node['_'] === 'object') reg(node['_']);
+  })(block);
+  return out.size ? out : null;
+}
+/* THE LENS IS A VIEW, NEVER A GATE. Every block here is publicly readable, so
+ * this narrows what a reader MEETS, never what they may reach — and whatever it
+ * sets aside it names, because a lens that hides its own edge is a lie. */
+function lensed(vs){
+  if (CASTLENS !== 'formal' || !CAST) return { shown: vs, aside: [] };
+  const shown = [], aside = [];
+  vs.forEach(v => (CAST.has(v.who) ? shown : aside).push(v));
+  return { shown, aside };
+}
 /* what stands attached to an address: each hand's words there, plus placed gathering voices */
 function voicesAt(addr){
   const out = [];
@@ -679,6 +715,8 @@ async function load(){
 
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
+  CAST = castMembers(await readBlock('sed:' + VENTURE + '-cast').catch(() => null));
+
   const pool = await readBlock('pool:' + VENTURE).catch(() => null);
   POOL_VOICES = [];
   /* slots past nine sit at two-digit paths (11, 12 …) and older ones inside the
@@ -742,7 +780,7 @@ function lensText(addr){
 }
 function rcard(label, addr, isSel, isNow, data){
   const t = lensText(addr);
-  const vs = voicesAt(addr).length, cs = cardsAt(addr).length;
+  const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : (LENS === 'mine' ? 'you have not voiced here' : 'nothing written here yet')) + '</span>' +
@@ -929,7 +967,7 @@ function paintSheet(){
     return;
   }
   tabs.classList.remove('hidden');
-  const addr = selAddr(), vs = voicesAt(addr), cs = MODE === 'tree' ? famCards() : cardsAt(addr);
+  const addr = selAddr(), lens = lensed(voicesAt(addr)), vs = lens.shown, cs = MODE === 'tree' ? famCards() : cardsAt(addr);
   $('sh-where').textContent = selLabel();
   /* the head link follows the PANE: the spine's own line where the spine is
    * read, your own mirror where readings stand, your own deck where cards do */
@@ -954,7 +992,14 @@ function paintSheet(){
       ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
           /* each reading opens where it actually lives — its holder's own mirror, at this point */
           (v.blk ? '<a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr, v.blk)) + '">mirror ↗</a>' : '') + '</div>').join('')
-      : '<span class="silent">nobody has written here yet</span>');
+      : '<span class="silent">' + (lens.aside.length ? 'no member has written here yet' : 'nobody has written here yet') + '</span>');
+    /* SAYS SO, ALWAYS — the family's own law: a fold that drops a voice says so.
+     * The names ride with the count, so what the lens set aside stays knowable
+     * from inside the view rather than only by turning the lens off. */
+    if (lens.aside.length)
+      b.push('<span class="silent">' + lens.aside.length + (lens.aside.length === 1 ? ' voice' : ' voices') +
+        ' set aside by the formal lens — ' + esc(lens.aside.map(v => whoName(v.who)).join(', ')) +
+        ' · not in the cast, and still standing at this point</span>');
     if (HANDLE)
       b.push('<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
         '<textarea id="mir-text" placeholder="a comment, or a suggestion to change what’s written — yours, at this point"></textarea>' +
@@ -1086,6 +1131,16 @@ document.getElementById('btn-lens').addEventListener('click', () => {
   renderRack();
 });
 document.getElementById('btn-mirror').addEventListener('click', () => document.body.classList.toggle('mirrorlinks'));
+/* the lens dial — 'everyone' is the default because open is this beach's resting
+ * state; the cast setting narrows the view and is offered only where a cast has
+ * actually been registered, since a lens over nobody is a blank stare */
+document.getElementById('btn-cast').addEventListener('click', () => {
+  if (!CAST){ toast('no cast registered for ' + VENTURE + ' yet — every voice is a member voice'); return; }
+  CASTLENS = CASTLENS === 'formal' ? 'all' : 'formal';
+  $('btn-cast').textContent = CASTLENS === 'formal' ? 'the cast' : 'everyone';
+  $('btn-cast').classList.toggle('on', CASTLENS === 'formal');
+  renderRack(); if (SHEET) paintSheet();
+});
 document.getElementById('btn-latch').addEventListener('click', () => {
   const v = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; blank clears):');
   if (v === null) return;
