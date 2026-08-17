@@ -505,11 +505,15 @@ function voicesAt(addr){
   POOL_VOICES.forEach(v => { if (v.at && v.at === wireAddr(addr)) out.push({ who: v.who, t: v.t, ts: v.ts, room: true, blk: null }); });
   return out;
 }
-/* a card names the stretch it serves in its own words; today holds the rest */
+/* a card names the family it aims at and, after a comma, the stretch it serves —
+ * "toward onen-rpg, this week". The family may be absent on cards written before
+ * the grammar was stated, and a card naming no stretch homes at today, which is
+ * what a card is anyway. */
+const STRETCH = /toward\s+(?:[a-z0-9-]+,\s*)?(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
 function cardHomes(){
   const out = [];
   DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
-    const m = c.text.match(/toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i);
+    const m = c.text.match(STRETCH);
     let home = TODAY_ADDR;
     if (m){
       const s = m[1].toLowerCase();
@@ -521,10 +525,17 @@ function cardHomes(){
   }));
   return out;
 }
-const cardsAt = addr => MODE === 'tree' ? [] : cardHomes().filter(c => c.home === addr);
+/* THIS FAMILY'S CARDS ONLY. Homing by stretch alone put every card in the deck on
+ * every family's walk at once — the whole deck stood under onen-rpg's week, and
+ * under genus-one's and wow-experiences' too, so a card added anywhere appeared to
+ * have been added everywhere. A card belongs to the walk it names; one carrying a
+ * stretch and no family belongs to the deck's own venture, which is what aimOf
+ * already says. */
+const mineHere = c => aimOf(c.text) === VENTURE;
+const cardsAt = addr => MODE === 'tree' ? [] : cardHomes().filter(c => c.home === addr && mineHere(c));
 /* in a tree walk, a card aims at the FAMILY in its own words; the sheet lists them at any branch */
 const famCards = () => cardHomes().filter(c => famOf(c.text) === VENTURE);
-const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) === addr).length;
+const cardsUnder = addr => cardHomes().filter(c => mineHere(c) && c.home.slice(0, addr.length) === addr).length;
 
 /* ── writes — the deck page's write path, held to exactly ── */
 async function writeWithLatch(body, what){
@@ -609,9 +620,10 @@ const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
   encodeURIComponent(block || ('spine:' + VENTURE)) + (addr ? '&at=' + wireAddr(addr) : '');
 const famOf = text => { const m = String(text).match(/toward\s+([a-z0-9-]{3,})/i);
   return m && FIELDS.has(m[1].toLowerCase()) ? m[1].toLowerCase() : null; };
-/* a time-shaped aim (this week, August, 2027) belongs to the venture the card was born on */
-const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
-const aimOf = text => famOf(text) || (TIME_AIM.test(String(text)) ? 'beach-venture' : null);
+/* a card carrying a stretch and NO family is one written before the grammar was
+ * stated; it belongs to the deck's own venture, which is the deck operator's
+ * venture dial and stands at beach-venture */
+const aimOf = text => famOf(text) || (STRETCH.test(String(text)) ? 'beach-venture' : null);
 /* every card still in hand, deferred ones included — the holdings view */
 function holdingsOf(deck){
   const t0 = new Date().toISOString().slice(0, 10);
@@ -1019,13 +1031,18 @@ function paintSheet(){
       if (BUSY) return;
       const t = $('addto-text').value.trim();
       if (!t){ toast('a card needs words', true); return; }
-      /* born at a point of this family means attached to this family — a day-level
-       * add carries the family aim, finer levels carry their stretch */
-      const suffix = SEL.level === 't' ? ' — toward ' + VENTURE
-        : SEL.level === 'd' ? ' — toward ' + VENTURE
-        : SEL.level === 'w' ? (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? ' — toward this week' : ' — toward ' + selLabel())
-        : SEL.level === 'm' ? ' — toward ' + MN[SEL.m0]
-        : ' — toward ' + SEL.y;
+      /* BORN AT A POINT OF THIS FAMILY MEANS ATTACHED TO THIS FAMILY — and the
+       * family now survives every rung. The comment above this line used to say
+       * exactly that while the code dropped the family at week, month and year,
+       * stamping the stretch alone: a card added at onen-rpg's week rung came out
+       * saying "toward this week" and belonged to nothing. Family first, stretch
+       * after a comma, per ways:deck. */
+      const fam = ' — toward ' + VENTURE;
+      const suffix = SEL.level === 't' ? fam
+        : SEL.level === 'd' ? fam
+        : SEL.level === 'w' ? fam + (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? ', this week' : ', ' + selLabel())
+        : SEL.level === 'm' ? fam + ', ' + MN[SEL.m0]
+        : fam + ', ' + SEL.y;
       BUSY = true; $('addto-go').disabled = true;
       try {
         const w = await appendCard(t + suffix);
