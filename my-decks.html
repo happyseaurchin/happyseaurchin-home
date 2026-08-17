@@ -197,7 +197,7 @@ const iso = () => new Date().toISOString().slice(0,16) + 'Z';
 const tomorrowDate = () => new Date(Date.now() + 86400000).toISOString().slice(0,10);
 const $ = id => document.getElementById(id);
 
-let HANDLE = null, DECK = null, DEALT = [], FIELDS = new Set(), BUSY = false;
+let HANDLE = null, DECK = null, DEALT = [], FIELDS = new Set(), CHOSEN = [], BUSY = false;
 let toastT = null;
 function toast(msg, err){
   let el = document.querySelector('.toast');
@@ -350,12 +350,24 @@ async function writeFieldMark(f, addr, content){
   return w;
 }
 
+/* the chosen list, read from the same block the morning reads — dashboard:<handle>.
+ * A project appears here because its holder put it there, not because a card
+ * happened to say its name: deriving the list from card text meant a project
+ * with nothing written toward it yet was simply invisible, which is exactly the
+ * state a new project is in. The derived families still stand, unioned in below,
+ * so nothing that used to show has stopped showing. */
+async function loadChosen(){
+  const b = await readBlock('dashboard:' + HANDLE).catch(() => null);
+  CHOSEN = b ? childDigits(b)
+    .map(d => (typeof b[d] === 'string' ? b[d] : voice(b[d]) || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, ''))
+    .filter(Boolean) : [];
+}
 async function load(){
   const index = await readIndex();
   const blocks = (index && index.blocks) || [];
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
   DECK = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
-  await loadDealt(blocks);
+  await Promise.all([loadChosen(), loadDealt(blocks)]);
   render();
 }
 
@@ -377,8 +389,14 @@ function render(){
   const all = holdingsOf(DECK);
   all.forEach(c => c.fam = aimOf(c.text));
   const today = all.filter(c => c.state !== 'held');
-  const fams = [...new Set(all.filter(c => c.fam).map(c => c.fam))];
-  fams.sort((a, b) => a === VENTURE ? -1 : b === VENTURE ? 1 : a.localeCompare(b));
+  /* the chosen list leads, in the holder's own order — then the families a card
+   * names, then the decks dealing to this hand. Union, never replacement: the
+   * morning replaces because it is showing a choice, this page unions because it
+   * is showing everything that actually carries a card. */
+  const derived = [...new Set(all.filter(c => c.fam).map(c => c.fam))]
+    .sort((a, b) => a === VENTURE ? -1 : b === VENTURE ? 1 : a.localeCompare(b));
+  const fams = CHOSEN.slice();
+  derived.forEach(f => { if (!fams.includes(f)) fams.push(f); });
   DEALT.forEach(f => { if (!fams.includes(f.field)) fams.push(f.field); });
   const unattached = all.filter(c => !c.fam);
 
@@ -407,12 +425,14 @@ function render(){
     rows.push('<div class="rowhead"><span class="fdot" style="--fam-h:' + famHue(f) + '"></span>' +
       '<span class="name">' + esc(f) + '</span><span class="n">' + (mine.length + dealt.length) + '</span>' +
       '<div class="links">' +
+      /* a link says where it goes and nothing else — the ＋ on the flick is the
+       * only way a card is born, so no label promises an add it does not perform */
       (f === VENTURE
-        ? '<a href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">review · add →</a>' +
+        ? '<a href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">review →</a>' +
           (mine.length ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '&aim=' + encodeURIComponent(f) + '">flick →</a>' : '')
         : dealt.length
-          ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(f) + '">flick · add →</a>'
-          : '<a href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">walk · add →</a>' +
+          ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(f) + '">flick →</a>'
+          : '<a href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">walk →</a>' +
             (mine.length ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '&aim=' + encodeURIComponent(f) + '">flick →</a>' : '')) +
       '</div></div>');
     const df = DEALT.find(x => x.field === f);
@@ -429,13 +449,18 @@ function render(){
         '<div class="acts">' + (held ? '<button data-fact="release">\u2212 hand</button>' : '<button data-fact="hold">+ hand</button>') +
         '<a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(f) + '">act →</a></div></div>';
       }));
-    rows.push('<div class="carousel">' + cards.join('') + '</div>');
+    /* a chosen project with nothing in it yet says so. Before this it rendered an
+     * empty carousel — a 24px gap carrying no words, which is the shape of a page
+     * that is working and a reader cannot tell from one that is broken. */
+    rows.push(cards.length
+      ? '<div class="carousel">' + cards.join('') + '</div>'
+      : '<div class="empty-row">no cards aiming here yet — the walk is where you say what this one is toward</div>');
   });
 
   /* the unattached — cards aiming at nothing, in the standard colour */
   rows.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">unattached</span>' +
     '<span class="n">' + unattached.length + '</span>' +
-    '<div class="links"><a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '" title="the ＋ on the flick births a card aiming at nothing">add →</a></div></div>');
+    '<div class="links"><a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '" title="the ＋ on the flick births a card aiming at nothing">flick →</a></div></div>');
   rows.push(unattached.length
     ? '<div class="carousel">' + unattached.map(c => dcardEl(c, null,
         (c.state === 'held' ? '<button data-act="arm">+ hand</button>' : '<button data-act="hold">\u2212 hand</button>') +
