@@ -110,7 +110,7 @@
           <label class="f">your key — invent it now; it keeps the cards yours to edit</label>
           <input type="password" id="f-key" placeholder="a phrase only the keeper knows" autocomplete="new-password">
         </div>
-        <div>
+        <div id="access-wrap">
           <label class="f">access</label>
           <select id="f-access">
             <option value="open">open — anyone with the link can answer</option>
@@ -120,6 +120,19 @@
           <input type="text" id="f-sed" class="mono hidden" placeholder="collective name (sed:…)" style="margin-top:8px" autocapitalize="none" spellcheck="false">
         </div>
       </div>
+    </div>
+
+    <div class="sec hidden" id="ladder-sec">
+      <h2>The ladder</h2>
+      <p class="hint" style="margin:0 0 4px">Objectives at the scale they actually operate at — all optional, one line each, revisable any time from the walk. An unspoken rung is not missing, just unspoken; the days beneath are already named and simply wait.</p>
+      <label class="f" id="lad-y-lab">the year</label>
+      <input type="text" id="lad-y" placeholder="what this year is toward">
+      <label class="f" id="lad-s-lab">the season</label>
+      <input type="text" id="lad-s" placeholder="the season&#8217;s objective — the quarter&#8217;s worth of it">
+      <label class="f" id="lad-m-lab">the month</label>
+      <input type="text" id="lad-m" placeholder="what this month makes real">
+      <label class="f" id="lad-w-lab">this week</label>
+      <input type="text" id="lad-w" placeholder="what actually gets done this week">
     </div>
 
     <div class="sec">
@@ -194,6 +207,19 @@ const TEMPLATES = {
     label: 'retro', note: 'The classic three, answered in free text — kept, changed, tried; the fold is the retrospective.',
     op: { mode:'respond', respond:'reply', disarm:'person' },
     stems: [{ v: 'The stretch just past — a line or three each.', items: ['What worked and should be kept.', 'What ground and should change.', 'What to try that has not been tried.'] }]
+  },
+  /* The VENTURE kind — a project on the clock. Not a questionnaire: its spine is
+   * TIME (floor 10, the sundial), its cards are objectives at the scale they
+   * operate at, and its law is forked in spirit from function:beach-venture —
+   * the register law and the mirror-proposal law carry whole. One act mints
+   * spine:<name> and function:<name>, every block under the founder's own key
+   * from birth: no custody, no rotation owed to anyone. Joining is by writing a
+   * mirror, so the access dial stands down — the cast lens in the law narrows
+   * reading only, never writing. */
+  venture: {
+    label: 'venture ⏱', clockVenture: true,
+    note: 'A project on the clock — objectives at the scale they operate at: the year, the season, the month, this week, today. One act founds the spine of time and its law, every block under your own key from birth; people join by writing where they stand, and the walk computes every address from the clock.',
+    stems: []
   }
 };
 let TPL = 'doing';
@@ -221,10 +247,16 @@ function seedStems(){
   for (const s of TEMPLATES[TPL].stems) box.appendChild(stemEl(s.v, s.items));
   /* A personal deck has no shared cards to seed — each holder writes their own
    * in their own mirror — so the whole cards section stands down rather than
-   * offering a box whose contents would go nowhere. */
+   * offering a box whose contents would go nowhere. A clock venture likewise:
+   * its cards are the ladder's rungs, offered as the ladder section instead,
+   * and its access dial stands down because joining is by writing a mirror. */
   const personal = !!TEMPLATES[TPL].personalDeck;
+  const clock = !!TEMPLATES[TPL].clockVenture;
   const sec = $('stems').closest('.sec');
-  if (sec) sec.classList.toggle('hidden', personal);
+  if (sec) sec.classList.toggle('hidden', personal || clock);
+  $('ladder-sec').classList.toggle('hidden', !clock);
+  $('access-wrap').classList.toggle('hidden', clock);
+  if (clock) ladderLabels();
 }
 $('add-stem').addEventListener('click', () => {
   if ($('stems').children.length >= 8){ hint('eight parts is the room the fan law leaves — deepen, not widen', true); return; }
@@ -242,6 +274,75 @@ async function readBlock(name){
   if (r.status === 404) return null;
   if (!r.ok) throw new Error('beach read failed: ' + r.status);
   return r.json();
+}
+
+/* ── the clock — the same sundial arithmetic /walk and /morning run. Ten digits
+ * at floor 10: the Gregorian year rides the first four (2026 walks millennium 2,
+ * century 0, decade 2, year 6), then season of year, month of season, seven-day
+ * band of month, day of band, gathering, beat — one digit each, written full
+ * width. Founding seeds only down to the week; finer addresses populate as
+ * people stand at them. The law is the sundial block at the pscale registry. */
+const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+function clockNow(){
+  const d = new Date();
+  const y = d.getUTCFullYear(), m0 = d.getUTCMonth(), dm = d.getUTCDate();
+  return { y, m0, dm, band: Math.floor((dm - 1) / 7) + 1,
+    yAddr: String(y),
+    sAddr: String(y) + (Math.floor(m0 / 3) + 1),
+    mAddr: String(y) + (Math.floor(m0 / 3) + 1) + (m0 % 3 + 1) };
+}
+function ladderLabels(){
+  const c = clockNow();
+  const d1 = (c.band - 1) * 7 + 1;
+  const d2 = Math.min(c.band * 7, new Date(Date.UTC(c.y, c.m0 + 1, 0)).getUTCDate());
+  $('lad-y-lab').textContent = c.y + ' — the year';
+  $('lad-s-lab').textContent = 'the season — ' + ['Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'][Math.floor(c.m0 / 3)];
+  $('lad-m-lab').textContent = MN[c.m0] + ' — the month';
+  $('lad-w-lab').textContent = 'this week — ' + d1 + '–' + d2 + ' ' + MN[c.m0].slice(0, 3);
+}
+/* nest a voicing at a sundial address inside the block being founded: an
+ * interior zero walks the underscore step, and the terminus takes the voicing
+ * as its own underscore — the container speaks, per the rung law */
+function seedAt(content, addr, text){
+  let n = content;
+  for (const ch of String(addr)){
+    const k = ch === '0' ? '_' : ch;
+    if (!n[k] || typeof n[k] !== 'object') n[k] = {};
+    n = n[k];
+  }
+  n['_'] = text;
+}
+function ventureSpine(name, keeper, why, today){
+  let root = 'TEMPORAL SPINE — ' + name + '. ' + why +
+    ' The coordinate is the canonical clock: FLOOR 10 — the address IS the date. The Gregorian year rides the first four digits (2026 walks millennium 2, century 0, decade 2, year 6), then one digit each for season of year, month of season, seven-day band of month, day of band, gathering and beat; write full width — the year 2026 is 2026000000 — because a short form left-pads into the root chain. The law is the sundial block at the pscale sentinel registry (bsp agent_id \'pscale\', block \'sundial\'). NOW NEEDS NO NODE: the beat is wherever the clock is, so nothing here is rewritten as time passes — an address that has been stood at holds what was written there, and every other address simply waits, already named. The LIVE path only: other years, seasons and weeks populate when someone stands at them. Three layers run on these same coordinates — canonical (this block, keeper ' + keeper + '), each hand\'s own mirror (' + name + ':<handle>, born on first use), and the social fold at the bare name ' + name + '. Founded ' + today + ' from /found on the venture-on-the-clock template, every block of the family under the founder\'s own key from birth; the family\'s law is function:' + name + '. Walked at happyseaurchin.com/walk/' + name + '.';
+  for (let i = 0; i < 10; i++) root = { '_': root };
+  return root;
+}
+/* The law — forked in spirit from function:beach-venture: the register law (6)
+ * and the mirror-proposal law (2) carry whole; the sundial coordinate, the four
+ * faces, the fold, the clearing and the cast lens carry with only the family
+ * name changed. The reference runs from the law to its family, never back. */
+function ventureOp(name, keeper, today){
+  return {
+    '_': 'The loop law of the ' + name + ' family — a venture coordinated on a spine of time, where every objective sits at the scale it actually operates at and the walk from this beat to the century is one read. FOUR FACES run here, and each is a full vapour-liquid-solid loop rather than a permission level: each has its own participants, its own liquid, its own solid, and they differ only in which block the fold lands in. Nothing writes a shared block directly — every voice is a proposal in the voicer\'s OWN mirror of the block being folded — so collision is impossible by construction and nobody is ever edited by anybody. A fold is computed on demand and stored only when it should outlast the turn. No dice.',
+    '1': {
+      '_': 'The spine is spine:' + name + ' and its coordinate is time itself, so no one is ever asked to invent a location: this beat, today, this week, this month, the season, the year, the decade each name a rung, and the reading mind computes the digits from the clock. Each rung\'s voicing states the objective at that scale, and a read at any address arrives carrying its whole ancestor ladder — so a day\'s work is never seen apart from what it is toward, and the line of sight from the hour to the decade costs one call. Addresses are permanent and infinite: an unvoiced rung is not missing but unspoken, and a mirror may stand at a rung the spine has not yet reached.',
+      '1': 'The rungs belong to the sundial and are not restated here — beat, gathering, day, week, month, season, year, decade, century; the law is the sundial block at the pscale sentinel registry. This venture voices whichever rungs it actually works at and leaves the rest thin; a thin rung is read straight through and the ladder loses nothing by it. Precision enough to compare is the standard here, never exactness.'
+    },
+    '2': 'A voice lands in the voicer\'s OWN mirror of the block it is aimed at, at that block\'s self-same address: a reading of the venture in ' + name + ':<handle>, a proposed objective in spine:' + name + ':<handle>, a proposed rule in function:' + name + ':<handle>, a proposed rendering in view:' + name + ':<handle>. Each mirror is sovereign to its holder, revisable forever, written by nobody else — which is why staging and committing are ONE act here, and why no shared buffer exists to collide in. Silence at an address is a gap not yet felt rather than a gap to be filled, and a fold names who is silent instead of guessing on their behalf.',
+    '3': {
+      '_': 'Four faces, four full loops, differing only in the block their fold lands in — and a face is read off which mirror a hand is working, never declared and never stored. A participant changes face by changing which mirror they write, and the same person may run all four within a day without announcing any of it.',
+      '1': 'Character — the venture as lived. Liquid is every Character mirror at the attended address; solid is the fold at the bare name ' + name + ', the venture\'s own account of itself at that moment. Almost all the work happens here and the machinery never shows: a person says what they are doing and what they need, and the location is computed from the saying.',
+      '2': 'Author — the objectives themselves. Liquid is every Author proposal at the address in spine:' + name + ':<handle>; solid is that rung\'s voicing in spine:' + name + ', replaced only by a fold and only after the standing text is copied to archive:spine:' + name + ':<date>. A rung is never renumbered and never quietly edited: an objective that no longer holds is superseded at its own address, and the archive carries what it said before.',
+      '3': 'Designer — this law. Liquid is every Designer proposal at the address in function:' + name + ':<handle>; solid is this block, moved by the same fold-and-archive discipline the spine gets, because a law that changes by quiet edit under a live table is the one failure this family could not recover from.',
+      '4': 'Observer — the outward, and the venture\'s boundary rather than another room inside it. Its input is the Character fold: the venture\'s latest account of itself, offered as cards a voice can name and refer to. Its liquid is every Observer working at the address in view:' + name + ':<handle>. Its solid is a card written into view:' + name + ' carrying what was made, who made it, the address it was made from, and a link to where it now lives — an o-page, a post, a feed, a document. The output itself is delivered outside and the beach keeps only the pointer.'
+    },
+    '4': 'A fold is a READ and stores nothing unless asked. Two kinds, and they are not the same act: a SNAPSHOT is the concatenation of every mirror at the address — mechanical, lossless, and useful with no LLM in the room at all; a SYNTHESIS is what a mind makes of that snapshot under this law, and no two need agree, because there is no central resolver here and never was. Kept personally a fold stands at its own address in tree:' + name + ':<handle> — the holder\'s own tree, latest-standing, superseded by their next fold of the same point; kept collectively it lands at its own address in the target block, endorsed by pointer and gating nothing, where a better reading may always supersede it. Losslessness, when wanted, is the archive convention — copy the standing fold to archive:<block>:<date> before replacing — never automatic accumulation. A fold that drops a voice says so.',
+    '5': 'Clearing is per-holder: a fold consumes nothing and clears nobody. Each mirror stands until its own holder revises it, because a mirror is a standing reading rather than a pending intention — and a fold that erased what it read would leave the next fold nothing to disagree with. Anyone may fold any address at any time, including one just folded by someone else; the folds coexist, and the collective one is a pointer rather than a verdict. Joining is by writing a mirror: no roster, no admission, and no order of arrival that counts for anything.',
+    '6': 'Speak the participant\'s register — the standing law over every move above: to a human, never an address, a digit, a block name, or this law itself. The reading mind computes location from the utterance against the spine and stamps it silently, and co-presence is relayed as who is near in thought and what they hold, never as coordinates. The machinery surfaces at the Designer\'s grip alone, the ladder at the Author\'s, the outward card at the Observer\'s — at the Character\'s grip it simply works. Asking a person for an address is the failure this law exists to end.',
+    '7': 'THE CAST LENS — a reading setting. A fold at any address may be read at two settings: at EVERYONE, every mirror standing at the address is read, which is the default and the resting state of this beach; at THE CAST, the voices of hands registered at sed:' + name + '-cast stand and the rest are set aside — and a fold that sets a voice aside SAYS SO, naming the count and the handles inside the view itself, per the fold law at position 4. Neither setting is truer; the cast setting is narrower. THE LENS GATES NOTHING: every block here is publicly readable and any hand may lodge a mirror at any address whether registered or not — position 5 already says so and is not amended. AN EMPTY REGISTER MEANS EVERYONE: while nobody has settled in the cast, no voice is ever set aside, because a lens over nobody would silently empty the room. Hard authority is a different thing entirely and is not this: the pen on the spine and on this law is held by a LOCK, and sed:' + name + '-authors merely declares in the open who holds it.',
+    '9': 'PROVENANCE — founded ' + today + ' from /found on the venture-on-the-clock template by ' + keeper + ', who holds the key to every block of this family from birth: the founding writes carried the founder\'s own lock — no custody, no rotation owed to anyone. Forked in spirit from function:beach-venture at beach.happyseaurchin.com: the register law (position 6) and the mirror-proposal law (position 2) carry whole; the sundial coordinate, the four faces, the fold, the clearing and the cast lens carry with only the family name changed.'
+  };
 }
 
 async function found(){
@@ -269,7 +370,9 @@ async function found(){
   }
   // A personal deck seeds no shared cards by design — each holder writes their
   // own — so the founding floor that every other kind needs does not apply.
-  if (!stems.length && !TEMPLATES[TPL].personalDeck) return hint('seed at least one part with one card', true);
+  // A clock venture likewise: its rungs are seeded from the ladder inputs, all
+  // of them optional, because an unspoken rung is not missing but unspoken.
+  if (!stems.length && !TEMPLATES[TPL].personalDeck && !TEMPLATES[TPL].clockVenture) return hint('seed at least one part with one card', true);
   if (stems.length > 8) return hint('eight parts is the room the fan law leaves', true);
 
   $('btn-found').disabled = true; hint('checking the beach…');
@@ -293,11 +396,16 @@ async function found(){
    * spent on machinery is a slot the deck can never grow into. Founding is two
    * writes for every kind: the spine, and its law at function:<name>, both under
    * the founder's key. The reference runs from the law to its family, never back. */
-  const opLines = ['mode: ' + t.op.mode];
-  if (t.op.mode === 'respond') opLines.push('respond: ' + t.op.respond);
-  opLines.push('disarm: ' + t.op.disarm);
-  opLines.push('access: ' + access);
-  opLines.push('cards: spine');
+  /* the dial-shaped operator serves the deck kinds; a clock venture builds its
+   * own law in ventureOp below and never reads these lines */
+  const opLines = [];
+  if (t.op){
+    opLines.push('mode: ' + t.op.mode);
+    if (t.op.mode === 'respond') opLines.push('respond: ' + t.op.respond);
+    opLines.push('disarm: ' + t.op.disarm);
+    opLines.push('access: ' + access);
+    opLines.push('cards: spine');
+  }
   const opNode = { '_': 'How these cards behave — ' + t.label + ': ' + t.note + ' Founded ' + today + ' from /found by ' + keeper + '. The law lives here; the spine carries only cards.' };
   opLines.forEach((l, i) => { opNode[String(i + 1)] = l; });
 
@@ -307,7 +415,27 @@ async function found(){
    * into. The operator is its own block naming its spine: the reference runs
    * from the law to its family, never back. */
   const personal = !!t.personalDeck;
-  const writes = personal
+  /* A CLOCK VENTURE is founded as its own pair: spine:<name> at floor 10 on the
+   * sundial — the ladder inputs nested at the current year, season, month and
+   * week addresses, inside the one write — and function:<name>, the law forked
+   * in spirit from function:beach-venture. Both under the founder's key, so the
+   * founder owns every block of the family from birth. */
+  const clock = !!t.clockVenture;
+  const writes = clock
+    ? (function(){
+        const c = clockNow();
+        const spine = ventureSpine(name, keeper, why, today);
+        [[c.yAddr, $('lad-y').value.trim()],
+         [c.sAddr, $('lad-s').value.trim()],
+         [c.mAddr, $('lad-m').value.trim()],
+         [c.mAddr + c.band, $('lad-w').value.trim()]
+        ].forEach(([a, v]) => { if (v) seedAt(spine, a, v); });
+        return [
+          { block: 'spine:' + name, new_lock: key, content: spine },
+          { block: 'function:' + name, new_lock: key, content: ventureOp(name, keeper, today) },
+        ];
+      })()
+    : personal
     ? [
         { block: 'spine:' + name, new_lock: key, content: {
             _: why + ' A template, not a list: it says what a card IS in this field and holds nobody\'s work, '
@@ -355,6 +483,18 @@ async function found(){
   } catch(e){ hint(String(e.message || e), true); $('btn-found').disabled = false; return; }
 
   $('form').classList.add('hidden');
+  if (clock){
+    $('born-what').textContent = 'The ' + name + ' venture is on the clock — its spine of time and its law, every block under your key from birth. ' +
+      'Anyone may stand a mirror at any address; the walk computes the time for them, and the cast lens narrows reading only, never writing.';
+    $('born-links').innerHTML =
+      '<a href="/walk/' + encodeURIComponent(name) + '/' + encodeURIComponent(keeper) + '"><b>your walk</b> — /walk/' + esc(name) + '/' + esc(keeper) + '</a>' +
+      '<a href="/walk/' + encodeURIComponent(name) + '"><b>the share link</b> — /walk/' + esc(name) + ' (each person adds their own handle)</a>' +
+      '<a href="/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('function:' + name) + '"><b>the law</b> — function:' + esc(name) + '</a>' +
+      '<a href="/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + name) + '"><b>the spine</b> — spine:' + esc(name) + '</a>';
+    $('born').classList.remove('hidden');
+    window.scrollTo(0, 0);
+    return;
+  }
   $('born-what').textContent = 'The ' + name + ' deck is live, locked under your key. ' +
     (access === 'open' ? 'Anyone with the link can answer.' :
      access === 'latched' ? 'People set a key of their own before answering.' :
@@ -383,6 +523,7 @@ $('btn-found').addEventListener('click', found);
 /* prefills */
 const q = new URLSearchParams(location.search);
 if (q.get('keeper')) $('f-keeper').value = q.get('keeper');
+if (q.get('kind') && TEMPLATES[q.get('kind')]) TPL = q.get('kind');
 renderTmpl(); seedStems();
 })();
 </script>

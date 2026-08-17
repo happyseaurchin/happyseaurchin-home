@@ -210,6 +210,15 @@
     border:1px solid var(--line);border-radius:16px;padding:20px;display:flex;flex-direction:column;gap:14px}
   .compose textarea{width:100%;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:10px;
     color:var(--foam);font-family:var(--body);font-size:1.02rem;line-height:1.55;padding:13px 15px;resize:vertical;min-height:110px}
+  .weekband{display:flex;flex-direction:column;gap:8px;border:1px solid rgba(var(--solid-rgb),0.35);border-radius:10px;padding:12px 14px}
+  .weekband p{margin:0;color:var(--vapour);font-size:0.93rem;line-height:1.5;max-width:60ch}
+  .weekband textarea{min-height:56px;font-size:0.95rem}
+  .weekband .row{display:flex;gap:10px;align-items:center}
+  .weekband .row .hint{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:1;line-height:1.6}
+  .weekband .row button{background:var(--liquid);border:none;border-radius:7px;color:var(--abyss);
+    font-size:11px;font-weight:700;letter-spacing:0.05em;padding:9px 14px;cursor:pointer;flex:none}
+  .weekband .row button:hover{background:var(--foam)}
+  .weekband .row button:disabled{opacity:0.5;cursor:wait}
   .hand{display:flex;flex-direction:column;gap:8px}
   .chip{display:flex;gap:10px;align-items:baseline;background:rgba(var(--well-rgb),0.45);border:1px solid var(--line);
     border-radius:10px;padding:10px 13px;font-size:0.93rem}
@@ -343,6 +352,12 @@
     </div>
     <div class="compose">
       <div class="panel">
+        <div id="week-band" class="weekband hidden">
+          <div class="sub" id="wk-lab">this week, first</div>
+          <p id="wk-why"></p>
+          <textarea id="wk-text" placeholder="what this week is actually toward — one or two lines"></textarea>
+          <div class="row"><span class="hint" id="wk-hint"></span><button id="wk-go">set the week</button></div>
+        </div>
         <textarea id="draft"></textarea>
         <div class="setday">
           <button id="btn-set">set the day</button>
@@ -939,9 +954,30 @@ $('sheet-veil').addEventListener('click', e => { if (e.target === $('sheet-veil'
 
 /* ── intend — one act: the day voicing, in your own words ── */
 function renderIntend(){
-  const weekObj = textAt(SPINE, weekAddr(TODAY.y, TODAY.m0, TODAY.band));
+  const wkAddr = weekAddr(TODAY.y, TODAY.m0, TODAY.band);
+  const mineBlk = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
+  const weekObj = textAt(SPINE, wkAddr);
+  const myWeek = mineBlk ? textAt(mineBlk, wkAddr) : null;
   const monthObj = textAt(SPINE, monthAddr(TODAY.y, TODAY.m0));
-  const toward = weekObj ? 'the week — ' + short(weekObj, 150) : monthObj ? 'the month — ' + short(monthObj, 150) : 'what stands above';
+  /* THE WEEK IS ASKED FOR FIRST when nothing stands at it — neither the
+   * venture's line nor your own — because a day intended without its week hangs
+   * straight off the month, which is the exact hole the ladder exists to close.
+   * One write, your own mirror at the week's address; the venture's own line
+   * stays the keeper's, proposed and adopted on the walk. The season above
+   * surfaces on the ladder tiles, unhidden, whatever state it is in. */
+  const band = $('week-band');
+  if (!weekObj && !myWeek){
+    const d1 = (TODAY.band - 1) * 7 + 1, d2 = Math.min(TODAY.band * 7, daysInMonth(TODAY.y, TODAY.m0));
+    band.classList.remove('hidden');
+    $('wk-lab').textContent = 'this week, first — ' + d1 + '–' + d2 + ' ' + MN[TODAY.m0];
+    $('wk-why').textContent = 'Nothing stands over today at the week — the day would hang straight off the month. Say what your week is toward, and the day has something to hang from.' +
+      (monthObj ? ' The month above it: ' + short(monthObj, 110) : '');
+    $('wk-hint').innerHTML = 'one write, as you — your voice at the week' +
+      '<span class="work"> · <b>' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(pad10(wkAddr)) + '</b></span>';
+  } else band.classList.add('hidden');
+  const toward = weekObj ? 'the week — ' + short(weekObj, 150)
+    : myWeek ? 'your week — ' + short(myWeek, 150)
+    : monthObj ? 'the month — ' + short(monthObj, 150) : 'what stands above';
   const mine = openCardsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
   if (!$('draft').value.trim()){
     $('draft').value = 'Today is toward ' + toward + '\n\n' +
@@ -971,6 +1007,21 @@ document.getElementById('btn-set').addEventListener('click', async () => {
         $('set-why').innerHTML = '\u2713 set — your words stand at today · <a href="/my-decks/' + encodeURIComponent(HANDLE) + '">my decks →</a> · <a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '">flick →</a>';
         await load();
       } else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
+    }
+  } catch(e){ toast(String(e.message || e), true); }
+  BUSY = false; btn.disabled = false;
+});
+
+document.getElementById('wk-go').addEventListener('click', async () => {
+  if (BUSY) return; BUSY = true;
+  const btn = $('wk-go'); btn.disabled = true;
+  try {
+    const text = $('wk-text').value.trim();
+    if (!text){ toast('write the week first', true); }
+    else {
+      const w = await writeMirrorAt(weekAddr(TODAY.y, TODAY.m0, TODAY.band), text);
+      if (w.ok){ toast('✓ the week has words — the day can hang from them'); await load(); }
+      else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
     }
   } catch(e){ toast(String(e.message || e), true); }
   BUSY = false; btn.disabled = false;
