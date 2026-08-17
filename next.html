@@ -48,10 +48,6 @@
   .ask__hint{font-family:var(--mono);font-size:11px;letter-spacing:0.03em;color:var(--vapour-dim);max-width:46ch;margin:12px 0 0;line-height:1.6}
 
   .gatebar{max-width:640px;margin:0 auto;padding:8px 18px;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;color:var(--solid);text-align:center;border-bottom:1px solid rgba(var(--solid-rgb),0.25)}
-  .toward{width:min(480px,100%);margin:0 auto;padding:6px 18px 0;font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour-dim);line-height:1.6}
-  .toward a{color:inherit;border-bottom:none}
-  .toward a:hover{color:var(--foam)}
-  .toward .rung{color:var(--liquid)}
   .sweepbar{width:min(480px,100%);margin:0 auto;padding:7px 18px;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;color:var(--vapour-dim);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
   .sweepbar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour);font-family:var(--mono);font-size:11px;padding:5px 9px;cursor:pointer}
   .sweepbar button:hover{color:var(--foam);border-color:var(--line-strong)}
@@ -79,7 +75,6 @@
   .card__stem .tally{color:var(--vapour-dim);margin-left:auto}
   .card__badge{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;color:var(--solid);margin:0 0 8px}
   .card__badge.prop{color:var(--liquid)}
-  .card__lineage{font-family:var(--body);font-style:italic;color:var(--vapour-dim);font-size:0.92rem;line-height:1.45;margin:0 0 18px;padding-bottom:14px;border-bottom:1px solid var(--line)}
   .card__text{font-family:var(--body);font-weight:500;font-size:clamp(1.25rem,4.6vw,1.6rem);line-height:1.42;color:var(--foam);flex:1;overflow-y:auto;padding-right:4px;touch-action:pan-y}
   .card__notes{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:0.9rem;color:var(--vapour);max-height:22%;overflow-y:auto;touch-action:pan-y}
   .card__notes .nrow{margin:0 0 6px;display:flex;gap:8px}
@@ -215,7 +210,6 @@
     <button id="btn-refresh" title="refresh the field">↻</button>
   </div>
   <div id="gatebar" class="gatebar hidden"></div>
-  <div id="toward" class="toward hidden"></div>
   <div id="sweepbar" class="sweepbar hidden"></div>
 
   <div class="stage">
@@ -591,7 +585,6 @@ async function loadField(){
       }
       if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));   /* flick one hand: only the cards aiming there */
     }
-    loadToward();   /* fire-and-forget: the ladder strip fills as the read lands */
     rebuildDeck(true);
     return;
   }
@@ -710,9 +703,14 @@ function cardEl(card, layer){
      * no number at all, the peek layers inherit that by construction, and the count
      * above the deck is the single number — the only one that answers what a person
      * flicking actually asks, which is how many are left. */
+    /* NO STEM LINE ON THE CARD FACE. The stem's voicing used to ride above the
+     * card in italics, contextualising it. A person reaches for the flick when
+     * they want one thing at a time and a yes or no on it — the context is what
+     * they left behind to get here, and every other surface carries it (the walk
+     * stands at the rung, my-decks groups by aim, the morning says what the day
+     * is toward). Above the card it read as preamble to be got past. */
     (tally ? '<p class="card__stem">' + tally + '</p>' : '') +
     doingBadge + propBadge +
-    '<p class="card__lineage">' + esc(card.stemText) + '</p>' +
     '<div class="card__text">' + esc(card.text) + '</div>' + notes + act +
     (layer === 'top' && OP.mode === 'doing' && !card.proposed ? '<button class="cog" title="card options">⚙</button>' : '') +
     '<div class="stamp">DONE</div>';
@@ -1025,32 +1023,14 @@ function bodyText(raw){
   return s.trim() || String(raw).trim();
 }
 
-/* ── the ladder above the deck — what today is toward.
- * Setting up a deck is choosing today's acts against objectives that live at
- * coarser rungs of the venture spine; showing those rungs while the cards are in
- * hand is the whole of the hookup — the card points at the objective in its own
- * words, and the fold reads the pointing. Nothing is written here. ── */
-async function loadToward(){
-  const el = $('toward');
-  if (!PERSONAL || !OP.venture){ el.classList.add('hidden'); return; }
-  const spine = await readBlock('spine:' + OP.venture).catch(() => null);
-  if (!spine){ el.classList.add('hidden'); return; }
-  const day = ventureDayRung();
-  const rungs = [
-    { label: 'today',      addr: day },
-    { label: 'this week',  addr: day.slice(0, 7).padEnd(10, '0') },
-    { label: 'this month', addr: day.slice(0, 6).padEnd(10, '0') },
-  ];
-  const lines = [];
-  for (const r of rungs){
-    const n = walkZeroAware(spine, r.addr);
-    const t = typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null);
-    if (t && t.trim()) lines.push('<span class="rung">' + esc(r.label) + '</span> ' + esc(t.length > 110 ? t.slice(0, 107) + '…' : t));
-  }
-  if (!lines.length){ el.classList.add('hidden'); return; }
-  el.innerHTML = '<a href="/tree/' + encodeURIComponent(OP.venture) + '">' + lines.join('<br>') + '</a>';
-  el.classList.remove('hidden');
-}
+/* ── NO LADDER STRIP ABOVE THE DECK. The venture's today, this-week and this-month
+ * voicings used to ride here, on the reasoning that showing the objectives while
+ * the cards are in hand was the hookup. The hookup is the WRITE, not the strip:
+ * a closed card still lands its account in the venture reading at the day's rung,
+ * and that is untouched. What the strip actually did was put three dense lines of
+ * context above a surface whose whole point is one thing at a time — and the same
+ * three lines already stand on the walk and in the morning, which is where a
+ * person goes when context is what they want. Removed on the keeper's word. ── */
 
 /* ── the morning sweep — yesterday's closed cards give back their slots.
  * A closed card stays in the mirror (silence is the holder's act, never the
