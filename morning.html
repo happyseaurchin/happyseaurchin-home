@@ -329,6 +329,26 @@
     <div class="collage" id="collage"></div>
   </section>
 
+  <style>
+    #nowproj .npwrap{overflow-x:auto}
+    .nprow{display:grid;grid-template-columns:112px repeat(var(--npn,1), minmax(190px,1fr));gap:12px;padding:10px 0;border-bottom:1px solid var(--line);min-width:max-content}
+    .nprow.nphead{border-bottom:1px solid var(--line-strong);padding:6px 0}
+    .npl{font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim);text-align:right;padding-top:2px}
+    .npl b{display:block;color:var(--vapour);font-weight:400;font-size:12px;text-transform:none;letter-spacing:0.02em;margin-top:2px}
+    .npt{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--solid)}
+    .npc{font-size:14px;line-height:1.5;color:var(--vapour);white-space:pre-wrap}
+    .npc.quiet{color:var(--vapour-dim);opacity:0.5}
+  </style>
+  <section id="nowproj">
+    <div class="band-head">
+      <p class="eyebrow"><span class="n">4</span>now by project</p>
+      <h2>One clock, every mirror of yours.</h2>
+      <p>Your now-mirror beside your project mirrors, rung by rung down the ladder — the same
+         moment read across everything you are doing. A quiet cell is honest silence.</p>
+    </div>
+    <div class="npwrap" id="npgrid"></div>
+  </section>
+
   <div id="sheet-veil" class="veil hidden">
     <div class="sheet">
       <div class="sheet__head"><span class="sheet__where" id="sh-where">—</span><button class="sheet__close" id="sh-close" title="close">×</button></div>
@@ -338,7 +358,7 @@
 
   <section id="projects">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">4</span>projects</p>
+      <p class="eyebrow"><span class="n">5</span>projects</p>
       <h2>Your projects.</h2>
       <p>The projects you have deliberately chosen — each with its pulse, its walk one tap away. Your list lives in your own block; the page just reads it.</p>
     </div>
@@ -347,7 +367,7 @@
 
   <section id="intend">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">5</span>intend</p>
+      <p class="eyebrow"><span class="n">6</span>intend</p>
       <h2>Set the day.</h2>
       <p>Your intention for the day, in your own words — drafted from the week standing above; rewrite it until it is yours. Setting it lands it as your voice at today, and tomorrow measures “since” from it. Cards live elsewhere: born at the rack’s detail, held at my decks.</p>
     </div>
@@ -636,6 +656,41 @@ function holdingsOf(deck){
   return out;
 }
 /* ── load ── */
+/* ── section 4: now by project — the same clock read across every mirror of yours.
+   Exact walks (no trailing strip) and shallow voices: a rung speaks only its own line. ── */
+async function renderNowProj(){
+  const box = $('npgrid');
+  if (!box) return;
+  const fams = (EXTRA.dashboard || []).slice(0, 8);
+  const cols = ['now'].concat(fams);
+  const got = await Promise.all(cols.map(f => readBlock(f + ':' + HANDLE).catch(() => null)));
+  const t = new Date();
+  const secs = t.getUTCHours() * 3600 + t.getUTCMinutes() * 60 + t.getUTCSeconds();
+  const gath = Math.min(9, Math.floor(secs / (86400 / 9)) + 1);
+  const beat = Math.min(9, Math.floor((secs - (gath - 1) * (86400 / 9)) / (86400 / 81)) + 1);
+  const PARTS = ['deep night','dawn','early morning','morning','midday','afternoon','late afternoon','evening','night'];
+  const seas = Math.floor(TODAY.m0 / 3) + 1;
+  const rungs = [
+    ['this year', String(TODAY.y), yearAddr(TODAY.y)],
+    ['this season', ['Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'][seas - 1], yearAddr(TODAY.y) + seas],
+    ['this month', MN[TODAY.m0], monthAddr(TODAY.y, TODAY.m0)],
+    ['this week', ((TODAY.band - 1) * 7 + 1) + '–' + Math.min(TODAY.band * 7, daysInMonth(TODAY.y, TODAY.m0)) + ' ' + MN[TODAY.m0].slice(0, 3), weekAddr(TODAY.y, TODAY.m0, TODAY.band)],
+    ['today', wd(TODAY.y, TODAY.m0, TODAY.d) + ' ' + TODAY.d, TODAY_ADDR],
+    ['this gathering', PARTS[gath - 1], TODAY_ADDR + gath],
+    ['this beat', 'beat ' + beat + ' of 9', TODAY_ADDR + gath + beat],
+  ];
+  const wx = (b, addr) => { let n = b; for (const ch of String(addr)){ if (!n || typeof n !== 'object') return undefined; n = ch === '0' ? n['_'] : n[ch]; } return n; };
+  const sv = n => n == null ? null : (typeof n === 'string' ? (n.trim() || null) : (typeof n['_'] === 'string' ? (n['_'].trim() || null) : null));
+  box.style.setProperty('--npn', cols.length);
+  let h = '<div class="nprow nphead"><span class="npl"></span>' + cols.map(c => '<span class="npc npt">' + esc(c) + '</span>').join('') + '</div>';
+  rungs.forEach(([lab, hum, addr]) => {
+    h += '<div class="nprow"><span class="npl">' + lab + '<b>' + esc(hum) + '</b></span>' +
+      got.map(b => { const v = b ? sv(wx(b, String(addr))) : null;
+        return '<span class="npc' + (v ? '' : ' quiet') + '">' + (v ? esc(v) : '—') + '</span>'; }).join('') + '</div>';
+  });
+  box.innerHTML = h;
+}
+
 async function load(){
   const d = new Date();
   TODAY = { y: d.getUTCFullYear(), m0: d.getUTCMonth(), d: d.getUTCDate() };
@@ -710,6 +765,7 @@ async function load(){
     readBlock('dashboard:' + HANDLE).catch(() => null),
   ]);
   EXTRA.dashboard = dashB ? childDigits(dashB).map(d => (typeof dashB[d] === 'string' ? dashB[d] : voice(dashB[d]) || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '')).filter(Boolean) : null;
+  renderNowProj();
   const markSlots = marksB ? collectSlots(marksB).filter(m => m.ts && Number.isFinite(Date.parse(m.ts))) : [];
   markSlots.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
   EXTRA.marks24 = markSlots.filter(m => now - Date.parse(m.ts) < H24).length;
