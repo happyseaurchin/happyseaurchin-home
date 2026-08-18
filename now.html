@@ -42,7 +42,6 @@
   .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);
     font-size:12px;padding:6px 10px;cursor:pointer}
   .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
-  body.workings .bar #btn-work{color:var(--solid);border-color:rgba(var(--solid-rgb),0.4)}
 
   /* ── ask (no handle) ── */
   .ask{padding:80px 26px;max-width:560px;margin:0 auto}
@@ -124,6 +123,40 @@
     color:var(--foam);font-family:var(--mono);font-size:12.5px;padding:10px 16px;opacity:0;transition:opacity 0.25s}
   .toast.show{opacity:1}
 
+  /* ── the band — one rung unfolded into its siblings, now centred; past faint but heavier than future ── */
+  .rung .when{cursor:pointer}
+  .rung .when .lab::before{content:"▸ ";font-size:9px;opacity:0.5}
+  .rung.open .when .lab::before{content:"▾ "}
+  .band{display:flex;gap:8px;overflow-x:auto;padding:4px 12px 12px;margin:0 -12px 4px;scrollbar-width:thin}
+  .band .cell{flex:none;width:132px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:pointer;
+    background:rgba(var(--well-rgb),0.35)}
+  .band .cell .cl{display:block;font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;
+    color:var(--vapour-dim);margin:0 0 4px;white-space:nowrap}
+  .band .cell .cv{display:block;font-size:12.5px;line-height:1.4;color:var(--vapour);max-height:5.6em;overflow:hidden}
+  .band .cell.is-now{opacity:1;border-color:rgba(var(--solid-rgb),0.55)}
+  .band .cell.is-now .cl{color:var(--solid)}
+  .band .cell.past{opacity:0.72}
+  .band .cell.future{opacity:0.46}
+  .band .cell.past.silent{opacity:0.26}
+  .band .cell.future.silent{opacity:0.18}
+  .band .cell:hover{opacity:1;border-color:var(--line-strong)}
+
+  /* ── the display popup — rungs, panes, workings; one control so the page itself stays clean ── */
+  .pop-back{position:fixed;inset:0;background:rgba(0,0,0,0.5);backdrop-filter:blur(3px);z-index:30}
+  .pop{position:fixed;left:0;right:0;bottom:0;z-index:31;background:rgba(var(--well-rgb),0.98);
+    border-top:1px solid var(--line-strong);border-radius:14px 14px 0 0;
+    padding:20px 18px calc(20px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto;
+    max-height:80dvh;overflow-y:auto}
+  .pop h3{font-family:var(--mono);font-size:12px;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--vapour-dim);margin:18px 0 6px}
+  .pop h3:first-of-type{margin-top:0}
+  .pop label{display:flex;align-items:baseline;gap:10px;padding:6px 2px;cursor:pointer;font-size:15px}
+  .pop label input{accent-color:var(--liquid)}
+  .pop label .hint{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin-left:auto;text-align:right}
+  .pop .row{display:flex;justify-content:flex-end;margin-top:14px}
+  .pop button.ghost{background:none;border:1px solid var(--line);border-radius:8px;color:var(--vapour-dim);
+    font-size:12px;padding:10px 16px;cursor:pointer;font-family:var(--mono)}
+
   @media (max-width:560px){
     .rung{flex-direction:column;gap:4px}
     .rung .when{width:auto;text-align:left;display:flex;gap:10px;align-items:baseline}
@@ -138,7 +171,7 @@
   <span class="spacer"></span>
   <a id="bar-morning" href="/morning">the morning</a>
   <a id="bar-next" href="/next">your deck</a>
-  <button id="btn-work" title="show the workings — addresses and block names">⚙</button>
+  <button id="btn-display" title="choose the rungs and panes this page shows">display</button>
 </div>
 
 <!-- no handle: ask, exactly as the morning asks -->
@@ -194,6 +227,17 @@
   </div>
 </div>
 
+<div id="pop-back" class="pop-back hidden"></div>
+<div id="pop" class="pop hidden" role="dialog" aria-modal="true">
+  <h3>the rungs</h3>
+  <div id="pop-rungs"></div>
+  <h3>the panes</h3>
+  <div id="pop-panes"></div>
+  <h3>the workings</h3>
+  <label><input type="checkbox" id="pop-work"> addresses and block names <span class="hint">for authors</span></label>
+  <div class="row"><button class="ghost" id="pop-close">done</button></div>
+</div>
+
 <div id="toast" class="toast"></div>
 
 <script>
@@ -223,10 +267,15 @@ function floorOf(block){
   while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
   return n;
 }
-function voice(node){
-  let n = node;
-  while (n && typeof n === 'object') { if (!('_' in n)) return null; n = n['_']; }
-  return typeof n === 'string' ? n.trim() || null : null;
+/* a rung speaks only in its own voice: a string node, or a string at its underscore.
+   An OBJECT at the underscore is the zero-child (the period beneath, base-ten zone) —
+   never this rung's voicing, so descending it would put the child's words in the
+   parent's mouth (pscale://sundial 1.1). */
+function shallowVoice(node){
+  if (node == null) return null;
+  if (typeof node === 'string') return node.trim() || null;
+  const u = node['_'];
+  return typeof u === 'string' ? (u.trim() || null) : null;
 }
 /* canonical walk: trailing zeros are floor padding, interior 0 steps into the underscore */
 function walkZeroAware(block, addr){
@@ -238,10 +287,7 @@ function walkZeroAware(block, addr){
   return n;
 }
 function textAt(block, addr){
-  const n = walkZeroAware(block, addr);
-  if (n === undefined || n === null) return null;
-  if (typeof n === 'string') return n.trim() || null;
-  return voice(n);
+  return shallowVoice(walkZeroAware(block, addr));
 }
 const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : s; return d.innerHTML; };
 const $ = id => document.getElementById(id);
@@ -263,24 +309,77 @@ function clockNow(){
   const gath = Math.min(9, Math.floor(secs / (86400 / 9)) + 1);
   const beat = Math.min(9, Math.floor((secs - (gath - 1) * (86400 / 9)) / (86400 / 81)) + 1);
   const yA = String(y);
-  const a = { year: yA, season: yA + season, month: yA + season + mis };
+  const a = { millennium: yA[0], century: yA.slice(0, 2), decade: yA.slice(0, 3),
+              year: yA, season: yA + season, month: yA + season + mis };
   a.week = a.month + band; a.day = a.week + dib; a.gathering = a.day + gath; a.beat = a.gathering + beat;
   const bandStart = (band - 1) * 7 + 1, bandEnd = Math.min(band * 7, daysInMonth(y, m0));
   return { t, y, m0, d, season, mis, band, dib, gath, beat, bandStart, bandEnd,
            weekday: WD[new Date(Date.UTC(y, m0, d)).getUTCDay()], addrs: a };
 }
 const pad10 = a => String(a).padEnd(10, '0');
+/* human names are ORDINAL — the period being filled: the 3rd millennium, the 21st
+   century — while the digits stay the year's own (completed count). The digit is
+   exact; the label is human (pscale://sundial 2.3). */
+const ORD = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
+const SEASONS_S = ['Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
 
-/* the seven rungs the ladder renders, coarse to fine */
+/* the rungs, coarse to fine — each knows its label, its human name, its digit-of-now,
+   and its band of siblings (cells within the current parent, now centred) */
 const RUNGS = [
-  { key:'year',      label:'this year',      human: c => String(c.y) },
-  { key:'season',    label:'this season',    human: c => SEASONS[c.season - 1] },
-  { key:'month',     label:'this month',     human: c => MN[c.m0] },
-  { key:'week',      label:'this week',      human: c => c.bandStart + '–' + c.bandEnd + ' ' + MN[c.m0] },
-  { key:'day',       label:'today',          human: c => c.weekday + ' ' + c.d },
-  { key:'gathering', label:'this gathering', human: c => DAY_PARTS[c.gath - 1] },
-  { key:'beat',      label:'this beat',      human: c => 'beat ' + c.beat + ' of 9' },
+  { key:'millennium', label:'this millennium', human: c => 'the ' + ORD(Math.floor(c.y / 1000) + 1) + ' millennium',
+    nowDig: c => +String(c.y)[0], parent: c => '',
+    cells: c => [0,1,2,3,4,5,6,7,8,9].map(d => ({ d, label: ORD(d + 1) + ' millennium' })) },
+  { key:'century', label:'this century', human: c => 'the ' + ORD(Math.floor(c.y / 100) + 1) + ' century',
+    nowDig: c => +String(c.y)[1], parent: c => String(c.y)[0],
+    cells: c => [0,1,2,3,4,5,6,7,8,9].map(d => ({ d, label: ORD(Math.floor(c.y / 1000) * 10 + d + 1) + ' century' })) },
+  { key:'decade', label:'this decade', human: c => 'the ' + Math.floor(c.y / 10) * 10 + 's',
+    nowDig: c => +String(c.y)[2], parent: c => String(c.y).slice(0, 2),
+    cells: c => [0,1,2,3,4,5,6,7,8,9].map(d => ({ d, label: 'the ' + (Math.floor(c.y / 100) * 100 + d * 10) + 's' })) },
+  { key:'year', label:'this year', human: c => String(c.y),
+    nowDig: c => +String(c.y)[3], parent: c => String(c.y).slice(0, 3),
+    cells: c => [0,1,2,3,4,5,6,7,8,9].map(d => ({ d, label: String(Math.floor(c.y / 10) * 10 + d) })) },
+  { key:'season', label:'this season', human: c => SEASONS[c.season - 1],
+    nowDig: c => c.season, parent: c => String(c.y),
+    cells: c => [1,2,3,4].map(d => ({ d, label: SEASONS_S[d - 1] })) },
+  { key:'month', label:'this month', human: c => MN[c.m0],
+    nowDig: c => c.mis, parent: c => c.addrs.season,
+    cells: c => [1,2,3].map(d => ({ d, label: MN[(c.season - 1) * 3 + d - 1] })) },
+  { key:'week', label:'this week', human: c => c.bandStart + '–' + c.bandEnd + ' ' + MN[c.m0],
+    nowDig: c => c.band, parent: c => c.addrs.month,
+    cells: c => { const n = Math.ceil(daysInMonth(c.y, c.m0) / 7); const out = [];
+      for (let d = 1; d <= n; d++) out.push({ d, label: ((d - 1) * 7 + 1) + '–' + Math.min(d * 7, daysInMonth(c.y, c.m0)) + ' ' + MN[c.m0].slice(0, 3) });
+      return out; } },
+  { key:'day', label:'today', human: c => c.weekday + ' ' + c.d,
+    nowDig: c => c.dib, parent: c => c.addrs.week,
+    cells: c => { const out = []; const last = c.bandEnd - c.bandStart + 1;
+      for (let d = 1; d <= last; d++){ const date = c.bandStart + d - 1;
+        out.push({ d, label: WD[new Date(Date.UTC(c.y, c.m0, date)).getUTCDay()].slice(0, 3) + ' ' + date }); }
+      return out; } },
+  { key:'gathering', label:'this gathering', human: c => DAY_PARTS[c.gath - 1],
+    nowDig: c => c.gath, parent: c => c.addrs.day,
+    cells: c => [1,2,3,4,5,6,7,8,9].map(d => ({ d, label: DAY_PARTS[d - 1] })) },
+  { key:'beat', label:'this beat', human: c => 'beat ' + c.beat + ' of 9',
+    nowDig: c => c.beat, parent: c => c.addrs.gathering,
+    cells: c => [1,2,3,4,5,6,7,8,9].map(d => ({ d, label: 'beat ' + d })) },
 ];
+
+/* ── display preferences — a reading posture, kept on the device, never in a block ── */
+const PREF_KEY = 'now-display';
+const DEFAULT_PREFS = {
+  rungs: { millennium:false, century:false, decade:false, year:true, season:true, month:true, week:true, day:true, gathering:true, beat:true },
+  panes: { projects:true, hand:true },
+  workings: false,
+};
+let PREFS = DEFAULT_PREFS;
+try {
+  const stored = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
+  if (stored) PREFS = { rungs: Object.assign({}, DEFAULT_PREFS.rungs, stored.rungs),
+                        panes: Object.assign({}, DEFAULT_PREFS.panes, stored.panes),
+                        workings: !!stored.workings };
+} catch(e){}
+if (localStorage.getItem('now-workings')) { PREFS.workings = true; localStorage.removeItem('now-workings'); }
+const savePrefs = () => localStorage.setItem(PREF_KEY, JSON.stringify(PREFS));
+const OPEN = new Set();   /* rungs unfolded into bands — session-only, folds on reload */
 
 /* ── state ── */
 let HANDLE = null;
@@ -308,15 +407,40 @@ function renderMoment(){
   $('m-block').textContent = HANDLE;
 }
 
-/* ── the ladder — the holder's own voicings, coarse framing fine ── */
+/* ── the ladder — the holder's own voicings, coarse framing fine. The label unfolds
+   a rung into its band of siblings; the words open the voicing sheet. ── */
+function renderBand(r){
+  const c = CLOCK, band = document.createElement('div');
+  band.className = 'band';
+  const prefix = r.parent(c), nowD = r.nowDig(c);
+  let nowCell = null;
+  r.cells(c).forEach(({ d, label }) => {
+    const addr = prefix + d;
+    const said = MIRROR && MIRROR_OK ? textAt(MIRROR, addr) : null;
+    const state = d < nowD ? 'past' : d > nowD ? 'future' : 'now';
+    const cell = document.createElement('div');
+    cell.className = 'cell ' + (state === 'now' ? 'is-now' : state) + (said ? '' : ' silent');
+    cell.innerHTML = '<span class="cl">' + esc(label) + '</span>' +
+      (said ? '<span class="cv">' + esc(said) + '</span>' : '') +
+      '<span class="work">' + pad10(addr) + '</span>';
+    cell.addEventListener('click', e => {
+      e.stopPropagation();
+      openSheet(r, addr, said, { hum: label, state });
+    });
+    if (state === 'now') nowCell = cell;
+    band.appendChild(cell);
+  });
+  requestAnimationFrame(() => { if (nowCell) nowCell.scrollIntoView({ block:'nearest', inline:'center' }); });
+  return band;
+}
 function renderLadder(){
   const c = CLOCK, box = $('ladder');
   box.innerHTML = '';
-  RUNGS.forEach(r => {
+  RUNGS.filter(r => PREFS.rungs[r.key]).forEach(r => {
     const addr = c.addrs[r.key];
     const said = MIRROR && MIRROR_OK ? textAt(MIRROR, addr) : null;
     const row = document.createElement('div');
-    row.className = 'rung' + (r.key === 'beat' ? ' is-now' : '');
+    row.className = 'rung' + (r.key === 'beat' ? ' is-now' : '') + (OPEN.has(r.key) ? ' open' : '');
     row.setAttribute('tabindex', '0');
     row.innerHTML =
       '<span class="when"><span class="lab">' + r.label + '</span><span class="hum">' + esc(r.human(c)) + '</span></span>' +
@@ -324,10 +448,16 @@ function renderLadder(){
         ? '<p class="txt">' + esc(said) + '</p>'
         : '<p class="txt quiet">quiet — tap to voice it</p>') +
         '<span class="work">' + pad10(addr) + '</span></span>';
+    row.querySelector('.when').addEventListener('click', e => {
+      e.stopPropagation();
+      if (OPEN.has(r.key)) OPEN.delete(r.key); else OPEN.add(r.key);
+      renderLadder();
+    });
     const open = () => openSheet(r, addr, said);
-    row.addEventListener('click', open);
+    row.querySelector('.say').addEventListener('click', open);
     row.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     box.appendChild(row);
+    if (OPEN.has(r.key)) box.appendChild(renderBand(r));
   });
 }
 
@@ -444,8 +574,18 @@ async function ensureMirror(){
 async function writeRung(addr, text){
   const ok = await ensureMirror();
   if (!ok){ if (!MIRROR_OK) toast('this mirror is off the clock (floor ≠ 10) — voice it from a mended one'); return false; }
+  /* NEVER a bare scalar over a node with children — the write merges, preserving
+     every digit beneath. And when the node's underscore is itself an object, that
+     is the zero-child (the period beneath, not a voicing slot): writing there would
+     swallow it, so the page refuses — the one honest limit of the zero-chain. */
+  const node = walkZeroAware(MIRROR, String(addr));
+  if (node && typeof node === 'object' && node['_'] !== undefined && typeof node['_'] !== 'string'){
+    toast('this rung shares its slot with the period beneath it on the zero-chain — voice a finer rung for now');
+    return false;
+  }
+  const content = (node && typeof node === 'object') ? Object.assign({}, node, { '_': text }) : { '_': text };
   /* full width on the wire — a short dotless form left-pads into the root chain (pscale://sundial 3.2) */
-  const body = { block: 'now:' + HANDLE, spindle: pad10(addr), content: text };
+  const body = { block: 'now:' + HANDLE, spindle: pad10(addr), content: content };
   const latch = localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
@@ -460,12 +600,20 @@ async function writeRung(addr, text){
   return true;
 }
 
-/* ── the voicing sheet ── */
+/* ── the voicing sheet — present, record, or commitment, by where the cell sits ── */
+const HINTS = {
+  now:    'Your current, at this resolution. It stands until the clock moves past it — nothing to clear.',
+  past:   'The record — what actually was, at this resolution. The clock will not come back here.',
+  future: 'The commitment — voiced ahead in your own words, revisable until it arrives.',
+};
 let SHEET = null;
-function openSheet(rung, addr, existing){
+function openSheet(rung, addr, existing, opts){
+  opts = opts || {};
+  const state = opts.state || 'now';
   SHEET = { rung, addr };
-  $('s-rung').textContent = rung.label;
-  $('s-hum').textContent = rung.human(CLOCK);
+  $('s-rung').textContent = state === 'now' ? rung.label : rung.key;
+  $('s-hum').textContent = opts.hum || rung.human(CLOCK);
+  $('s-hint').textContent = HINTS[state];
   $('s-addr').textContent = pad10(addr);
   $('s-text').value = existing || '';
   $('sheet').classList.remove('hidden');
@@ -493,12 +641,41 @@ $('s-save').addEventListener('click', async () => {
   renderLadder();
 });
 
-/* ── the workings toggle ── */
-$('btn-work').addEventListener('click', () => {
-  document.body.classList.toggle('workings');
-  localStorage.setItem('now-workings', document.body.classList.contains('workings') ? '1' : '');
-});
-if (localStorage.getItem('now-workings')) document.body.classList.add('workings');
+/* ── the display popup — one control; the page itself carries no buttons ── */
+function applyPrefs(){
+  document.body.classList.toggle('workings', !!PREFS.workings);
+  $('pane-projects').classList.toggle('hidden', !PREFS.panes.projects);
+  $('pane-hand').classList.toggle('hidden', !PREFS.panes.hand);
+}
+function buildPop(){
+  const rbox = $('pop-rungs'); rbox.innerHTML = '';
+  RUNGS.forEach(r => {
+    const l = document.createElement('label');
+    l.innerHTML = '<input type="checkbox"' + (PREFS.rungs[r.key] ? ' checked' : '') + '> ' +
+      r.key + ' <span class="hint">' + esc(r.human(CLOCK)) + '</span>';
+    l.querySelector('input').addEventListener('change', e => {
+      PREFS.rungs[r.key] = e.target.checked; savePrefs(); renderLadder();
+    });
+    rbox.appendChild(l);
+  });
+  const pbox = $('pop-panes'); pbox.innerHTML = '';
+  [['projects', 'mine at this beat — the chosen projects at today'],
+   ['hand', 'in hand — the cards being done']].forEach(([k, txt]) => {
+    const l = document.createElement('label');
+    l.innerHTML = '<input type="checkbox"' + (PREFS.panes[k] ? ' checked' : '') + '> ' + txt;
+    l.querySelector('input').addEventListener('change', e => {
+      PREFS.panes[k] = e.target.checked; savePrefs(); applyPrefs();
+      if (e.target.checked){ if (k === 'projects') renderProjects(); else renderHand(); }
+    });
+    pbox.appendChild(l);
+  });
+  $('pop-work').checked = !!PREFS.workings;
+}
+$('pop-work').addEventListener('change', e => { PREFS.workings = e.target.checked; savePrefs(); applyPrefs(); });
+const closePop = () => { $('pop').classList.add('hidden'); $('pop-back').classList.add('hidden'); };
+$('btn-display').addEventListener('click', () => { buildPop(); $('pop').classList.remove('hidden'); $('pop-back').classList.remove('hidden'); });
+$('pop-close').addEventListener('click', closePop);
+$('pop-back').addEventListener('click', closePop);
 
 /* ── boot ── */
 async function boot(){
@@ -517,13 +694,14 @@ async function boot(){
   $('bar-next').href = '/next/' + encodeURIComponent(HANDLE);
   $('f-morning').href = '/morning/' + encodeURIComponent(HANDLE);
   $('f-next').href = '/next/' + encodeURIComponent(HANDLE);
+  applyPrefs();
   renderMoment();
   renderLadder();               /* first paint — quiet rungs while the mirror loads */
   MIRROR = await readBlock('now:' + HANDLE).catch(() => null);
   if (MIRROR) MIRROR_OK = floorOf(MIRROR) === 10;
   renderLadder();
-  renderProjects();
-  renderHand();
+  if (PREFS.panes.projects) renderProjects();
+  if (PREFS.panes.hand) renderHand();
 }
 boot();
 
