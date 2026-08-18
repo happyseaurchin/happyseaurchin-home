@@ -101,6 +101,19 @@
   .toward b{color:var(--solid);font-weight:400}
   .rowlab{max-width:720px;margin:0 auto;padding:4px 18px 0;font-family:var(--mono);font-size:10.5px;
     letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim)}
+  .rw.off{display:none}
+  body.hidebv .b.bv{display:none}
+  body.hidebc .b.bc{display:none}
+
+  /* ── the display popup — rows and counts; one control so the page itself stays
+   * clean, and each reader composes the dashboard they want (same organ as /now) ── */
+  .disp{position:fixed;top:52px;right:14px;z-index:20;background:var(--deep);border:1px solid var(--line-strong);
+    border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:6px;min-width:200px;
+    box-shadow:0 10px 30px rgba(0,0,0,0.35)}
+  .disp .sub{margin:4px 0 2px}
+  .disp label{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--vapour);cursor:pointer}
+  .disp label input{accent-color:var(--liquid);margin:0}
+  .disp .note{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);line-height:1.5;max-width:24ch;margin-top:6px}
   .rack .carousel{padding-top:6px;padding-bottom:10px}
   .rcard{flex:0 0 66vw;max-width:300px;scroll-snap-align:center;cursor:pointer;
     background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.4) 0%,rgba(var(--card-rgb),0.4) 100%);
@@ -268,9 +281,24 @@
   <button id="btn-latch" title="your keeper key for this spine — lets you edit what’s written">key</button>
   <button id="btn-mirror" title="show links to the mirror — the live shared surface">mirror</button>
   <button id="btn-cast" title="everyone’s voices, or the cast’s — a view, never a gate">everyone</button>
+  <button id="btn-display" title="choose which rows and counts this page shows — your dashboard, kept on this device">display</button>
   <button id="btn-work" title="show the address each card stands at">address</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
+</div>
+
+<div id="disp" class="disp hidden">
+  <span class="sub">rows</span>
+  <label><input type="checkbox" data-row="ce"> century</label>
+  <label><input type="checkbox" data-row="de"> decade</label>
+  <label><input type="checkbox" data-row="y"> year</label>
+  <label><input type="checkbox" data-row="m"> month</label>
+  <label><input type="checkbox" data-row="w"> week</label>
+  <label><input type="checkbox" data-row="d"> day</label>
+  <span class="sub">counts on the cards</span>
+  <label><input type="checkbox" data-badge="voices"> voices</label>
+  <label><input type="checkbox" data-badge="cards"> cards</label>
+  <span class="note">kept on this device — your reading posture, never written to the beach</span>
 </div>
 
 <!-- no handle: ask -->
@@ -302,10 +330,12 @@
     </div>
     <p class="toward" id="toward"></p>
     <div class="rack" id="rack">
-      <div class="rowlab">year</div><div class="carousel" id="row-y"></div>
-      <div class="rowlab">month</div><div class="carousel" id="row-m"></div>
-      <div class="rowlab">week</div><div class="carousel" id="row-w"></div>
-      <div class="rowlab">day</div><div class="carousel" id="row-d"></div>
+      <div class="rw" id="rw-ce"><div class="rowlab">century</div><div class="carousel" id="row-ce"></div></div>
+      <div class="rw" id="rw-de"><div class="rowlab">decade</div><div class="carousel" id="row-de"></div></div>
+      <div class="rw" id="rw-y"><div class="rowlab">year</div><div class="carousel" id="row-y"></div></div>
+      <div class="rw" id="rw-m"><div class="rowlab">month</div><div class="carousel" id="row-m"></div></div>
+      <div class="rw" id="rw-w"><div class="rowlab">week</div><div class="carousel" id="row-w"></div></div>
+      <div class="rw" id="rw-d"><div class="rowlab">day</div><div class="carousel" id="row-d"></div></div>
     </div>
   </section>
 
@@ -435,6 +465,34 @@ let MODE = 'clock';                  /* 'clock' — a floor-10 sundial spine wal
 const wireAddr = a => MODE === 'clock' ? pad10(a) : String(a);   /* full width is the clock's convention; a tree writes its digits bare */
 let BUSY = false;
 const $ = id => document.getElementById(id);
+
+/* ── display preferences — a reading posture, kept on the device, never in a
+ * block; the same organ /now grew, so a reader composes their own dashboard
+ * instead of everyone getting one fixed page ── */
+const PREF_KEY = 'walk-display';
+const DEFAULT_PREFS = {
+  rows: { ce:false, de:true, y:true, m:true, w:true, d:true },
+  badges: { voices:true, cards:true },
+};
+let PREFS = DEFAULT_PREFS;
+try {
+  const stored = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
+  if (stored) PREFS = { rows: Object.assign({}, DEFAULT_PREFS.rows, stored.rows),
+                        badges: Object.assign({}, DEFAULT_PREFS.badges, stored.badges) };
+} catch(e){}
+const savePrefs = () => localStorage.setItem(PREF_KEY, JSON.stringify(PREFS));
+function applyDisplay(){
+  for (const k of Object.keys(PREFS.rows)){
+    const el = $('rw-' + k);
+    if (el){ const was = el.classList.contains('off'); el.classList.toggle('off', !PREFS.rows[k]);
+      if (was && PREFS.rows[k]) positionRow(k); }
+  }
+  document.body.classList.toggle('hidebv', !PREFS.badges.voices);
+  document.body.classList.toggle('hidebc', !PREFS.badges.cards);
+}
+/* human names are ORDINAL — the period being filled — while the digits stay the
+ * year's own; the digit is exact, the label is human (pscale://sundial 2.3) */
+const ORD = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th');
 
 let toastT = null;
 function toast(msg, err){
@@ -785,7 +843,7 @@ function lensText(addr){
  * everyone else proposes in voices. Rungs away from now keep the plain line —
  * an address that merely waits is not asking anybody for anything. */
 function inviteAt(lv, isNow){
-  const what = lv === 'y' ? 'this year' : lv === 'm' ? 'this month' : lv === 'w' ? 'this week' : lv === 'd' ? 'today' : null;
+  const what = lv === 'ce' ? 'this century' : lv === 'de' ? 'this decade' : lv === 'y' ? 'this year' : lv === 'm' ? 'this month' : lv === 'w' ? 'this week' : lv === 'd' ? 'today' : null;
   if (LENS === 'mine'){
     if (!isNow || !what) return 'you have not voiced here';
     return 'you have not voiced ' + what + ' — tap twice and say what it is toward';
@@ -796,7 +854,7 @@ function inviteAt(lv, isNow){
 }
 function rcard(label, addr, isSel, isNow, data){
   const t = lensText(addr);
-  const lv = (String(data).match(/data-lv="(\w)"/) || [])[1];
+  const lv = (String(data).match(/data-lv="(\w+)"/) || [])[1];
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
@@ -807,10 +865,25 @@ function rcard(label, addr, isSel, isNow, data){
 /* ── the rows. Each shows its FULL sibling set — every month of the year, every
  * year of the decade — so nothing vanishes as you click. A click highlights in
  * place and re-renders only the rows BENEATH; a row never scrolls itself. ── */
-const LEVELS = ['y', 'm', 'w', 'd'];
+const LEVELS = ['ce', 'de', 'y', 'm', 'w', 'd'];
 function buildRow(lv){
   const cards = [];
-  if (lv === 'y'){
+  if (lv === 'ce'){
+    /* the centuries of the current millennium. THE ZERO-DIGIT COST (sundial 3.4):
+     * a century address like 20 collapses on the wire to 2 — the millennium node —
+     * so this row READS (the voice-descent shows what stands coarsest) and STANDS,
+     * but never writes; the sheet guards the pen at this rung so nothing beneath
+     * is ever eaten. /now holds the same rung root-backed, which is the model. */
+    const m = Math.floor(SEL.y / 1000);
+    for (let c = 0; c <= 9; c++)
+      cards.push(rcard(ORD(m * 10 + c + 1) + ' century', String(m) + c, c === Math.floor(SEL.y / 100) % 10,
+        m * 10 + c === Math.floor(TODAY.y / 100), 'data-lv="ce" data-c="' + c + '"'));
+  } else if (lv === 'de'){
+    const c2 = Math.floor(SEL.y / 100);
+    for (let d = 0; d <= 9; d++)
+      cards.push(rcard('the ' + (c2 * 100 + d * 10) + 's', String(c2) + d, d === Math.floor(SEL.y / 10) % 10,
+        c2 * 10 + d === Math.floor(TODAY.y / 10), 'data-lv="de" data-d10="' + d + '"'));
+  } else if (lv === 'y'){
     const d0 = Math.floor(SEL.y / 10) * 10;
     cards.push(rcard('‹ ' + (d0 - 1), yearAddr(d0 - 1), false, d0 - 1 === TODAY.y, 'data-lv="y" data-y="' + (d0 - 1) + '"'));
     for (let y = d0; y < d0 + 10; y++)
@@ -840,6 +913,8 @@ function positionRow(lv){
   if (el) c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.offsetWidth) / 2, behavior: 'auto' });
 }
 function selMatches(lv, el){
+  if (lv === 'ce') return +el.dataset.c === Math.floor(SEL.y / 100) % 10;
+  if (lv === 'de') return +el.dataset.d10 === Math.floor(SEL.y / 10) % 10;
   if (lv === 'y') return +el.dataset.y === SEL.y;
   if (lv === 'm') return +el.dataset.m0 === SEL.m0;
   if (lv === 'w') return +el.dataset.band === SEL.band;
@@ -869,7 +944,7 @@ function renderRack(){
   $('toward').innerHTML = tw
     ? 'toward · <b>' + esc(short(tw, 150)) + '</b>'
     : '<span class="silent">nothing written above today yet — stand at a year or a month and say what this is toward</span>';
-  renderRowsFrom('y');
+  renderRowsFrom('ce');
 }
 /* ── the tree rack — the same rows, grown from the spine's own branches: row one
  * is the stems, each further row the children of the branch chosen above it ── */
@@ -911,7 +986,15 @@ $('rack').addEventListener('click', e => {
     return;
   }
   const again = selMatches(lv, card) && SEL.level === lv;   /* tapping where you already stand */
-  if (lv === 'y'){
+  if (lv === 'ce'){
+    const s = String(SEL.y).split(''); s[1] = card.dataset.c; SEL.y = +s.join('');
+    SEL.level = 'ce';
+    paintSel('ce'); renderRowsFrom('de');
+  } else if (lv === 'de'){
+    const s = String(SEL.y).split(''); s[2] = card.dataset.d10; SEL.y = +s.join('');
+    SEL.level = 'de';
+    paintSel('de'); renderRowsFrom('y');
+  } else if (lv === 'y'){
     const y = +card.dataset.y;
     const crossed = Math.floor(y / 10) !== Math.floor(SEL.y / 10);
     SEL.y = y; SEL.level = 'y';
@@ -947,6 +1030,8 @@ function futureDay(){
 /* where you stand follows the deepest card you touched — year, month, week or day */
 function selAddr(){
   if (SEL.level === 't') return SEL.path.join('');
+  if (SEL.level === 'ce') return String(SEL.y).slice(0, 2);
+  if (SEL.level === 'de') return String(SEL.y).slice(0, 3);
   if (SEL.level === 'y') return yearAddr(SEL.y);
   if (SEL.level === 'm') return monthAddr(SEL.y, SEL.m0);
   if (SEL.level === 'w') return weekAddr(SEL.y, SEL.m0, SEL.band);
@@ -957,6 +1042,8 @@ function selLabel(){
     const t = textAt(SPINE, SEL.path.join(''));
     return '\u00b7' + SEL.path.join('\u00b7') + (t ? ' \u2014 ' + short(t, 60) : '');
   }
+  if (SEL.level === 'ce') return 'the ' + ORD(Math.floor(SEL.y / 100) + 1) + ' century';
+  if (SEL.level === 'de') return 'the ' + Math.floor(SEL.y / 10) * 10 + 's';
   if (SEL.level === 'y') return String(SEL.y);
   if (SEL.level === 'm') return MN[SEL.m0] + ' ' + SEL.y;
   if (SEL.level === 'w'){
@@ -1001,7 +1088,15 @@ function paintSheet(){
   const b = [];
   if (SHEET.pane === 'text'){
     b.push('<div class="fulltext">' + esc(textAt(SPINE, addr) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
-    b.push('<button class="editbtn" id="sp-edit">edit what’s written — keeper’s key</button>');
+    /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
+     * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
+     * so a write at this rung would land a level up and eat what stands beneath —
+     * the erasure /now met on 2026-08-18 and mended with a root-backed compose.
+     * Until that compose reaches this page, reading stands and the pen waits. */
+    if (SEL.level === 'ce')
+      b.push('<span class="silent">the century shares its wire address with the millennium, so this page keeps the pen sheathed at this rung — nothing beneath is ever eaten; voice the coarse rungs at /now, which holds them the safe way</span>');
+    else
+      b.push('<button class="editbtn" id="sp-edit">edit what’s written — keeper’s key</button>');
     b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(wireAddr(addr)) +
       ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
@@ -1017,7 +1112,9 @@ function paintSheet(){
       b.push('<span class="silent">' + lens.aside.length + (lens.aside.length === 1 ? ' voice' : ' voices') +
         ' set aside by the formal lens — ' + esc(lens.aside.map(v => whoName(v.who)).join(', ')) +
         ' · not in the cast, and still standing at this point</span>');
-    if (HANDLE)
+    if (HANDLE && SEL.level === 'ce')
+      b.push('<div class="mirrorbox"><span class="hint">the century shares its wire address with the millennium (sundial 3.4), so a mirror write here would land a rung up — voice this stretch at /now, which holds the coarse rungs the safe way</span></div>');
+    else if (HANDLE)
       b.push('<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
         '<textarea id="mir-text" placeholder="a comment, or a suggestion to change what’s written — yours, at this point"></textarea>' +
         '<div class="row"><span class="hint">signed with your key, so it stays yours' +
@@ -1048,7 +1145,7 @@ function paintSheet(){
     const h = prompt('Your handle — the walk reloads with you in it:');
     if (h && h.trim()) location.href = '/walk/' + encodeURIComponent(VENTURE) + '/' + encodeURIComponent(h.trim().replace(/[^a-zA-Z0-9 _-]/g, ''));
   });
-  if (SHEET.pane === 'voices' && HANDLE){
+  if (SHEET.pane === 'voices' && HANDLE && $('mir-go')){
     const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
     const own = mine ? (textAt(mine, addr) || '') : '';
     if (own){
@@ -1084,7 +1181,7 @@ function paintSheet(){
       finally { BUSY = false; const g = document.getElementById('mir-go'); if (g) g.disabled = false; }
     });
   }
-  if (SHEET.pane === 'text'){
+  if (SHEET.pane === 'text' && $('sp-edit')){
     $('sp-edit').addEventListener('click', () => {
       const cur = textAt(SPINE, addr) || '';
       $('sh-body').innerHTML = '<div class="spineedit">' +
@@ -1113,7 +1210,7 @@ function paintSheet(){
       if (!t){ toast('a card needs words', true); return; }
       /* born at a point of this family means attached to this family — a day-level
        * add carries the family aim, finer levels carry their stretch */
-      const suffix = SEL.level === 't' ? ' — toward ' + VENTURE
+      const suffix = SEL.level === 't' || SEL.level === 'ce' || SEL.level === 'de' ? ' — toward ' + VENTURE
         : SEL.level === 'd' ? ' — toward ' + VENTURE
         : SEL.level === 'w' ? (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? ' — toward this week' : ' — toward ' + selLabel())
         : SEL.level === 'm' ? ' — toward ' + MN[SEL.m0]
@@ -1140,6 +1237,19 @@ $('sh-tabs').addEventListener('click', e => {
   SHEET.pane = b.dataset.p; paintSheet();
 });
 /* ── chrome ── */
+document.getElementById('btn-display').addEventListener('click', e => { e.stopPropagation(); $('disp').classList.toggle('hidden'); });
+document.addEventListener('click', e => {
+  if (!e.target.closest('#disp') && !e.target.closest('#btn-display')) $('disp').classList.add('hidden');
+});
+$('disp').querySelectorAll('input[data-row]').forEach(cb => {
+  cb.checked = !!PREFS.rows[cb.dataset.row];
+  cb.addEventListener('change', () => { PREFS.rows[cb.dataset.row] = cb.checked; savePrefs(); applyDisplay(); });
+});
+$('disp').querySelectorAll('input[data-badge]').forEach(cb => {
+  cb.checked = !!PREFS.badges[cb.dataset.badge];
+  cb.addEventListener('change', () => { PREFS.badges[cb.dataset.badge] = cb.checked; savePrefs(); applyDisplay(); });
+});
+applyDisplay();
 document.getElementById('btn-work').addEventListener('click', () => document.body.classList.toggle('workings'));
 document.getElementById('btn-lens').addEventListener('click', () => {
   LENS = LENS === 'spine' ? 'mine' : 'spine';
