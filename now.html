@@ -277,17 +277,26 @@ function shallowVoice(node){
   const u = node['_'];
   return typeof u === 'string' ? (u.trim() || null) : null;
 }
-/* canonical walk: trailing zeros are floor padding, interior 0 steps into the underscore */
-function walkZeroAware(block, addr){
+/* EXACT walk — every digit is a step, a 0 steps into the underscore, and trailing
+   zeros are NOT stripped: the client can keep every rung separate even where the
+   wire's canonical form collapses (2000000000 → 2). Reads here; writes lift. */
+function walkExact(block, addr){
   let n = block;
-  for (const ch of String(addr).replace(/0+$/, '')){
+  for (const ch of String(addr)){
     if (!n || typeof n !== 'object') return undefined;
     n = (ch === '0') ? n['_'] : n[ch];
   }
   return n;
 }
 function textAt(block, addr){
-  return shallowVoice(walkZeroAware(block, addr));
+  return shallowVoice(walkExact(block, addr));
+}
+/* the millennium's underscore is the living century — never its own voice; a bare
+   string node is the one shape that truly voices the top rung (none does yet) */
+function rungText(block, addr, rungKey){
+  const n = walkExact(block, addr);
+  if (rungKey === 'millennium') return typeof n === 'string' ? (n.trim() || null) : null;
+  return shallowVoice(n);
 }
 const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : s; return d.innerHTML; };
 const $ = id => document.getElementById(id);
@@ -416,7 +425,7 @@ function renderBand(r){
   let nowCell = null;
   r.cells(c).forEach(({ d, label }) => {
     const addr = prefix + d;
-    const said = MIRROR && MIRROR_OK ? textAt(MIRROR, addr) : null;
+    const said = MIRROR && MIRROR_OK ? rungText(MIRROR, addr, r.key) : null;
     const state = d < nowD ? 'past' : d > nowD ? 'future' : 'now';
     const cell = document.createElement('div');
     cell.className = 'cell ' + (state === 'now' ? 'is-now' : state) + (said ? '' : ' silent');
@@ -438,7 +447,7 @@ function renderLadder(){
   box.innerHTML = '';
   RUNGS.filter(r => PREFS.rungs[r.key]).forEach(r => {
     const addr = c.addrs[r.key];
-    const said = MIRROR && MIRROR_OK ? textAt(MIRROR, addr) : null;
+    const said = MIRROR && MIRROR_OK ? rungText(MIRROR, addr, r.key) : null;
     const row = document.createElement('div');
     row.className = 'rung' + (r.key === 'beat' ? ' is-now' : '') + (OPEN.has(r.key) ? ' open' : '');
     row.setAttribute('tabindex', '0');
@@ -571,21 +580,60 @@ async function ensureMirror(){
   toast('mirror born, latched to ' + HANDLE);
   return true;
 }
+/* Compose a LOSSLESS write. The wire's canonical form strips trailing zeros, so an
+   address like 20 collapses to 2 — the millennium node — and a naive write there
+   replaces everything beneath (this ate a decade voicing on 2026-08-18; never again).
+   The compose walks the FRESH mirror exactly, merges at the terminal, and when the
+   wire cannot name the target (trailing-zero position, or a bare-string ancestor in
+   the path) it LIFTS: the write moves up to the nearest wire-addressable ancestor,
+   carrying everything that stands there inside it, strings wrapped as voicings.
+   Returns null when a write would displace a coarser voicing — refused, never eaten. */
+function composeWrite(addr, text){
+  const digits = String(addr).split('');
+  const nodes = []; let n = MIRROR;
+  for (const ch of digits){
+    n = (n && typeof n === 'object') ? (ch === '0' ? n['_'] : n[ch]) : undefined;
+    nodes.push(n);
+  }
+  const last = nodes[nodes.length - 1];
+  if (last && typeof last === 'object' && last['_'] !== undefined && typeof last['_'] !== 'string') return null;
+  let content = (last && typeof last === 'object') ? Object.assign({}, last, { '_': text }) : { '_': text };
+  let at = nodes.length - 1;
+  const needLift = () => {
+    if (at === 0) return false;
+    if (digits[at] === '0') return true;                                  /* the wire would strip it */
+    for (let i = 0; i < at; i++) if (typeof nodes[i] === 'string') return true;  /* string in the path */
+    return false;
+  };
+  while (needLift()){
+    const parent = nodes[at - 1];
+    const key = digits[at] === '0' ? '_' : digits[at];
+    let pc;
+    if (typeof parent === 'string'){
+      if (key === '_') return null;                                       /* one slot, already spoken for */
+      pc = { '_': parent };                                               /* the string stays, as the voicing */
+    } else {
+      pc = (parent && typeof parent === 'object') ? Object.assign({}, parent) : {};
+      if (key === '_' && typeof pc['_'] === 'string') return null;        /* would displace a coarser voicing */
+    }
+    pc[key] = content; content = pc; at -= 1;
+  }
+  return { spindle: pad10(digits.slice(0, at + 1).join('')), content };
+}
 async function writeRung(addr, text){
   const ok = await ensureMirror();
   if (!ok){ if (!MIRROR_OK) toast('this mirror is off the clock (floor ≠ 10) — voice it from a mended one'); return false; }
-  /* NEVER a bare scalar over a node with children — the write merges, preserving
-     every digit beneath. And when the node's underscore is itself an object, that
-     is the zero-child (the period beneath, not a voicing slot): writing there would
-     swallow it, so the page refuses — the one honest limit of the zero-chain. */
-  const node = walkZeroAware(MIRROR, String(addr));
-  if (node && typeof node === 'object' && node['_'] !== undefined && typeof node['_'] !== 'string'){
-    toast('this rung shares its slot with the period beneath it on the zero-chain — voice a finer rung for now');
+  /* the merge is only as true as the copy it merges from — fetch fresh, every time */
+  const fresh = await readBlock('now:' + HANDLE).catch(() => undefined);
+  if (fresh === undefined){ toast('the beach did not answer — nothing written'); return false; }
+  if (fresh !== null){ MIRROR = fresh; MIRROR_OK = floorOf(fresh) === 10; }
+  if (!MIRROR_OK){ toast('this mirror is off the clock (floor ≠ 10) — voice it from a mended one'); return false; }
+  const composed = composeWrite(String(addr), text);
+  if (!composed){
+    toast('that would displace words standing at a coarser rung — refused; the two-coordinate write is the proper fix');
     return false;
   }
-  const content = (node && typeof node === 'object') ? Object.assign({}, node, { '_': text }) : { '_': text };
-  /* full width on the wire — a short dotless form left-pads into the root chain (pscale://sundial 3.2) */
-  const body = { block: 'now:' + HANDLE, spindle: pad10(addr), content: content };
+  const body = { block: 'now:' + HANDLE, spindle: composed.spindle, content: composed.content };
   const latch = localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
@@ -631,6 +679,10 @@ $('s-save').addEventListener('click', async () => {
   if (!SHEET) return;
   const text = $('s-text').value.trim();
   if (!text){ closeSheet(); return; }
+  if (SHEET.rung.key === 'millennium'){
+    toast('the millennium’s slot is the living century — it waits for the two-coordinate write; nothing here will silently merge');
+    return;
+  }
   $('s-save').disabled = true;
   const ok = await writeRung(SHEET.addr, text);
   $('s-save').disabled = false;
