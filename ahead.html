@@ -189,12 +189,15 @@ function blankCard(p){
   const ta = document.createElement('textarea');
   ta.placeholder = '…';
   c.appendChild(ta);
+  let busy = false;  /* disabling the textarea fires its own blur — one commit, never two */
   const commit = async () => {
+    if (busy) return;
     const text = ta.value.trim();
     if (!text) return;
+    busy = true;
     ta.disabled = true;
     const ok = await land(p.d, text);
-    if (!ok){ ta.disabled = false; return; }
+    if (!ok){ busy = false; ta.disabled = false; return; }
     await refresh();
   };
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); commit(); } });
@@ -209,12 +212,15 @@ function editCard(cardEl, p, it){
   cardEl.innerHTML = '';
   cardEl.appendChild(ta);
   ta.focus();
+  let busy = false;  /* same guard — Enter disables, disabling blurs, blur must not re-commit */
   const commit = async () => {
+    if (busy) return;
     const text = ta.value.trim();
     if (text === it.text){ render(); return; }
+    busy = true;
     ta.disabled = true;
     const ok = await revise(it.addr, text);
-    if (!ok){ ta.disabled = false; return; }
+    if (!ok){ busy = false; ta.disabled = false; return; }
     await refresh();
   };
   ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); commit(); } });
