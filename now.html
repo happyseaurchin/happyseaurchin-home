@@ -157,6 +157,16 @@
   .pop button.ghost{background:none;border:1px solid var(--line);border-radius:8px;color:var(--vapour-dim);
     font-size:12px;padding:10px 16px;cursor:pointer;font-family:var(--mono)}
 
+  /* ── the crown — the holder's statement over everything, above the ladder ── */
+  .crown{padding:12px 12px 16px;margin:0 -12px 6px;border-radius:8px;cursor:pointer;border-bottom:1px solid var(--line)}
+  .crown:hover{background:rgba(var(--well-rgb),0.5)}
+  .crown .cl{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--solid);margin:0 0 6px}
+  .crown p{margin:0;white-space:pre-wrap;font-style:italic;color:var(--foam)}
+  .crown p.quiet{color:var(--vapour-dim)}
+
+  /* a refusal is a sentence, not a flash — it stands in the sheet until the sheet closes */
+  .sheet .refuse{font-size:13.5px;color:var(--solid);margin:0 0 12px;padding:10px 12px;border:1px solid rgba(var(--solid-rgb),0.35);border-radius:8px}
+
   @media (max-width:560px){
     .rung{flex-direction:column;gap:4px}
     .rung .when{width:auto;text-align:left;display:flex;gap:10px;align-items:baseline}
@@ -194,6 +204,7 @@
 
   <section class="pane" id="pane-ladder">
     <h2>the ladder — yours</h2>
+    <div id="crown"></div>
     <div id="ladder"></div>
   </section>
 
@@ -219,6 +230,7 @@
 <div id="sheet" class="sheet hidden" role="dialog" aria-modal="true">
   <h3>voice <b id="s-rung">—</b> — <span id="s-hum">—</span><span class="work"> · <span id="s-addr"></span></span></h3>
   <p class="hint" id="s-hint">Your current, at this resolution. It stands until the clock moves past it — nothing to clear.</p>
+  <p class="refuse hidden" id="s-refuse"></p>
   <textarea id="s-text" placeholder="in your own words…"></textarea>
   <div class="row">
     <span class="why" id="s-why">written to your own mirror · revisable forever · silence is honest</span>
@@ -414,6 +426,52 @@ function renderMoment(){
   $('m-beat').textContent = 'beat ' + c.beat + ' of 9';
   $('m-addr').textContent = pad10(c.addrs.beat);
   $('m-block').textContent = HANDLE;
+}
+
+/* ── the crown — the holder's statement over everything (function:now 5): the root
+   voicing, off the ladder entirely, sovereign, boilerplate owed to nobody ── */
+const CROWN = { key:'crown', label:'over everything', human: () => 'the whole clock' };
+function chainTerminal(block){
+  let n = block ? block['_'] : null;
+  while (n && typeof n === 'object') n = n['_'];
+  return typeof n === 'string' ? (n.trim() || null) : null;
+}
+function renderCrown(){
+  const box = $('crown');
+  const said = MIRROR && MIRROR_OK ? chainTerminal(MIRROR) : null;
+  /* the boilerplate a mirror is born with is not the holder's voice — show the invite */
+  const own = said && !/^MIRROR — /.test(said) ? said : null;
+  box.innerHTML = '<span class="cl">over everything</span>' + (own
+    ? '<p>' + esc(own) + '</p>'
+    : '<p class="quiet">quiet — the statement over the whole clock, in your own words</p>');
+  box.onclick = () => openSheet(CROWN, null, own, { hum: 'the whole clock', state: 'now' });
+}
+async function writeCrown(text){
+  const ok = await ensureMirror();
+  if (!ok) return 'the mirror could not be reached';
+  const fresh = await readBlock('now:' + HANDLE).catch(() => undefined);
+  if (fresh === undefined) return 'the beach did not answer — nothing written';
+  if (fresh !== null){ MIRROR = fresh; MIRROR_OK = floorOf(fresh) === 10; }
+  if (!MIRROR_OK) return 'this mirror is off the clock (floor ≠ 10) — mend it before crowning it';
+  /* rewrite the block WHOLE, terminal replaced, chain and every digit preserved —
+     a bare write at the root would collapse the floor (function:now 5) */
+  const clone = JSON.parse(JSON.stringify(MIRROR));
+  let n = clone;
+  while (n['_'] && typeof n['_'] === 'object') n = n['_'];
+  n['_'] = text;
+  const body = { block: 'now:' + HANDLE, content: clone, confirm: true };
+  const latch = localStorage.getItem(latchKey());
+  if (latch) body.secret = latch;
+  let w = await writeBlock(body);
+  if (lockRequired(w)){
+    const v = prompt('now:' + HANDLE + ' is latched — enter your key (kept on this device):');
+    if (v === null || !v.trim()) return 'nothing written';
+    body.secret = v.trim();
+    w = await writeBlock(body);
+    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+  }
+  if (!w.ok) return 'the beach refused it (' + w.status + ')';
+  return true;
 }
 
 /* ── the ladder — the holder's own voicings, coarse framing fine. The label unfolds
@@ -622,16 +680,15 @@ function composeWrite(addr, text){
 }
 async function writeRung(addr, text){
   const ok = await ensureMirror();
-  if (!ok){ if (!MIRROR_OK) toast('this mirror is off the clock (floor ≠ 10) — voice it from a mended one'); return false; }
+  if (!ok) return MIRROR_OK ? 'the mirror could not be reached' : 'this mirror is off the clock (floor ≠ 10) — mend it before voicing it';
   /* the merge is only as true as the copy it merges from — fetch fresh, every time */
   const fresh = await readBlock('now:' + HANDLE).catch(() => undefined);
-  if (fresh === undefined){ toast('the beach did not answer — nothing written'); return false; }
+  if (fresh === undefined) return 'the beach did not answer — nothing written';
   if (fresh !== null){ MIRROR = fresh; MIRROR_OK = floorOf(fresh) === 10; }
-  if (!MIRROR_OK){ toast('this mirror is off the clock (floor ≠ 10) — voice it from a mended one'); return false; }
+  if (!MIRROR_OK) return 'this mirror is off the clock (floor ≠ 10) — mend it before voicing it';
   const composed = composeWrite(String(addr), text);
   if (!composed){
-    toast('that would displace words standing at a coarser rung — refused; the two-coordinate write is the proper fix');
-    return false;
+    return 'that would displace words standing at a coarser rung — refused, nothing eaten; the two-coordinate write at the substrate is the proper fix';
   }
   const body = { block: 'now:' + HANDLE, spindle: composed.spindle, content: composed.content };
   const latch = localStorage.getItem(latchKey());
@@ -639,12 +696,12 @@ async function writeRung(addr, text){
   let w = await writeBlock(body);
   if (lockRequired(w)){
     const v = prompt('now:' + HANDLE + ' is latched — enter your key (kept on this device):');
-    if (v === null || !v.trim()) return false;
+    if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(body);
     if (w.ok) localStorage.setItem(latchKey(), v.trim());
   }
-  if (!w.ok){ toast('the beach refused it (' + w.status + ')'); return false; }
+  if (!w.ok) return 'the beach refused it (' + w.status + ')';
   return true;
 }
 
@@ -655,14 +712,24 @@ const HINTS = {
   future: 'The commitment — voiced ahead in your own words, revisable until it arrives.',
 };
 let SHEET = null;
+function refuseInSheet(msg){
+  $('s-refuse').textContent = msg;
+  $('s-refuse').classList.toggle('hidden', !msg);
+}
 function openSheet(rung, addr, existing, opts){
   opts = opts || {};
   const state = opts.state || 'now';
   SHEET = { rung, addr };
   $('s-rung').textContent = state === 'now' ? rung.label : rung.key;
   $('s-hum').textContent = opts.hum || rung.human(CLOCK);
-  $('s-hint').textContent = HINTS[state];
-  $('s-addr').textContent = pad10(addr);
+  $('s-hint').textContent = rung.key === 'crown'
+    ? 'The statement over the whole clock — the coarsest thing you have to say. It opens your mirror.'
+    : HINTS[state];
+  refuseInSheet(rung.key === 'millennium'
+    ? 'The millennium has no sentence-slot of its own: its underscore is the living century, occupied for as long as this century accumulates. Its voice is the crown above the ladder; past millennia voice freely at their numbered cells.'
+    : '');
+  $('s-save').disabled = rung.key === 'millennium';
+  $('s-addr').textContent = addr === null ? 'the root' : pad10(addr);
   $('s-text').value = existing || '';
   $('sheet').classList.remove('hidden');
   $('sheet-back').classList.remove('hidden');
@@ -679,17 +746,15 @@ $('s-save').addEventListener('click', async () => {
   if (!SHEET) return;
   const text = $('s-text').value.trim();
   if (!text){ closeSheet(); return; }
-  if (SHEET.rung.key === 'millennium'){
-    toast('the millennium’s slot is the living century — it waits for the two-coordinate write; nothing here will silently merge');
-    return;
-  }
   $('s-save').disabled = true;
-  const ok = await writeRung(SHEET.addr, text);
+  refuseInSheet('');
+  const res = SHEET.rung.key === 'crown' ? await writeCrown(text) : await writeRung(SHEET.addr, text);
   $('s-save').disabled = false;
-  if (!ok) return;
+  if (res !== true){ if (typeof res === 'string') refuseInSheet(res); return; }
   closeSheet();
   toast('voiced — it stands until the clock moves on');
   MIRROR = await readBlock('now:' + HANDLE).catch(() => MIRROR);
+  renderCrown();
   renderLadder();
 });
 
@@ -748,9 +813,11 @@ async function boot(){
   $('f-next').href = '/next/' + encodeURIComponent(HANDLE);
   applyPrefs();
   renderMoment();
+  renderCrown();
   renderLadder();               /* first paint — quiet rungs while the mirror loads */
   MIRROR = await readBlock('now:' + HANDLE).catch(() => null);
   if (MIRROR) MIRROR_OK = floorOf(MIRROR) === 10;
+  renderCrown();
   renderLadder();
   if (PREFS.panes.projects) renderProjects();
   if (PREFS.panes.hand) renderHand();
