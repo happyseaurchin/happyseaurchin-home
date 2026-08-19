@@ -226,7 +226,7 @@
   <p class="refuse hidden" id="s-refuse"></p>
   <textarea id="s-text" placeholder="in your own words…"></textarea>
   <div class="row">
-    <span class="why" id="s-why">written to your own mirror · revisable forever · silence is honest</span>
+    <span class="why" id="s-why">Enter voices it · Shift+Enter breaks a line · Esc leaves it</span>
     <button class="ghost" id="s-cancel">leave it</button>
     <button class="save" id="s-save">voice it</button>
   </div>
@@ -491,7 +491,11 @@ function renderBand(r){
     if (state === 'now') nowCell = cell;
     band.appendChild(cell);
   });
-  requestAnimationFrame(() => { if (nowCell) nowCell.scrollIntoView({ block:'nearest', inline:'center' }); });
+  /* centre the now-cell by the band's own scroll only — never scrollIntoView,
+     which climbs ancestors and jumps the page (the eyes stay where they were) */
+  requestAnimationFrame(() => {
+    if (nowCell) band.scrollLeft = Math.max(0, nowCell.offsetLeft - (band.clientWidth - nowCell.offsetWidth) / 2);
+  });
   return band;
 }
 function renderLadder(){
@@ -511,8 +515,18 @@ function renderLadder(){
         '<span class="work">' + pad10(addr) + '</span></span>';
     row.querySelector('.when').addEventListener('click', e => {
       e.stopPropagation();
-      if (OPEN.has(r.key)) OPEN.delete(r.key); else OPEN.add(r.key);
-      renderLadder();
+      /* unfold in place — the band appears below the row and pushes what follows
+         down; no rebuild, no scroll change, the label stays under the eyes */
+      if (OPEN.has(r.key)){
+        OPEN.delete(r.key);
+        row.classList.remove('open');
+        const next = row.nextElementSibling;
+        if (next && next.classList.contains('band')) next.remove();
+      } else {
+        OPEN.add(r.key);
+        row.classList.add('open');
+        row.insertAdjacentElement('afterend', renderBand(r));
+      }
     });
     const open = () => r.key === 'millennium'
       ? openSheet(r, null, said, { root: true })
@@ -736,6 +750,11 @@ function closeSheet(){
 }
 $('s-cancel').addEventListener('click', closeSheet);
 $('sheet-back').addEventListener('click', closeSheet);
+/* the keys: Enter voices now, Shift+Enter breaks a line, Esc leaves it */
+$('s-text').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('s-save').click(); }
+  else if (e.key === 'Escape'){ e.preventDefault(); closeSheet(); }
+});
 $('s-save').addEventListener('click', async () => {
   if (!SHEET) return;
   const text = $('s-text').value.trim();
