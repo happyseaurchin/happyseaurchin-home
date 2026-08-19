@@ -49,3 +49,18 @@
     document.body.appendChild(b);
   });
 })();
+
+/* every page ends the same way: the door to a now of your own */
+(function(){
+  document.addEventListener('DOMContentLoaded', function(){
+    if (document.getElementById('create-your-own')) return;
+    var p = document.createElement('p');
+    p.id = 'create-your-own';
+    p.style.cssText = 'text-align:center;font-family:var(--mono,monospace);font-size:12px;letter-spacing:0.08em;padding:28px 16px 34px;margin:0;';
+    var a = document.createElement('a');
+    a.href = 'https://happyseaurchin.com/now';
+    a.textContent = 'create your own \u2192';
+    p.appendChild(a);
+    document.body.appendChild(p);
+  });
+})();
