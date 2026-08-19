@@ -104,7 +104,21 @@
   .sheet-back{position:fixed;inset:0;background:rgba(0,0,0,0.12);z-index:30}
   .sheet{position:fixed;left:0;right:0;bottom:0;z-index:31;background:var(--well, #10202a);
     background:rgba(var(--well-rgb),0.98);border-top:1px solid var(--line-strong);
-    border-radius:14px 14px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto}
+    border-radius:14px 14px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));max-width:720px;margin:0 auto;
+    max-height:85dvh;overflow-y:auto}
+
+  /* the field at this slot — one quiet line; the fold opens ABOVE the input, so the
+     sheet grows upward and the writing area never moves */
+  .sheet .eve{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;
+    color:var(--vapour-dim);margin:0 0 10px;cursor:pointer}
+  .sheet .eve:hover{color:var(--liquid)}
+  .sheet .eve.on{color:var(--solid)}
+  .foldbox{border:1px solid var(--line);border-radius:8px;padding:12px 14px;margin:0 0 12px;
+    max-height:32dvh;overflow-y:auto;background:rgba(0,0,0,0.15)}
+  .foldbox .who{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:0.14em;
+    text-transform:uppercase;color:var(--solid);margin:0 0 5px}
+  .foldbox p{margin:0 0 12px;font-size:14px;line-height:1.5;color:var(--vapour);white-space:pre-wrap}
+  .foldbox p:last-child{margin-bottom:0}
   .sheet h3{font-family:var(--mono);font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 4px}
   .sheet h3 b{color:var(--solid)}
   .sheet .hint{font-size:14px;color:var(--vapour);margin:0 0 12px}
@@ -224,6 +238,8 @@
   <h3>voice <b id="s-rung">—</b> — <span id="s-hum">—</span><span class="work"> · <span id="s-addr"></span></span></h3>
   <p class="hint" id="s-hint">Your current, at this resolution. It stands until the clock moves past it — nothing to clear.</p>
   <p class="refuse hidden" id="s-refuse"></p>
+  <p class="eve hidden" id="s-eve" tabindex="0">everyone ·</p>
+  <div class="foldbox hidden" id="s-fold"></div>
   <textarea id="s-text" placeholder="in your own words…"></textarea>
   <div class="row">
     <span class="why" id="s-why">Enter voices it · Shift+Enter breaks a line · Esc leaves it</span>
@@ -402,6 +418,7 @@ let HANDLE = null;
   HANDLE = ((m && decodeURIComponent(m[1])) || q || '').replace(/[^a-z0-9 _-]/gi, '').trim() || null;
 }
 let MIRROR = null, MIRROR_OK = true;  /* MIRROR_OK false = exists but off the clock (floor ≠ 10) */
+let FOLD_PUB = null, FOLD_MINE = null; /* the standing folds — bare now (everyone), tree:now:<handle> (yours); read-only here */
 let CLOCK = clockNow();
 const latchKey = () => 'now-latch:' + HANDLE;
 
@@ -737,6 +754,13 @@ function openSheet(rung, addr, existing, opts){
     : HINTS[state];
   refuseInSheet('');
   $('s-save').disabled = false;
+  /* the field at this slot — the line shows only when a fold actually stands (read at boot) */
+  const fp = (!opts.root && addr != null && FOLD_PUB) ? shallowVoice(walkExact(FOLD_PUB, String(addr))) : null;
+  const fm = (!opts.root && addr != null && FOLD_MINE) ? shallowVoice(walkExact(FOLD_MINE, String(addr))) : null;
+  SHEET.fold = { pub: fp, mine: fm };
+  $('s-eve').classList.toggle('hidden', !(fp || fm));
+  $('s-eve').classList.remove('on');
+  $('s-fold').classList.add('hidden');
   $('s-addr').textContent = opts.root ? 'the root' : pad10(addr);
   $('s-text').value = existing || '';
   $('sheet').classList.remove('hidden');
@@ -750,6 +774,19 @@ function closeSheet(){
 }
 $('s-cancel').addEventListener('click', closeSheet);
 $('sheet-back').addEventListener('click', closeSheet);
+/* the field line — tap to open the standing fold ABOVE the input; the sheet grows
+   upward (bottom-anchored), so the writing area never moves under the hands */
+$('s-eve').addEventListener('click', () => {
+  const f = (SHEET && SHEET.fold) || {};
+  const open = $('s-fold').classList.contains('hidden');
+  if (open){
+    $('s-fold').innerHTML =
+      (f.pub ? '<span class="who">everyone</span><p>' + esc(f.pub) + '</p>' : '') +
+      (f.mine ? '<span class="who">yours</span><p>' + esc(f.mine) + '</p>' : '');
+  }
+  $('s-fold').classList.toggle('hidden', !open);
+  $('s-eve').classList.toggle('on', open);
+});
 /* the keys: Enter voices now, Shift+Enter breaks a line, Esc leaves it */
 $('s-text').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('s-save').click(); }
@@ -832,6 +869,9 @@ async function boot(){
   renderLadder();
   if (PREFS.panes.projects) renderProjects();
   if (PREFS.panes.hand) renderHand();
+  /* the standing folds, read once per visit — passive here; synthesis lives at the LLM doors */
+  readBlock('now').then(b => { FOLD_PUB = b; }).catch(() => {});
+  readBlock('tree:now:' + HANDLE).then(b => { FOLD_MINE = b; }).catch(() => {});
 }
 boot();
 
