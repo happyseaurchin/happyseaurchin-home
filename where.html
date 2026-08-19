@@ -48,6 +48,8 @@
   .pchip .pdot{width:18px;height:18px;border-radius:50%;background:var(--solid);color:var(--abyss);
     display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:10.5px;text-transform:uppercase}
   .pchip .at{color:var(--vapour-dim)}
+  .pchip.dim{opacity:0.62}
+  .pchip.dim .pdot{animation:none}
   .eve .quiet{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);font-style:normal}
 
   /* the dial — on its own card, so the face reads in both themes */
@@ -106,6 +108,7 @@
   <span class="dot"></span>
   <span>where · <b id="b-fam">—</b></span>
   <span class="spacer"></span>
+  <a id="b-reread" role="button" tabindex="0" title="read the beach again — this page never polls">↻ re-read</a>
   <a id="b-walk" target="_blank" rel="noopener">walk ↗</a>
   <a id="b-mirror" target="_blank" rel="noopener">mirror ↗</a>
 </div>
@@ -165,13 +168,6 @@ async function readIndex(){
   if (!r.ok) throw new Error('beach index failed: ' + r.status);
   return r.json();
 }
-async function writeBlock(body){
-  const r = await fetch(BEACH, { method:'POST', cache:'no-store',
-    headers:{'Content-Type':'application/json', Accept:'application/json'},
-    body: JSON.stringify(body) });
-  let d = null; try { d = await r.json(); } catch(e){}
-  return { ok: r.ok, status: r.status, data: d };
-}
 
 /* ── pscale walking (walk.html's dialect, verbatim) ── */
 function floorOf(block){
@@ -206,7 +202,6 @@ const esc = s => { const d = document.createElement('span'); d.textContent = s =
 const short = (s, n) => { s = s || ''; return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + ' …' : s; };
 const strip0 = a => String(a).replace(/0+$/, '');
 const pad10 = a => String(a).padEnd(10, '0');
-const iso = () => new Date().toISOString();
 function ago(ts){ const t = Date.parse(ts); if (!Number.isFinite(t)) return '';
   const s = Math.max(0, (Date.now() - t) / 1000);
   if (s < 90) return 'now';
@@ -310,66 +305,125 @@ const talkUnder    = (addr, hours) => TALK.filter(v => { const at = strip0(v.at 
 const presentUnder = addr => PRESENT.filter(p => { const at = strip0(p.at || '');
   return !addr || (at && at.startsWith(addr)); });
 
-/* ── the dial ── */
-const CX = 320, CY = 320, R_CENTRE = 84, RING_W = 58, RING_GAP = 7, PAD = 0.006;
+/* ── the dial ─────────────────────────────────────────────────────────────
+   Layout and rendering are separated so the zoom can MOVE: a layout places
+   cells in fractions of the full turn [0,1) at their TRUE calendar (or
+   branch) positions, and a render maps those fractions through a WINDOW.
+   At rest the window is the whole face. Stepping in tweens the window from
+   the tapped part's own arc out to the whole face — the sector swells to
+   become the dial, which is the motion the good sunbursts have — and
+   stepping out runs it backwards. No library: we own the geometry, so the
+   tween is forty lines. ── */
+const CX = 320, CY = 320, R_IN = 84, RING_W = 58, RING_GAP = 7, PAD = 0.0012;
+const R_OUT = R_IN + 2 * RING_GAP + 2 * RING_W;
+const REST = { f0: 0, f1: 1, r0: R_IN, r1: R_OUT };
+let CELLS = [];
+let TWEENING = false;
 function arcPath(r0, r1, a0, a1){
   const large = (a1 - a0) > Math.PI ? 1 : 0;
   const p = (r, a) => (CX + r * Math.cos(a)).toFixed(2) + ' ' + (CY + r * Math.sin(a)).toFixed(2);
   return 'M' + p(r1, a0) + 'A' + r1 + ' ' + r1 + ' 0 ' + large + ' 1 ' + p(r1, a1) +
          'L' + p(r0, a1) + 'A' + r0 + ' ' + r0 + ' 0 ' + large + ' 0 ' + p(r0, a0) + 'Z';
 }
-function buildCells(){
+/* a part is WARM when anything social stands beneath it */
+const warm = addr => voicesUnder(addr).length > 0 || talkUnder(addr, 48).length > 0 || presentUnder(addr).length > 0;
+const onNowPath = addr => MODE === 'clock' && NOW10.startsWith(addr);
+function layoutFor(centre){
   const cells = [];
-  const g1 = kidsOf(CENTRE);
-  if (!g1.length) return cells;
-  const T = -Math.PI / 2, W = 2 * Math.PI;
+  const g1 = kidsOf(centre);
   g1.forEach((a1addr, i) => {
-    const a0 = T + W * i / g1.length, a1 = T + W * (i + 1) / g1.length;
-    cells.push({ addr: a1addr, gen: 1, a0: a0 + PAD, a1: a1 - PAD, r0: R_CENTRE + RING_GAP, r1: R_CENTRE + RING_GAP + RING_W });
+    const f0 = i / g1.length, f1 = (i + 1) / g1.length;
+    cells.push({ addr: a1addr, gen: 1, f0, f1, r0: R_IN + RING_GAP, r1: R_IN + RING_GAP + RING_W });
     const g2 = kidsOf(a1addr);
     g2.forEach((a2addr, j) => {
-      const b0 = a0 + (a1 - a0) * j / g2.length, b1 = a0 + (a1 - a0) * (j + 1) / g2.length;
-      cells.push({ addr: a2addr, gen: 2, a0: b0 + PAD, a1: b1 - PAD, r0: R_CENTRE + RING_GAP * 2 + RING_W, r1: R_CENTRE + RING_GAP * 2 + RING_W * 2 });
+      /* positional fractions among ALL siblings — an omitted quiet sliver
+       * leaves its gap, so the outer ring reads as signal, not texture */
+      if (MODE === 'clock' && !warm(a2addr) && !onNowPath(a1addr)) return;
+      cells.push({ addr: a2addr, gen: 2,
+        f0: f0 + (f1 - f0) * j / g2.length, f1: f0 + (f1 - f0) * (j + 1) / g2.length,
+        r0: R_IN + 2 * RING_GAP + RING_W, r1: R_OUT });
     });
   });
   return cells;
 }
+/* map a cell through a window — the whole tween is this one function */
+function geom(c, w){
+  const F0 = w.f0 + c.f0 * (w.f1 - w.f0), F1 = w.f0 + c.f1 * (w.f1 - w.f0);
+  const s = (w.r1 - w.r0) / (R_OUT - R_IN);
+  return { a0: -Math.PI / 2 + (F0 + PAD) * 2 * Math.PI, a1: -Math.PI / 2 + (Math.max(F0 + PAD, F1 - PAD)) * 2 * Math.PI,
+           r0: w.r0 + (c.r0 - R_IN) * s, r1: w.r0 + (c.r1 - R_IN) * s };
+}
+const cellFill = addr => { const vs = voicesUnder(addr).length;
+  return vs ? 'rgba(var(--liquid-rgb),' + Math.min(0.12 + 0.11 * Math.log2(1 + vs), 0.55).toFixed(2) + ')' : 'rgba(var(--card-rgb),0.25)'; };
+function arcsOnly(cells, w, alpha){
+  const parts = cells.map(c => { const g = geom(c, w);
+    return g.a1 > g.a0 ? '<path d="' + arcPath(g.r0, g.r1, g.a0, g.a1) + '" fill="' + cellFill(c.addr) + '" stroke="var(--line)" stroke-width="1"/>' : ''; });
+  return '<g opacity="' + alpha.toFixed(2) + '">' + parts.join('') + '</g>';
+}
+const EASE = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+function animateStep(dir, pivotAddr, nextCentre){
+  const oldCells = CELLS;
+  CENTRE = nextCentre; FOCUS = null;
+  CELLS = layoutFor(CENTRE);
+  const pv = (dir === 'in' ? oldCells : CELLS).find(c => c.addr === pivotAddr);
+  /* a hidden tab gets no animation frames — draw the destination and be done */
+  if (!pv || !oldCells.length || document.hidden){ drawDial(); drawPanel(); return; }
+  TWEENING = true;
+  const svg = $('dial'), t0 = performance.now(), DUR = 520;
+  /* animation frames are not guaranteed (throttled tabs) — land regardless */
+  setTimeout(() => { if (TWEENING){ TWEENING = false; drawDial(); drawPanel(); } }, DUR + 250);
+  const frame = tn => {
+    const e = EASE(Math.min(1, (tn - t0) / DUR));
+    if (dir === 'in'){
+      /* the tapped part's arc grows into the whole face; the old face falls away */
+      const w = { f0: pv.f0 * (1 - e), f1: pv.f1 + (1 - pv.f1) * e,
+                  r0: pv.r0 + (R_IN - pv.r0) * e, r1: pv.r1 + (R_OUT - pv.r1) * e };
+      svg.innerHTML = arcsOnly(oldCells, REST, (1 - e) * 0.85) + arcsOnly(CELLS, w, 0.3 + 0.7 * e);
+    } else {
+      /* the whole face shrinks back into the part it came from, over the wider view */
+      const w = { f0: pv.f0 * e, f1: 1 + (pv.f1 - 1) * e,
+                  r0: R_IN + (pv.r0 - R_IN) * e, r1: R_OUT + (pv.r1 - R_OUT) * e };
+      svg.innerHTML = arcsOnly(CELLS, REST, 0.3 + 0.7 * e) + arcsOnly(oldCells, w, (1 - e) * 0.85);
+    }
+    if (e < 1) requestAnimationFrame(frame);
+    else { TWEENING = false; drawDial(); drawPanel(); }
+  };
+  requestAnimationFrame(frame);
+}
 function drawDial(){
   const svg = $('dial');
-  const cells = buildCells();
+  CELLS = layoutFor(CENTRE);
   const out = [];
-  const liveNow = PRESENT;
   const fmtN = n => n > 99 ? '99+' : String(n);
 
-  cells.forEach(c => {
+  CELLS.forEach(c => {
+    const g = geom(c, REST);
     const vs = voicesUnder(c.addr).length;
-    const alpha = vs ? Math.min(0.12 + 0.11 * Math.log2(1 + vs), 0.55) : 0;
     const spoken = !!textAt(SPINE, c.addr) || OCC.some(o => o.addr === c.addr);
-    const mid = (c.a0 + c.a1) / 2, rm = (c.r0 + c.r1) / 2;
-    const wpx = (c.a1 - c.a0) * rm;
+    const mid = (g.a0 + g.a1) / 2, rm = (g.r0 + g.r1) / 2;
+    const wpx = (g.a1 - g.a0) * rm;
     const sel = FOCUS === c.addr;
-    out.push('<path class="cell' + (spoken ? ' spoken' : '') + (sel ? ' sel' : '') + '" d="' + arcPath(c.r0, c.r1, c.a0, c.a1) +
-      '" fill="' + (alpha ? 'rgba(var(--liquid-rgb),' + alpha.toFixed(2) + ')' : 'rgba(var(--card-rgb),0.25)') +
+    out.push('<path class="cell' + (spoken ? ' spoken' : '') + (sel ? ' sel' : '') + '" d="' + arcPath(g.r0, g.r1, g.a0, g.a1) +
+      '" fill="' + cellFill(c.addr) +
       '" data-addr="' + c.addr + '" role="button" tabindex="0" aria-label="' + esc(labelFor(c.addr)) + (vs ? ', ' + vs + ' voices' : '') + '">' +
       '<title>' + esc(labelFor(c.addr)) + (vs ? ' — ' + vs + (vs === 1 ? ' voice' : ' voices') : ' — quiet') + '</title></path>');
-    /* label the wide parts; count the warm ones */
     const lx = CX + rm * Math.cos(mid), ly = CY + rm * Math.sin(mid);
     if (wpx > 46) out.push('<text class="clab' + (spoken || vs ? '' : ' dim') + '" x="' + lx.toFixed(1) + '" y="' + (ly - (vs ? 4 : 0)).toFixed(1) +
       '" text-anchor="middle" dominant-baseline="middle">' + esc(MODE === 'clock' ? shortClockLab(c.addr) : short(labelFor(c.addr), 12)) + '</text>');
     if (vs && wpx > 26) out.push('<text class="ccount" x="' + lx.toFixed(1) + '" y="' + (ly + 11).toFixed(1) +
       '" text-anchor="middle" dominant-baseline="middle">' + fmtN(vs) + (wpx > 60 ? (vs === 1 ? ' voice' : ' voices') : '') + '</text>');
-    /* recent room talk — a tick on the rim */
     const t6 = talkUnder(c.addr, 6).length, t48 = talkUnder(c.addr, 48).length;
-    if (t48){ const tw = Math.min((c.a1 - c.a0) * 0.7, 0.12);
-      out.push('<path class="talktick' + (t6 ? '' : ' old') + '" d="' + rimTick(c.r1 + 3, mid, tw) + '"><title>' + t48 + ' said here lately</title></path>'); }
+    if (t48){ const tw = Math.min((g.a1 - g.a0) * 0.7, 0.12);
+      out.push('<path class="talktick' + (t6 ? '' : ' old') + '" d="' + rimTick(g.r1 + 3, mid, tw) + '"><title>' + t48 + ' said here lately</title></path>'); }
   });
 
   /* the hand — now, on a clock family, when now falls inside the view */
   if (MODE === 'clock'){
     NOW10 = nowAddr();
-    const cell = deepestCellFor(cells, NOW10);
+    const cell = deepestCellFor(CELLS, NOW10);
     if (cell){
-      const mid = (cell.a0 + cell.a1) / 2, rEnd = R_CENTRE + RING_GAP * 2 + RING_W * 2 + 12;
+      const g = geom(cell, REST);
+      const mid = (g.a0 + g.a1) / 2, rEnd = R_OUT + 12;
       out.push('<line class="hand" x1="' + CX + '" y1="' + CY + '" x2="' + (CX + rEnd * Math.cos(mid)).toFixed(1) + '" y2="' + (CY + rEnd * Math.sin(mid)).toFixed(1) + '"/>');
       out.push('<circle class="handdot" r="3.2" cx="' + (CX + rEnd * Math.cos(mid)).toFixed(1) + '" cy="' + (CY + rEnd * Math.sin(mid)).toFixed(1) + '"/>');
       out.push('<text class="handlab" x="' + (CX + (rEnd + 12) * Math.cos(mid)).toFixed(1) + '" y="' + (CY + (rEnd + 12) * Math.sin(mid)).toFixed(1) +
@@ -377,24 +431,27 @@ function drawDial(){
     }
   }
 
-  /* the people — one chip each, on the deepest drawn part that holds them */
+  /* the people — one chip each, on the deepest drawn part that holds them;
+   * bright when live this minute, faded when merely recent */
   const byCell = new Map();
-  liveNow.forEach(p => {
-    const cell = deepestCellFor(cells, strip0(p.at || '') || CENTRE);
+  PRESENT.forEach(p => {
+    const cell = deepestCellFor(CELLS, strip0(p.at || '') || CENTRE);
     const key = cell ? cell.addr : '·centre';
     if (!byCell.has(key)) byCell.set(key, { cell, ps: [] });
     byCell.get(key).ps.push(p);
   });
   byCell.forEach(({ cell, ps }) => {
-    const mid = cell ? (cell.a0 + cell.a1) / 2 : -Math.PI / 2;
-    const rm = cell ? (cell.r0 + cell.r1) / 2 + 14 : 0;
-    const bx = cell ? CX + rm * Math.cos(mid) : CX, by = cell ? CY + rm * Math.sin(mid) : CY - R_CENTRE * 0.55;
+    const g = cell ? geom(cell, REST) : null;
+    const mid = g ? (g.a0 + g.a1) / 2 : -Math.PI / 2;
+    const rm = g ? (g.r0 + g.r1) / 2 + 14 : 0;
+    const bx = g ? CX + rm * Math.cos(mid) : CX, by = g ? CY + rm * Math.sin(mid) : CY - R_IN * 0.55;
     ps.slice(0, 4).forEach((p, i) => {
       const x = bx + (i - (Math.min(ps.length, 4) - 1) / 2) * 17;
-      out.push('<g class="chip"><circle r="9.5" cx="' + x.toFixed(1) + '" cy="' + by.toFixed(1) + '">' +
-        '<animate attributeName="r" values="9.5;10.5;9.5" dur="2.6s" repeatCount="indefinite"/></circle>' +
+      const live = p.fresh;
+      out.push('<g class="chip"' + (live ? '' : ' opacity="0.5"') + '><circle r="9.5" cx="' + x.toFixed(1) + '" cy="' + by.toFixed(1) + '">' +
+        (live ? '<animate attributeName="r" values="9.5;10.5;9.5" dur="2.6s" repeatCount="indefinite"/>' : '') + '</circle>' +
         '<text x="' + x.toFixed(1) + '" y="' + (by + 0.5).toFixed(1) + '" text-anchor="middle" dominant-baseline="middle">' + esc(p.who.slice(0, 2)) + '</text>' +
-        '<title>' + esc(p.who) + ' — here now</title></g>');
+        '<title>' + esc(p.who) + (live ? ' — here right now' : ' — here ' + ago(p.ts)) + '</title></g>');
     });
     if (ps.length > 4) out.push('<text class="ccount" x="' + bx.toFixed(1) + '" y="' + (by + 16).toFixed(1) + '" text-anchor="middle">+' + (ps.length - 4) + '</text>');
   });
@@ -402,7 +459,7 @@ function drawDial(){
   /* the centre — where the dial is grown from; tap to step back out */
   const cvs = voicesUnder(CENTRE).length, cword = CENTRE ? textAt(SPINE, CENTRE) : voice(SPINE);
   out.push('<g class="centre" data-out="1" role="button" tabindex="0" aria-label="step out">' +
-    '<circle r="' + R_CENTRE + '" cx="' + CX + '" cy="' + CY + '"/>' +
+    '<circle r="' + R_IN + '" cx="' + CX + '" cy="' + CY + '"/>' +
     '<text class="big" x="' + CX + '" y="' + (CY - 8) + '" text-anchor="middle">' + esc(short(CENTRE ? labelFor(CENTRE) : FAMILY, 16)) + '</text>' +
     '<text class="small" x="' + CX + '" y="' + (CY + 12) + '" text-anchor="middle">' + (cvs ? cvs + (cvs === 1 ? ' voice within' : ' voices within') : (cword ? 'spoken, quiet within' : 'quiet')) + '</text>' +
     (canStepOut() ? '<text class="small" x="' + CX + '" y="' + (CY + 30) + '" text-anchor="middle">tap to step out</text>' : '') +
@@ -431,15 +488,14 @@ function deepestCellFor(cells, addr){
 }
 function canStepOut(){ return MODE === 'clock' ? CENTRE.length > 1 : CENTRE.length > 0; }
 function stepOut(){
-  if (!canStepOut()) return;
-  CENTRE = MODE === 'clock' && CENTRE.length === 6 ? CENTRE.slice(0, 4) : CENTRE.slice(0, -1);   /* months hang straight off the year */
-  if (MODE === 'clock' && CENTRE.length === 5) CENTRE = CENTRE.slice(0, 4);
-  drawDial(); drawPanel();
+  if (!canStepOut() || TWEENING) return;
+  let up = MODE === 'clock' && CENTRE.length === 6 ? CENTRE.slice(0, 4) : CENTRE.slice(0, -1);   /* months hang straight off the year */
+  if (MODE === 'clock' && up.length === 5) up = up.slice(0, 4);
+  animateStep('out', CENTRE, up);
 }
 function stepInto(addr){
-  if (!kidsOf(addr).length) return;
-  CENTRE = addr; FOCUS = null;
-  drawDial(); drawPanel();
+  if (!kidsOf(addr).length || TWEENING) return;
+  animateStep('in', addr, addr);
 }
 
 /* ── the focused part ── */
@@ -482,12 +538,13 @@ function drawEve(){
   const el = $('eve');
   const chips = PRESENT.map(p => {
     const at = strip0(p.at || '');
-    return '<button class="pchip" data-go="' + esc(at) + '"><span class="pdot">' + esc(p.who.slice(0, 2)) + '</span>' +
-      esc(p.who) + (at ? '<span class="at">· ' + esc(labelFor(at)) + '</span>' : '') + '</button>';
+    return '<button class="pchip' + (p.fresh ? '' : ' dim') + '" data-go="' + esc(at) + '"><span class="pdot">' + esc(p.who.slice(0, 2)) + '</span>' +
+      esc(p.who) + '<span class="at">' + (at ? '· ' + esc(labelFor(at)) + ' ' : '') + (p.fresh ? '· now' : '· ' + esc(ago(p.ts))) + '</span></button>';
   });
-  el.innerHTML = '<span class="lab">live now</span>' + (chips.length ? chips.join('') :
-    '<span class="quiet">nobody is live at ' + esc(FAMILY) + ' right now — the glow below is where voices stand</span>');
-  $('m-live').textContent = PRESENT.length ? PRESENT.length + ' live' : 'quiet';
+  el.innerHTML = '<span class="lab">here lately</span>' + (chips.length ? chips.join('') :
+    '<span class="quiet">nobody has stood at ' + esc(FAMILY) + ' in the last while — the glow below is where voices stand</span>');
+  const live = PRESENT.filter(p => p.fresh).length;
+  $('m-live').textContent = live ? live + ' live' : (PRESENT.length ? PRESENT.length + ' lately' : 'quiet');
 }
 
 /* ── data sweeps ── */
@@ -543,49 +600,19 @@ async function sweepSlow(){
 }
 async function sweepPresence(){
   const p = await readBlock('presence').catch(() => null);
-  const fresh = 45e3;
+  const WINDOW = 15 * 60e3, FRESH = 60e3;
   PRESENT = parseSlots(p, s => {
     const ts = typeof s['3'] === 'string' ? s['3'] : '';
-    if (!ts || !Number.isFinite(Date.parse(ts)) || Date.now() - Date.parse(ts) > fresh) return null;
+    if (!ts || !Number.isFinite(Date.parse(ts)) || Date.now() - Date.parse(ts) > WINDOW) return null;
     if (!placeIsHere(typeof s['2'] === 'string' ? s['2'] : '')) return null;
-    return { who: s['1'], place: s['2'], ts, at: typeof s['7'] === 'string' ? s['7'] : '' };
-  });
+    return { who: s['1'], place: s['2'], ts, fresh: Date.now() - Date.parse(ts) < FRESH,
+             at: typeof s['7'] === 'string' ? s['7'] : '' };
+  }).sort((a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || (b.ts || '').localeCompare(a.ts || ''));
 }
 
-/* ── announcing yourself — only when the URL carries your name ── */
-let MY_SLOT = null;
-async function beat(){
-  if (!HANDLE || document.hidden) return;
-  try {
-    const p = await readBlock('presence').catch(() => null);
-    const stale = s => !(typeof s['3'] === 'string') || !Number.isFinite(Date.parse(s['3'])) || Date.now() - Date.parse(s['3']) > 45e3;
-    let slot = null;
-    const paths = [];
-    (function walk(node, path){
-      if (!node || typeof node !== 'object') return;
-      for (const k of childDigits(node)){
-        const s = node[k];
-        if (s && typeof s === 'object' && typeof s['1'] === 'string'){ paths.push([path + k, s]); }
-        else if (s && typeof s === 'object') walk(s, path + k);
-      }
-    })(p || {}, '');
-    const mine = paths.find(([, s]) => s['1'] === HANDLE);
-    if (mine) slot = mine[0];
-    else {
-      for (const cand of ['1','2','3','4','5','6','7','8','9','11','12','13','14','15','16','17','18','19']){
-        const held = paths.find(([pth]) => pth === cand);
-        if (!held || stale(held[1])) { slot = cand; break; }
-      }
-    }
-    if (!slot) return;                                   /* full of live peers — say nothing rather than evict */
-    MY_SLOT = slot;
-    const at = FOCUS || CENTRE || '';
-    await writeBlock({ block: 'presence', spindle: slot, content: {
-      _: HANDLE + ' @ ' + iso() + ' — present at ' + FAMILY + (at ? ' · ' + at : ''),
-      '1': HANDLE, '2': FAMILY, '3': iso(), ...(at ? { '7': (MODE === 'clock' ? pad10(at) : String(at)) } : {}),
-    }});
-  } catch (e) { /* a missed beat is only a missed beat */ }
-}
+/* THIS PAGE NEVER WRITES. Presence shown here is what the live surfaces
+ * (the mirror, xstream) have announced; an o-page reads once and sits
+ * still — the polling budget belongs to the mirror, not to every page. */
 
 /* ── wiring ── */
 $('dial').addEventListener('click', e => {
@@ -611,28 +638,28 @@ document.addEventListener('click', e => {
   if (inn) stepInto(inn.dataset.in);
 });
 
-async function start(){
-  $('b-fam').textContent = FAMILY;
-  $('b-walk').href = '/walk/' + FAMILY + (HANDLE ? '/' + HANDLE : '');
-  $('b-mirror').href = mirrorUrl('');
-  $('wh').innerHTML = HANDLE
-    ? 'you are here as <b>' + esc(HANDLE) + '</b> — others looking at ' + esc(FAMILY) + ' can see you. Tap a part once to read it, twice to step in.'
-    : 'reading quietly — nobody can see you here. Arrive as yourself at <span style="font-family:var(--mono)">/where/' + esc(FAMILY) + '/&lt;your-handle&gt;</span> and you appear on the dial for the others.';
+async function reread(){
+  const b = $('b-reread');
+  b.textContent = '↻ reading…';
   try {
     await sweepSlow();
     await sweepPresence();
     drawDial(); drawEve(); drawPanel();
-    void beat();
+    $('err').classList.add('hidden');
   } catch (e) {
     $('err').textContent = String(e.message || e);
     $('err').classList.remove('hidden');
-    return;
   }
-  setInterval(async () => { if (document.hidden) return;
-    await sweepPresence().catch(() => {}); drawEve(); drawDial(); }, 10e3);
-  setInterval(async () => { if (document.hidden) return;
-    await sweepSlow().catch(() => {}); drawDial(); drawPanel(); }, 30e3);
-  setInterval(() => { void beat(); }, 12e3);
+  b.textContent = '↻ re-read';
+}
+async function start(){
+  $('b-fam').textContent = FAMILY;
+  $('b-walk').href = '/walk/' + FAMILY + (HANDLE ? '/' + HANDLE : '');
+  $('b-mirror').href = mirrorUrl('');
+  $('b-reread').addEventListener('click', () => { void reread(); });
+  $('wh').innerHTML = 'One reading, then stillness — <span style="font-family:var(--mono)">↻ re-read</span> in the bar fetches the beach again; this page never polls and never writes. ' +
+    'Tap a part once to read it, twice to step in; the centre steps back out. Being seen happens on the live surfaces — say at a part in the <a target="_blank" rel="noopener" href="' + esc(mirrorUrl('')) + '">mirror</a> and you are the one announced.';
+  await reread();
 }
 start();
 </script>
