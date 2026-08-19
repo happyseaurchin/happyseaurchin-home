@@ -461,7 +461,7 @@ const _wq = new URLSearchParams(location.search);
 const _wm = location.pathname.match(/\/walk\/([^\/]+)(?:\/([^\/]+))?\/?$/);
 const VENTURE = (((_wm && decodeURIComponent(_wm[1])) || _wq.get('f') || '').replace(/[^a-z0-9-]/gi, ''));
 const HANDLE_FROM_PATH = ((_wm && _wm[2] && decodeURIComponent(_wm[2])) || _wq.get('h') || '').trim();
-let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
+let SPINE = null, BARE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
 let PRESENT = [];                    /* {who, atS} — fresh presence at this family, coordinate stripped */
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
@@ -762,9 +762,10 @@ async function load(){
   TODAY_ADDR = dayAddr(TODAY.y, TODAY.m0, TODAY.d);
   if (first) Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, level: 'd' });
 
-  const [spine, index] = await Promise.all([readBlock('spine:' + VENTURE), readIndex()]);
+  const [spine, bare, index] = await Promise.all([readBlock('spine:' + VENTURE), readBlock(VENTURE).catch(() => null), readIndex()]);
   if (!spine) throw new Error('spine:' + VENTURE + ' is not on the beach');
   SPINE = spine;
+  BARE = bare;   /* the family's collective fold — the last landing standing at each point */
   /* the same page walks every family: a floor-10 sundial spine as time, any other as its own branches */
   MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
   if (MODE === 'tree' && first){
@@ -1087,10 +1088,11 @@ function paintSheet(){
   tabs.classList.remove('hidden');
   const addr = selAddr(), lens = lensed(voicesAt(addr)), vs = lens.shown, cs = MODE === 'tree' ? famCards() : cardsAt(addr);
   $('sh-where').textContent = selLabel();
-  /* the head link follows the PANE: the spine's own line where the spine is
-   * read, your own mirror where readings stand, your own deck where cards do */
-  const mtarget = SHEET.pane === 'voices' ? (HANDLE ? VENTURE + ':' + HANDLE : VENTURE)
-                : SHEET.pane === 'cards'  ? (HANDLE ? FIELD + ':' + HANDLE : null)
+  /* ONE link, to the POINT — the room itself (spine:<field> at this address),
+   * the same door the carousel card carries; a person's own mirror is reached
+   * by entering the room, never by a link that names them. Cards keep the
+   * deck's own door. */
+  const mtarget = SHEET.pane === 'cards' ? (HANDLE ? FIELD + ':' + HANDLE : null)
                 : 'spine:' + VENTURE;
   $('sh-mirror').classList.toggle('hidden', !mtarget);
   if (mtarget) $('sh-mirror').href = mirrorUrl(SHEET.pane === 'cards' ? '' : addr, mtarget);
@@ -1102,6 +1104,10 @@ function paintSheet(){
   const b = [];
   if (SHEET.pane === 'text'){
     b.push('<div class="fulltext">' + esc(textAt(SPINE, addr) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
+    /* the standing fold — the collective synthesis last landed at this point
+     * (the bare family block at the same address); shown only where one stands */
+    const fold = BARE ? textAt(BARE, addr) : null;
+    if (fold) b.push('<span class="silent">the standing fold — the last landing at this point</span><div class="fulltext">' + esc(fold) + '</div>');
     /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
      * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
      * so a write at this rung would land a level up and eat what stands beneath —
@@ -1115,9 +1121,7 @@ function paintSheet(){
       ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
     b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
-          /* each reading opens where it actually lives — its holder's own mirror, at this point */
-          (v.blk ? '<a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr, v.blk)) + '">mirror ↗</a>' : '') + '</div>').join('')
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
       : '<span class="silent">' + (lens.aside.length ? 'no member has written here yet' : 'nobody has written here yet') + '</span>');
     /* SAYS SO, ALWAYS — the family's own law: a fold that drops a voice says so.
      * The names ride with the count, so what the lens set aside stays knowable
