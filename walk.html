@@ -135,6 +135,12 @@
   .b:hover{filter:brightness(1.25)}
   .b.bv{color:var(--liquid);border:1px solid rgba(var(--liquid-rgb),0.35)}
   .b.bc{color:var(--solid);border:1px solid rgba(var(--solid-rgb),0.35)}
+  /* a person here right now — presence, not a count */
+  .bp{font-family:var(--mono);font-size:9.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;
+    color:var(--abyss);background:var(--solid);border-radius:999px;padding:2px 7px;animation:bp-breathe 2.6s ease-in-out infinite}
+  @keyframes bp-breathe{0%,100%{opacity:1}50%{opacity:0.72}}
+  #wholine{min-height:0}
+  #wholine b{color:var(--solid)}
 
   /* ── the sheet: one popup over the rack, three panes — where you tapped chooses the pane ── */
   .veil{position:fixed;inset:0;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(3px);
@@ -329,6 +335,7 @@
       <p>Slide sideways through time; tap a card to stand there. Each row follows the one above it — the year you choose decides the months you see, down to the day. A card says what the venture has written for that time; the small counts say who has spoken there and what is held toward it.</p>
     </div>
     <p class="toward" id="toward"></p>
+    <p class="toward hidden" id="wholine"></p>
     <div class="rack" id="rack">
       <div class="rw" id="rw-ce"><div class="rowlab">century</div><div class="carousel" id="row-ce"></div></div>
       <div class="rw" id="rw-de"><div class="rowlab">decade</div><div class="carousel" id="row-de"></div></div>
@@ -455,6 +462,7 @@ const _wm = location.pathname.match(/\/walk\/([^\/]+)(?:\/([^\/]+))?\/?$/);
 const VENTURE = (((_wm && decodeURIComponent(_wm[1])) || _wq.get('f') || '').replace(/[^a-z0-9-]/gi, ''));
 const HANDLE_FROM_PATH = ((_wm && _wm[2] && decodeURIComponent(_wm[2])) || _wq.get('h') || '').trim();
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
+let PRESENT = [];                    /* {who, atS} — fresh presence at this family, coordinate stripped */
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
@@ -852,14 +860,20 @@ function inviteAt(lv, isNow){
   if (lv === 'w') return 'this week has no words yet, so the day hangs straight off the month — tap twice to give the week its line, or propose one in voices';
   return what + ' has no words yet — tap twice to give it a line, or propose one in voices';
 }
+function presChips(addr){
+  const here = PRESENT.filter(p => p.atS && p.atS.startsWith(addr));
+  const shown = here.slice(0, 3);
+  return shown.map(p => '<span class="bp" title="' + esc(p.who) + ' — here right now">' + esc(p.who.slice(0, 2)) + '</span>').join('') +
+    (here.length > shown.length ? '<span class="bp" title="' + esc(here.slice(3).map(p => p.who).join(', ')) + '">+' + (here.length - shown.length) + '</span>' : '');
+}
 function rcard(label, addr, isSel, isNow, data){
   const t = lensText(addr);
   const lv = (String(data).match(/data-lv="(\w+)"/) || [])[1];
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
-  return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
+  return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" data-addr="' + addr + '" ' + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow)) + '</span>' +
-    '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
+    '<div class="badges">' + presChips(addr) + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="open the detail below">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
 }
 /* ── the rows. Each shows its FULL sibling set — every month of the year, every
@@ -1276,6 +1290,92 @@ document.getElementById('btn-latch').addEventListener('click', () => {
 });
 document.getElementById('btn-refresh').addEventListener('click', () => load().then(() => toast('re-read')));
 
+/* ── who is here right now — presence, the one signal that locates somebody
+ * who has not yet spoken. Read every ten seconds (one GET, the whole block);
+ * WRITTEN only when the URL carries a handle — a nameless reader stays
+ * invisible. A person's slot carries the place at field 2 and the coordinate
+ * of attention at field 7 (block-conventions 4.6), so the chip can ride the
+ * very cells the rack already draws — each row shows them at that row's own
+ * resolution, which is how different tempos meet at coarse rungs. ── */
+const strip0w = a => String(a).replace(/0+$/, '');
+function presLabel(a){
+  if (MODE !== 'clock'){ const t = textAt(SPINE, a); return t ? short(t, 26) : ('· ' + a); }
+  const L = a.length;
+  if (L < 4) return 'the ' + a + '0'.repeat(Math.max(0, 4 - L)) + 's';
+  const y = a.slice(0, 4);
+  if (L === 4) return y;
+  if (L === 5) return ['', 'first', 'second', 'third', 'last'][+a[4]] + ' quarter ' + y;
+  const m0 = (+a[4] - 1) * 3 + (+a[5] - 1);
+  if (L === 6) return MN[m0] + ' ' + y;
+  const band = +a[6];
+  if (L === 7){ const d1 = (band - 1) * 7 + 1, d2 = Math.min(band * 7, daysInMonth(+y, m0)); return d1 + '–' + d2 + ' ' + MN[m0].slice(0, 3); }
+  const d = (band - 1) * 7 + (+a[7]);
+  return wd(+y, m0, d) + ' ' + d + ' ' + MN[m0].slice(0, 3);
+}
+async function sweepPresence(){
+  const p = await readBlock('presence').catch(() => null);
+  const out = [];
+  (function rec(node){
+    if (!node || typeof node !== 'object') return;
+    for (const k of Object.keys(node)){
+      if (!/^[1-9]$/.test(k)) continue;
+      const s = node[k];
+      if (s && typeof s === 'object' && typeof s['1'] === 'string'){
+        const ts = typeof s['3'] === 'string' ? Date.parse(s['3']) : NaN;
+        const place = typeof s['2'] === 'string' ? s['2'] : '';
+        const herePlace = place === VENTURE || place === 'spine:' + VENTURE || place === 'pool:' + VENTURE || place.startsWith(VENTURE + ':');
+        if (herePlace && Number.isFinite(ts) && Date.now() - ts < 45e3)
+          out.push({ who: s['1'], atS: strip0w(typeof s['7'] === 'string' ? s['7'] : '') });
+      } else if (s && typeof s === 'object') rec(s);
+    }
+    if (node['_'] && typeof node['_'] === 'object') rec(node['_']);
+  })(p);
+  PRESENT = out;
+}
+/* patch the chips into the standing cells — never a rack re-render, so a
+ * sweep can never fight the reader's own sideways scrolling */
+function paintPresence(){
+  document.querySelectorAll('#rack .rcard[data-addr]').forEach(el => {
+    el.querySelectorAll('.bp').forEach(b => b.remove());
+    const chips = presChips(el.dataset.addr);
+    const bd = el.querySelector('.badges');
+    if (chips && bd) bd.insertAdjacentHTML('afterbegin', chips);
+  });
+  const line = $('wholine');
+  if (!PRESENT.length){ line.classList.add('hidden'); line.innerHTML = ''; return; }
+  line.innerHTML = 'live now · ' + PRESENT.map(p => '<b>' + esc(whoName(p.who)) + '</b>' + (p.atS ? ' at ' + esc(presLabel(p.atS)) : '')).join(' · ');
+  line.classList.remove('hidden');
+}
+async function presenceBeat(){
+  if (!HANDLE || document.hidden) return;
+  try {
+    const p = await readBlock('presence').catch(() => null);
+    const paths = [];
+    (function walkp(node, path){
+      if (!node || typeof node !== 'object') return;
+      for (const k of Object.keys(node)){
+        if (!/^[1-9]$/.test(k)) continue;
+        const s = node[k];
+        if (s && typeof s === 'object' && typeof s['1'] === 'string') paths.push([path + k, s]);
+        else if (s && typeof s === 'object') walkp(s, path + k);
+      }
+    })(p || {}, '');
+    const stale = s => !(typeof s['3'] === 'string') || !Number.isFinite(Date.parse(s['3'])) || Date.now() - Date.parse(s['3']) > 45e3;
+    const mine = paths.find(([, s]) => s['1'] === HANDLE);
+    let slot = mine ? mine[0] : null;
+    if (!slot) for (const cand of ['1','2','3','4','5','6','7','8','9','11','12','13','14','15','16','17','18','19']){
+      const held = paths.find(([q]) => q === cand);
+      if (!held || stale(held[1])){ slot = cand; break; }
+    }
+    if (!slot) return;                       /* full of live peers — say nothing rather than evict */
+    const at = wireAddr(selAddr());
+    const nowTs = new Date().toISOString();
+    await writeBlock({ block: 'presence', spindle: slot, content: {
+      _: HANDLE + ' @ ' + nowTs + ' — present at ' + VENTURE + ' · ' + at,
+      '1': HANDLE, '2': VENTURE, '3': nowTs, '7': at } });
+  } catch (e) { /* a missed beat is only a missed beat */ }
+}
+
 /* ── boot ── */
 HANDLE = handleFromUrl();
 if (!VENTURE){
@@ -1290,7 +1390,10 @@ if (!VENTURE){
   $('ask-handle').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
 } else {
   $('app').classList.remove('hidden');
-  load().catch(e => showState('The beach would not read.', esc(String(e.message || e)) + '<br>Try again in a moment — nothing here is stored, so nothing is lost.'));
+  load().then(() => { sweepPresence().then(paintPresence).catch(() => {}); void presenceBeat(); })
+    .catch(e => showState('The beach would not read.', esc(String(e.message || e)) + '<br>Try again in a moment — nothing here is stored, so nothing is lost.'));
+  setInterval(() => { if (document.hidden) return; sweepPresence().then(paintPresence).catch(() => {}); }, 10e3);
+  setInterval(() => { void presenceBeat(); }, 12e3);
 }
 })();
 </script>
