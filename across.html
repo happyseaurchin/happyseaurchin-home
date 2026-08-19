@@ -74,17 +74,18 @@
   /* ── the rack: one horizontal pan for columns, one vertical spin for rungs.
      The row is the unit — every column's card at ONE rung, locked together;
      the spin snaps row-to-centre like a slot machine, neighbours faded. ── */
-  :root{ --rowh: clamp(158px, 24dvh, 196px); --cardw: 300px; --railw: 96px }
+  :root{ --rowh: clamp(158px, 24dvh, 196px); --cardw: 300px; --railw: 96px; --headh: 56px }
   @media (max-width:700px){ :root{ --cardw: 74vw } }
   .rack{max-width:980px;margin:0 auto;padding:0 8px}
-  .hpan{overflow-x:auto;scrollbar-width:thin;scrollbar-color:var(--liquid-deep) transparent;
-    border:1px solid var(--line);border-radius:16px;background:rgba(var(--well-rgb),0.25)}
-  .hpan::-webkit-scrollbar{height:6px}
-  .hpan::-webkit-scrollbar-thumb{background:var(--liquid-deep);border-radius:3px}
+  .hpan{overflow:hidden;border:1px solid var(--line);border-radius:16px;background:rgba(var(--well-rgb),0.25)}
   .grid-row{display:grid;grid-template-columns:var(--railw) repeat(var(--ncols,1), var(--cardw)) 44px;gap:10px;
     min-width:max-content;align-items:stretch;padding:0 10px}
-  .colhead{border-bottom:1px solid var(--line);padding-top:10px;padding-bottom:10px}
-  .colhead .rail{position:sticky;left:0;z-index:3}
+  /* the titles ride INSIDE the one scroller — sticky to the top while the spin
+     turns beneath them, panning with their columns because there is nothing else
+     they could pan with */
+  .colhead{position:sticky;top:0;z-index:5;height:var(--headh);align-items:center;
+    background:var(--deep);border-bottom:1px solid var(--line)}
+  .colhead .rail{position:sticky;left:0;z-index:6;height:100%;background:var(--deep)}
   .colhead .chip{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;display:flex;gap:8px;align-items:center;
     border:1px solid var(--line);border-radius:8px;padding:7px 11px;color:var(--foam);min-width:0}
   .colhead .chip a{border-bottom:none;color:inherit;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -96,8 +97,8 @@
     background:none;color:var(--vapour-dim);cursor:pointer}
   .colhead .add:hover{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
 
-  .spin{position:relative;height:calc(3 * var(--rowh));overflow-y:auto;overscroll-behavior:contain;
-    scroll-snap-type:y mandatory;scrollbar-width:none}
+  .spin{position:relative;height:calc(3 * var(--rowh) + var(--headh));overflow:auto;overscroll-behavior:contain;
+    scroll-snap-type:y mandatory;scroll-padding-top:var(--headh);scrollbar-width:none}
   .spin::-webkit-scrollbar{display:none}
   .spin .spacer{height:var(--rowh);scroll-snap-align:none}
   .rrow{height:var(--rowh);grid-template-rows:minmax(0,1fr);scroll-snap-align:center;scroll-snap-stop:always;
@@ -206,7 +207,6 @@
 
   <div class="rack">
     <div class="hpan" id="hpan">
-      <div class="grid-row colhead" id="colhead"></div>
       <div class="spin" id="spin" tabindex="0" aria-label="the sundial ladder — arrow keys or scroll to spin"></div>
     </div>
   </div>
@@ -395,7 +395,7 @@ function render(){
   $('foot-now').href = '/now/' + encodeURIComponent(HANDLE);
   $('hpan').style.setProperty('--ncols', COLS.length);   /* inherited by every grid-row, rows included */
 
-  $('colhead').innerHTML =
+  const head = '<div class="grid-row colhead" id="colhead">' +
     '<span class="rail"></span>' +
     COLS.map((c, i) => {
       const href = c.kind === 'now' ? '/now/' + encodeURIComponent(HANDLE)
@@ -406,7 +406,7 @@ function render(){
       const off = c.block === null ? ' title="no mirror on the beach yet — silence all the way down"' : '';
       return '<span class="' + cls + '"' + sty + off + '><a href="' + href + '">' + esc(c.name) + '</a>' + x + '</span>';
     }).join('') +
-    '<button class="add" id="btn-add" title="add a column — any family on the beach">+</button>';
+    '<button class="add" id="btn-add" title="add a column — any family on the beach">+</button></div>';
 
   const rows = RUNGS.map(r => {
     const addr = CLOCK.addrs[r.key];
@@ -425,7 +425,7 @@ function render(){
       '<span class="rail"><span class="rk">' + esc(r.label) + '</span><span class="rh">' + esc(r.human(CLOCK)) + '</span></span>' +
       cells + '<span></span></div>';
   }).join('');
-  $('spin').innerHTML = '<div class="spacer"></div>' + rows + '<div class="spacer"></div>';
+  $('spin').innerHTML = head + '<div class="spacer"></div>' + rows + '<div class="spacer"></div>';
 
   document.querySelectorAll('#colhead .x').forEach(b => b.addEventListener('click', e => {
     e.preventDefault();
@@ -439,20 +439,23 @@ function render(){
   spinTo(HOME_RUNG, true); watchSpin();
 }
 
-/* ── the spin: snap a row to centre, fade the neighbours, say where we stand ── */
+/* ── the spin: snap a row to centre, fade the neighbours, say where we stand.
+   The sticky title row sits inside the scrollport, so centring works on the
+   region BELOW it — the same inset native snap uses via scroll-padding-top. ── */
 function rowEls(){ return [...document.querySelectorAll('#spin .rrow')]; }
+const headH = () => { const h = $('colhead'); return h ? h.offsetHeight : 0; };
 function spinTo(key, instant){
   const spin = $('spin');
   const el = rowEls().find(r => r.dataset.rung === key);
   if (!el) return;
-  const top = el.offsetTop - (spin.clientHeight - el.offsetHeight) / 2;
+  const top = el.offsetTop - headH() - ((spin.clientHeight - headH()) - el.offsetHeight) / 2;
   spin.scrollTo({ top, behavior: instant ? 'instant' : 'smooth' });
   if (instant) markFocus();
   else setTimeout(markFocus, 480);   /* settle fallback — scroll events are throttled in occluded tabs */
 }
 function markFocus(){
   const spin = $('spin');
-  const mid = spin.scrollTop + spin.clientHeight / 2;
+  const mid = spin.scrollTop + headH() + (spin.clientHeight - headH()) / 2;
   let best = null, bd = Infinity;
   rowEls().forEach(r => {
     const d = Math.abs(r.offsetTop + r.offsetHeight / 2 - mid);
