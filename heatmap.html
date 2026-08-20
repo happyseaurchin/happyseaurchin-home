@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Where everyone is (d3)</title>
+<title>Heatmap</title>
 <meta name="description" content="The d3 lens on the social glance — the same field, the same one reading, drawn as d3's zoomable sunburst for comparison with /where.">
-<meta property="og:title" content="Where everyone is (d3)">
+<meta property="og:title" content="Heatmap">
 <meta property="og:description" content="The d3 lens on the social glance — one field, one reading, the zoomable sunburst.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,13 +88,28 @@
 
   .whisper{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:10px 0 0;line-height:1.6}
   .whisper a{color:var(--vapour-dim)} .whisper a:hover{color:var(--liquid)}
+  .whisper b{color:var(--vapour);font-weight:700}
   #err{font-family:var(--mono);font-size:12px;color:var(--solid);margin:12px 0}
+  .lbtn,.tbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--vapour-dim);
+    font-family:var(--mono);font-size:11px;letter-spacing:0.05em;padding:3px 10px;margin:0 3px;cursor:pointer}
+  .lbtn:hover,.tbtn:hover{border-color:var(--liquid);color:var(--foam)}
+  .lbtn.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.6)}
+  .tbtn.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.6)}
+  .lbtn.on[data-lens="mine"]{color:var(--solid);border-color:rgba(var(--solid-rgb),0.6)}
+  .saybox{display:flex;gap:8px;align-items:flex-start;margin-top:12px}
+  .saybox textarea{flex:1;background:rgba(var(--well-rgb),0.5);border:1px solid var(--line);border-radius:8px;
+    color:var(--foam);font-family:var(--body);font-size:0.98rem;line-height:1.45;padding:9px 12px;resize:vertical;min-height:44px}
+  .saybox textarea:focus{outline:none;border-color:var(--liquid)}
+  .saybox button{border:1px solid var(--line);border-radius:6px;padding:8px 14px;background:none;color:var(--vapour);
+    font-family:var(--mono);font-size:12px;cursor:pointer}
+  .saybox button:hover{border-color:var(--liquid);color:var(--foam)}
+  .sayhint{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);margin:6px 0 0}
 </style>
 </head>
 <body>
 <div class="bar">
   <span class="dot"></span>
-  <span>where·d3 · <b id="b-fam">—</b></span>
+  <span>heatmap · <b id="b-fam">—</b></span>
   <span class="spacer"></span>
   <a id="b-reread" role="button" tabindex="0" title="read the beach again — this page never polls">↻ re-read</a>
   <a id="b-plain" title="the same field on the hand-rolled dial">compare ↗</a>
@@ -102,13 +117,18 @@
 </div>
 <div class="wrap">
   <div class="head">
-    <h1>Where <span class="cool">everyone</span> is <span style="font-family:var(--mono);font-size:0.55em;color:var(--vapour-dim)">· the d3 lens</span></h1>
+    <h1>The <span class="cool">heatmap</span></h1>
     <p class="meta"><span id="m-fam">—</span> · <span id="m-mode">—</span> · <b id="m-live">—</b></p>
+    <p class="meta hidden" id="controls">
+      <span id="lensrow" class="hidden">show · <button class="lbtn on" data-lens="all">everyone</button><button class="lbtn" data-lens="mine">mine</button></span>
+      <span id="tfrow" class="hidden">when · <button class="tbtn on" data-tf="all">all time</button><button class="tbtn" data-tf="week">7 days</button><button class="tbtn" data-tf="today">today</button></span>
+    </p>
   </div>
 
   <div class="eve" id="eve"><span class="lab">here lately</span><span class="quiet">looking…</span></div>
 
-  <div id="dialbox"><svg id="dial" role="img" aria-label="the field as d3's zoomable sunburst — click a part to zoom into it, the centre to zoom out"></svg></div>
+  <div id="dialbox"><svg id="dial" role="img" aria-label="the field as a heatmap dial — click a part to zoom into it, the centre to zoom out"></svg></div>
+  <p class="whisper" id="key" style="margin-top:6px">the key · <b>glow</b> — people have voiced beneath, deeper colour = more of them (a count is people, never lines) · <b>●</b> — someone here lately · <b>line</b> — now</p>
 
   <div class="panel hidden" id="panel"></div>
   <p id="err" class="hidden"></p>
@@ -119,19 +139,24 @@
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
-   /where-d3 — the SAME social glance as /where, drawn with d3's zoomable
-   sunburst so the two lenses can be compared side by side. Everything about
-   the reading is identical — one fetch of spine + mirrors + pool + presence,
-   then stillness, ↻ re-read by hand, never a write. Only the dial differs:
+   /heatmap — where a shared field is hot with voices, on d3's zoomable
+   sunburst (d3 v7 vendored at /vendor/d3.v7.min.js — no CDN at runtime).
 
-     /where     — hand-rolled, calendar-true arcs, quiet slivers not drawn,
-                  tap to read then step; the window tween.
-     /where-d3  — d3.partition over the full structure (quiet parts drawn
-                  faint), the canonical animated zoom: click a part and its
-                  arc unrolls to become the whole face. d3 v7 vendored at
-                  /vendor/d3.v7.min.js — no CDN at runtime.
+   THE ARITHMETIC (the keeper's ruling, 2026-08-20): a count is PEOPLE,
+   never lines. One hand voicing its whole ladder — year, month, week, day,
+   beat — is ONE voice everywhere it rolls up. The panel reads one part:
+   the spine's own words and each hand's line exactly there.
 
-   Whichever lens survives the keeper's eye keeps the /where name.
+   THE ECONOMICS: one reading of spine + mirrors + presence per visit, then
+   stillness — no polling ever. The one write this page can make is the
+   visitor's own deliberate SAY into their own mirror at the focused part,
+   when the URL carries their handle (/heatmap/<family>/<handle>) — the
+   same act /now and /walk offer, latched the same way.
+
+   LENSES: everyone / mine (with a handle) — sea-glow for the field, sand
+   for your own trail. WHEN: all time / 7 days / today on clock families —
+   a day-or-finer voicing counts for a time window; a week- or year-level
+   line is a standing declaration and shows under 'all time'.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
@@ -211,17 +236,18 @@ function nowAddr(){
 
 /* ── state ── */
 const _q = new URLSearchParams(location.search);
-const _m = location.pathname.match(/\/where-d3\/([^\/]+)(?:\/([^\/]+))?\/?$/);
+const _m = location.pathname.match(/\/heatmap\/([^\/]+)(?:\/([^\/]+))?\/?$/);
 const FAMILY = (((_m && decodeURIComponent(_m[1])) || _q.get('f') || 'now').replace(/[^a-z0-9-]/gi, '')) || 'now';
 const HANDLE = (((_m && _m[2] && decodeURIComponent(_m[2])) || _q.get('h') || '').replace(/[^a-z0-9 _-]/gi, '').trim()) || null;
 
 let SPINE = null, MODE = 'tree';
 let MIRRORS = [];                 /* [handle, block] */
 let OCC = [];                     /* {who, addr} — every standing voicing, addr stripped */
-let TALK = [];                    /* {who, t, ts, at} — pool voices, newest first */
 let PRESENT = [];                 /* {who, place, ts, fresh, at} — the last quarter hour */
 let FOCUS = null;                 /* the part the panel reads */
 let NOW10 = nowAddr();
+let LENS = 'all';                 /* 'all' — everyone's voices · 'mine' — where you have voiced */
+let TFILTER = 'all';              /* clock families only: 'all' · 'week' · 'today' */
 
 const $ = id => document.getElementById(id);
 const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
@@ -261,7 +287,6 @@ function clockKids(addr){
 function treeKids(addr){
   const set = new Set(childDigits(walkZeroAware(SPINE, addr) || null).map(d => addr + d));
   OCC.forEach(o => { if (o.addr.length > addr.length && o.addr.startsWith(addr)) set.add(o.addr.slice(0, addr.length + 1)); });
-  TALK.forEach(v => { const at = strip0(v.at || ''); if (at && at.length > addr.length && at.startsWith(addr)) set.add(at.slice(0, addr.length + 1)); });
   return [...set].filter(k => /[1-9]$/.test(k)).sort();
 }
 const kidsOf = addr => MODE === 'clock' ? clockKids(addr) : treeKids(addr);
@@ -283,16 +308,50 @@ function shortClockLab(addr){
 }
 const nodeLabel = addr => MODE === 'clock' ? shortClockLab(addr) : short(labelFor(addr), 11);
 
-/* ── warmth — identical to /where ── */
-const voicesUnder  = addr => OCC.filter(o => o.addr === addr || (!addr || o.addr.startsWith(addr)));
-const talkUnder    = (addr, hours) => TALK.filter(v => { const at = strip0(v.at || '');
-  const t = Date.parse(v.ts); return at && (!addr || at.startsWith(addr)) && Number.isFinite(t) && (Date.now() - t) < hours * 3600e3; });
+/* ── warmth — THE COUNT IS PEOPLE, NEVER LINES (the keeper's ruling,
+   2026-08-20). One person voicing their whole ladder — year, month, week,
+   day, beat — is one voice everywhere it rolls up, not five. ── */
 const presentUnder = addr => PRESENT.filter(p => { const at = strip0(p.at || '');
   return !addr || (at && at.startsWith(addr)); });
-const warm = addr => voicesUnder(addr).length > 0 || talkUnder(addr, 48).length > 0 || presentUnder(addr).length > 0;
+/* the voicings the current lens and time-filter admit */
+function occView(){
+  let v = OCC;
+  if (LENS === 'mine' && HANDLE) v = v.filter(o => o.who === HANDLE);
+  if (MODE === 'clock' && TFILTER !== 'all'){
+    const ps = dayPrefixes(TFILTER === 'today' ? 1 : 7);
+    v = v.filter(o => ps.some(p => o.addr.startsWith(p)));
+  }
+  return v;
+}
+/* the last n days as day-address prefixes — a voicing counts for a time
+ * filter only at day resolution or finer; a week- or year-level line is a
+ * standing declaration and shows under 'all' */
+function dayPrefixes(n){
+  const out = [];
+  for (let i = 0; i < n; i++){
+    const t = new Date(Date.now() - i * 86400e3);
+    out.push(dayAddr(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()));
+  }
+  return out;
+}
+const handsUnder = addr => new Set(occView().filter(o => !addr || o.addr.startsWith(addr)).map(o => o.who));
+const mineUnder  = addr => occView().filter(o => (!addr || o.addr.startsWith(addr)));
+/* structure is judged on the FULL record so the dial never changes shape
+ * when a lens or filter flicks — only its colour does */
+const warm = addr => OCC.some(o => o.addr.startsWith(addr)) || presentUnder(addr).length > 0;
 const onNowPath = addr => MODE === 'clock' && NOW10.startsWith(addr);
-const cellFill = addr => { const vs = voicesUnder(addr).length;
-  return vs ? 'rgba(var(--liquid-rgb),' + Math.min(0.12 + 0.11 * Math.log2(1 + vs), 0.55).toFixed(2) + ')' : 'rgba(var(--card-rgb),0.25)'; };
+const cellFill = addr => {
+  const n = LENS === 'mine' ? mineUnder(addr).length : handsUnder(addr).size;
+  if (!n) return 'rgba(var(--card-rgb),0.25)';
+  const a = Math.min(0.15 + 0.14 * n, 0.62).toFixed(2);
+  return 'rgba(var(--' + (LENS === 'mine' ? 'solid' : 'liquid') + '-rgb),' + a + ')';
+};
+const cellTip = addr => {
+  if (LENS === 'mine'){ const k = mineUnder(addr).length;
+    return labelFor(addr) + (k ? ' — yours at ' + k + (k === 1 ? ' part' : ' parts') : ' — nothing of yours here'); }
+  const n = handsUnder(addr).size;
+  return labelFor(addr) + (n ? ' — ' + n + (n === 1 ? ' voice' : ' voices') : ' — quiet');
+};
 
 /* ── the hierarchy d3 partitions ─────────────────────────────────────────────
    Clock families build the calendar down to days everywhere, and below days
@@ -366,8 +425,7 @@ function drawD3(){
       .attr('d', d => ARCGEN(d.current))
       .style('cursor', 'pointer')
       .on('click', clicked);
-  D3PATH.append('title').text(d => { const vs = voicesUnder(d.data.addr).length;
-    return labelFor(d.data.addr) + (vs ? ' — ' + vs + (vs === 1 ? ' voice' : ' voices') : ' — quiet'); });
+  D3PATH.append('title').text(d => cellTip(d.data.addr));
   D3LABEL = host.append('g').attr('pointer-events', 'none').attr('text-anchor', 'middle')
     .selectAll('text').data(D3ROOT.descendants().slice(1)).join('text')
       .attr('class', 'dlab').attr('dy', '0.35em')
@@ -433,14 +491,25 @@ function clicked(event, p){
 function updateCentre(p){
   D3CTEXT.selectAll('*').remove();
   const addr = p.data.addr;
-  const cvs = voicesUnder(addr).length;
   const cword = addr ? textAt(SPINE, addr) : voice(SPINE);
+  let line;
+  if (LENS === 'mine'){ const k = mineUnder(addr).length;
+    line = k ? 'yours at ' + k + (k === 1 ? ' part within' : ' parts within') : 'nothing of yours within'; }
+  else { const n = handsUnder(addr).size;
+    line = n ? n + (n === 1 ? ' voice within' : ' voices within') : (cword ? 'spoken, quiet within' : 'quiet'); }
   D3CTEXT.append('text').attr('class', 'cbig').attr('x', 0).attr('y', -8).attr('text-anchor', 'middle')
     .text(short(addr ? labelFor(addr) : FAMILY, 16));
-  D3CTEXT.append('text').attr('class', 'csmall').attr('x', 0).attr('y', 12).attr('text-anchor', 'middle')
-    .text(cvs ? cvs + (cvs === 1 ? ' voice within' : ' voices within') : (cword ? 'spoken, quiet within' : 'quiet'));
+  D3CTEXT.append('text').attr('class', 'csmall').attr('x', 0).attr('y', 12).attr('text-anchor', 'middle').text(line);
   if (p.parent) D3CTEXT.append('text').attr('class', 'csmall').attr('x', 0).attr('y', 30).attr('text-anchor', 'middle')
     .text('tap to step out');
+}
+/* a lens or time flick recolours the standing dial — no rebuild, no lost zoom */
+function restyleD3(){
+  if (!D3ROOT) return;
+  D3PATH.attr('fill', d => cellFill(d.data.addr));
+  D3PATH.select('title').text(d => cellTip(d.data.addr));
+  updateCentre(CURRENTP);
+  drawPanel();
 }
 function deepestVisibleContaining(addr){
   if (!addr) return null;
@@ -504,41 +573,100 @@ function goToAddr(addr){
   drawPanel();
 }
 
-/* ── the focused part (identical to /where, minus the step-in button —
- * entering is the dial's own click here) ── */
+/* ── the focused part — the spine's words and each hand's line EXACTLY here
+ * (the keeper's shape, 2026-08-20: everything else lives elsewhere), plus
+ * your own pen when the URL carries your name ── */
 function drawPanel(){
   const el = $('panel');
   if (FOCUS === null || FOCUS === undefined){ el.classList.add('hidden'); return; }
   const addr = FOCUS;
+  $('b-mirror').href = mirrorUrl(addr);          /* the bar's mirror door follows the focus */
   const word = addr ? textAt(SPINE, addr) : voice(SPINE);
-  const here = presentUnder(addr);
-  const exact = OCC.filter(o => o.addr === addr);
-  const beneath = OCC.filter(o => o.addr !== addr && o.addr.startsWith(addr));
-  const talk = talkUnder(addr, 48).slice(0, 5);
-  const mirrorTexts = new Map(MIRRORS.map(([who, blk]) => [who, textAt(blk, addr)]));
+  const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text);
   const rows = [];
   rows.push('<p class="paddr"><b>' + esc(addr ? labelFor(addr) : FAMILY) + '</b><span class="work">' + esc(addr ? (MODE === 'clock' ? pad10(addr) : addr) : '·') + '</span></p>');
-  rows.push(word ? '<p class="ptext">' + esc(word) + '</p>' : '<p class="ptext absent">nothing written at this part itself</p>');
-  if (here.length) rows.push('<div class="subhead">here lately</div>' + here.map(p =>
-    '<div class="vline"><span class="who">' + esc(p.who) + '</span><p>' + esc(p.at && strip0(p.at) !== addr ? 'at ' + labelFor(strip0(p.at)) : 'at this very part') + '</p><span class="ago">' + ago(p.ts) + '</span></div>').join(''));
-  if (exact.length) rows.push('<div class="subhead">voices at this part</div>' + exact.map(o =>
-    '<div class="vline"><span class="who">' + esc(o.who) + '</span><p>' + esc(short(mirrorTexts.get(o.who) || '', 240)) + '</p></div>').join(''));
-  if (beneath.length){
-    const shown = beneath.slice(0, 12);
-    rows.push('<div class="subhead">voices within</div>' + shown.map(o =>
-      '<div class="vline"><span class="who">' + esc(o.who) + '</span><span class="whereat">' + esc(labelFor(o.addr)) + '</span><p>' +
-      esc(short(textAt(MIRRORS.find(m => m[0] === o.who)?.[1] || null, o.addr) || '', 150)) + '</p></div>').join('') +
-      (beneath.length > shown.length ? '<div class="vline"><span class="who"></span><p class="ptext absent">and ' + (beneath.length - shown.length) + ' more — zoom in to see them placed</p></div>' : ''));
+  rows.push(word ? '<p class="ptext">' + esc(word) + '</p>' : '<p class="ptext absent">the spine has no words at this part</p>');
+  rows.push('<div class="subhead">voices at this part</div>' + (exact.length ? exact.map(x =>
+    '<div class="vline"><span class="who">' + esc(x.who) + '</span><p>' + esc(short(x.text, 400)) + '</p></div>').join('')
+    : '<div class="vline"><span class="who"></span><p class="ptext absent" style="margin:0">none exactly here — the glow is voices deeper in; zoom to find them</p></div>'));
+  if (HANDLE){
+    const mine = exact.find(x => x.who === HANDLE);
+    rows.push('<div class="saybox"><textarea id="say-t" rows="2" placeholder="your voice at ' + esc(addr ? labelFor(addr) : FAMILY) + ' …">' + esc(mine ? mine.text : '') + '</textarea><button id="say-b">say</button></div>' +
+      '<p class="sayhint">lands in ' + esc(FAMILY + ':' + HANDLE) + ' at this very part, revisable forever — Enter says, Shift+Enter breaks a line</p>');
   }
-  if (talk.length) rows.push('<div class="subhead">said here lately</div>' + talk.map(v =>
-    '<div class="vline"><span class="who">' + esc(v.who) + '</span><p>' + esc(short(v.t, 180)) + '</p><span class="ago">' + ago(v.ts) + '</span></div>').join(''));
   rows.push('<div class="plinks">' +
-    '<a target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">say yours in the mirror ↗</a>' +
-    '<a href="/where/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">the other lens ↗</a>' +
+    '<a target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">this part in the mirror ↗</a>' +
     '<a target="_blank" rel="noopener" href="/walk/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">walk this field ↗</a></div>');
   el.innerHTML = rows.join('');
   el.classList.remove('hidden');
+  const t = $('say-t');
+  if (t){
+    t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); void sayAt(addr, t.value.trim()); } });
+    $('say-b').addEventListener('click', () => { void sayAt(addr, $('say-t').value.trim()); });
+  }
 }
+
+/* ── the say — the one write this page can make: your own line, your own
+ * mirror, the focused part. The same act /now and /walk offer, latched the
+ * same way; a key entered once is kept on this device. ── */
+async function writeBlock(body){
+  const r = await fetch(BEACH, { method:'POST', cache:'no-store',
+    headers:{'Content-Type':'application/json', Accept:'application/json'},
+    body: JSON.stringify(body) });
+  let d = null; try { d = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, data: d };
+}
+const lockRequired = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+const latchKey = () => 'mirror-latch:' + FAMILY + ':' + HANDLE;
+const storedLatch = () => localStorage.getItem(latchKey()) || (FAMILY === 'now' ? localStorage.getItem('now-latch:' + HANDLE) : null);
+async function writeWithLatch(body, what){
+  const latch = storedLatch();
+  if (latch) body.secret = latch;
+  let w = await writeBlock(body);
+  if (lockRequired(w)){
+    const v = prompt(what + ' is latched — enter your key (kept on this device):');
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    body.secret = v.trim();
+    w = await writeBlock(body);
+    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+  }
+  return w;
+}
+async function ensureMirror(){
+  const name = FAMILY + ':' + HANDLE;
+  const existing = await readBlock(name).catch(() => null);
+  if (existing) return existing;
+  const fl = floorOf(SPINE) || 1;
+  let root = 'MIRROR — ' + HANDLE + "'s readings on the " + FAMILY + " field (spine:" + FAMILY + "), at the spine's own addresses. Sovereign; silence at an address is honest absence.";
+  for (let i = 0; i < fl; i++) root = { '_': root };
+  const body = { block: name, content: root };
+  const latch = storedLatch() || (prompt('your mirror ' + name + ' will be born now — choose a key for it (kept on this device; blank leaves it open):') || '').trim();
+  if (latch){ body.new_lock = latch; localStorage.setItem(latchKey(), latch); }
+  const w = await writeBlock(body);
+  return w.ok ? readBlock(name).catch(() => null) : null;
+}
+async function sayAt(addr, text){
+  if (!HANDLE || !addr || !text) return;
+  const name = FAMILY + ':' + HANDLE;
+  let blk = (MIRRORS.find(m => m[0] === HANDLE) || [])[1] || await ensureMirror();
+  if (!blk){ sayNote('the mirror could not be set up'); return; }
+  /* fresh read so a node's children are never clobbered (the scalar-over-object trap) */
+  const fresh = await readBlock(name).catch(() => null) || blk;
+  const node = walkZeroAware(fresh, addr);
+  const content = (node && typeof node === 'object') ? { ...node, _: text } : text;
+  const w = await writeWithLatch({ block: name, spindle: (MODE === 'clock' ? pad10(addr) : String(addr)), content }, name);
+  if (w.quiet) return;
+  if (!w.ok){ sayNote(name + ' refused it: ' + ((w.data && (w.data.error || w.data.code)) || w.status)); return; }
+  sayNote('✓ yours at ' + (addr ? labelFor(addr) : FAMILY) + ' — say again here and the new words replace it');
+  const nb = await readBlock(name).catch(() => null);
+  if (nb){
+    const i = MIRRORS.findIndex(m => m[0] === HANDLE);
+    if (i >= 0) MIRRORS[i] = [HANDLE, nb]; else MIRRORS.push([HANDLE, nb]);
+    OCC = MIRRORS.flatMap(([who, b]) => collectVoicings(who, b));
+    restyleD3();
+  }
+}
+function sayNote(t){ const el = $('err'); el.textContent = t; el.classList.remove('hidden'); setTimeout(() => el.classList.add('hidden'), 6000); }
 
 /* ── the live strip (identical to /where) ── */
 function drawEve(){
@@ -594,13 +722,6 @@ async function sweepSlow(){
   const got = await Promise.all(mNames.map(n => readBlock(n).catch(() => null)));
   MIRRORS = mNames.map((n, i) => [n.slice(FAMILY.length + 1), got[i]]).filter(x => x[1]);
   OCC = MIRRORS.flatMap(([who, blk]) => collectVoicings(who, blk));
-  const pool = blocks.includes('pool:' + FAMILY) ? await readBlock('pool:' + FAMILY).catch(() => null) : null;
-  TALK = parseSlots(pool, s => {
-    const t = typeof s['_'] === 'string' ? s['_'] : voice(s); if (!t) return null;
-    const ts = typeof s['3'] === 'string' ? s['3'] : '';
-    const at = typeof s['2'] === 'string' && /^\d+$/.test(s['2']) ? s['2'] : (typeof s['6'] === 'string' && /^\d+$/.test(s['6']) ? s['6'] : '');
-    return ts && Number.isFinite(Date.parse(ts)) ? { who: s['1'], t: t.trim(), ts, at } : null;
-  }).sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
   $('m-fam').textContent = 'the ' + FAMILY + ' field · ' + MIRRORS.length + (MIRRORS.length === 1 ? ' hand' : ' hands');
   $('m-mode').textContent = MODE === 'clock' ? 'the shared clock' : 'its own branches';
 }
@@ -620,6 +741,14 @@ async function sweepPresence(){
 
 /* ── wiring ── */
 document.addEventListener('click', e => {
+  const lb = e.target.closest('.lbtn');
+  if (lb){ LENS = lb.dataset.lens;
+    document.querySelectorAll('.lbtn').forEach(b => b.classList.toggle('on', b === lb));
+    restyleD3(); return; }
+  const tb = e.target.closest('.tbtn');
+  if (tb){ TFILTER = tb.dataset.tf;
+    document.querySelectorAll('.tbtn').forEach(b => b.classList.toggle('on', b === tb));
+    restyleD3(); return; }
   const go = e.target.closest('[data-go]');
   if (go) goToAddr(go.dataset.go);
 });
@@ -631,6 +760,9 @@ async function reread(){
     await sweepSlow();
     await sweepPresence();
     drawD3(); drawEve();
+    $('lensrow').classList.toggle('hidden', !HANDLE);
+    $('tfrow').classList.toggle('hidden', MODE !== 'clock');
+    $('controls').classList.toggle('hidden', !HANDLE && MODE !== 'clock');
     $('err').classList.add('hidden');
   } catch (e) {
     $('err').textContent = String(e.message || e);
@@ -643,10 +775,11 @@ async function start(){
   $('b-plain').href = '/where/' + FAMILY + (HANDLE ? '/' + HANDLE : '');
   $('b-mirror').href = mirrorUrl('');
   $('b-reread').addEventListener('click', () => { void reread(); });
-  $('wh').innerHTML = 'The d3 lens — same field, same single reading, drawn as the zoomable sunburst (d3 v7, vendored). ' +
+  $('wh').innerHTML = 'One reading then stillness — <span style="font-family:var(--mono)">↻ re-read</span> fetches the beach again; the page never polls. ' +
     'Click a part and its arc unrolls to become the whole face; the centre steps back out; a part with nothing deeper is read, not entered. ' +
-    'One reading then stillness — <span style="font-family:var(--mono)">↻ re-read</span> fetches again; this page never polls and never writes. ' +
-    'Compare with <a href="/where/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">the hand-rolled lens</a> and keep whichever your eye trusts.';
+    (HANDLE
+      ? 'You are <b>' + esc(HANDLE) + '</b> here: the say box under any part writes your own mirror, and the <b>mine</b> lens shows your own trail in sand against the field’s sea-glow.'
+      : 'Arrive as yourself — <span style="font-family:var(--mono)">/heatmap/' + esc(FAMILY) + '/&lt;your-name&gt;</span> — to write your voice at any part and to flick between everyone’s heat and your own trail.');
   await reread();
 }
 start();
