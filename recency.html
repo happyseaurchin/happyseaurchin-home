@@ -810,9 +810,17 @@ async function sweepPresence(){
   PRESENT = parseSlots(p, s => {
     const ts = typeof s['3'] === 'string' ? s['3'] : '';
     if (!ts || !Number.isFinite(Date.parse(ts)) || Date.now() - Date.parse(ts) > WINDOW) return null;
-    if (!placeIsHere(typeof s['2'] === 'string' ? s['2'] : '')) return null;
-    return { who: s['1'], place: s['2'], ts, fresh: Date.now() - Date.parse(ts) < FRESH,
-             at: typeof s['7'] === 'string' ? s['7'] : '' };
+    const place = typeof s['2'] === 'string' ? s['2'] : '';
+    if (!placeIsHere(place)) return null;
+    let at = typeof s['7'] === 'string' ? s['7'] : '';
+    if (!at){
+      /* a mirror tab parked at a family block rides the wire as
+       * '<block>:<coordinate>' (xstream-bsp #263) — the coordinate is the
+       * digit tail after the last colon */
+      const cut = place.lastIndexOf(':');
+      if (cut > 0 && /^[0-9]+$/.test(place.slice(cut + 1))) at = place.slice(cut + 1);
+    }
+    return { who: s['1'], place, ts, fresh: Date.now() - Date.parse(ts) < FRESH, at };
   }).sort((a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || (b.ts || '').localeCompare(a.ts || ''));
 }
 
