@@ -258,7 +258,8 @@ const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
 function clockLabel(addr){
   const a = String(addr), L = a.length;
   if (L <= 1) return 'the ' + a + '000s';
-  if (L === 2) return a + '00s';
+  if (L === 2){ const n = +a + 1; const suf = n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th';
+    return 'the ' + n + suf + ' century'; }
   if (L === 3) return 'the ' + a + '0s';
   if (L === 4) return a;
   if (L === 5) return ['','first quarter','second quarter','third quarter','last quarter'][+a[4]] + ' ' + a.slice(0,4);
@@ -299,6 +300,9 @@ function labelFor(addr){
 }
 function shortClockLab(addr){
   const a = String(addr), L = a.length;
+  if (L === 1) return a + '000s';
+  if (L === 2) return a + '00s';
+  if (L === 3) return a + '0s';
   if (L === 4) return a;
   if (L === 6) return MN[(+a[4] - 1) * 3 + (+a[5] - 1)].slice(0, 3);
   if (L === 7) return clockLabel(addr).replace(/ .*/, '');
@@ -371,6 +375,9 @@ const cellTip = addr => {
    spine and mirrors, one node per branch. ── */
 function leafSpan(addr){
   const L = addr.length;
+  if (L === 1) return 365000;
+  if (L === 2) return 36500;
+  if (L === 3) return 3650;
   if (L === 4) return 365;
   if (L === 6){ const y = +addr.slice(0,4), m0 = (+addr[4]-1)*3 + (+addr[5]-1); return daysInMonth(y, m0); }
   if (L === 7){ const y = +addr.slice(0,4), m0 = (+addr[4]-1)*3 + (+addr[5]-1), b = +addr[6];
@@ -381,16 +388,27 @@ function leafSpan(addr){
 }
 function buildTree(){
   if (MODE === 'clock'){
+    /* the millennium is the root, so stepping out from the year keeps going —
+     * decade, century, the whole thousand years. Above the year a rung only
+     * grows children where the clock actually runs or a record stands
+     * (a fully-grown millennium would be four hundred thousand parts);
+     * below the year the calendar grows whole, and below the day only where
+     * something social stands. */
+    const hasRecord = addr => OCC.some(o => o.addr.startsWith(addr)) ||
+      ACTS.some(a => a.at && a.at.startsWith(addr)) ||
+      PRESENT.some(p => strip0(p.at || '').startsWith(addr));
     const nodeC = addr => {
       let ks = clockKids(addr);
-      if (addr.length >= 8 && !(warm(addr) || onNowPath(addr))) ks = [];
-      if (addr.length >= 10) ks = [];
+      const L = addr.length;
+      if (L <= 4 && L > 1 && !(onNowPath(addr) || hasRecord(addr))) ks = [];
+      if (L >= 8 && !(warm(addr) || onNowPath(addr))) ks = [];
+      if (L >= 10) ks = [];
       const n = { addr };
       if (ks.length) n.children = ks.map(nodeC);
       else n.value = leafSpan(addr);
       return n;
     };
-    return nodeC(NOW10.slice(0, 4));
+    return nodeC('2');
   }
   const nodeT = addr => {
     const ks = treeKids(addr);
@@ -450,17 +468,14 @@ function drawD3(){
       .on('click', clicked);
   D3CTEXT = host.append('g').attr('pointer-events', 'none');
   D3DECOR = host.append('g').attr('pointer-events', 'none');
+  const keep = CURRENTP && CURRENTP.data ? CURRENTP.data.addr : null;
   CURRENTP = D3ROOT;
-  updateCentre(D3ROOT);
-  updateDecor();
-  FOCUS = D3ROOT.data.addr;
-  drawPanel();
+  const stand = (keep != null && D3ROOT.descendants().find(d => d.data.addr === keep && d.children))
+    || (MODE === 'clock' && D3ROOT.descendants().find(d => d.data.addr === NOW10.slice(0, 4) && d.children))
+    || D3ROOT;
+  jumpTo(stand);
 }
-function clicked(event, p){
-  if (!p) return;
-  /* a leaf is read, not entered; a parent (or the centre) is entered */
-  if (!p.children){ FOCUS = p.data.addr; drawPanel(); return; }
-  if (p === CURRENTP && !p.parent){ FOCUS = p.data.addr; drawPanel(); return; }
+function retarget(p){
   CURRENTP = p;
   D3PARENT.datum(p.parent || D3ROOT);
   D3ROOT.each(d => d.target = {
@@ -469,19 +484,29 @@ function clicked(event, p){
     y0: Math.max(0, d.y0 - p.depth),
     y1: Math.max(0, d.y1 - p.depth),
   });
+}
+/* land on a part with no animation — the opening view, and hidden tabs */
+function jumpTo(p){
+  retarget(p);
   FOCUS = p.data.addr;
+  D3ROOT.each(d => d.current = d.target);
+  D3PATH.attr('fill-opacity', d => arcVisible(d.current) ? 1 : 0)
+    .attr('stroke-opacity', d => arcVisible(d.current) ? 1 : 0)
+    .attr('pointer-events', d => arcVisible(d.current) ? 'auto' : 'none')
+    .attr('d', d => ARCGEN(d.current));
+  D3LABEL.attr('fill-opacity', d => +labelVisible(d.current))
+    .attr('transform', d => labelTransform(d.current));
+  updateCentre(p); updateDecor(); drawPanel();
+}
+function clicked(event, p){
+  if (!p) return;
+  /* a leaf is read, not entered; a parent (or the centre) is entered */
+  if (!p.children){ FOCUS = p.data.addr; drawPanel(); return; }
+  if (p === CURRENTP && !p.parent){ FOCUS = p.data.addr; drawPanel(); return; }
   /* frames are not guaranteed in a hidden tab — jump straight to the target */
-  if (document.hidden){
-    D3ROOT.each(d => d.current = d.target);
-    D3PATH.attr('fill-opacity', d => arcVisible(d.current) ? 1 : 0)
-      .attr('stroke-opacity', d => arcVisible(d.current) ? 1 : 0)
-      .attr('pointer-events', d => arcVisible(d.current) ? 'auto' : 'none')
-      .attr('d', d => ARCGEN(d.current));
-    D3LABEL.attr('fill-opacity', d => +labelVisible(d.current))
-      .attr('transform', d => labelTransform(d.current));
-    updateCentre(p); updateDecor(); drawPanel();
-    return;
-  }
+  if (document.hidden){ jumpTo(p); return; }
+  retarget(p);
+  FOCUS = p.data.addr;
   D3DECOR.attr('opacity', 0);
   const t = d3.select($('dial')).transition().duration(event && event.altKey ? 7500 : 750);
   D3PATH.transition(t)
@@ -616,7 +641,9 @@ function drawPanel(){
   rows.push('<div class="subhead">voices at this part</div>' + (exact.length ? exact.map(x =>
     '<div class="vline"><span class="who">' + esc(x.who) + '</span><p>' + esc(short(x.text, 400)) + '</p></div>').join('')
     : '<div class="vline"><span class="who"></span><p class="ptext absent" style="margin:0">none exactly here — the glow is voices deeper in; zoom to find them</p></div>'));
-  if (HANDLE){
+  if (HANDLE && addr && strip0(addr) !== addr){
+    rows.push('<p class="sayhint">this rung shares its wire address with the rung above (the zero-digit cost, sundial 3.4) — a say here would land there instead. Voice this stretch at <a href="/now/' + esc(HANDLE) + '">/now</a>, which holds the coarse rungs the safe way.</p>');
+  } else if (HANDLE){
     const mine = exact.find(x => x.who === HANDLE);
     rows.push('<div class="saybox"><textarea id="say-t" rows="2" placeholder="your voice at ' + esc(addr ? labelFor(addr) : FAMILY) + ' …">' + esc(mine ? mine.text : '') + '</textarea><button id="say-b">say</button></div>' +
       '<p class="sayhint">lands in ' + esc(FAMILY + ':' + HANDLE) + ' at this very part, revisable forever — Enter says, Shift+Enter breaks a line</p>');
