@@ -104,7 +104,7 @@
     ['recency', 'recency', 'family'],
     ['across',  'across',  'handle'],
     ['the field', 'field',  'handle'],
-    ['earth',   'earth',    'bare']
+    ['earth',   'earth',    'optional']
   ];
 
   var CSS = '' +
@@ -114,7 +114,7 @@
     '.dd>summary::-webkit-details-marker{display:none}' +
     '.dd>summary:hover{color:var(--foam);border-color:var(--line-strong)}' +
     '.dd[open]>summary{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}' +
-    '.dd__menu{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:172px;' +
+    '.dd__menu{position:absolute;right:0;top:calc(100% + 6px);z-index:40;min-width:216px;' +
       /* opaque, not 0.98: two percent was enough for the heading behind it to read
        * through the panel on a dark ground. */
       'background:rgb(var(--well-rgb));border:1px solid var(--line-strong);border-radius:8px;' +
@@ -128,6 +128,17 @@
     '.dd__rule{height:1px;background:var(--line);margin:7px 4px}' +
     /* acts keep the bar\'s own register — a button still looks like a button */
     '.dd__menu button{width:100%;text-align:left}' +
+    '.dd__edit{width:100%;text-align:center;background:none;border:none;border-top:1px solid var(--line);'+
+      'margin-top:6px;padding:8px 4px 2px;color:var(--vapour-dim);font-family:var(--mono);font-size:11px;'+
+      'letter-spacing:0.06em;cursor:pointer}' +
+    '.dd__edit:hover{color:var(--liquid)}' +
+    '.dd__row{display:flex;align-items:center;gap:7px;padding:3px 4px}' +
+    '.dd__name{flex:1;font-family:var(--body);font-size:14px;color:var(--vapour);white-space:nowrap}' +
+    '.dd__mv{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);' +
+      'font-size:11px;line-height:1;padding:3px 6px;cursor:pointer}' +
+    '.dd__mv:disabled{opacity:0.25;cursor:default}' +
+    '.dd__foot{display:flex;gap:8px;white-space:nowrap}' +
+    '.dd__foot .dd__edit{flex:1}' +
     '@media print{.dd{display:none}}';
 
   var styled = false;
@@ -154,7 +165,7 @@
      * corner. Buttons only — a details' own summary must keep its toggle. */
     document.addEventListener('click', function(e){
       var b = e.target.closest && e.target.closest('.dd__menu button');
-      if (!b) return;
+      if (!b || b.hasAttribute('data-keep-open')) return;
       var d = b.closest('details.dd');
       if (d) d.removeAttribute('open');
     }, true);
@@ -169,6 +180,9 @@
   function href(page, shape, handle, family){
     var h = handle ? encodeURIComponent(handle) : '';
     if (shape === 'bare')   return '/' + page;
+    /* optional: the page does not need a handle to work, but carries one so the
+     * chain of doors is not broken by passing through it. */
+    if (shape === 'optional') return handle ? '/' + page + '/' + h : '/' + page;
     if (shape === 'handle') return handle ? '/' + page + '/' + h : null;
     /* family: recency answers to a family and falls back to the now-clock, which is
      * why it is reachable from anywhere; walk without one has no room to open. */
@@ -181,7 +195,30 @@
     return '/' + page + '/' + encodeURIComponent(f) + (h ? '/' + h : '');
   }
 
+  /* ── whose list it is ──────────────────────────────────────────────────────
+   * Nobody has to decide the order centrally, because the reader decides it —
+   * kept on this device, never written to the beach, exactly the organ the pages
+   * already call 'display'. Until someone touches it they get the authored
+   * arrangement, homes above a rule and glances below; once they reorder, the
+   * rule goes and the list is simply theirs.
+   * ────────────────────────────────────────────────────────────────────────── */
+  var PREF_KEY = 'doors:prefs';
+  function prefs(){ try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch(e){ return {}; } }
+  function save(p){ try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch(e){} }
+
+  /* A stored order names pages, so a place ADDED here later still appears for
+   * someone who arranged their list months ago — it joins the end rather than
+   * vanishing. That is the whole reason this stores names and not indices. */
+  function arrange(){
+    var p = prefs(), all = WORK.concat(GLANCE), by = {}, out = [], seen = {};
+    all.forEach(function(x){ by[x[1]] = x; });
+    (p.order || []).forEach(function(n){ if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
+    all.forEach(function(x){ if (!seen[x[1]]) out.push(x); });
+    return { list: out, custom: !!(p.order && p.order.length), hidden: p.hidden || {} };
+  }
+
   window.siteDoors = function(cfg){
+
     cfg = cfg || {};
     style(); wire();
     var mount = cfg.mount || document.querySelector('.bar');
@@ -197,31 +234,80 @@
     var menu = document.createElement('div');
     menu.className = 'dd__menu';
 
-    function add(list){
-      var any = false;
-      list.forEach(function(p){
+    function paint(){
+      menu.innerHTML = '';
+      var a = arrange(), shownGlance = false;
+      a.list.forEach(function(p){
+        if (a.hidden[p[1]]) return;
         var u = href(p[1], p[2], cfg.handle, cfg.family);
         if (!u) return;                       /* nowhere to go yet — say so by omission */
-        any = true;
+        /* the rule is the AUTHORED arrangement speaking; once the reader has made
+         * their own order it would be drawing a distinction they did not make. */
+        if (!a.custom && !shownGlance && GLANCE.indexOf(p) >= 0){
+          shownGlance = true;
+          var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
+        }
         if (p[1] === cfg.here){
           var cur = document.createElement('span');
           cur.className = 'here'; cur.textContent = p[0];
           cur.setAttribute('aria-current', 'page');
           menu.appendChild(cur);
         } else {
-          var a = document.createElement('a');
-          a.href = u; a.textContent = p[0];
-          menu.appendChild(a);
+          var link = document.createElement('a');
+          link.href = u; link.textContent = p[0];
+          menu.appendChild(link);
         }
       });
-      return any;
+      var edit = document.createElement('button');
+      edit.className = 'dd__edit'; edit.type = 'button'; edit.setAttribute('data-keep-open',''); edit.textContent = 'choose what shows';
+      edit.addEventListener('click', function(e){ e.stopPropagation(); editor(); });
+      menu.appendChild(edit);
     }
 
-    var hadWork = add(WORK);
-    var rule = document.createElement('div'); rule.className = 'dd__rule';
-    if (hadWork) menu.appendChild(rule);
-    add(GLANCE);
+    /* The editor is the same panel — a menu that flips over rather than a second
+     * surface to find your way back out of. */
+    function editor(){
+      menu.innerHTML = '';
+      var a = arrange();
+      var order = a.list.map(function(p){ return p[1]; });
+      function commit(){ var p = prefs(); p.order = order; p.hidden = a.hidden; save(p); editor(); }
 
+      a.list.forEach(function(p, i){
+        var row = document.createElement('div'); row.className = 'dd__row';
+        var cb = document.createElement('input'); cb.type = 'checkbox';
+        cb.checked = !a.hidden[p[1]];
+        cb.addEventListener('change', function(){
+          if (cb.checked) delete a.hidden[p[1]]; else a.hidden[p[1]] = true;
+          commit();
+        });
+        var name = document.createElement('span'); name.className = 'dd__name'; name.textContent = p[0];
+        row.appendChild(cb); row.appendChild(name);
+        [['↑', -1], ['↓', 1]].forEach(function(mv){
+          var b = document.createElement('button'); b.type = 'button'; b.className = 'dd__mv'; b.setAttribute('data-keep-open','');
+          b.textContent = mv[0];
+          b.disabled = (i + mv[1] < 0 || i + mv[1] >= a.list.length);
+          b.addEventListener('click', function(e){
+            e.stopPropagation();
+            var j = i + mv[1], t = order[i]; order[i] = order[j]; order[j] = t;
+            commit();
+          });
+          row.appendChild(b);
+        });
+        menu.appendChild(row);
+      });
+
+      var foot = document.createElement('div'); foot.className = 'dd__foot';
+      var reset = document.createElement('button'); reset.type = 'button'; reset.className = 'dd__edit'; reset.setAttribute('data-keep-open','');
+      reset.textContent = 'back to the default';
+      reset.addEventListener('click', function(e){ e.stopPropagation(); save({}); editor(); });
+      var done = document.createElement('button'); done.type = 'button'; done.className = 'dd__edit'; done.setAttribute('data-keep-open','');
+      done.textContent = 'done';
+      done.addEventListener('click', function(e){ e.stopPropagation(); paint(); });
+      foot.appendChild(reset); foot.appendChild(done);
+      menu.appendChild(foot);
+    }
+
+    paint();
     d.appendChild(menu);
     /* places sit left of acts: going somewhere is the commoner intent, and the
      * two controls read as a pair only when they keep a stable order. */
