@@ -106,6 +106,15 @@
     ['the field', 'field',  'handle'],
     ['earth',   'earth',    'optional']
   ];
+  /* who you do it with: the door in, and the live surface where people actually
+   * meet. The mirror named here is the BARE place — a page's own 'mirror ↗'
+   * carries that page's coordinate, which makes it an act; the two do not
+   * collide because they are not the same thing. */
+  var WITH = [
+    ['connect', 'connect', 'optional'],
+    ['mirror.onen.ai', 'https://mirror.onen.ai/', 'external']
+  ];
+  var GROUPS = [WORK, GLANCE, WITH];
 
   var CSS = '' +
     '.dd{position:relative;flex:none}' +
@@ -179,6 +188,7 @@
 
   function href(page, shape, handle, family){
     var h = handle ? encodeURIComponent(handle) : '';
+    if (shape === 'external') return page;   /* already a whole URL */
     if (shape === 'bare')   return '/' + page;
     /* optional: the page does not need a handle to work, but carries one so the
      * chain of doors is not broken by passing through it. */
@@ -209,13 +219,49 @@
   /* A stored order names pages, so a place ADDED here later still appears for
    * someone who arranged their list months ago — it joins the end rather than
    * vanishing. That is the whole reason this stores names and not indices. */
+  function groupOf(p){
+    for (var i = 0; i < GROUPS.length; i++) if (GROUPS[i].indexOf(p) >= 0) return i;
+    return -1;
+  }
+
   function arrange(){
-    var p = prefs(), all = WORK.concat(GLANCE), by = {}, out = [], seen = {};
+    var p = prefs(), all = [].concat.apply([], GROUPS), by = {}, out = [], seen = {};
     all.forEach(function(x){ by[x[1]] = x; });
     (p.order || []).forEach(function(n){ if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
     all.forEach(function(x){ if (!seen[x[1]]) out.push(x); });
     return { list: out, custom: !!(p.order && p.order.length), hidden: p.hidden || {} };
   }
+
+  /* ── the acts, gathered ───────────────────────────────────────────────────
+   * A bar carrying more than one of the page's own controls gathers them behind
+   * 'options', on every page, without any page saying so — the same reason the
+   * places catalogue lives here: one mechanism, changed once. Moving a button in
+   * the DOM keeps its listeners and its id, so nothing is rewired and no page
+   * needs to know this happened.
+   *
+   * ONE control stays a control: a dropdown holding a single thing is worse than
+   * the thing, so /now keeps 'display' and /earth keeps 'workings' in the bar.
+   * ────────────────────────────────────────────────────────────────────────── */
+  function gatherActs(){
+    var mount = document.querySelector('.bar');
+    if (!mount || document.getElementById('dd-acts')) return;
+    var btns = [].filter.call(mount.children, function(e){ return e.tagName === 'BUTTON'; });
+    if (btns.length < 2) return;
+    style(); wire();
+    var d = document.createElement('details');
+    d.className = 'dd'; d.id = 'dd-acts';
+    var sum = document.createElement('summary');
+    sum.textContent = 'options ▾';
+    sum.title = 'what this page can do';
+    d.appendChild(sum);
+    var menu = document.createElement('div');
+    menu.className = 'dd__menu';
+    btns.forEach(function(b){ menu.appendChild(b); });   /* moving keeps the wiring */
+    d.appendChild(menu);
+    mount.appendChild(d);
+  }
+  /* after the page's own script, so a control created at boot is caught too */
+  document.addEventListener('DOMContentLoaded', gatherActs);
 
   window.siteDoors = function(cfg){
 
@@ -236,17 +282,18 @@
 
     function paint(){
       menu.innerHTML = '';
-      var a = arrange(), shownGlance = false;
+      var a = arrange(), lastGroup = null;
       a.list.forEach(function(p){
         if (a.hidden[p[1]]) return;
         var u = href(p[1], p[2], cfg.handle, cfg.family);
         if (!u) return;                       /* nowhere to go yet — say so by omission */
         /* the rule is the AUTHORED arrangement speaking; once the reader has made
          * their own order it would be drawing a distinction they did not make. */
-        if (!a.custom && !shownGlance && GLANCE.indexOf(p) >= 0){
-          shownGlance = true;
+        var g = groupOf(p);
+        if (!a.custom && lastGroup !== null && g !== lastGroup){
           var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
         }
+        lastGroup = g;
         if (p[1] === cfg.here){
           var cur = document.createElement('span');
           cur.className = 'here'; cur.textContent = p[0];
