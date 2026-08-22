@@ -320,6 +320,14 @@ const SPINE = 'spine:' + FIELD;
 /* aim filter — flick one hand of the personal deck: cards aiming at ?aim=<family>
  * (a time-shaped aim — this week, August, 20xx — belongs to the deck's venture) */
 const AIM = ((new URLSearchParams(location.search).get('aim') || '').replace(/[^a-z0-9-]/gi, '')).toLowerCase();
+/* A HAND IS A PILE, so ?pile=<digit> flicks ONE of them — today's hand, the
+ * week's hand — and no pile flicks the union. The two filters are orthogonal:
+ * a pile is a GRAIN and an aim is a PROJECT, and a person picks one at a time
+ * rather than meeting every cut of the list at once. */
+const PILE = (new URLSearchParams(location.search).get('pile') || '').replace(/[^1-9]/g, '');
+/* cards dealt but not yet kept — counted so an empty flick can say WHY it is
+ * empty rather than sending a person to add a card they have already been dealt */
+let OFFERED = 0;
 const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
 const aimMatch = text => !AIM ? true :
   (new RegExp('toward\\s+' + AIM, 'i').test(text) || (AIM === ((OP && OP.venture) || 'beach-venture') && TIME_AIM.test(text)));
@@ -523,7 +531,12 @@ function personalContent(addr, content){
  * which is why they can share a write path and a choke point. */
 function cardFromEntry(f){
   const verb = leadingVerb(f.raw);
-  const body = verb ? f.raw.slice(verb.length).replace(/^[\s—–-]+/, '') : f.raw;
+  /* A CARD'S WORDS ARE WHAT IS LEFT AFTER THE WHOLE MARK, not just after the verb.
+   * A mark is verb + stamps + words, so slicing only the verb left the timestamp
+   * standing at the front of the card — invisible while every marked card was a
+   * retired one nobody rendered, and glaring the moment a dealt card had to be
+   * read and kept. bodyText already knew how to do this for the landing line. */
+  const body = verb ? bodyText(f.raw) : f.raw;
   const card = makeCard(f.digits, body, 0, Number(f.digits.join('')), '', false, HANDLE);
   card.addr = f.digits.join('');
   card.raw = f.raw;
@@ -619,6 +632,12 @@ async function loadField(){
       }
       found.sort((a, b) => a.pile - b.pile || Number(a.digits.join('')) - Number(b.digits.join('')));
       for (const f of found){ const c = cardFromEntry(f); c.pile = f.pile; CARDS.push(c); }
+      /* A CARD ONLY DEALT IS NOT YET IN THE HAND. It was offered into the
+       * holder's own pile and stays offered until they keep it or let it go at
+       * /hands — so it must not arrive in the flick as though it were theirs. */
+      OFFERED = CARDS.filter(c => leadingVerb(c.raw || '') === 'PROPOSED').length;
+      CARDS = CARDS.filter(c => leadingVerb(c.raw || '') !== 'PROPOSED');
+      if (PILE) CARDS = CARDS.filter(c => String(c.pile) === PILE);
       if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));
       rebuildDeck(false);
       return;
@@ -795,11 +814,22 @@ function renderDeck(){
   if (!DECK.length){
     /* three different silences, and calling them all 'clear' was a lie: a field with no
      * mount is not a deck at all, and one with cards nobody has reached is not finished. */
-    if (HAND && !CARDS.length)
+    if (HAND && !CARDS.length && PILE)
+      showState('That hand is empty.',
+        'Nothing in your ' + esc((PILES.find(x => x.d === PILE) || {}).label || 'pile') + ' pile. '
+        + '<a href="/hands/' + encodeURIComponent(HANDLE) + '">Deal yourself some</a>, or '
+        + '<a href="/next/' + encodeURIComponent(HANDLE) + '">flick everything</a>.');
+    else if (HAND && !CARDS.length && OFFERED)
+      showState('Nothing kept yet.',
+        OFFERED + (OFFERED === 1 ? ' card has' : ' cards have') + ' been dealt to you and '
+        + (OFFERED === 1 ? 'is' : 'are') + ' waiting to be kept or let go at '
+        + '<a href="/hands/' + encodeURIComponent(HANDLE) + '">your hands</a>. '
+        + 'A dealt card is offered, not yours — so it does not arrive in the flick until you keep it.');
+    else if (HAND && !CARDS.length)
       showState('An empty hand.',
-        'Nothing in your piles yet. Add one with ＋ — or lay several out at once on '
-        + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">your ahead page</a>, which writes the same block. '
-        + 'Cards come back here one at a time.');
+        'Nothing in your piles yet. Deal yourself some at <a href="/hands/' + encodeURIComponent(HANDLE) + '">your hands</a>, '
+        + 'add one here with ＋, or lay several out at once on '
+        + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">your ahead page</a>, which writes the same block.');
     else if (HAND)
       showState('Hand played out.',
         'Everything in your piles is done, dropped or waiting on a later day. '
@@ -1513,7 +1543,8 @@ async function boot(){
   $('bar-who').textContent = HANDLE;
 /* the page hands over what only it knows; the catalogue is shared in theme.js */
 if (window.siteDoors) siteDoors({ handle: HANDLE, family: FIELD, here: 'next' });
-  $('bar-field').textContent = (HAND ? 'my hand' : 'the ' + FIELD + ' field') + (AIM ? ' \u00b7 ' + AIM : '');
+  $('bar-field').textContent = (HAND ? (PILE ? (PILES.find(x => x.d === PILE) || {}).label || 'my hand' : 'my hand')
+                                     : 'the ' + FIELD + ' field') + (AIM ? ' \u00b7 ' + AIM : '');
   $('link-field').href = '/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(SPINE);
   $('link-fold').href = '/fold?field=' + encodeURIComponent(FIELD);
   $('link-decks').href = '/my-decks/' + encodeURIComponent(HANDLE);
