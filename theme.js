@@ -263,6 +263,351 @@
   /* after the page's own script, so a control created at boot is caught too */
   document.addEventListener('DOMContentLoaded', gatherActs);
 
+  /* ── the projects you are in ───────────────────────────────────────────────
+   * There is no directory page and none is needed: YOUR PROJECTS ARE THE FAMILIES
+   * YOU HOLD A MIRROR IN, which the beach index already knows. A family exists iff
+   * spine:<name> stands; you are in it iff <name>:<handle> stands. One read, no
+   * configuration, nothing to keep up to date — a project appears in your row the
+   * moment you first speak in it, and that is the whole mechanism.
+   *
+   * Requiring the spine is what makes it exact rather than nearly right: without
+   * it, passport:, shell:, history:, pool:, ear: and a dozen other role-blocks all
+   * end in your handle and would arrive here pretending to be projects.
+   *
+   * Three families are left out because they have their own pages and are not
+   * projects in the sense this row means: your now, your ahead, your deck.
+   * ────────────────────────────────────────────────────────────────────────── */
+  var OWN_PAGE = { 'now':'now', 'ahead':'ahead', 'today-beach-deck':'today-beach-deck' };
+  /* A DEFAULT, NOT A LAW. There is no substrate fact that means 'project' — the
+   * floor does not say it (beach-venture and genus-one are clocks; doing,
+   * experiences and molequle are trees, and all five are projects), and nothing
+   * else does either. It is a judgement about your own work, so the chooser below
+   * owns it and this list only decides what a newcomer sees first. These two are
+   * substrate machinery — the respond-deck and the health battery — rather than
+   * anyone's project, which is why they start off for everybody and not just for
+   * the hand that named them. Tick them back on and they stay on. */
+  var OFF_BY_DEFAULT = { 'pulse':1, 'state-of-play':1 };
+  var IDX_KEY = 'doors:index';
+  var IDX_TTL = 5 * 60 * 1000;
+
+  function readIndex(origin){
+    var now = Date.now();
+    try {
+      var c = JSON.parse(sessionStorage.getItem(IDX_KEY) || 'null');
+      if (c && c.origin === origin && (now - c.at) < IDX_TTL) return Promise.resolve(c.blocks);
+    } catch(e){}
+    return fetch(origin + '/.well-known/pscale-beach', { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var blocks = j.blocks || [];
+        try { sessionStorage.setItem(IDX_KEY, JSON.stringify({origin:origin, at:now, blocks:blocks})); } catch(e){}
+        return blocks;
+      });
+  }
+
+  /* ── the list block: rank is depth ────────────────────────────────────────
+   * projects:<handle> holds this hand's own ordered lists, ONE BRANCH PER LIST,
+   * and each list is a NESTED CHAIN rather than a flat fan of 1-9:
+   *
+   *   1        the projects list          (its underscore says so)
+   *   1.1      the first project
+   *   1.11     the second
+   *   1.111    the third  …
+   *
+   * Two things fall out of nesting that a flat fan cannot give. There is no limit
+   * of nine, because a chain just keeps going. And RANK BECOMES DEPTH, so 'my top
+   * three' is an APERTURE — read to depth three — rather than a filter somebody
+   * has to compute. Reordering rewrites the branch, which is one small call.
+   *
+   * Branches 2-9 stand free for whatever other list a hand wants; nothing here
+   * assumes branch 1 is the only one.
+   * ────────────────────────────────────────────────────────────────────────── */
+  function listBlockName(handle){ return 'projects:' + handle; }
+
+  /* walk a chain, collecting each rung's underscore in order */
+  function chainToList(node){
+    var out = [], n = node && node['1'], guard = 0;
+    while (n && typeof n === 'object' && guard++ < 200){
+      if (typeof n._ === 'string' && n._.trim()) out.push(n._.trim());
+      n = n['1'];
+    }
+    return out;
+  }
+
+  /* build the chain back from a list, deepest last */
+  function listToChain(items){
+    var node = null;
+    for (var i = items.length - 1; i >= 0; i--){
+      var rung = { '_': items[i] };
+      if (node) rung['1'] = node;
+      node = rung;
+    }
+    return node;
+  }
+
+  function readList(origin, handle){
+    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(listBlockName(handle)),
+                 { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.status === 404 ? null : r.json(); })
+      .then(function(b){ return b ? chainToList(b['1']) : null; })
+      .catch(function(){ return null; });
+  }
+
+  var ROW_CSS = '' +
+    '.projrow{position:sticky;z-index:9;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;' +
+      'padding:9px 18px;background:rgba(var(--well-rgb),0.92);backdrop-filter:blur(8px);' +
+      'border-bottom:1px solid var(--line);font-family:var(--body);font-size:14.5px}' +
+    '.projrow a{color:var(--vapour-dim);text-decoration:none;border-bottom:none;padding:1px 5px;border-radius:4px}' +
+    '.projrow a:hover{color:var(--liquid);background:rgba(var(--wash-rgb),0.07)}' +
+    '.projrow .here{color:var(--foam);padding:1px 5px}' +
+    '.projrow .sep{color:var(--vapour-dim);opacity:0.4}' +
+    '.projrow__pick{margin-left:10px;background:none;border:none;color:var(--vapour-dim);' +
+      'font-family:var(--mono);font-size:11px;letter-spacing:0.06em;cursor:pointer;padding:1px 4px}' +
+    '.projrow__pick:hover{color:var(--liquid)}' +
+    '.projrow__panel{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:4px 16px;padding:9px 2px 2px;' +
+      'margin-top:7px;border-top:1px solid var(--line)}' +
+    '.projrow__item{display:flex;align-items:center;gap:7px;font-family:var(--body);' +
+      'font-size:14px;color:var(--vapour);min-width:210px}' +
+    '.projrow__name{flex:1}' +
+    '.projrow__mv{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);' +
+      'font-size:11px;line-height:1;padding:2px 5px;cursor:pointer}' +
+    '.projrow__mv:disabled{opacity:0.25;cursor:default}' +
+    '.projrow__foot{flex:1 0 100%;padding-top:6px}' +
+    '.projrow__panel input:disabled + *,.projrow__panel input:disabled{opacity:0.45;cursor:default}' +
+    '.projrow__note{flex:1 0 100%;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;' +
+      'color:var(--solid);padding-bottom:6px}' +
+    '.projrow__note a{color:var(--solid);border-bottom:none}' +
+    '.projrow__note a:hover{color:var(--foam);background:none}' +
+    '@media print{.projrow{display:none}}';
+  var rowStyled = false;
+
+  /* The bar is sticky at the top and this row sits under it, so its offset is the
+   * bar's height — measured, never assumed, because the bar wraps to two or three
+   * lines on a narrow screen and a hardcoded 44px would bury the first project. */
+  function followBar(row, bar){
+    var set = function(){ row.style.top = bar.getBoundingClientRect().height + 'px'; };
+    set();
+    if (window.ResizeObserver) new ResizeObserver(set).observe(bar);
+    else window.addEventListener('resize', set);
+  }
+
+  var ROOT_SAYS = "The ordered lists this hand keeps for its own use, one branch per list, each list nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; other branches stand free for other lists.";
+  var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
+
+  function latchFor(handle){ return 'projects-latch:' + handle; }
+
+  function post(origin, body){
+    return fetch(origin + '/.well-known/pscale-beach', { method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json', Accept:'application/json'},
+      body: JSON.stringify(body) })
+      .then(function(r){ return r.json().catch(function(){ return null; })
+        .then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+  }
+  function lockRequired(w){
+    return !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+  }
+
+  /* Save the whole branch in one write: reordering IS rewriting the chain, and the
+   * chain is a few dozen bytes an item. Born latched to its holder on the first
+   * write — it is a public page you own, so an open one would be anyone's to edit. */
+  function saveList(origin, handle, items){
+    var name = listBlockName(handle);
+    var branch = { '_': BRANCH_SAYS };
+    var chain = listToChain(items);
+    if (chain) branch['1'] = chain;
+
+    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
+                 { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.status === 404 ? null : r.json(); })
+      .then(function(existing){
+        var key = null;
+        try { key = localStorage.getItem(latchFor(handle)); } catch(e){}
+        if (!existing){
+          if (!key){
+            key = prompt('Your key for ' + name + ' — invent one now; it keeps this list yours to edit:');
+            if (key === null || !key.trim()) return { ok:false, quiet:true };
+            key = key.trim();
+          }
+          var body = { block: name, content: { '_': ROOT_SAYS, '1': branch }, new_lock: key };
+          return post(origin, body).then(function(w){
+            if (w.ok) try { localStorage.setItem(latchFor(handle), key); } catch(e){}
+            return w;
+          });
+        }
+        var b2 = { block: name, spindle: '1', content: branch };
+        if (key) b2.secret = key;
+        return post(origin, b2).then(function(w){
+          if (!lockRequired(w)) {
+            if (w.ok && key) try { localStorage.setItem(latchFor(handle), key); } catch(e){}
+            return w;
+          }
+          var v = prompt(name + ' is latched — enter your key (kept on this device):');
+          if (v === null || !v.trim()) return { ok:false, quiet:true };
+          b2.secret = v.trim();
+          return post(origin, b2).then(function(w2){
+            if (w2.ok) try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){}
+            return w2;
+          });
+        });
+      });
+  }
+
+  window.siteProjects = function(cfg){
+    cfg = cfg || {};
+    if (!cfg.handle || !cfg.page) return;
+    var bar = document.querySelector('.bar');
+    if (!bar || document.querySelector('.projrow')) return;
+    var origin = cfg.beach || 'https://beach.happyseaurchin.com';
+
+    Promise.all([readIndex(origin), readList(origin, cfg.handle)]).then(function(both){
+      var blocks = both[0], stated = both[1];
+      var have = {};
+      blocks.forEach(function(n){ have[n] = 1; });
+      var mine = [];
+      blocks.forEach(function(n){
+        if (n.indexOf('spine:') !== 0) return;
+        var f = n.slice(6);
+        if (OWN_PAGE[f]) return;
+        if (have[f + ':' + cfg.handle]) mine.push(f);
+      });
+      /* whatever you are standing in belongs in the row even if you hold no mirror
+       * there yet — otherwise the row silently disagrees with the page above it */
+      if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
+      mine.sort();
+
+      /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at projects:<handle>,
+       * it decides both membership and order and nothing is computed; absent, the
+       * default below stands in until the hand says otherwise. There is no hidden
+       * set either way — a family is in the list or it is not. */
+      var visible;
+      if (stated && stated.length){
+        visible = stated.filter(function(f){ return !OWN_PAGE[f]; });
+        if (cfg.family && !OWN_PAGE[cfg.family] && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
+        /* a stated project you hold no mirror in yet is still yours — offer it too */
+        stated.forEach(function(f){ if (!OWN_PAGE[f] && mine.indexOf(f) < 0) mine.push(f); });
+      } else {
+        visible = mine.filter(function(f){
+          if (f === cfg.family) return true;         /* never hide where you are standing */
+          return !OFF_BY_DEFAULT[f];
+        });
+      }
+      if (visible.length < 2 && mine.length < 2) return;   /* a row of one is furniture, not a choice */
+      function shown(f){ return visible.indexOf(f) >= 0; }
+
+      if (!rowStyled){ rowStyled = true;
+        var st = document.createElement('style'); st.textContent = ROW_CSS; document.head.appendChild(st); }
+
+      var row = document.createElement('div');
+      row.className = 'projrow';
+      row.setAttribute('aria-label', 'your projects');
+
+      /* Walking a family that HAS ITS OWN PAGE — your now, your ahead, your deck —
+       * is a legitimate thing to do and an unusual one, so the row says so instead
+       * of leaving nothing marked and the reader wondering where they are. This is
+       * what keeps /walk meaning 'projects' while /walk/now stays reachable. */
+      if (cfg.family && OWN_PAGE[cfg.family]){
+        var note = document.createElement('span');
+        note.className = 'projrow__note';
+        note.appendChild(document.createTextNode('walking your ' + cfg.family + ' — '));
+        var back = document.createElement('a');
+        back.href = '/' + OWN_PAGE[cfg.family] + '/' + encodeURIComponent(cfg.handle);
+        back.textContent = 'its own page shows it better \u2192';
+        note.appendChild(back);
+        row.appendChild(note);
+      }
+      visible.forEach(function(f, i){
+        if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
+        if (f === cfg.family){
+          var cur = document.createElement('span');
+          cur.className = 'here'; cur.textContent = f;
+          cur.setAttribute('aria-current', 'true');
+          row.appendChild(cur);
+        } else {
+          var a = document.createElement('a');
+          /* the same page, the same you, a different project — which is the whole
+           * point: flicking between projects without leaving where you are */
+          a.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
+          a.textContent = f;
+          row.appendChild(a);
+        }
+      });
+      /* the chooser, on the row it governs — every family you hold a mirror in,
+       * including the ones off by default, so nothing is unreachable. Same organ
+       * as 'choose what shows' in the places menu, same device-local home. */
+      var pick = document.createElement('button');
+      pick.type = 'button'; pick.className = 'projrow__pick';
+      pick.textContent = 'choose';
+      pick.title = 'which of your families count as projects';
+      pick.addEventListener('click', function(e){
+        e.stopPropagation();
+        if (row.querySelector('.projrow__panel')){ row.querySelector('.projrow__panel').remove(); return; }
+        var panel = document.createElement('div');
+        panel.className = 'projrow__panel';
+
+        /* the working order: what is in the row, then everything else beneath it,
+         * so ticking a family on drops it at the end rather than nowhere */
+        var order = visible.slice();
+        mine.forEach(function(f){ if (order.indexOf(f) < 0) order.push(f); });
+        var inList = {}; visible.forEach(function(f){ inList[f] = 1; });
+
+        function draw(){
+          panel.innerHTML = '';
+          order.forEach(function(f, i){
+            var rowEl = document.createElement('div');
+            rowEl.className = 'projrow__item';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox'; cb.checked = !!inList[f];
+            cb.disabled = (f === cfg.family);       /* you are standing in it */
+            cb.addEventListener('change', function(){
+              if (cb.checked) inList[f] = 1; else delete inList[f];
+              draw();
+            });
+            var nm = document.createElement('span');
+            nm.className = 'projrow__name'; nm.textContent = f;
+            if (!inList[f]) nm.style.opacity = '0.45';
+            rowEl.appendChild(cb); rowEl.appendChild(nm);
+            [['↑', -1], ['↓', 1]].forEach(function(mv){
+              var b = document.createElement('button');
+              b.type = 'button'; b.className = 'projrow__mv'; b.textContent = mv[0];
+              b.disabled = (i + mv[1] < 0 || i + mv[1] >= order.length);
+              b.addEventListener('click', function(e){
+                e.stopPropagation();
+                var j = i + mv[1], t = order[i]; order[i] = order[j]; order[j] = t;
+                draw();
+              });
+              rowEl.appendChild(b);
+            });
+            panel.appendChild(rowEl);
+          });
+
+          var foot = document.createElement('div'); foot.className = 'projrow__foot';
+          var save = document.createElement('button');
+          save.type = 'button'; save.className = 'projrow__pick';
+          save.textContent = 'save to the beach';
+          save.title = 'writes projects:' + cfg.handle + ' — yours, portable, readable by anything';
+          save.addEventListener('click', function(e){
+            e.stopPropagation();
+            save.disabled = true; save.textContent = 'saving…';
+            saveList(origin, cfg.handle, order.filter(function(f){ return inList[f]; }))
+              .then(function(w){
+                if (w && w.ok){ location.reload(); return; }
+                save.disabled = false;
+                save.textContent = (w && w.quiet) ? 'save to the beach' : 'refused — try again';
+              });
+          });
+          foot.appendChild(save);
+          panel.appendChild(foot);
+        }
+        draw();
+        row.appendChild(panel);
+      });
+      row.appendChild(pick);
+
+      bar.parentNode.insertBefore(row, bar.nextSibling);
+      followBar(row, bar);
+    }).catch(function(){ /* no row rather than a broken one */ });
+  };
+
   window.siteDoors = function(cfg){
 
     cfg = cfg || {};
