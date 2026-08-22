@@ -91,6 +91,9 @@
   .dcard .acts a{font-family:var(--mono);font-size:10.5px;border-bottom:none;color:var(--vapour);
     border:1px solid var(--line-strong);border-radius:7px;padding:7px 10px}
   .dcard .acts a:hover{color:var(--foam);border-color:var(--foam)}
+  .dcard.blank{background:none;border-style:dashed;border-color:var(--line);cursor:text;min-height:120px}
+  .dcard.blank:hover{border-color:var(--line-strong)}
+  .dcard.blank .txt.add{color:var(--vapour-dim);font-family:var(--mono);font-size:12px;display:flex;align-items:center}
   .empty-row{max-width:720px;margin:0 auto;padding:2px 18px 8px;font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim)}
 
   .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);
@@ -142,7 +145,7 @@
   <div class="foot">
     A card is yours the moment you keep it — the project is never written to, and nothing is assigned to anybody. Where a done card lands is read off the words it carries: a card aimed at a project lands in your reading of that project, and one aimed at nothing lands in your now.
     <br>Dealing is always an act you perform, never a feed that runs. Whoever deals — this page, the mirror, a chat that can reach this beach — puts cards in the same place, and none of them is yours until you keep it.
-    <br><a id="foot-ahead" href="/ahead">the piles →</a> · <a id="foot-flick" href="/next">flick your hand →</a> · <a href="/now">your now →</a>
+    <br><a id="foot-flick" href="/next">flick your hand →</a> · <a id="foot-now" href="/now">your now →</a>
   </div>
 </div>
 <div id="state" class="state hidden"><h2 id="state-title"></h2><p id="state-body"></p></div>
@@ -409,6 +412,22 @@ const stamp = () => new Date().toISOString().slice(0,16) + 'Z';
 async function keepCard(c){
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: c.text });
 }
+/* A CARD OF YOUR OWN carries no mark. It was never dealt, so there is nothing to
+ * keep — it is yours from the first keystroke, which is the difference between
+ * writing an intent and being offered one. */
+async function addCard(pile, text){
+  const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
+  if (!mine){
+    const w0 = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, content: { '_':
+      'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." } });
+    if (!w0.ok) return w0;
+  }
+  const now = await readBlock('ahead:' + HANDLE).catch(() => null);
+  const has = now && now[pile] && typeof now[pile] === 'object';
+  return withLatch('ahead:' + HANDLE, has
+    ? { block: 'ahead:' + HANDLE, spindle: pile, append: true, content: text }
+    : { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': text } });
+}
 async function editCard(c, text){
   const lead = c.verb ? c.verb + ' ' + stamp() + ' — ' : '';
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: lead + text });
@@ -533,8 +552,19 @@ function handCardEl(c){
     + '<span class="aim"><span class="pile">' + esc(pileLabel(c.pile)) + '</span>'
     + (aimOf(c.raw) ? '<span class="rung">' + esc(aimOf(c.raw)) + '</span>' : '') + '</span>'
     + '<div class="txt">' + esc(c.text) + '</div>'
-    + '<div class="acts"><a href="/next/' + encodeURIComponent(HANDLE) + '">flick →</a>'
-    + '<button class="x" data-act="drop">✕ let go</button></div></div>';
+    + '<div class="acts"><a href="/next/' + encodeURIComponent(HANDLE) + '?pile=' + esc(c.pile) + '">flick →</a>'
+    + '<button data-act="edit">✎</button>'
+    + '<button class="x" data-act="drop">✕</button></div></div>';
+}
+/* THE BLANK CARD — /ahead's one real virtue, and the reason it existed. Click it
+ * and type; Enter lands the intent in that pile and opens another, so a run of
+ * them goes down as fast as they are thought. Nothing is dealt, nothing is
+ * offered — a card written by its own holder is theirs from the first keystroke,
+ * which is why it carries no mark at all. */
+function blankCardEl(p){
+  return '<div class="dcard blank" data-pile="' + p.d + '">'
+    + '<span class="aim"><span class="pile">' + esc(p.label) + '</span></span>'
+    + '<div class="txt add">＋ add one</div></div>';
 }
 function dealtCardEl(c){
   return '<div class="dcard deal" data-addr="' + esc(c.addr) + '">'
@@ -548,7 +578,7 @@ function dealtCardEl(c){
 function render(){
   $('bar-who').textContent = HANDLE;
   $('foot-flick').href = '/next/' + encodeURIComponent(HANDLE);
-  $('foot-ahead').href = '/ahead/' + encodeURIComponent(HANDLE);
+  $('foot-now').href = '/now/' + encodeURIComponent(HANDLE);
   const out = [];
 
   /* JUST DEALT — the only row that is ever new, and it empties as you sort it */
@@ -559,21 +589,23 @@ function render(){
     out.push('<div class="carousel">' + DEALT.map(dealtCardEl).join('') + '</div>');
   }
 
-  /* YOUR HANDS — one per pile, each at its own grain */
-  const piles = PILES.filter(p => (PILES_HELD[p.d] || []).length);
-  const total = piles.reduce((n, p) => n + PILES_HELD[p.d].length, 0);
+  /* YOUR HANDS — one per pile, and EVERY pile stands whether or not it holds
+   * anything, because a pile you cannot see is a pile you cannot write into. This
+   * is /ahead folded in: that page's whole virtue was a blank card at the end of
+   * each row, so several intentions could be laid down as fast as they are
+   * thought, and it now lives here rather than at a surface of its own. An empty
+   * pile costs one line and earns it the moment someone types in it. */
+  const total = PILES.reduce((n, p) => n + (PILES_HELD[p.d] || []).length, 0);
   out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">your hands</span>'
-    + '<span class="n">' + total + (total === 1 ? ' card' : ' cards') + ' across ' + piles.length + '</span>'
+    + '<span class="n">' + total + (total === 1 ? ' card' : ' cards') + '</span>'
     + '<div class="links">' + (total ? '<a href="/next/' + encodeURIComponent(HANDLE) + '">flick everything →</a>' : '') + '</div>'
-    + '<p class="sub">Each pile is a hand — sorted by how far out it is, not by which project it serves. A card carries what it aims at, so a hand mixes projects the way a day does. Flick one pile, or flick everything.</p></div>');
-  if (!total)
-    out.push('<div class="empty-row">no cards yet — deal yourself some below, or lay your own out at <a href="/ahead/' + encodeURIComponent(HANDLE) + '">the piles</a></div>');
-  for (const p of piles){
-    const cards = PILES_HELD[p.d];
+    + '<p class="sub">Each pile is a hand — sorted by how far out it is, not by which project it serves. A card carries what it aims at, so a hand mixes projects the way a day does. Type in the last card of any row to add one; flick one pile, or flick everything.</p></div>');
+  for (const p of PILES){
+    const cards = PILES_HELD[p.d] || [];
     out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">' + esc(p.label) + '</span>'
-      + '<span class="n">' + cards.length + (cards.length === 1 ? ' card' : ' cards') + '</span>'
-      + '<div class="links"><a href="/next/' + encodeURIComponent(HANDLE) + '?pile=' + p.d + '">flick →</a></div></div>');
-    out.push('<div class="carousel">' + cards.map(handCardEl).join('') + '</div>');
+      + '<span class="n">' + (cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty') + '</span>'
+      + '<div class="links">' + (cards.length ? '<a href="/next/' + encodeURIComponent(HANDLE) + '?pile=' + p.d + '">flick →</a>' : '') + '</div></div>');
+    out.push('<div class="carousel">' + cards.map(handCardEl).join('') + blankCardEl(p) + '</div>');
   }
 
   if (ASKS.length){
@@ -638,6 +670,41 @@ document.addEventListener('click', async e => {
   } catch(err){ toast(String(err.message || err), true); }
   b.disabled = false;
 });
+
+/* THE BLANK CARD OPENS WHERE IT SITS. Enter lands the intent and immediately
+ * offers another in the same pile, so a run of them goes down without the hand
+ * leaving the keyboard — the one thing /ahead did that nothing else did, and the
+ * reason folding it in had to bring this rather than only its links. */
+document.addEventListener('click', e => {
+  const blank = e.target.closest('.dcard.blank');
+  if (!blank || blank.querySelector('textarea')) return;
+  openBlank(blank);
+});
+function openBlank(el){
+  const pile = el.dataset.pile;
+  const box = el.querySelector('.txt');
+  const ta = document.createElement('textarea');
+  ta.placeholder = 'one thing you are holding toward';
+  ta.style.cssText = 'width:100%;min-height:90px;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);'
+    + 'border-radius:6px;color:var(--foam);font:inherit;padding:8px;resize:vertical';
+  box.replaceWith(ta); ta.focus();
+  let busy = false, done = false;
+  const finish = async commit => {
+    if (busy || done) return;
+    const v = ta.value.trim();
+    if (!commit || !v){ done = true; await reload(); return; }
+    busy = true;
+    const w = await addCard(pile, v);
+    busy = false;
+    if (w.ok){ toast('✓ added — ' + pileLabel(pile)); done = true; await reload(); }
+    else if (!w.quiet) toast('it did not land', true);
+  };
+  ta.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); finish(true); }
+    else if (ev.key === 'Escape'){ ev.preventDefault(); finish(false); }
+  });
+  ta.addEventListener('blur', () => finish(true));
+}
 
 /* EDIT IN PLACE — a mechanically split card often wants one word changed before
  * it is really yours, and sending that through a dialog would make the cheapest
