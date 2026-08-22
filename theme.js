@@ -96,6 +96,7 @@
     ['the project', 'walk',     'family'],
     ['ahead',       'ahead',    'handle'],
     ['your deck',   'next',     'handle'],
+    ['my hands',    'hands',    'handle'],
     ['my decks',    'my-decks', 'handle'],
     ['the morning', 'morning',  'handle'],
     ['the ledger',  'ledger',   'handle']
