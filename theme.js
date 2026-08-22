@@ -263,6 +263,129 @@
   /* after the page's own script, so a control created at boot is caught too */
   document.addEventListener('DOMContentLoaded', gatherActs);
 
+  /* ── the projects you are in ───────────────────────────────────────────────
+   * There is no directory page and none is needed: YOUR PROJECTS ARE THE FAMILIES
+   * YOU HOLD A MIRROR IN, which the beach index already knows. A family exists iff
+   * spine:<name> stands; you are in it iff <name>:<handle> stands. One read, no
+   * configuration, nothing to keep up to date — a project appears in your row the
+   * moment you first speak in it, and that is the whole mechanism.
+   *
+   * Requiring the spine is what makes it exact rather than nearly right: without
+   * it, passport:, shell:, history:, pool:, ear: and a dozen other role-blocks all
+   * end in your handle and would arrive here pretending to be projects.
+   *
+   * Three families are left out because they have their own pages and are not
+   * projects in the sense this row means: your now, your ahead, your deck.
+   * ────────────────────────────────────────────────────────────────────────── */
+  var OWN_PAGE = { 'now':'now', 'ahead':'ahead', 'today-beach-deck':'today-beach-deck' };
+  var IDX_KEY = 'doors:index';
+  var IDX_TTL = 5 * 60 * 1000;
+
+  function readIndex(origin){
+    var now = Date.now();
+    try {
+      var c = JSON.parse(sessionStorage.getItem(IDX_KEY) || 'null');
+      if (c && c.origin === origin && (now - c.at) < IDX_TTL) return Promise.resolve(c.blocks);
+    } catch(e){}
+    return fetch(origin + '/.well-known/pscale-beach', { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        var blocks = j.blocks || [];
+        try { sessionStorage.setItem(IDX_KEY, JSON.stringify({origin:origin, at:now, blocks:blocks})); } catch(e){}
+        return blocks;
+      });
+  }
+
+  var ROW_CSS = '' +
+    '.projrow{position:sticky;z-index:9;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;' +
+      'padding:9px 18px;background:rgba(var(--well-rgb),0.92);backdrop-filter:blur(8px);' +
+      'border-bottom:1px solid var(--line);font-family:var(--body);font-size:14.5px}' +
+    '.projrow a{color:var(--vapour-dim);text-decoration:none;border-bottom:none;padding:1px 5px;border-radius:4px}' +
+    '.projrow a:hover{color:var(--liquid);background:rgba(var(--wash-rgb),0.07)}' +
+    '.projrow .here{color:var(--foam);padding:1px 5px}' +
+    '.projrow .sep{color:var(--vapour-dim);opacity:0.4}' +
+    '.projrow__note{flex:1 0 100%;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;' +
+      'color:var(--solid);padding-bottom:6px}' +
+    '.projrow__note a{color:var(--solid);border-bottom:none}' +
+    '.projrow__note a:hover{color:var(--foam);background:none}' +
+    '@media print{.projrow{display:none}}';
+  var rowStyled = false;
+
+  /* The bar is sticky at the top and this row sits under it, so its offset is the
+   * bar's height — measured, never assumed, because the bar wraps to two or three
+   * lines on a narrow screen and a hardcoded 44px would bury the first project. */
+  function followBar(row, bar){
+    var set = function(){ row.style.top = bar.getBoundingClientRect().height + 'px'; };
+    set();
+    if (window.ResizeObserver) new ResizeObserver(set).observe(bar);
+    else window.addEventListener('resize', set);
+  }
+
+  window.siteProjects = function(cfg){
+    cfg = cfg || {};
+    if (!cfg.handle || !cfg.page) return;
+    var bar = document.querySelector('.bar');
+    if (!bar || document.querySelector('.projrow')) return;
+    var origin = cfg.beach || 'https://beach.happyseaurchin.com';
+
+    readIndex(origin).then(function(blocks){
+      var have = {};
+      blocks.forEach(function(n){ have[n] = 1; });
+      var mine = [];
+      blocks.forEach(function(n){
+        if (n.indexOf('spine:') !== 0) return;
+        var f = n.slice(6);
+        if (OWN_PAGE[f]) return;
+        if (have[f + ':' + cfg.handle]) mine.push(f);
+      });
+      /* whatever you are standing in belongs in the row even if you hold no mirror
+       * there yet — otherwise the row silently disagrees with the page above it */
+      if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
+      mine.sort();
+      if (mine.length < 2) return;          /* a row of one is furniture, not a choice */
+
+      if (!rowStyled){ rowStyled = true;
+        var st = document.createElement('style'); st.textContent = ROW_CSS; document.head.appendChild(st); }
+
+      var row = document.createElement('div');
+      row.className = 'projrow';
+      row.setAttribute('aria-label', 'your projects');
+
+      /* Walking a family that HAS ITS OWN PAGE — your now, your ahead, your deck —
+       * is a legitimate thing to do and an unusual one, so the row says so instead
+       * of leaving nothing marked and the reader wondering where they are. This is
+       * what keeps /walk meaning 'projects' while /walk/now stays reachable. */
+      if (cfg.family && OWN_PAGE[cfg.family]){
+        var note = document.createElement('span');
+        note.className = 'projrow__note';
+        note.appendChild(document.createTextNode('walking your ' + cfg.family + ' — '));
+        var back = document.createElement('a');
+        back.href = '/' + OWN_PAGE[cfg.family] + '/' + encodeURIComponent(cfg.handle);
+        back.textContent = 'its own page shows it better \u2192';
+        note.appendChild(back);
+        row.appendChild(note);
+      }
+      mine.forEach(function(f, i){
+        if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
+        if (f === cfg.family){
+          var cur = document.createElement('span');
+          cur.className = 'here'; cur.textContent = f;
+          cur.setAttribute('aria-current', 'true');
+          row.appendChild(cur);
+        } else {
+          var a = document.createElement('a');
+          /* the same page, the same you, a different project — which is the whole
+           * point: flicking between projects without leaving where you are */
+          a.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
+          a.textContent = f;
+          row.appendChild(a);
+        }
+      });
+      bar.parentNode.insertBefore(row, bar.nextSibling);
+      followBar(row, bar);
+    }).catch(function(){ /* no row rather than a broken one */ });
+  };
+
   window.siteDoors = function(cfg){
 
     cfg = cfg || {};
