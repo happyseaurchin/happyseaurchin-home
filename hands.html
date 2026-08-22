@@ -136,13 +136,13 @@
 <div id="app" class="hidden">
   <div class="masthead">
     <h1>What you're holding, <span class="cool">and what's being dealt</span>.</h1>
-    <p>Sit down and deal yourself a hand. Cards arrive offered, not yours — keep the ones that fit, reword any that are nearly right, let the rest go. What you keep joins a pile, and each pile is a hand of its own: things for the next few hours, things for tomorrow, things a week out. Flick one pile at a time, or flick everything.</p>
+    <p>A deck is somewhere cards come from — a project, your now, anywhere on the beach you are looking. Deal one when you want one, write your own, and take up the ones you mean to do: those compile into the hand at the top, which is the hand you flick.</p>
   </div>
   <div id="rows"></div>
   <div class="foot">
-    A card is yours the moment you keep it — the project is never written to, and nothing is assigned to anybody. Where a done card lands is read off the words it carries: a card aimed at a project lands in your reading of that project, and one aimed at nothing lands in your now.
-    <br>Dealing is always an act you perform, never a feed that runs. Whoever deals — this page, the mirror, a chat that can reach this beach — puts cards in the same place, and none of them is yours until you keep it.
-    <br><a id="foot-ahead" href="/ahead">the piles →</a> · <a id="foot-flick" href="/next">flick your hand →</a> · <a href="/now">your now →</a>
+    A card is yours the moment it is dealt or written — the deck is never written to, and nothing is assigned to anybody. Where a done card lands is read off the words it carries: a card from a project lands in your reading of that project, and one aimed at nothing lands in your now.
+    <br>Dealing is always an act you perform, never a feed that runs, and it deals ONE card from ONE named deck so there is never a pile to sort through.
+    <br><a id="foot-flick" href="/next">flick your hand →</a> · <a id="foot-now" href="/now">your now →</a>
   </div>
 </div>
 <div id="state" class="state hidden"><h2 id="state-title"></h2><p id="state-body"></p></div>
@@ -375,6 +375,23 @@ async function deal(deck){
 /* ── writes ── */
 const stamp = () => new Date().toISOString().slice(0,16) + 'Z';
 
+/* A CARD LANDS IN A PILE, whether it was dealt or written. The pile is where it
+ * lives and how far out it is; it is NOT how the page is cut, and no row is drawn
+ * from it — that was the arrangement this design replaced. A card written by hand
+ * lands in the nearest pile, because a thing you sit down and write is for now. */
+async function addCard(pile, text){
+  const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
+  if (!mine){
+    const w0 = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, content: { '_':
+      'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." } });
+    if (!w0.ok) return w0;
+  }
+  const now = await readBlock('ahead:' + HANDLE).catch(() => null);
+  const has = now && now[pile] && typeof now[pile] === 'object';
+  return withLatch('ahead:' + HANDLE, has
+    ? { block: 'ahead:' + HANDLE, spindle: pile, append: true, content: text }
+    : { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': text } });
+}
 async function editCard(c, text){
   const lead = c.verb ? c.verb + ' ' + stamp() + ' — ' : '';
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: lead + text });
