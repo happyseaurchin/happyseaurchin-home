@@ -94,10 +94,9 @@
   var WORK = [
     ['your now',    'now',      'handle'],
     ['the project', 'walk',     'family'],
-    ['ahead',       'ahead',    'handle'],
-    ['your deck',   'next',     'handle'],
-    ['my hands',    'hands',    'handle'],
-    ['my decks',    'my-decks', 'handle'],
+    ['ahead',        'ahead',   'handle'],
+    ['my hands',     'hands',    'handle'],
+    ['one at a time','next',     'handle'],
     ['the morning', 'morning',  'handle'],
     ['the ledger',  'ledger',   'handle']
   ];
