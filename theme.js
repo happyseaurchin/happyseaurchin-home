@@ -40,13 +40,24 @@
     var own = document.getElementById('btn-theme');
     if (own){ own.addEventListener('click', toggle); return; }   /* the page has its own */
     var b = document.createElement('button');
-    b.className = 'theme-toggle';
     b.type = 'button';
+    b.id = 'btn-theme';
     b.textContent = '◐';
     b.title = 'light or dark';
     b.setAttribute('aria-label', 'switch between the light and dark register');
     b.addEventListener('click', toggle);
-    document.body.appendChild(b);
+    /* INTO THE BAR WHERE THERE IS ONE. Floating it at top:12px right:12px put it
+     * over whatever the bar already had in that corner — and once 'go' was pinned
+     * to the top right, directly on top of it, at a higher layer. A page's own
+     * theme button has always lived in its bar; this makes the injected one behave
+     * the same, which also means it gathers into 'options' like any other control
+     * rather than being a floating exception nothing else knows about. */
+    var bar = document.querySelector('.bar');
+    if (bar){
+      /* left of go, which owns the top-right corner on every page */
+      var doors = bar.querySelector('details.dd[data-doors]');
+      if (doors) bar.insertBefore(b, doors); else bar.appendChild(b);
+    } else { b.className = 'theme-toggle'; document.body.appendChild(b); }
   });
 })();
 
@@ -370,7 +381,8 @@
   }
 
   var ROW_CSS = '' +
-    '.projrow{position:sticky;z-index:9;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;' +
+    /* not sticky itself any more — it rides inside .stickyhead with the bar */
+    '.projrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;' +
       'padding:9px 18px;background:rgba(var(--well-rgb),0.92);backdrop-filter:blur(8px);' +
       'border-bottom:1px solid var(--line);font-family:var(--body);font-size:14.5px}' +
     '.projrow a{color:var(--vapour-dim);text-decoration:none;border-bottom:none;padding:1px 5px;border-radius:4px}' +
@@ -391,7 +403,7 @@
     '.projrow__foot{flex:1 0 100%;padding-top:6px}' +
     '.projrow__panel input:disabled + *,.projrow__panel input:disabled{opacity:0.45;cursor:default}' +
     '.projrow__note{flex:1 0 100%;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;' +
-      'color:var(--solid);padding-bottom:6px}' +
+      'color:var(--solid);padding-top:7px}' +
     '.projrow__note a{color:var(--solid);border-bottom:none}' +
     '.projrow__note a:hover{color:var(--foam);background:none}' +
     '@media print{.projrow{display:none}}';
@@ -400,79 +412,37 @@
   /* The bar is sticky at the top and this row sits under it, so its offset is the
    * bar's height — measured, never assumed, because the bar wraps to two or three
    * lines on a narrow screen and a hardcoded 44px would bury the first project. */
-  function followBar(row, bar){
-    var set = function(){ row.style.top = bar.getBoundingClientRect().height + 'px'; };
-    set();
-    if (window.ResizeObserver) new ResizeObserver(set).observe(bar);
-    else window.addEventListener('resize', set);
-  }
-
-  var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
-  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and nothing else. Naming a place here is choosing it; leaving one out is not hiding it, since the catalogue a page offers is always larger than any one hand's list.";
-  var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
-
-  function latchFor(handle){ return 'lists-latch:' + handle; }
-
-  function post(origin, body){
-    return fetch(origin + '/.well-known/pscale-beach', { method:'POST', cache:'no-store',
-      headers:{'Content-Type':'application/json', Accept:'application/json'},
-      body: JSON.stringify(body) })
-      .then(function(r){ return r.json().catch(function(){ return null; })
-        .then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
-  }
-  function lockRequired(w){
-    return !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
-  }
-
-  /* Save ONE BRANCH, writing the block whole so nothing else in it is lost.
+  /* THE BAR AND THE ROW STICK AS ONE, by being one — wrapped together in a single
+   * sticky box rather than the row being told, in pixels, how tall the bar is.
    *
-   * Whole-block rather than a spindle write for two reasons, both learned by
-   * probing the live beach rather than assumed. A new_lock sent ALONGSIDE a
-   * spindle seals only that digit and leaves every other branch homesteadable —
-   * so claiming has to happen at the root. And a whole-block write replaces
-   * everything, so the other branches must be carried across deliberately; the
-   * go list at branch 2 would otherwise be wiped every time the projects were
-   * saved.
+   * The measured version was wrong twice for two different reasons and would have
+   * been wrong a third time: the bar wraps to two lines on a phone after the
+   * display face loads, and walk fills its bar text from the beach AFTER the row
+   * is built, so any single measurement is taken before the height it is meant to
+   * describe. Every fix for that was another event to listen for. A wrapper needs
+   * no measurement, no observer and no listener, and cannot go stale at a width
+   * nobody tested.
    *
-   * One path covers create, claim and update, because sending secret and new_lock
-   * together is admitted in every case: absent creates locked, unlocked takes the
-   * lock, already-locked rotates to the same value, and a wrong key is refused. */
-  function saveBranch(origin, handle, digit, branchSays, items){
-    var name = listBlockName(handle);
-    var branch = { '_': branchSays };
-    var chain = listToChain(items);
-    if (chain) branch['1'] = chain;
+   * Safe to do from here: no page styles body > .bar or uses a sibling selector on
+   * it, and the wrapper is inserted where the bar already stood, so nesting is
+   * unchanged. A page whose bar was never sticky becomes sticky by joining — which
+   * is what recency wanted anyway, being the only one that was not. */
+  var WRAP_CSS = '.stickyhead{position:sticky;top:0;z-index:10}' +
+                 '@media print{.stickyhead{position:static}}';
+  var wrapStyled = false;
 
-    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
-                 { headers:{Accept:'application/json'}, cache:'no-store' })
-      .then(function(r){ return r.status === 404 ? null : r.json(); })
-      .then(function(existing){
-        var content = existing ? JSON.parse(JSON.stringify(existing)) : {};
-        if (typeof content._ !== 'string' || !content._) content._ = ROOT_SAYS;
-        content[String(digit)] = branch;
-
-        var key = null;
-        try { key = localStorage.getItem(latchFor(handle)); } catch(e){}
-        if (!key){
-          key = prompt('Your key for ' + name + ' — invent one now if this is the first time; it keeps these lists yours to edit:');
-          if (key === null || !key.trim()) return { ok:false, quiet:true };
-          key = key.trim();
-        }
-        var body = { block: name, content: content, secret: key, new_lock: key };
-        if (existing) body.confirm = true;      /* replacing a block that stands */
-
-        return post(origin, body).then(function(w){
-          if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} return w; }
-          if (!lockRequired(w)) return w;
-          var v = prompt('That key was refused for ' + name + '. Try again:');
-          if (v === null || !v.trim()) return { ok:false, quiet:true };
-          body.secret = v.trim(); body.new_lock = v.trim();
-          return post(origin, body).then(function(w2){
-            if (w2.ok) try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){}
-            return w2;
-          });
-        });
-      });
+  function stickTogether(row, bar){
+    if (!wrapStyled){ wrapStyled = true;
+      var st = document.createElement('style'); st.textContent = WRAP_CSS; document.head.appendChild(st); }
+    var wrap = bar.parentNode.classList && bar.parentNode.classList.contains('stickyhead')
+      ? bar.parentNode : null;
+    if (!wrap){
+      wrap = document.createElement('div');
+      wrap.className = 'stickyhead';
+      bar.parentNode.insertBefore(wrap, bar);
+      wrap.appendChild(bar);
+    }
+    wrap.appendChild(row);
   }
 
   window.siteProjects = function(cfg){
@@ -526,20 +496,6 @@
       row.className = 'projrow';
       row.setAttribute('aria-label', 'your projects');
 
-      /* Walking a family that HAS ITS OWN PAGE — your now, your ahead, your deck —
-       * is a legitimate thing to do and an unusual one, so the row says so instead
-       * of leaving nothing marked and the reader wondering where they are. This is
-       * what keeps /walk meaning 'projects' while /walk/now stays reachable. */
-      if (cfg.family && OWN_PAGE[cfg.family]){
-        var note = document.createElement('span');
-        note.className = 'projrow__note';
-        note.appendChild(document.createTextNode('walking your ' + cfg.family + ' — '));
-        var back = document.createElement('a');
-        back.href = '/' + OWN_PAGE[cfg.family] + '/' + encodeURIComponent(cfg.handle);
-        back.textContent = 'its own page shows it better \u2192';
-        note.appendChild(back);
-        row.appendChild(note);
-      }
       visible.forEach(function(f, i){
         if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
         if (f === cfg.family){
@@ -632,8 +588,29 @@
       });
       row.appendChild(pick);
 
-      bar.parentNode.insertBefore(row, bar.nextSibling);
-      followBar(row, bar);
+      /* The note only where it is actually true, which is narrower than it was.
+       *
+       * The sunburst shows a now as well as it shows anything, so it says nothing
+       * there — only /walk earns it. And it says nothing to someone who NAMED that
+       * family in their own list, because they did not arrive by accident and a
+       * page you chose should not nag you for choosing it. What is left is the case
+       * it was written for: landing on /walk/now without having asked for it.
+       *
+       * Appended last, so it reads BELOW the projects rather than above them. */
+      if (cfg.page === 'walk' && cfg.family && OWN_PAGE[cfg.family]
+          && !(stated && stated.indexOf(cfg.family) >= 0)){
+        var note = document.createElement('span');
+        note.className = 'projrow__note';
+        note.appendChild(document.createTextNode('walking your ' + cfg.family + ' — '));
+        var back = document.createElement('a');
+        back.href = '/' + OWN_PAGE[cfg.family] + '/' + encodeURIComponent(cfg.handle);
+        back.textContent = 'its own page shows it better \u2192';
+        note.appendChild(back);
+        row.appendChild(note);
+      }
+
+
+      stickTogether(row, bar);
     }).catch(function(){ /* no row rather than a broken one */ });
   };
 
