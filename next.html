@@ -187,7 +187,7 @@
 <!-- no handle: ask -->
 <div id="ask" class="ask hidden">
   <h1>One thing <span class="cool">at a time</span>.</h1>
-  <p>A deck over a shared field, one card at a time. Flick until a card fits now — then act. Whose flick is this?</p>
+  <p>Your hand, one card at a time. Flick until a card fits now — then do it. Whose hand is this?</p>
   <div class="ask__row">
     <input id="ask-handle" type="text" placeholder="your handle" autocapitalize="none" autocomplete="off" spellcheck="false">
     <button id="ask-go">Flick</button>
@@ -294,10 +294,28 @@
 (function(){
 'use strict';
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
-/* The field comes from ?field=, else from the path when a personal deck is being
- * flicked at its own URL, else the shared default. */
+/* THE HAND IS THE BARE DOOR. /next/<handle> with no ?field= flicks the holder's
+ * OWN HAND — ahead:<handle>, the piles of the indexical future (function:ahead) —
+ * and no deck at all. A named ?field= still flicks that deck exactly as before,
+ * so every standing deck link keeps working while the hand takes the plain URL.
+ *
+ * The naming does the wiring, and that is the whole of why this is small: FIELD
+ * 'ahead' makes the mirror ahead:<handle>, gives the hand its own edit-latch key,
+ * and points the floor read at spine:ahead. The hand is not a new kind of thing —
+ * it is the personal-deck path standing at a block that already exists and that
+ * its holder is already filling by hand at /ahead. */
+/* the piles, verbatim from /ahead — one vocabulary for one block, so a card added
+ * here and a card typed there land in the same pile under the same name */
+const PILES = [
+  { d: '1', label: 'within hours' }, { d: '2', label: 'tomorrow' },
+  { d: '3', label: 'a week out' },   { d: '4', label: 'a month out' },
+  { d: '5', label: 'a season out' }, { d: '6', label: 'a year out' },
+  { d: '7', label: 'a decade out' },
+];
+const HAND = !new URLSearchParams(location.search).get('field')
+  && !/^\/today-beach-deck(\/|$)/.test(location.pathname);
 const FIELD = (new URLSearchParams(location.search).get('field')
-  || (/^\/today-beach-deck(\/|$)/.test(location.pathname) ? 'today-beach-deck' : 'doing')).replace(/[^a-z0-9-]/gi,'');
+  || (/^\/today-beach-deck(\/|$)/.test(location.pathname) ? 'today-beach-deck' : 'ahead')).replace(/[^a-z0-9-]/gi,'');
 const SPINE = 'spine:' + FIELD;
 /* aim filter — flick one hand of the personal deck: cards aiming at ?aim=<family>
  * (a time-shaped aim — this week, August, 20xx — belongs to the deck's venture) */
@@ -500,6 +518,21 @@ function personalContent(addr, content){
   if (!leadingVerb(content)) return card.text;
   return String(content).includes(card.text) ? content : content + ' — ' + card.text;
 }
+/* A STORED ENTRY IS A CARD AND ITS MARK IN ONE POSITION — the leading word is the
+ * mark, the rest is the card. Both the hand and a personal deck read it this way,
+ * which is why they can share a write path and a choke point. */
+function cardFromEntry(f){
+  const verb = leadingVerb(f.raw);
+  const body = verb ? f.raw.slice(verb.length).replace(/^[\s—–-]+/, '') : f.raw;
+  const card = makeCard(f.digits, body, 0, Number(f.digits.join('')), '', false, HANDLE);
+  card.addr = f.digits.join('');
+  card.raw = f.raw;
+  if (verb === 'DONE' || verb === 'DROP') card.done = { who: HANDLE, text: f.raw };
+  else if (verb === 'DOING') card.doing.push(HANDLE);
+  else if (verb === 'TOMORROW') card.myDefer = deferUntil(f.raw);
+  return card;
+}
+
 async function loadField(){
   const [spine, index] = await Promise.all([readBlock(SPINE), readIndex()]);
   if (!spine) throw new Error(SPINE + ' not found at the beach');
@@ -534,9 +567,13 @@ async function loadField(){
    * simply what this holder is holding, and the leading word of a card is its own
    * mark rather than a separate entry elsewhere. Recognised the way it is built:
    * an operator block of its own carrying the dials, and no dials at the spine's 9. */
-  PERSONAL = !!OP && OP.declared && OP.cards === 'mirror';
+  PERSONAL = HAND || (!!OP && OP.declared && OP.cards === 'mirror');
   if (PERSONAL){
-    if (OP.venture === undefined) OP.venture = 'beach-venture';
+    /* the hand answers to nobody's dials: it is one holder's own block, so the
+     * disarm is personal by construction and no venture is hardwired — where a
+     * closed card lands is read off the card's own aim (see landRecord). */
+    if (HAND){ OP.disarm = 'person'; OP.venture = null; }
+    else if (OP.venture === undefined) OP.venture = 'beach-venture';
     const mine = mirrors[HANDLE] || null;
     CARDS = [];
     /* CARDS ARE THE FLOOR PLANE, not the top-level keys.
@@ -557,6 +594,35 @@ async function loadField(){
      *
      * A path of all zeros is the block's own underscore chain — its description,
      * not a card — and is the one position on the plane to skip. */
+    if (mine && HAND){
+      /* THE HAND'S CARDS ARE THE LEAVES UNDER THE PILES, not the floor plane.
+       * ahead:<handle> is piles-then-intents (function:ahead branch 1): the digit
+       * at the top is the RUNG an intent is sized for — within hours, tomorrow,
+       * the week, the month, the season, the year, the decade — and the intents
+       * sit beneath it. A pile supernests like any accumulator, so this collects
+       * string leaves at ANY depth under a pile rather than at one fixed depth,
+       * and a path of all zeros beneath a pile is that pile's own voice, not a
+       * card. Nearest pile first: a hand is ordered by grain, never shuffled. */
+      const found = [];
+      for (const pile of childDigits(mine)){
+        (function leaves(node, digits){
+          if (typeof node === 'string'){
+            if (digits.slice(1).every(d => d === '0')) return;
+            const raw = node.trim();
+            if (raw) found.push({ digits: digits.slice(), raw, pile: Number(pile) });
+            return;
+          }
+          if (!node || typeof node !== 'object') return;
+          if (node['_'] !== undefined) leaves(node['_'], digits.concat('0'));
+          for (const d of childDigits(node)) leaves(node[d], digits.concat(d));
+        })(mine[pile], [pile]);
+      }
+      found.sort((a, b) => a.pile - b.pile || Number(a.digits.join('')) - Number(b.digits.join('')));
+      for (const f of found){ const c = cardFromEntry(f); c.pile = f.pile; CARDS.push(c); }
+      if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));
+      rebuildDeck(false);
+      return;
+    }
     if (mine){
       const mfloor = floorOf(mine) || 1;
       const found = [];
@@ -572,17 +638,7 @@ async function loadField(){
         for (const d of childDigits(node)) plane(node[d], digits.concat(d));
       })(mine, []);
       found.sort((a, b) => Number(a.digits.join('')) - Number(b.digits.join('')));
-      for (const f of found){
-        const verb = leadingVerb(f.raw);
-        const body = verb ? f.raw.slice(verb.length).replace(/^[\s—–-]+/, '') : f.raw;
-        const card = makeCard(f.digits, body, 0, Number(f.digits.join('')), '', false, HANDLE);
-        card.addr = f.digits.join('');
-        card.raw = f.raw;
-        if (verb === 'DONE' || verb === 'DROP') card.done = { who: HANDLE, text: f.raw };
-        else if (verb === 'DOING') card.doing.push(HANDLE);
-        else if (verb === 'TOMORROW') card.myDefer = deferUntil(f.raw);
-        CARDS.push(card);
-      }
+      for (const f of found) CARDS.push(cardFromEntry(f));
       if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));   /* flick one hand: only the cards aiming there */
     }
     rebuildDeck(true);
@@ -732,12 +788,23 @@ function renderDeck(){
   $('btn-next').disabled = !canAct;
   $('btn-donow').disabled = !canAct || gated;
   $('btn-donow').classList.toggle('hidden', OP.mode !== 'doing');
-  $('foot-hint').textContent = OP.mode === 'doing'
-    ? 'swipe → browse · ↑ tomorrow · ↓ drop' : 'swipe → browse · ↑ later · answer on the card';
+  $('foot-hint').textContent = OP.mode !== 'doing'
+    ? 'swipe → browse · ↑ later · answer on the card'
+    : HAND ? 'swipe → browse · ↑ tomorrow · ↓ out of the hand'
+           : 'swipe → browse · ↑ tomorrow · ↓ drop';
   if (!DECK.length){
     /* three different silences, and calling them all 'clear' was a lie: a field with no
      * mount is not a deck at all, and one with cards nobody has reached is not finished. */
-    if (!CARDS.length && !OP.declared)
+    if (HAND && !CARDS.length)
+      showState('An empty hand.',
+        'Nothing in your piles yet. Add one with ＋ — or lay several out at once on '
+        + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">your ahead page</a>, which writes the same block. '
+        + 'Cards come back here one at a time.');
+    else if (HAND)
+      showState('Hand played out.',
+        'Everything in your piles is done, dropped or waiting on a later day. '
+        + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">Add to a pile</a>, or come back tomorrow.');
+    else if (!CARDS.length && !OP.declared)
       showState('Not a deck.',
         esc(FIELD) + ' is a field on this beach, but no operator block (function:' + esc(FIELD) + ') says how its '
         + 'cards behave, so nothing deals. Found one per ways:deck, or read the field whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
@@ -922,7 +989,9 @@ async function ensureMirror(){
   const name = FIELD + ':' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
   if (existing) return true;
-  let root = 'MIRROR — ' + HANDLE + "'s readings on the " + FIELD + ' field (' + SPINE + '), at the spine’s own addresses. Sovereign; silence at an address is honest absence. First entry written from /next.';
+  let root = HAND
+    ? 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence."
+    : 'MIRROR — ' + HANDLE + "'s readings on the " + FIELD + ' field (' + SPINE + '), at the spine’s own addresses. Sovereign; silence at an address is honest absence. First entry written from /next.';
   for (let i = 0; i < FLOOR; i++) root = { '_': root };
   /* homestead at birth: a latch on this device locks the newborn mirror to its holder */
   const body = { block: name, content: root };
@@ -983,7 +1052,7 @@ async function writeSpine(addr, content){
  * on the page every deck URL actually reaches.
  * A refusal is SAID: the old page returned silence when the venture mirror's
  * latch differed, and the holder read 'closed' as landed when nothing landed. */
-function ventureDayRung(){
+function dayRung(){
   const d = new Date(), y = d.getUTCFullYear(), mo = d.getUTCMonth(), dom = d.getUTCDate();
   return [Math.floor(y/1000)%10, Math.floor(y/100)%10, Math.floor(y/10)%10, y%10,
           Math.floor(mo/3)+1, (mo%3)+1, Math.floor((dom-1)/7)+1, ((dom-1)%7)+1].join('') + '00';
@@ -996,20 +1065,124 @@ function walkZeroAware(block, addr){
   }
   return n;
 }
-async function feedVenture(cardText){
-  if (!PERSONAL || !OP.venture) return { skipped: true };
-  const name = OP.venture + ':' + HANDLE;
+/* ── THE TENSE FLIP — an intention becomes an account of what happened.
+ * A card is written forward ('review the ahead piles'); the record it leaves
+ * behind says what was done ('reviewed the ahead piles'), and this is what
+ * carries a line across that seam so the mirror reads as a life rather than a
+ * task list. It runs on the LEADING WORD ONLY and only where that word is
+ * recognised — an unrecognised opening is left exactly as the holder wrote it,
+ * because a mangled record is worse than a terse one. This is the mechanical
+ * fallback of the proposal: where a mind is in the room it does this better, and
+ * a sign-off line the holder types wins over both. ── */
+const IRREGULAR = {
+  be:'was', become:'became', begin:'began', bend:'bent', bite:'bit', bring:'brought',
+  build:'built', burst:'burst', buy:'bought', cast:'cast', catch:'caught', choose:'chose',
+  come:'came', cost:'cost', creep:'crept', cut:'cut', deal:'dealt', dig:'dug', do:'did',
+  draw:'drew', drink:'drank', drive:'drove', eat:'ate', fall:'fell', feed:'fed',
+  feel:'felt', fight:'fought', find:'found', forget:'forgot', forgive:'forgave',
+  freeze:'froze', get:'got', give:'gave', go:'went', grow:'grew', hang:'hung',
+  have:'had', hear:'heard', hide:'hid', hold:'held', hurt:'hurt', keep:'kept',
+  know:'knew', lay:'laid', lead:'led', leave:'left', lend:'lent', let:'let',
+  light:'lit', lose:'lost', make:'made', mean:'meant', meet:'met', pay:'paid',
+  put:'put', quit:'quit', read:'read', ride:'rode', ring:'rang', rise:'rose',
+  run:'ran', say:'said', see:'saw', sell:'sold', send:'sent', set:'set',
+  shake:'shook', shoot:'shot', show:'showed', shut:'shut', sing:'sang', sit:'sat',
+  sleep:'slept', speak:'spoke', spend:'spent', split:'split', spread:'spread',
+  stand:'stood', steal:'stole', stick:'stuck', strike:'struck', sweep:'swept',
+  swim:'swam', take:'took', teach:'taught', tear:'tore', tell:'told',
+  think:'thought', throw:'threw', understand:'understood', wake:'woke', wear:'wore',
+  weep:'wept', win:'won', wind:'wound', write:'wrote'
+};
+/* THE FLIP IS A WHITELIST, AND THAT IS THE POINT. A card may open with anything a
+ * person types — a noun ('visual mirror of liveness'), a gerund ('meeting with
+ * Matthew'), a pronoun ("I'd like to…"), a fragment ('the rent sorted') — and
+ * every one of those is mangled by a rule that conjugates whatever it is handed.
+ * So nothing is flipped unless its leading word is a verb this list KNOWS. An
+ * unrecognised opening is left exactly as the holder wrote it, which is the whole
+ * doctrine: a terse record is honest, a mangled one is not. */
+const VERBS = new Set(('add ask back book browse call cancel capture carry change check clean clear close '
+ + 'collect commit compare complete confirm connect consider contact continue cook copy correct create '
+ + 'decide deliver design discuss draft drop edit email empty end ensure explain explore extend fetch file '
+ + 'fill finish fix follow gather hand handle help improve install introduce invite join land launch learn '
+ + 'list look mark merge message move note offer open order organise organize pack paint park pass phone '
+ + 'pick plan play post prepare present print publish pull push rebuild record reduce refactor register '
+ + 'release remove rename reply report request research reset resolve respond restore return review revise '
+ + 'rewrite save scan schedule settle share ship sign simplify sketch sort start stop study submit switch '
+ + 'talk test tidy touch train transfer try tune turn update upgrade upload use verify visit wait walk '
+ + 'watch wire work wrap').split(' '));
+const PAST_FORMS = new Set(Object.keys(IRREGULAR).map(k => IRREGULAR[k]));
+const NOT_A_VERB = /^(a|an|the|my|our|your|his|her|their|its|this|that|these|those|no|not|one|two|three|more|less|all|some|any|and|but|for|with|from|into|about|i|we|you|they|he|she|it)$/i;
+function pastTense(text){
+  const s = String(text || '').trim();
+  const m = s.match(/^([A-Za-z]+)([\s\S]*)$/);
+  if (!m) return s;
+  const w = m[1], lower = w.toLowerCase(), rest = m[2];
+  if (rest.charAt(0) === "'" || rest.charAt(0) === '\u2019') return s;   /* I'd, don't, let's */
+  if (NOT_A_VERB.test(lower)) return s;
+  if (PAST_FORMS.has(lower)) return s;                     /* already told in the past */
+  let past = IRREGULAR[lower];
+  if (!past){
+    if (!VERBS.has(lower)) return s;                       /* not a verb this knows — leave it */
+    if (/[aeiou]y$/i.test(lower)) past = lower + 'ed';
+    else if (/y$/i.test(lower)) past = lower.slice(0, -1) + 'ied';
+    else if (/e$/i.test(lower)) past = lower + 'd';
+    /* the doubling rule, kept to short words: stop→stopped, plan→planned, while
+     * visit→visited, because stress is not readable from spelling and a long word
+     * guessed wrong is exactly the mangling this is built to avoid */
+    else if (lower.length <= 4 && /[aeiou][^aeiouwxy]$/i.test(lower)) past = lower + lower.slice(-1) + 'ed';
+    else past = lower + 'ed';
+  }
+  if (w[0] === w[0].toUpperCase()) past = past[0].toUpperCase() + past.slice(1);
+  return past + rest;
+}
+/* the aim rides in the card's words, so it is stripped from the record: WHERE the
+ * line lands is what now says which family it served */
+function withoutAim(text){
+  return String(text || '').replace(/\s*[—–-]?\s*toward\s+[^—–\n]*$/i, '').trim() || String(text || '').trim();
+}
+
+/* ── WHERE A DONE LANDS — the card's own aim, never a hardwired family.
+ * ways:deck branch 3 puts the aim in the card's words, family first and the
+ * stretch after a comma, so the family a closed card feeds is READ OFF THE CARD
+ * rather than off a dial: 'toward onen-rpg, this week' lands in onen-rpg:<handle>.
+ * A card naming no family lands in the holder's own now. That is the whole of the
+ * difference between a project record and a personal one, and it is a read rather
+ * than a setting — which is why nothing here encodes now-versus-project.
+ * A named deck keeps its venture dial as the fallback, so every standing deck
+ * lands exactly where it landed before. ── */
+const FAMILY_AIM = /toward\s+([a-z0-9-]+)/i;
+function familyFor(raw){
+  const s = String(raw || '');
+  const m = s.match(FAMILY_AIM);
+  const named = (m && !TIME_AIM.test(s)) ? m[1].toLowerCase() : null;
+  return named || (HAND ? 'now' : OP.venture) || null;
+}
+async function landRecord(recordText, aimSource, elapsed){
+  if (!PERSONAL) return { skipped: true };
+  const fam = familyFor(aimSource);
+  if (!fam) return { skipped: true };
+  const name = fam + ':' + HANDLE;
   const block = await readBlock(name).catch(() => null);
-  if (!block) return { skipped: true };   // no venture reading yet — the deck stands alone
-  const addr = ventureDayRung();
-  const prior = (function(){ const n = walkZeroAware(block, addr);
-    return typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null); })();
-  const line = '· ' + bodyText(cardText);
-  const content = prior && prior.trim() ? prior + '\n' + line : line;
+  if (!block) return { skipped: true, name };   // no reading there yet — the card stands alone
+  const line = '· ' + pastTense(withoutAim(recordText)) + (elapsed ? ' (' + elapsed + ')' : '');
   const secret = localStorage.getItem(latchKey());
-  const w = await writeBlock(Object.assign({ block: name, spindle: addr, content }, secret ? { secret } : {}));
-  if (w.ok) return { addr, name };
-  return { refused: true, name, why: (w.data && (w.data.error || w.data.code)) || w.status };
+  /* A CLOCK FAMILY TAKES THE DAY'S RUNG; ANYTHING ELSE TAKES AN APPEND. The day
+   * rung is ten digits and only a block whose floor reaches that far can hold it —
+   * a floor-1 mirror would refuse the address outright. So the SHAPE OF THE TARGET
+   * decides the write, read from the block itself rather than assumed. */
+  const deep = floorOf(block) >= 8;
+  const addr = deep ? dayRung() : null;
+  let body;
+  if (deep){
+    const prior = (function(){ const n = walkZeroAware(block, addr);
+      return typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null); })();
+    body = { block: name, spindle: addr, content: prior && prior.trim() ? prior + '\n' + line : line };
+  } else {
+    body = { block: name, append: true, content: line };
+  }
+  const w = await writeBlock(Object.assign(body, secret ? { secret } : {}));
+  if (w.ok) return { addr, name, fam, append: !deep };
+  return { refused: true, name, fam, why: (w.data && (w.data.error || w.data.code)) || w.status };
 }
 function bodyText(raw){
   const verb = leadingVerb(raw);
@@ -1120,8 +1293,16 @@ async function commitSheet(){
     /* the bond fires on DONE alone — a DROP retires without landing anywhere.
      * personalContent is what the mirror actually stores (the choke point adds the
      * card's words), so the venture receives the same words the deck keeps. */
+    /* THE RECORD IS THE SIGN-OFF IF THERE IS ONE, ELSE THE CARD'S OWN WORDS.
+     * The flip needs raw material: bare, the card's forward words are turned to
+     * past tense and land as they are, which is honest because they were the
+     * holder's; with a line typed, that line lands instead, flipped and truer.
+     * The card's raw words still supply the AIM, so where it lands is unchanged
+     * by whether anything was typed. A DROP retires and lands nowhere. */
     let landed = null;
-    if (kind !== 'respond' && PERSONAL) landed = await feedVenture(personalContent(addr, stamp));
+    if (kind !== 'respond' && PERSONAL)
+      landed = await landRecord(note || card.text, card.raw || card.text,
+                                kind === 'finish' ? fmtElapsed(elapsedMs()) : null);
     closeSheet();
     if (kind === 'finish'){ TIMER = null; saveTimer(); hideDoing(); }
     const top = document.querySelector('.cardface.top');
@@ -1133,8 +1314,10 @@ async function commitSheet(){
     }
     setTimeout(() => {
       rebuildDeck(false); renderDeck();
-      if (landed && landed.addr) toast('✓ closed — landed in your ' + OP.venture + ' reading at today’s rung');
+      if (landed && landed.addr) toast('✓ closed — landed in your ' + landed.fam + ' reading at today’s rung');
+      else if (landed && landed.name && landed.append) toast('✓ closed — landed in your ' + landed.fam + ' reading');
       else if (landed && landed.refused) toast('closed — but the landing at ' + landed.name + ' was refused (latch ⚿ differs?)', true);
+      else if (landed && landed.skipped && landed.name) toast('✓ closed — nothing at ' + landed.name + ' yet, so the card stands alone');
       else toast('✓ written to ' + FIELD + ':' + HANDLE);
     }, kind === 'finish' ? 0 : 430);
   } catch (e){
@@ -1155,13 +1338,23 @@ async function doAdopt(){
 /* ── capture ── */
 function openCapture(){
   if (!SPINE_BLOCK) return;
-  const stems = childDigits(SPINE_BLOCK).filter(d => d !== '9');
+  /* THE HAND'S STEMS ARE THE PILES. A card added here is sized before it is
+   * written — which rung of grain it belongs to — because that is the one thing
+   * ahead:<handle> asks of an intent and the only thing the block's shape needs.
+   * spine:ahead is a template with no digit positions at all (it holds the law in
+   * its root and never an intent), so the piles are named here rather than read. */
+  const stems = HAND ? PILES.map(x => x.d) : childDigits(SPINE_BLOCK).filter(d => d !== '9');
+  const label = d => HAND ? (PILES.find(x => x.d === d) || {}).label || ''
+                          : (voice(SPINE_BLOCK[d]) || '').slice(0,80);
   $('cap-stems').innerHTML = stems.map((s,i) =>
-    '<label><input type="radio" name="cap-stem" value="' + s + '"' + (i===0?' checked':'') + '><span class="sno">' + s + '</span><span>' + esc((voice(SPINE_BLOCK[s]) || '').slice(0,80)) + '</span></label>').join('');
+    '<label><input type="radio" name="cap-stem" value="' + s + '"' + (i===0?' checked':'') + '><span class="sno">' + s + '</span><span>' + esc(label(s)) + '</span></label>').join('');
   $('cap-text').value = '';
-  $('cap-stems').classList.toggle('hidden', PERSONAL);
-  $('cap-sub').textContent = PERSONAL ? 'One thing you can pick up and put down inside a day.' : 'Into which part of the field?';
-  $('cap-hint').textContent = PERSONAL
+  $('cap-stems').classList.toggle('hidden', PERSONAL && !HAND);
+  $('cap-sub').textContent = HAND ? 'Which pile — how far out is it?'
+    : PERSONAL ? 'One thing you can pick up and put down inside a day.' : 'Into which part of the field?';
+  $('cap-hint').textContent = HAND
+    ? 'It lands in your own hand at that pile — the same block /ahead writes, sovereign and yours to revise forever.'
+    : PERSONAL
     ? 'It lands in your own deck straight away — nobody adopts it, because nobody else can see it as theirs.'
     : keeperLatch()
       ? 'The keeper key is on this device — the card lands straight in the spine.'
@@ -1177,6 +1370,29 @@ async function commitCapture(){
    * add and the whole of it. Sending it down the spine path would land it at a
    * two-level address under a stem that does not exist, marked PROPOSED, waiting
    * on a keeper who is the person who wrote it. */
+  if (HAND){
+    /* THE PILE IS THE ADDRESS AND THE BEACH ALLOCATES WITHIN IT. Written exactly
+     * as /ahead writes it: an existing pile takes an append (the beach picks the
+     * next free slot and supernests when the ladder fills, atomically); an empty
+     * pile is founded with its first intent at slot 1. Two surfaces, one write
+     * pattern — which is the only reason a card typed at /ahead and a card added
+     * here are the same card. */
+    const sEl = document.querySelector('input[name="cap-stem"]:checked');
+    const pile = sEl ? sEl.value : '1';
+    await ensureMirror();
+    const mine = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
+    const has = mine && mine[pile] && typeof mine[pile] === 'object';
+    const secret = localStorage.getItem(latchKey());
+    const body = has
+      ? { block: FIELD + ':' + HANDLE, spindle: pile, append: true, content: text }
+      : { block: FIELD + ':' + HANDLE, spindle: pile, content: { '1': text } };
+    const w = await writeBlock(Object.assign(body, secret ? { secret } : {}));
+    if (!w.ok){ toast('the card did not land' + (lockRequired(w) ? ' — set your edit-latch ⚿' : ''), true); return; }
+    toast('✓ added — ' + ((PILES.find(x => x.d === pile) || {}).label || 'your hand'));
+    closeCapture();
+    await reload();
+    return;
+  }
   if (PERSONAL){
     /* THE BEACH ALLOCATES, the client does not count. Append takes the next free
      * zero-free slot — 1 to 9, then 11, 12 — and SUPERNESTS when the ladder
@@ -1297,7 +1513,7 @@ async function boot(){
   $('bar-who').textContent = HANDLE;
 /* the page hands over what only it knows; the catalogue is shared in theme.js */
 if (window.siteDoors) siteDoors({ handle: HANDLE, family: FIELD, here: 'next' });
-  $('bar-field').textContent = 'the ' + FIELD + ' field' + (AIM ? ' \u00b7 ' + AIM : '');
+  $('bar-field').textContent = (HAND ? 'my hand' : 'the ' + FIELD + ' field') + (AIM ? ' \u00b7 ' + AIM : '');
   $('link-field').href = '/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(SPINE);
   $('link-fold').href = '/fold?field=' + encodeURIComponent(FIELD);
   $('link-decks').href = '/my-decks/' + encodeURIComponent(HANDLE);
