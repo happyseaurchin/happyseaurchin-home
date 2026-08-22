@@ -287,7 +287,6 @@
    * anyone's project, which is why they start off for everybody and not just for
    * the hand that named them. Tick them back on and they stay on. */
   var OFF_BY_DEFAULT = { 'pulse':1, 'state-of-play':1 };
-  var PROJ_KEY = 'doors:projects';
   var IDX_KEY = 'doors:index';
   var IDX_TTL = 5 * 60 * 1000;
 
@@ -306,6 +305,54 @@
       });
   }
 
+  /* ── the list block: rank is depth ────────────────────────────────────────
+   * projects:<handle> holds this hand's own ordered lists, ONE BRANCH PER LIST,
+   * and each list is a NESTED CHAIN rather than a flat fan of 1-9:
+   *
+   *   1        the projects list          (its underscore says so)
+   *   1.1      the first project
+   *   1.11     the second
+   *   1.111    the third  …
+   *
+   * Two things fall out of nesting that a flat fan cannot give. There is no limit
+   * of nine, because a chain just keeps going. And RANK BECOMES DEPTH, so 'my top
+   * three' is an APERTURE — read to depth three — rather than a filter somebody
+   * has to compute. Reordering rewrites the branch, which is one small call.
+   *
+   * Branches 2-9 stand free for whatever other list a hand wants; nothing here
+   * assumes branch 1 is the only one.
+   * ────────────────────────────────────────────────────────────────────────── */
+  function listBlockName(handle){ return 'projects:' + handle; }
+
+  /* walk a chain, collecting each rung's underscore in order */
+  function chainToList(node){
+    var out = [], n = node && node['1'], guard = 0;
+    while (n && typeof n === 'object' && guard++ < 200){
+      if (typeof n._ === 'string' && n._.trim()) out.push(n._.trim());
+      n = n['1'];
+    }
+    return out;
+  }
+
+  /* build the chain back from a list, deepest last */
+  function listToChain(items){
+    var node = null;
+    for (var i = items.length - 1; i >= 0; i--){
+      var rung = { '_': items[i] };
+      if (node) rung['1'] = node;
+      node = rung;
+    }
+    return node;
+  }
+
+  function readList(origin, handle){
+    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(listBlockName(handle)),
+                 { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.status === 404 ? null : r.json(); })
+      .then(function(b){ return b ? chainToList(b['1']) : null; })
+      .catch(function(){ return null; });
+  }
+
   var ROW_CSS = '' +
     '.projrow{position:sticky;z-index:9;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;' +
       'padding:9px 18px;background:rgba(var(--well-rgb),0.92);backdrop-filter:blur(8px);' +
@@ -319,8 +366,13 @@
     '.projrow__pick:hover{color:var(--liquid)}' +
     '.projrow__panel{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:4px 16px;padding:9px 2px 2px;' +
       'margin-top:7px;border-top:1px solid var(--line)}' +
-    '.projrow__panel label{display:flex;align-items:center;gap:6px;font-family:var(--body);' +
-      'font-size:14px;color:var(--vapour);cursor:pointer}' +
+    '.projrow__item{display:flex;align-items:center;gap:7px;font-family:var(--body);' +
+      'font-size:14px;color:var(--vapour);min-width:210px}' +
+    '.projrow__name{flex:1}' +
+    '.projrow__mv{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);' +
+      'font-size:11px;line-height:1;padding:2px 5px;cursor:pointer}' +
+    '.projrow__mv:disabled{opacity:0.25;cursor:default}' +
+    '.projrow__foot{flex:1 0 100%;padding-top:6px}' +
     '.projrow__panel input:disabled + *,.projrow__panel input:disabled{opacity:0.45;cursor:default}' +
     '.projrow__note{flex:1 0 100%;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;' +
       'color:var(--solid);padding-bottom:6px}' +
@@ -339,6 +391,67 @@
     else window.addEventListener('resize', set);
   }
 
+  var ROOT_SAYS = "The ordered lists this hand keeps for its own use, one branch per list, each list nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; other branches stand free for other lists.";
+  var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
+
+  function latchFor(handle){ return 'projects-latch:' + handle; }
+
+  function post(origin, body){
+    return fetch(origin + '/.well-known/pscale-beach', { method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json', Accept:'application/json'},
+      body: JSON.stringify(body) })
+      .then(function(r){ return r.json().catch(function(){ return null; })
+        .then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+  }
+  function lockRequired(w){
+    return !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+  }
+
+  /* Save the whole branch in one write: reordering IS rewriting the chain, and the
+   * chain is a few dozen bytes an item. Born latched to its holder on the first
+   * write — it is a public page you own, so an open one would be anyone's to edit. */
+  function saveList(origin, handle, items){
+    var name = listBlockName(handle);
+    var branch = { '_': BRANCH_SAYS };
+    var chain = listToChain(items);
+    if (chain) branch['1'] = chain;
+
+    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
+                 { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.status === 404 ? null : r.json(); })
+      .then(function(existing){
+        var key = null;
+        try { key = localStorage.getItem(latchFor(handle)); } catch(e){}
+        if (!existing){
+          if (!key){
+            key = prompt('Your key for ' + name + ' — invent one now; it keeps this list yours to edit:');
+            if (key === null || !key.trim()) return { ok:false, quiet:true };
+            key = key.trim();
+          }
+          var body = { block: name, content: { '_': ROOT_SAYS, '1': branch }, new_lock: key };
+          return post(origin, body).then(function(w){
+            if (w.ok) try { localStorage.setItem(latchFor(handle), key); } catch(e){}
+            return w;
+          });
+        }
+        var b2 = { block: name, spindle: '1', content: branch };
+        if (key) b2.secret = key;
+        return post(origin, b2).then(function(w){
+          if (!lockRequired(w)) {
+            if (w.ok && key) try { localStorage.setItem(latchFor(handle), key); } catch(e){}
+            return w;
+          }
+          var v = prompt(name + ' is latched — enter your key (kept on this device):');
+          if (v === null || !v.trim()) return { ok:false, quiet:true };
+          b2.secret = v.trim();
+          return post(origin, b2).then(function(w2){
+            if (w2.ok) try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){}
+            return w2;
+          });
+        });
+      });
+  }
+
   window.siteProjects = function(cfg){
     cfg = cfg || {};
     if (!cfg.handle || !cfg.page) return;
@@ -346,7 +459,8 @@
     if (!bar || document.querySelector('.projrow')) return;
     var origin = cfg.beach || 'https://beach.happyseaurchin.com';
 
-    readIndex(origin).then(function(blocks){
+    Promise.all([readIndex(origin), readList(origin, cfg.handle)]).then(function(both){
+      var blocks = both[0], stated = both[1];
       var have = {};
       blocks.forEach(function(n){ have[n] = 1; });
       var mine = [];
@@ -361,16 +475,24 @@
       if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
       mine.sort();
 
-      /* your judgement, kept on this device, exactly as the places list is */
-      var pref = {};
-      try { pref = JSON.parse(localStorage.getItem(PROJ_KEY)) || {}; } catch(e){}
-      var off = pref.hidden || null;
-      function shown(f){
-        if (f === cfg.family) return true;   /* never hide where you are standing */
-        return off ? !off[f] : !OFF_BY_DEFAULT[f];
+      /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at projects:<handle>,
+       * it decides both membership and order and nothing is computed; absent, the
+       * default below stands in until the hand says otherwise. There is no hidden
+       * set either way — a family is in the list or it is not. */
+      var visible;
+      if (stated && stated.length){
+        visible = stated.filter(function(f){ return !OWN_PAGE[f]; });
+        if (cfg.family && !OWN_PAGE[cfg.family] && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
+        /* a stated project you hold no mirror in yet is still yours — offer it too */
+        stated.forEach(function(f){ if (!OWN_PAGE[f] && mine.indexOf(f) < 0) mine.push(f); });
+      } else {
+        visible = mine.filter(function(f){
+          if (f === cfg.family) return true;         /* never hide where you are standing */
+          return !OFF_BY_DEFAULT[f];
+        });
       }
-      var visible = mine.filter(shown);
       if (visible.length < 2 && mine.length < 2) return;   /* a row of one is furniture, not a choice */
+      function shown(f){ return visible.indexOf(f) >= 0; }
 
       if (!rowStyled){ rowStyled = true;
         var st = document.createElement('style'); st.textContent = ROW_CSS; document.head.appendChild(st); }
@@ -421,25 +543,62 @@
         if (row.querySelector('.projrow__panel')){ row.querySelector('.projrow__panel').remove(); return; }
         var panel = document.createElement('div');
         panel.className = 'projrow__panel';
-        mine.forEach(function(f){
-          var lab = document.createElement('label');
-          var cb = document.createElement('input');
-          cb.type = 'checkbox'; cb.checked = shown(f);
-          cb.disabled = (f === cfg.family);   /* you are standing in it */
-          cb.addEventListener('change', function(){
-            var p = {}; try { p = JSON.parse(localStorage.getItem(PROJ_KEY)) || {}; } catch(e){}
-            /* the first change writes the WHOLE current picture, so the defaults
-             * stop applying from then on and a later change to them cannot quietly
-             * reorganise a row someone has already arranged */
-            if (!p.hidden){ p.hidden = {}; mine.forEach(function(g){ if (!shown(g)) p.hidden[g] = true; }); }
-            if (cb.checked) delete p.hidden[f]; else p.hidden[f] = true;
-            try { localStorage.setItem(PROJ_KEY, JSON.stringify(p)); } catch(e){}
-            location.reload();
+
+        /* the working order: what is in the row, then everything else beneath it,
+         * so ticking a family on drops it at the end rather than nowhere */
+        var order = visible.slice();
+        mine.forEach(function(f){ if (order.indexOf(f) < 0) order.push(f); });
+        var inList = {}; visible.forEach(function(f){ inList[f] = 1; });
+
+        function draw(){
+          panel.innerHTML = '';
+          order.forEach(function(f, i){
+            var rowEl = document.createElement('div');
+            rowEl.className = 'projrow__item';
+            var cb = document.createElement('input');
+            cb.type = 'checkbox'; cb.checked = !!inList[f];
+            cb.disabled = (f === cfg.family);       /* you are standing in it */
+            cb.addEventListener('change', function(){
+              if (cb.checked) inList[f] = 1; else delete inList[f];
+              draw();
+            });
+            var nm = document.createElement('span');
+            nm.className = 'projrow__name'; nm.textContent = f;
+            if (!inList[f]) nm.style.opacity = '0.45';
+            rowEl.appendChild(cb); rowEl.appendChild(nm);
+            [['↑', -1], ['↓', 1]].forEach(function(mv){
+              var b = document.createElement('button');
+              b.type = 'button'; b.className = 'projrow__mv'; b.textContent = mv[0];
+              b.disabled = (i + mv[1] < 0 || i + mv[1] >= order.length);
+              b.addEventListener('click', function(e){
+                e.stopPropagation();
+                var j = i + mv[1], t = order[i]; order[i] = order[j]; order[j] = t;
+                draw();
+              });
+              rowEl.appendChild(b);
+            });
+            panel.appendChild(rowEl);
           });
-          lab.appendChild(cb);
-          lab.appendChild(document.createTextNode(f));
-          panel.appendChild(lab);
-        });
+
+          var foot = document.createElement('div'); foot.className = 'projrow__foot';
+          var save = document.createElement('button');
+          save.type = 'button'; save.className = 'projrow__pick';
+          save.textContent = 'save to the beach';
+          save.title = 'writes projects:' + cfg.handle + ' — yours, portable, readable by anything';
+          save.addEventListener('click', function(e){
+            e.stopPropagation();
+            save.disabled = true; save.textContent = 'saving…';
+            saveList(origin, cfg.handle, order.filter(function(f){ return inList[f]; }))
+              .then(function(w){
+                if (w && w.ok){ location.reload(); return; }
+                save.disabled = false;
+                save.textContent = (w && w.quiet) ? 'save to the beach' : 'refused — try again';
+              });
+          });
+          foot.appendChild(save);
+          panel.appendChild(foot);
+        }
+        draw();
         row.appendChild(panel);
       });
       row.appendChild(pick);
