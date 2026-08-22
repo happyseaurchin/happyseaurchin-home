@@ -278,6 +278,16 @@
    * projects in the sense this row means: your now, your ahead, your deck.
    * ────────────────────────────────────────────────────────────────────────── */
   var OWN_PAGE = { 'now':'now', 'ahead':'ahead', 'today-beach-deck':'today-beach-deck' };
+  /* A DEFAULT, NOT A LAW. There is no substrate fact that means 'project' — the
+   * floor does not say it (beach-venture and genus-one are clocks; doing,
+   * experiences and molequle are trees, and all five are projects), and nothing
+   * else does either. It is a judgement about your own work, so the chooser below
+   * owns it and this list only decides what a newcomer sees first. These two are
+   * substrate machinery — the respond-deck and the health battery — rather than
+   * anyone's project, which is why they start off for everybody and not just for
+   * the hand that named them. Tick them back on and they stay on. */
+  var OFF_BY_DEFAULT = { 'pulse':1, 'state-of-play':1 };
+  var PROJ_KEY = 'doors:projects';
   var IDX_KEY = 'doors:index';
   var IDX_TTL = 5 * 60 * 1000;
 
@@ -304,6 +314,14 @@
     '.projrow a:hover{color:var(--liquid);background:rgba(var(--wash-rgb),0.07)}' +
     '.projrow .here{color:var(--foam);padding:1px 5px}' +
     '.projrow .sep{color:var(--vapour-dim);opacity:0.4}' +
+    '.projrow__pick{margin-left:10px;background:none;border:none;color:var(--vapour-dim);' +
+      'font-family:var(--mono);font-size:11px;letter-spacing:0.06em;cursor:pointer;padding:1px 4px}' +
+    '.projrow__pick:hover{color:var(--liquid)}' +
+    '.projrow__panel{flex:1 0 100%;display:flex;flex-wrap:wrap;gap:4px 16px;padding:9px 2px 2px;' +
+      'margin-top:7px;border-top:1px solid var(--line)}' +
+    '.projrow__panel label{display:flex;align-items:center;gap:6px;font-family:var(--body);' +
+      'font-size:14px;color:var(--vapour);cursor:pointer}' +
+    '.projrow__panel input:disabled + *,.projrow__panel input:disabled{opacity:0.45;cursor:default}' +
     '.projrow__note{flex:1 0 100%;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;' +
       'color:var(--solid);padding-bottom:6px}' +
     '.projrow__note a{color:var(--solid);border-bottom:none}' +
@@ -342,7 +360,17 @@
        * there yet — otherwise the row silently disagrees with the page above it */
       if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
       mine.sort();
-      if (mine.length < 2) return;          /* a row of one is furniture, not a choice */
+
+      /* your judgement, kept on this device, exactly as the places list is */
+      var pref = {};
+      try { pref = JSON.parse(localStorage.getItem(PROJ_KEY)) || {}; } catch(e){}
+      var off = pref.hidden || null;
+      function shown(f){
+        if (f === cfg.family) return true;   /* never hide where you are standing */
+        return off ? !off[f] : !OFF_BY_DEFAULT[f];
+      }
+      var visible = mine.filter(shown);
+      if (visible.length < 2 && mine.length < 2) return;   /* a row of one is furniture, not a choice */
 
       if (!rowStyled){ rowStyled = true;
         var st = document.createElement('style'); st.textContent = ROW_CSS; document.head.appendChild(st); }
@@ -365,7 +393,7 @@
         note.appendChild(back);
         row.appendChild(note);
       }
-      mine.forEach(function(f, i){
+      visible.forEach(function(f, i){
         if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
         if (f === cfg.family){
           var cur = document.createElement('span');
@@ -381,6 +409,41 @@
           row.appendChild(a);
         }
       });
+      /* the chooser, on the row it governs — every family you hold a mirror in,
+       * including the ones off by default, so nothing is unreachable. Same organ
+       * as 'choose what shows' in the places menu, same device-local home. */
+      var pick = document.createElement('button');
+      pick.type = 'button'; pick.className = 'projrow__pick';
+      pick.textContent = 'choose';
+      pick.title = 'which of your families count as projects';
+      pick.addEventListener('click', function(e){
+        e.stopPropagation();
+        if (row.querySelector('.projrow__panel')){ row.querySelector('.projrow__panel').remove(); return; }
+        var panel = document.createElement('div');
+        panel.className = 'projrow__panel';
+        mine.forEach(function(f){
+          var lab = document.createElement('label');
+          var cb = document.createElement('input');
+          cb.type = 'checkbox'; cb.checked = shown(f);
+          cb.disabled = (f === cfg.family);   /* you are standing in it */
+          cb.addEventListener('change', function(){
+            var p = {}; try { p = JSON.parse(localStorage.getItem(PROJ_KEY)) || {}; } catch(e){}
+            /* the first change writes the WHOLE current picture, so the defaults
+             * stop applying from then on and a later change to them cannot quietly
+             * reorganise a row someone has already arranged */
+            if (!p.hidden){ p.hidden = {}; mine.forEach(function(g){ if (!shown(g)) p.hidden[g] = true; }); }
+            if (cb.checked) delete p.hidden[f]; else p.hidden[f] = true;
+            try { localStorage.setItem(PROJ_KEY, JSON.stringify(p)); } catch(e){}
+            location.reload();
+          });
+          lab.appendChild(cb);
+          lab.appendChild(document.createTextNode(f));
+          panel.appendChild(lab);
+        });
+        row.appendChild(panel);
+      });
+      row.appendChild(pick);
+
       bar.parentNode.insertBefore(row, bar.nextSibling);
       followBar(row, bar);
     }).catch(function(){ /* no row rather than a broken one */ });
