@@ -306,7 +306,7 @@
   }
 
   /* ── the list block: rank is depth ────────────────────────────────────────
-   * projects:<handle> holds this hand's own ordered lists, ONE BRANCH PER LIST,
+   * lists:<handle> holds this hand's own ordered lists, ONE BRANCH PER LIST,
    * and each list is a NESTED CHAIN rather than a flat fan of 1-9:
    *
    *   1        the projects list          (its underscore says so)
@@ -322,7 +322,7 @@
    * Branches 2-9 stand free for whatever other list a hand wants; nothing here
    * assumes branch 1 is the only one.
    * ────────────────────────────────────────────────────────────────────────── */
-  function listBlockName(handle){ return 'projects:' + handle; }
+  function listBlockName(handle){ return 'lists:' + handle; }
 
   /* walk a chain, collecting each rung's underscore in order */
   function chainToList(node){
@@ -391,10 +391,10 @@
     else window.addEventListener('resize', set);
   }
 
-  var ROOT_SAYS = "The ordered lists this hand keeps for its own use, one branch per list, each list nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; other branches stand free for other lists.";
+  var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
   var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
 
-  function latchFor(handle){ return 'projects-latch:' + handle; }
+  function latchFor(handle){ return 'lists-latch:' + handle; }
 
   function post(origin, body){
     return fetch(origin + '/.well-known/pscale-beach', { method:'POST', cache:'no-store',
@@ -475,7 +475,7 @@
       if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
       mine.sort();
 
-      /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at projects:<handle>,
+      /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at lists:<handle> branch 1,
        * it decides both membership and order and nothing is computed; absent, the
        * default below stands in until the hand says otherwise. There is no hidden
        * set either way — a family is in the list or it is not. */
@@ -584,7 +584,7 @@
           var save = document.createElement('button');
           save.type = 'button'; save.className = 'projrow__pick';
           save.textContent = 'save to the beach';
-          save.title = 'writes projects:' + cfg.handle + ' — yours, portable, readable by anything';
+          save.title = 'writes branch 1 of lists:' + cfg.handle + ' — yours, portable, readable by anything';
           save.addEventListener('click', function(e){
             e.stopPropagation();
             save.disabled = true; save.textContent = 'saving…';
