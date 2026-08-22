@@ -135,6 +135,8 @@
       'padding:5px 8px;border-radius:5px;text-decoration:none;border-bottom:none;color:var(--vapour)}' +
     '.dd__menu a:hover{background:rgba(var(--wash-rgb),0.07);color:var(--liquid)}' +
     '.dd__menu .here{color:var(--foam)}' +
+    '.dd__menu a.rest{color:var(--vapour-dim);font-size:14px}' +
+    '.dd__menu a.rest:hover{color:var(--liquid)}' +
     '.dd__rule{height:1px;background:var(--line);margin:7px 4px}' +
     /* acts keep the bar\'s own register — a button still looks like a button */
     '.dd__menu button{width:100%;text-align:left}' +
@@ -232,12 +234,16 @@
     var all = [].concat.apply([], GROUPS), by = {}, out = [], seen = {};
     all.forEach(function(x){ by[x[1]] = x; });
     if (STATED_DOORS && STATED_DOORS.length){
-      /* stated: exactly these, in exactly this order, and nothing else — the same
-       * inversion the projects use, so there is no hidden set to keep in step */
+      /* A PRIORITY LIST ORDERS THE TOP, IT DOES NOT HIDE THE REST. Naming four
+       * places is saying which four matter, never that the other nine stopped
+       * existing — and a menu that is the only way to reach a page must not be
+       * the thing that loses it. So the stated ones stand first, then a rule,
+       * then everything else the catalogue holds. */
       STATED_DOORS.forEach(function(n){ if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
-      return { list: out, custom: true, hidden: {}, all: all };
+      var rest = all.filter(function(x){ return !seen[x[1]]; });
+      return { list: out, rest: rest, custom: true, hidden: {}, all: all };
     }
-    return { list: all, custom: false, hidden: {}, all: all };
+    return { list: all, rest: [], custom: false, hidden: {}, all: all };
   }
 
   /* ── the acts, gathered ───────────────────────────────────────────────────
@@ -266,7 +272,10 @@
     menu.className = 'dd__menu';
     btns.forEach(function(b){ menu.appendChild(b); });   /* moving keeps the wiring */
     d.appendChild(menu);
-    mount.appendChild(d);
+    /* left of go — and go may not exist yet on a page whose handle arrives late,
+     * in which case appending is already correct and go will land to the right. */
+    var doors = mount.querySelector('details.dd[data-doors]');
+    if (doors) mount.insertBefore(d, doors); else mount.appendChild(d);
   }
   /* after the page's own script, so a control created at boot is caught too */
   document.addEventListener('DOMContentLoaded', gatherActs);
@@ -541,14 +550,13 @@
           row.appendChild(cur);
         } else {
           var a = document.createElement('a');
-          /* Normally the same page, the same you, a different project — the whole
-           * point being to flick without leaving where you are. A family that HAS
-           * ITS OWN PAGE goes there instead, because that page shows it better;
-           * this one line is the whole of that choice, and pointing 'now' at
-           * /walk/now instead means deleting it. */
-          a.href = OWN_PAGE[f]
-            ? '/' + OWN_PAGE[f] + '/' + encodeURIComponent(cfg.handle)
-            : '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
+          /* The same page, the same you, a different project. EVERY item, with no
+           * exception for a family that has its own page elsewhere: the row's whole
+           * meaning is flicking without leaving where you are, so 'now' on the
+           * recency page shows the now IN recency, like the others. Its own page is
+           * still one tap away in the places menu, which is where a change of view
+           * belongs. */
+          a.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
           a.textContent = f;
           row.appendChild(a);
         }
@@ -650,28 +658,40 @@
     function paint(){
       menu.innerHTML = '';
       var a = arrange(), lastGroup = null;
-      a.list.forEach(function(p){
-        if (a.hidden[p[1]]) return;
+
+      function place(p, dim){
         var u = href(p[1], p[2], cfg.handle, cfg.family);
         if (!u) return;                       /* nowhere to go yet — say so by omission */
-        /* the rule is the AUTHORED arrangement speaking; once the reader has made
-         * their own order it would be drawing a distinction they did not make. */
-        var g = groupOf(p);
-        if (!a.custom && lastGroup !== null && g !== lastGroup){
-          var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
-        }
-        lastGroup = g;
         if (p[1] === cfg.here){
           var cur = document.createElement('span');
           cur.className = 'here'; cur.textContent = p[0];
           cur.setAttribute('aria-current', 'page');
           menu.appendChild(cur);
-        } else {
-          var link = document.createElement('a');
-          link.href = u; link.textContent = p[0];
-          menu.appendChild(link);
+          return;
         }
+        var link = document.createElement('a');
+        link.href = u; link.textContent = p[0];
+        if (dim) link.className = 'rest';
+        menu.appendChild(link);
+      }
+
+      a.list.forEach(function(p){
+        /* the group rule is the AUTHORED arrangement speaking; once a reader has
+         * stated their own order it would be drawing a distinction they did not make */
+        var g = groupOf(p);
+        if (!a.custom && lastGroup !== null && g !== lastGroup){
+          var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
+        }
+        lastGroup = g;
+        place(p, false);
       });
+
+      /* everything the catalogue holds that the stated list did not name — quieter,
+       * under a rule, and still one tap away */
+      if (a.rest && a.rest.length){
+        var r2 = document.createElement('div'); r2.className = 'dd__rule'; menu.appendChild(r2);
+        a.rest.forEach(function(p){ place(p, true); });
+      }
       var edit = document.createElement('button');
       edit.className = 'dd__edit'; edit.type = 'button'; edit.setAttribute('data-keep-open',''); edit.textContent = 'choose what shows';
       edit.addEventListener('click', function(e){ e.stopPropagation(); editor(); });
@@ -759,10 +779,10 @@
       });
     }
     d.appendChild(menu);
-    /* places sit left of acts: going somewhere is the commoner intent, and the
-     * two controls read as a pair only when they keep a stable order. */
-    var first = mount.querySelector('details.dd, button');
-    if (first) mount.insertBefore(d, first); else mount.appendChild(d);
+    /* GO IS ALWAYS THE TOP RIGHT, on every page and whatever else the bar carries,
+     * because a fixed corner is what makes a control findable without looking for
+     * it. Acts sit to its left; gatherActs places itself before this one. */
+    mount.appendChild(d);
     return d;
   };
 })();
