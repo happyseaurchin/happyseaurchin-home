@@ -212,9 +212,12 @@
    * arrangement, homes above a rule and glances below; once they reorder, the
    * rule goes and the list is simply theirs.
    * ────────────────────────────────────────────────────────────────────────── */
-  var PREF_KEY = 'doors:prefs';
-  function prefs(){ try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch(e){ return {}; } }
-  function save(p){ try { localStorage.setItem(PREF_KEY, JSON.stringify(p)); } catch(e){} }
+  /* The places list lives at lists:<handle> branch 2, by the same argument that
+   * moved the projects to branch 1: which doors you want and in what order is a
+   * fact about how you work, not a reading posture, so it belongs where it
+   * follows you between devices and any LLM can read it. Held in memory here
+   * until the fetch lands, because the menu must open instantly. */
+  var STATED_DOORS = null;
 
   /* A stored order names pages, so a place ADDED here later still appears for
    * someone who arranged their list months ago — it joins the end rather than
@@ -225,11 +228,15 @@
   }
 
   function arrange(){
-    var p = prefs(), all = [].concat.apply([], GROUPS), by = {}, out = [], seen = {};
+    var all = [].concat.apply([], GROUPS), by = {}, out = [], seen = {};
     all.forEach(function(x){ by[x[1]] = x; });
-    (p.order || []).forEach(function(n){ if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
-    all.forEach(function(x){ if (!seen[x[1]]) out.push(x); });
-    return { list: out, custom: !!(p.order && p.order.length), hidden: p.hidden || {} };
+    if (STATED_DOORS && STATED_DOORS.length){
+      /* stated: exactly these, in exactly this order, and nothing else — the same
+       * inversion the projects use, so there is no hidden set to keep in step */
+      STATED_DOORS.forEach(function(n){ if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
+      return { list: out, custom: true, hidden: {}, all: all };
+    }
+    return { list: all, custom: false, hidden: {}, all: all };
   }
 
   /* ── the acts, gathered ───────────────────────────────────────────────────
@@ -306,7 +313,7 @@
   }
 
   /* ── the list block: rank is depth ────────────────────────────────────────
-   * projects:<handle> holds this hand's own ordered lists, ONE BRANCH PER LIST,
+   * lists:<handle> holds this hand's own ordered lists, ONE BRANCH PER LIST,
    * and each list is a NESTED CHAIN rather than a flat fan of 1-9:
    *
    *   1        the projects list          (its underscore says so)
@@ -322,7 +329,7 @@
    * Branches 2-9 stand free for whatever other list a hand wants; nothing here
    * assumes branch 1 is the only one.
    * ────────────────────────────────────────────────────────────────────────── */
-  function listBlockName(handle){ return 'projects:' + handle; }
+  function listBlockName(handle){ return 'lists:' + handle; }
 
   /* walk a chain, collecting each rung's underscore in order */
   function chainToList(node){
@@ -345,11 +352,11 @@
     return node;
   }
 
-  function readList(origin, handle){
+  function readBranch(origin, handle, digit){
     return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(listBlockName(handle)),
                  { headers:{Accept:'application/json'}, cache:'no-store' })
       .then(function(r){ return r.status === 404 ? null : r.json(); })
-      .then(function(b){ return b ? chainToList(b['1']) : null; })
+      .then(function(b){ return b ? chainToList(b[String(digit)]) : null; })
       .catch(function(){ return null; });
   }
 
@@ -391,10 +398,11 @@
     else window.addEventListener('resize', set);
   }
 
-  var ROOT_SAYS = "The ordered lists this hand keeps for its own use, one branch per list, each list nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; other branches stand free for other lists.";
+  var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
+  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and nothing else. Naming a place here is choosing it; leaving one out is not hiding it, since the catalogue a page offers is always larger than any one hand's list.";
   var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
 
-  function latchFor(handle){ return 'projects-latch:' + handle; }
+  function latchFor(handle){ return 'lists-latch:' + handle; }
 
   function post(origin, body){
     return fetch(origin + '/.well-known/pscale-beach', { method:'POST', cache:'no-store',
@@ -407,12 +415,22 @@
     return !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
   }
 
-  /* Save the whole branch in one write: reordering IS rewriting the chain, and the
-   * chain is a few dozen bytes an item. Born latched to its holder on the first
-   * write — it is a public page you own, so an open one would be anyone's to edit. */
-  function saveList(origin, handle, items){
+  /* Save ONE BRANCH, writing the block whole so nothing else in it is lost.
+   *
+   * Whole-block rather than a spindle write for two reasons, both learned by
+   * probing the live beach rather than assumed. A new_lock sent ALONGSIDE a
+   * spindle seals only that digit and leaves every other branch homesteadable —
+   * so claiming has to happen at the root. And a whole-block write replaces
+   * everything, so the other branches must be carried across deliberately; the
+   * go list at branch 2 would otherwise be wiped every time the projects were
+   * saved.
+   *
+   * One path covers create, claim and update, because sending secret and new_lock
+   * together is admitted in every case: absent creates locked, unlocked takes the
+   * lock, already-locked rotates to the same value, and a wrong key is refused. */
+  function saveBranch(origin, handle, digit, branchSays, items){
     var name = listBlockName(handle);
-    var branch = { '_': BRANCH_SAYS };
+    var branch = { '_': branchSays };
     var chain = listToChain(items);
     if (chain) branch['1'] = chain;
 
@@ -420,31 +438,27 @@
                  { headers:{Accept:'application/json'}, cache:'no-store' })
       .then(function(r){ return r.status === 404 ? null : r.json(); })
       .then(function(existing){
+        var content = existing ? JSON.parse(JSON.stringify(existing)) : {};
+        if (typeof content._ !== 'string' || !content._) content._ = ROOT_SAYS;
+        content[String(digit)] = branch;
+
         var key = null;
         try { key = localStorage.getItem(latchFor(handle)); } catch(e){}
-        if (!existing){
-          if (!key){
-            key = prompt('Your key for ' + name + ' — invent one now; it keeps this list yours to edit:');
-            if (key === null || !key.trim()) return { ok:false, quiet:true };
-            key = key.trim();
-          }
-          var body = { block: name, content: { '_': ROOT_SAYS, '1': branch }, new_lock: key };
-          return post(origin, body).then(function(w){
-            if (w.ok) try { localStorage.setItem(latchFor(handle), key); } catch(e){}
-            return w;
-          });
+        if (!key){
+          key = prompt('Your key for ' + name + ' — invent one now if this is the first time; it keeps these lists yours to edit:');
+          if (key === null || !key.trim()) return { ok:false, quiet:true };
+          key = key.trim();
         }
-        var b2 = { block: name, spindle: '1', content: branch };
-        if (key) b2.secret = key;
-        return post(origin, b2).then(function(w){
-          if (!lockRequired(w)) {
-            if (w.ok && key) try { localStorage.setItem(latchFor(handle), key); } catch(e){}
-            return w;
-          }
-          var v = prompt(name + ' is latched — enter your key (kept on this device):');
+        var body = { block: name, content: content, secret: key, new_lock: key };
+        if (existing) body.confirm = true;      /* replacing a block that stands */
+
+        return post(origin, body).then(function(w){
+          if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} return w; }
+          if (!lockRequired(w)) return w;
+          var v = prompt('That key was refused for ' + name + '. Try again:');
           if (v === null || !v.trim()) return { ok:false, quiet:true };
-          b2.secret = v.trim();
-          return post(origin, b2).then(function(w2){
+          body.secret = v.trim(); body.new_lock = v.trim();
+          return post(origin, body).then(function(w2){
             if (w2.ok) try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){}
             return w2;
           });
@@ -459,7 +473,7 @@
     if (!bar || document.querySelector('.projrow')) return;
     var origin = cfg.beach || 'https://beach.happyseaurchin.com';
 
-    Promise.all([readIndex(origin), readList(origin, cfg.handle)]).then(function(both){
+    Promise.all([readIndex(origin), readBranch(origin, cfg.handle, 1)]).then(function(both){
       var blocks = both[0], stated = both[1];
       var have = {};
       blocks.forEach(function(n){ have[n] = 1; });
@@ -475,16 +489,18 @@
       if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
       mine.sort();
 
-      /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at projects:<handle>,
+      /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at lists:<handle> branch 1,
        * it decides both membership and order and nothing is computed; absent, the
        * default below stands in until the hand says otherwise. There is no hidden
        * set either way — a family is in the list or it is not. */
       var visible;
       if (stated && stated.length){
-        visible = stated.filter(function(f){ return !OWN_PAGE[f]; });
-        if (cfg.family && !OWN_PAGE[cfg.family] && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
+        /* A family with its own page is held out of the COMPUTED default, because
+         * nobody chose it. Named in the list it is a choice, so it stands. */
+        visible = stated.slice();
+        if (cfg.family && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
         /* a stated project you hold no mirror in yet is still yours — offer it too */
-        stated.forEach(function(f){ if (!OWN_PAGE[f] && mine.indexOf(f) < 0) mine.push(f); });
+        stated.forEach(function(f){ if (mine.indexOf(f) < 0) mine.push(f); });
       } else {
         visible = mine.filter(function(f){
           if (f === cfg.family) return true;         /* never hide where you are standing */
@@ -524,9 +540,14 @@
           row.appendChild(cur);
         } else {
           var a = document.createElement('a');
-          /* the same page, the same you, a different project — which is the whole
-           * point: flicking between projects without leaving where you are */
-          a.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
+          /* Normally the same page, the same you, a different project — the whole
+           * point being to flick without leaving where you are. A family that HAS
+           * ITS OWN PAGE goes there instead, because that page shows it better;
+           * this one line is the whole of that choice, and pointing 'now' at
+           * /walk/now instead means deleting it. */
+          a.href = OWN_PAGE[f]
+            ? '/' + OWN_PAGE[f] + '/' + encodeURIComponent(cfg.handle)
+            : '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
           a.textContent = f;
           row.appendChild(a);
         }
@@ -584,11 +605,11 @@
           var save = document.createElement('button');
           save.type = 'button'; save.className = 'projrow__pick';
           save.textContent = 'save to the beach';
-          save.title = 'writes projects:' + cfg.handle + ' — yours, portable, readable by anything';
+          save.title = 'writes branch 1 of lists:' + cfg.handle + ' — yours, portable, readable by anything';
           save.addEventListener('click', function(e){
             e.stopPropagation();
             save.disabled = true; save.textContent = 'saving…';
-            saveList(origin, cfg.handle, order.filter(function(f){ return inList[f]; }))
+            saveBranch(origin, cfg.handle, 1, BRANCH_SAYS, order.filter(function(f){ return inList[f]; }))
               .then(function(w){
                 if (w && w.ok){ location.reload(); return; }
                 save.disabled = false;
@@ -657,49 +678,85 @@
     }
 
     /* The editor is the same panel — a menu that flips over rather than a second
-     * surface to find your way back out of. */
+     * surface to find your way back out of. Edits are held in hand until saved,
+     * because each save is one write to the beach rather than a scribble on this
+     * device: the list is a fact about how you work and it should follow you. */
     function editor(){
       menu.innerHTML = '';
       var a = arrange();
       var order = a.list.map(function(p){ return p[1]; });
-      function commit(){ var p = prefs(); p.order = order; p.hidden = a.hidden; save(p); editor(); }
+      var inList = {}; order.forEach(function(n){ inList[n] = 1; });
+      /* anything in the catalogue but not in your list sits beneath, unticked */
+      a.all.forEach(function(p){ if (order.indexOf(p[1]) < 0) order.push(p[1]); });
+      var by = {}; a.all.forEach(function(p){ by[p[1]] = p; });
 
-      a.list.forEach(function(p, i){
-        var row = document.createElement('div'); row.className = 'dd__row';
-        var cb = document.createElement('input'); cb.type = 'checkbox';
-        cb.checked = !a.hidden[p[1]];
-        cb.addEventListener('change', function(){
-          if (cb.checked) delete a.hidden[p[1]]; else a.hidden[p[1]] = true;
-          commit();
-        });
-        var name = document.createElement('span'); name.className = 'dd__name'; name.textContent = p[0];
-        row.appendChild(cb); row.appendChild(name);
-        [['↑', -1], ['↓', 1]].forEach(function(mv){
-          var b = document.createElement('button'); b.type = 'button'; b.className = 'dd__mv'; b.setAttribute('data-keep-open','');
-          b.textContent = mv[0];
-          b.disabled = (i + mv[1] < 0 || i + mv[1] >= a.list.length);
-          b.addEventListener('click', function(e){
-            e.stopPropagation();
-            var j = i + mv[1], t = order[i]; order[i] = order[j]; order[j] = t;
-            commit();
+      function draw(){
+        menu.innerHTML = '';
+        order.forEach(function(n, i){
+          var p = by[n]; if (!p) return;
+          var row = document.createElement('div'); row.className = 'dd__row';
+          var cb = document.createElement('input'); cb.type = 'checkbox';
+          cb.checked = !!inList[n];
+          cb.addEventListener('change', function(){
+            if (cb.checked) inList[n] = 1; else delete inList[n];
+            draw();
           });
-          row.appendChild(b);
+          var name = document.createElement('span'); name.className = 'dd__name'; name.textContent = p[0];
+          if (!inList[n]) name.style.opacity = '0.45';
+          row.appendChild(cb); row.appendChild(name);
+          [['↑', -1], ['↓', 1]].forEach(function(mv){
+            var b = document.createElement('button'); b.type = 'button'; b.className = 'dd__mv';
+            b.setAttribute('data-keep-open','');
+            b.textContent = mv[0];
+            b.disabled = (i + mv[1] < 0 || i + mv[1] >= order.length);
+            b.addEventListener('click', function(e){
+              e.stopPropagation();
+              var j = i + mv[1], t = order[i]; order[i] = order[j]; order[j] = t;
+              draw();
+            });
+            row.appendChild(b);
+          });
+          menu.appendChild(row);
         });
-        menu.appendChild(row);
-      });
 
-      var foot = document.createElement('div'); foot.className = 'dd__foot';
-      var reset = document.createElement('button'); reset.type = 'button'; reset.className = 'dd__edit'; reset.setAttribute('data-keep-open','');
-      reset.textContent = 'back to the default';
-      reset.addEventListener('click', function(e){ e.stopPropagation(); save({}); editor(); });
-      var done = document.createElement('button'); done.type = 'button'; done.className = 'dd__edit'; done.setAttribute('data-keep-open','');
-      done.textContent = 'done';
-      done.addEventListener('click', function(e){ e.stopPropagation(); paint(); });
-      foot.appendChild(reset); foot.appendChild(done);
-      menu.appendChild(foot);
+        var foot = document.createElement('div'); foot.className = 'dd__foot';
+        var save = document.createElement('button'); save.type = 'button'; save.className = 'dd__edit';
+        save.setAttribute('data-keep-open','');
+        save.textContent = cfg.handle ? 'save to the beach' : 'sign in to save';
+        save.disabled = !cfg.handle;
+        save.title = cfg.handle ? 'writes branch 2 of lists:' + cfg.handle : 'a list needs a handle to belong to';
+        save.addEventListener('click', function(e){
+          e.stopPropagation();
+          save.disabled = true; save.textContent = 'saving…';
+          saveBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2, DOORS_SAYS,
+                     order.filter(function(n){ return inList[n]; }))
+            .then(function(w){
+              if (w && w.ok){ location.reload(); return; }
+              save.disabled = false;
+              save.textContent = (w && w.quiet) ? 'save to the beach' : 'refused — try again';
+            });
+        });
+        var done = document.createElement('button'); done.type = 'button'; done.className = 'dd__edit';
+        done.setAttribute('data-keep-open','');
+        done.textContent = 'cancel';
+        done.addEventListener('click', function(e){ e.stopPropagation(); paint(); });
+        foot.appendChild(save); foot.appendChild(done);
+        menu.appendChild(foot);
+      }
+      draw();
     }
 
     paint();
+    /* The menu opens on the default immediately and settles onto the stated list
+     * when it arrives: a door a reader might tap in the first half-second matters
+     * more than the order being right on the first frame. */
+    if (cfg.handle){
+      readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
+        if (!list || !list.length) return;
+        STATED_DOORS = list;
+        if (!menu.querySelector('.dd__row')) paint();   /* not while it is being edited */
+      });
+    }
     d.appendChild(menu);
     /* places sit left of acts: going somewhere is the commoner intent, and the
      * two controls read as a pair only when they keep a stable order. */
