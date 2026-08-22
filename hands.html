@@ -170,7 +170,7 @@ const RUNGS = { 2:'today', 3:'this week', 4:'this month', 5:'this season', 6:'th
  * up from today's asking is for now. */
 const pileForPscale = p => (p <= 2 ? '1' : String(Math.min(7, p)));
 
-let HANDLE = null, PILES_HELD = {}, DEALT = [], FIELDS = [], ASKS = [], FRAME = [];
+let HANDLE = null, CARDS = [], DECKS = [], FIELDS = [], ASKS = [];
 /* WHAT THIS HAND HAS ALREADY CONFIRMED IN THIS SITTING. The beach is read again
  * the moment a confirmation lands, and that read can still be answered from
  * before the write — so without this the card stays on screen and the obvious
@@ -234,7 +234,12 @@ function ladder(block, addr){
 
 /* ── THE HAND — the leaves under the piles of ahead:<handle>, exactly as /next
  * reads them, so the two surfaces cannot disagree about what a card is. ── */
-const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED'];
+/* HELD is the compile mark and it is not new — ways:deck branch 3 already listed
+ * 'held <t>, released <ts>' as an honest claim and its release. It is what puts a
+ * card in the top hand and takes it out again, and nothing else changes: the card
+ * stays exactly where it lives, in the pile it was written to, under the deck it
+ * was dealt from. Compiling is a SELECTION, never a move. */
+const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED','HELD'];
 /* A CARD'S WORDS ARE WHAT IS LEFT AFTER THE WHOLE MARK — the verb AND the stamps
  * it carries — so a dealt card reads as the sentence someone wrote rather than as
  * a timestamp with a sentence after it. Kept identical to /next's reading, because
@@ -274,8 +279,13 @@ function readHand(mine){
 /* a card is in play unless its own leading word retired it; a card that has only
  * been DEALT is not yet in play — it is being offered, and stays offered until its
  * holder keeps it or lets it go */
-const inPlay = c => c.verb !== 'DONE' && c.verb !== 'DROP' && c.verb !== 'PROPOSED';
-const justDealt = c => c.verb === 'PROPOSED';
+/* A DEALT CARD IS A CARD, and the keep step is gone with the wall it existed for.
+ * A deal of seven arriving at once needed sorting; a deal of ONE, into the row of
+ * the deck it came from, is simply a card that has appeared — bin it or leave it.
+ * PROPOSED is still read, so anything an older surface or a mind wrote as an
+ * offer still shows and still behaves, but nothing produces one here. */
+const inPlay = c => c.verb !== 'DONE' && c.verb !== 'DROP';
+const inHand = c => c.verb === 'HELD';
 
 /* ── THE AIM, read off the card's words (ways:deck branch 3): family first, the
  * stretch after a comma. This is the same reading /next does to decide where a
@@ -304,111 +314,67 @@ const norm = t => String(t || '').toLowerCase().replace(/toward\s+[a-z0-9-]+/gi,
 /* ── load ── */
 async function load(){
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
-  const all = readHand(mine);
-  /* A HAND IS A PILE. The piles were being shown as one row of everything, which
-   * put 'fix vapour length' beside 'explore xq math, live by the sea' and made a
-   * hand unreadable — those cannot be in the same hand, because one is a card and
-   * the other is an appetite held for a decade. So each pile is its own hand at
-   * its own grain (function:ahead's word, kept here where only authors read and
-   * said plainly on the page itself), and the union is one option rather than the
-   * default view. */
-  PILES_HELD = {};
-  for (const c of all.filter(inPlay)) (PILES_HELD[c.pile] = PILES_HELD[c.pile] || []).push(c);
-  DEALT = all.filter(justDealt);
+  CARDS = readHand(mine).filter(inPlay);
 
   const dash = await readBlock('dashboard:' + HANDLE).catch(() => null);
   FIELDS = dash ? childDigits(dash).map(d => (typeof dash[d] === 'string' ? dash[d] : voice(dash[d]) || '').trim())
                     .filter(Boolean).filter(f => !f.includes(':')) : [];
+
+  /* THE DECKS A PERSON HAS: the projects they chose, their own now, and any
+   * source a card already in their hand names. That last one matters — a card
+   * dealt from somewhere unusual BRINGS ITS DECK WITH IT, so nothing has to be
+   * added to a list before it can be dealt from. */
+  const named = [];
+  for (const f of FIELDS.concat(['now'])) if (named.indexOf(f) < 0) named.push(f);
+  for (const c of CARDS){ const a = aimOf(c.raw); if (a && named.indexOf(a) < 0) named.push(a); }
+  DECKS = named;
 
   const addr = dayRung();
   ASKS = (FIELDS.length ? await gatherAsks(await readIndex().catch(() => ({})), addr).catch(() => []) : [])
     .filter(a => !ACTED.has(askKey(a)));
 }
 
-/* ── THE DEAL — an act with a moment and an edge, never a standing view.
+/* ── THE DEAL — one card, from one deck, when asked.
  *
- * Dealing everything available on every page load is a FEED, not a deal: nobody
- * asked for it, it never ends, and it arrives as a wall. A deal has a beginning
- * and an end — you ask, a few cards come, you keep some and let the rest go, and
- * the deal is over. THE BOUND IS WHAT MAKES IT CALM: seven cards, nearest rung
- * first, then it stops. Ask again for more.
+ * Dealing everything on every load was a feed; dealing seven at once needed a
+ * sorting step to survive. ONE CARD FROM ONE NAMED DECK needs neither: it lands
+ * in that deck's row, where it is obviously new because the row is short, and it
+ * is binned or left alone. The button says which deck it deals from, so the
+ * context is never asked for and never guessed.
  *
- * The bound is also what keeps this honest. There is deliberately no scoring, no
- * weighting and no reading of what anyone else is holding — this reads the rungs,
- * splits, and picks the nearest seven. All of the nuance lives with a mind, which
- * is the true difference between dealing here and dealing at the mirror, and the
- * reason not to grow this into something clever. ── */
-const DEAL_SIZE = 7;
-async function deal(){
+ * There is deliberately no scoring and no reading of what anyone else holds. A
+ * mind reading with you does that, and does it better; this reads the deck's
+ * fine rungs, takes the nearest thing it has not already given you, and stops. ── */
+async function deal(deck){
   const addr = dayRung();
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
-  /* never offer what is already held, already offered, or already retired */
   const known = new Set(readHand(mine).map(c => norm(c.text)));
-  const sources = FIELDS.map(f => ({ key: f, spine: 'spine:' + f, mirror: f + ':' + HANDLE }))
-    .concat([{ key: null, spine: null, mirror: 'now:' + HANDLE }]);
+  const personal = deck === 'now';
+  const [sp, mi] = await Promise.all([
+    personal ? Promise.resolve(null) : readBlock('spine:' + deck).catch(() => null),
+    readBlock((personal ? 'now:' : deck + ':') + HANDLE).catch(() => null),
+  ]);
   const found = [];
-  await Promise.all(sources.map(async src => {
-    const [sp, mi] = await Promise.all([
-      src.spine ? readBlock(src.spine).catch(() => null) : Promise.resolve(null),
-      readBlock(src.mirror).catch(() => null),
-    ]);
-    for (const block of [sp, mi]){
-      if (!block) continue;
-      for (const rung of ladder(block, addr)){
-        /* only the fine rungs deal — a card is one doable thing, and doable things
-         * are voiced at the day and the week. Coarser rungs are the frame. */
-        if (rung.pscale < 2 || rung.pscale > 3) continue;
-        for (const t of candidates(rung.text)) found.push({ text: t, pscale: rung.pscale, family: src.key });
-      }
+  for (const block of [sp, mi]){
+    if (!block) continue;
+    for (const rung of ladder(block, addr)){
+      /* a card is one doable thing, and doable things are voiced at the day and
+       * the week; coarser rungs are the frame this deck sits in, never a task */
+      if (rung.pscale < 2 || rung.pscale > 3) continue;
+      for (const t of candidates(rung.text)) found.push({ text: t, pscale: rung.pscale });
     }
-  }));
-  const picked = [], seen = new Set();
+  }
   found.sort((a, b) => a.pscale - b.pscale);
-  for (const f of found){
-    if (picked.length >= DEAL_SIZE) break;
-    const k = norm(f.text);
-    if (!k || seen.has(k) || known.has(k)) continue;
-    seen.add(k); picked.push(f);
-  }
-  if (!picked.length) return { none: true };
-  /* A BLOCK BORN BY A DEAL IS STILL AN AHEAD BLOCK. Writing straight at a pile
-   * into a block that does not exist yet leaves the beach to name the root, and
-   * what it names is a filename rather than a voicing — so the first card dealt
-   * to a newcomer would found their piles with no statement of what they are.
-   * Founded here with the same words /ahead and /next use. */
-  if (!mine){
-    const w0 = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, content: { '_':
-      'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." } });
-    if (!w0.ok) return w0.quiet ? { quiet: true } : w0;
-  }
-  /* a dealt card is offered INTO the holder's own piles, at the pile its rung is
-   * sized for — the same act whichever hand dealt it, so the mirror and a chat app
-   * put their cards exactly where this button does */
-  let landed = 0;
-  for (const f of picked){
-    const text = (f.family && !aimOf(f.text) ? f.text + ' toward ' + f.family : f.text);
-    const pile = pileForPscale(f.pscale);
-    const now = await readBlock('ahead:' + HANDLE).catch(() => null);
-    const has = now && now[pile] && typeof now[pile] === 'object';
-    const body = has
-      ? { block: 'ahead:' + HANDLE, spindle: pile, append: true, content: 'PROPOSED ' + stamp() + ' — ' + text }
-      : { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': 'PROPOSED ' + stamp() + ' — ' + text } };
-    const w = await withLatch('ahead:' + HANDLE, body);
-    if (!w.ok) return w.quiet ? { quiet: true } : w;
-    landed += 1;
-  }
-  return { ok: true, landed };
+  const pick = found.find(f => { const k = norm(f.text); return k && !known.has(k); });
+  if (!pick) return { none: true };
+  const text = personal ? pick.text : (aimOf(pick.text) ? pick.text : pick.text + ' toward ' + deck);
+  const w = await addCard(pileForPscale(pick.pscale), text);
+  return w.ok ? { ok: true, pile: pileForPscale(pick.pscale) } : w;
 }
 
 /* ── writes ── */
 const stamp = () => new Date().toISOString().slice(0,16) + 'Z';
 
-/* KEEPING A DEALT CARD is simply removing the word that marked it as offered —
- * the card was already in the holder's own pile, so nothing moves and nothing is
- * copied. That is why one verb carries the whole deal: offered, then kept. */
-async function keepCard(c){
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: c.text });
-}
 async function editCard(c, text){
   const lead = c.verb ? c.verb + ' ' + stamp() + ' — ' : '';
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: lead + text });
@@ -528,80 +494,112 @@ function toast(msg, err){
   const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.textContent = msg;
   document.body.appendChild(t); setTimeout(() => t.remove(), 3200);
 }
-function handCardEl(c){
-  return '<div class="dcard" data-addr="' + esc(c.addr) + '">'
-    + '<span class="aim"><span class="pile">' + esc(pileLabel(c.pile)) + '</span>'
-    + (aimOf(c.raw) ? '<span class="rung">' + esc(aimOf(c.raw)) + '</span>' : '') + '</span>'
+/* ONE CARD FACE for every row. What differs between rows is which acts it offers,
+ * never what a card IS — a card in the top hand and the same card in its deck's
+ * row are one card at one address, shown twice because both facts are true. */
+function cardEl(c, opts){
+  const held = inHand(c);
+  const deck = aimOf(c.raw);
+  return '<div class="dcard' + (held ? ' fam' : '') + '"'
+    + (deck ? ' style="--fam-h:' + famHue(deck) + '"' : '') + ' data-addr="' + esc(c.addr) + '">'
+    + '<span class="aim">' + (opts && opts.showDeck && deck ? esc(deck) : '<span class="pile">' + esc(pileLabel(c.pile)) + '</span>')
+    + (held ? '<span class="rung">in hand</span>' : '') + '</span>'
     + '<div class="txt">' + esc(c.text) + '</div>'
-    + '<div class="acts"><a href="/next/' + encodeURIComponent(HANDLE) + '">flick →</a>'
-    + '<button class="x" data-act="drop">✕ let go</button></div></div>';
-}
-function dealtCardEl(c){
-  return '<div class="dcard deal" data-addr="' + esc(c.addr) + '">'
-    + '<span class="aim"><span class="pile">' + esc(pileLabel(c.pile)) + '</span>'
-    + (aimOf(c.raw) ? '<span class="rung">' + esc(aimOf(c.raw)) + '</span>' : '') + '</span>'
-    + '<div class="txt">' + esc(c.text) + '</div>'
-    + '<div class="acts"><button data-act="keep">✓ keep</button>'
+    + '<div class="acts">'
+    + (held ? '<button data-act="release">− hand</button>' : '<button data-act="hold">＋ hand</button>')
     + '<button data-act="edit">✎</button>'
     + '<button class="x" data-act="drop">✕</button></div></div>';
+}
+/* THE BLANK CARD — mint one of your own. A card you write is yours from the first
+ * keystroke and carries no mark, which is the whole difference between writing an
+ * intent and being dealt one. It lands in the nearest pile, because a thing you
+ * sit down and write is a thing for now. */
+function blankCardEl(){
+  return '<div class="dcard blank" data-pile="1">'
+    + '<span class="aim"><span class="pile">mint</span></span>'
+    + '<div class="txt add">＋ write one of your own</div></div>';
+}
+function deckLabel(d){ return d === 'now' ? 'my now' : d; }
+/* where a deck's own page is — the walk for a project family, /now for the now.
+ * A row that names a source must be able to go there, or the source is a label. */
+function deckHref(d){
+  return d === 'now' ? '/now/' + encodeURIComponent(HANDLE)
+                     : '/walk/' + encodeURIComponent(d) + '/' + encodeURIComponent(HANDLE);
+}
+function rowHead(name, count, opts){
+  opts = opts || {};
+  return '<div class="rowhead">'
+    + '<span class="fdot' + (opts.hue === undefined ? ' plain' : '') + '"'
+    + (opts.hue !== undefined ? ' style="--fam-h:' + opts.hue + '"' : '') + '></span>'
+    + '<span class="name">' + esc(name) + '</span>'
+    + '<span class="n">' + esc(count) + '</span>'
+    + '<div class="links">' + (opts.links || '') + '</div>'
+    + (opts.sub ? '<p class="sub">' + opts.sub + '</p>' : '')
+    + '</div>';
 }
 function render(){
   $('bar-who').textContent = HANDLE;
   $('foot-flick').href = '/next/' + encodeURIComponent(HANDLE);
-  $('foot-ahead').href = '/ahead/' + encodeURIComponent(HANDLE);
+  $('foot-now').href = '/now/' + encodeURIComponent(HANDLE);
   const out = [];
+  const flick = q => '<a href="/next/' + encodeURIComponent(HANDLE) + (q || '') + '">flick →</a>';
 
-  /* JUST DEALT — the only row that is ever new, and it empties as you sort it */
-  if (DEALT.length){
-    out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">just dealt</span>'
-      + '<span class="n">' + DEALT.length + (DEALT.length === 1 ? ' card' : ' cards') + '</span>'
-      + '<p class="sub">Offered, not yours yet. Keep the ones you want, change any wording that is not quite right, and let the rest go — then flick them with the rest of that pile.</p></div>');
-    out.push('<div class="carousel">' + DEALT.map(dealtCardEl).join('') + '</div>');
-  }
+  /* ── THE TOP HAND — compiled, never computed. Cards from any deck, chosen one
+   * by one, which is the act that makes this a hand rather than a list of
+   * everything you happen to be holding. ── */
+  const held = CARDS.filter(inHand);
+  out.push(rowHead('my hand', held.length + (held.length === 1 ? ' card' : ' cards'), {
+    links: held.length ? flick() : '',
+    sub: 'The cards you have compiled from the decks below — take one up with ＋ and it joins this hand, wherever it came from. This is the hand /next flicks.' }));
+  out.push(held.length
+    ? '<div class="carousel">' + held.map(c => cardEl(c, { showDeck: true })).join('') + '</div>'
+    : '<div class="empty-row">nothing compiled yet — ＋ on any card below puts it here</div>');
 
-  /* YOUR HANDS — one per pile, each at its own grain */
-  const piles = PILES.filter(p => (PILES_HELD[p.d] || []).length);
-  const total = piles.reduce((n, p) => n + PILES_HELD[p.d].length, 0);
-  out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">your hands</span>'
-    + '<span class="n">' + total + (total === 1 ? ' card' : ' cards') + ' across ' + piles.length + '</span>'
-    + '<div class="links">' + (total ? '<a href="/next/' + encodeURIComponent(HANDLE) + '">flick everything →</a>' : '') + '</div>'
-    + '<p class="sub">Each pile is a hand — sorted by how far out it is, not by which project it serves. A card carries what it aims at, so a hand mixes projects the way a day does. Flick one pile, or flick everything.</p></div>');
-  if (!total)
-    out.push('<div class="empty-row">no cards yet — deal yourself some below, or lay your own out at <a href="/ahead/' + encodeURIComponent(HANDLE) + '">the piles</a></div>');
-  for (const p of piles){
-    const cards = PILES_HELD[p.d];
-    out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">' + esc(p.label) + '</span>'
-      + '<span class="n">' + cards.length + (cards.length === 1 ? ' card' : ' cards') + '</span>'
-      + '<div class="links"><a href="/next/' + encodeURIComponent(HANDLE) + '?pile=' + p.d + '">flick →</a></div></div>');
-    out.push('<div class="carousel">' + cards.map(handCardEl).join('') + '</div>');
+  /* ── MINE — written, not dealt. ── */
+  const mine = CARDS.filter(c => !aimOf(c.raw));
+  out.push(rowHead('mine', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
+    sub: 'Cards you write yourself, aimed at nothing in particular. Click the blank card and type; Enter lands it, Escape leaves.' }));
+  out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
+
+  /* ── ONE ROW PER DECK — a project, your now, anywhere a card was dealt from. ── */
+  for (const d of DECKS){
+    const cards = CARDS.filter(c => aimOf(c.raw) === d);
+    out.push(rowHead(deckLabel(d), cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty', {
+      hue: famHue(d),
+      links: '<a href="' + deckHref(d) + '">the deck →</a>'
+        + (cards.length ? ' ' + flick('?aim=' + encodeURIComponent(d)) : '')
+        + ' <button data-deal="' + esc(d) + '">deal one →</button>' }));
+    out.push(cards.length
+      ? '<div class="carousel">' + cards.map(c => cardEl(c, {})).join('') + '</div>'
+      : '<div class="empty-row">nothing dealt from here yet</div>');
   }
 
   if (ASKS.length){
-    out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">to confirm</span>'
-      + '<span class="n">' + ASKS.length + (ASKS.length === 1 ? ' account' : ' accounts') + '</span>'
-      + '<p class="sub">Someone else says this happened, at a rung you stand at too. Confirm what you received rather than what you gave — the person whose need was met is the one who knows. It writes one line in your own reading and nothing else moves, and the account stands whether or not you confirm it.</p></div>');
+    out.push(rowHead('to confirm', ASKS.length + (ASKS.length === 1 ? ' account' : ' accounts'), {
+      sub: 'Someone else says this happened, at a rung you stand at too. Confirm what you received rather than what you gave — the person whose need was met is the one who knows. It writes one line in your own reading and nothing else moves, and the account stands whether or not you confirm it.' }));
     out.push('<div class="carousel">' + ASKS.map(askCardEl).join('') + '</div>');
   }
 
-  /* THE DEAL — three doors to one act, and none of them is a code word */
-  out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">deal me some cards</span>'
-    + '<div class="links"><button id="btn-deal">deal ' + DEAL_SIZE + ' →</button></div>'
-    + '<p class="sub">Dealt here by reading what your projects and your now are asking at today and this week — quick, and no more than ' + DEAL_SIZE + ' at a time. '
-    + 'For a deal that reads more carefully — across other people\u2019s readings, or aimed at whatever you are actually thinking about — ask at '
-    + '<a href="https://mirror.onen.ai">mirror.onen.ai</a>, which already holds your key, or in any chat that can reach this beach. '
-    + 'Tell it: <em>deal me a few cards for today — I am ' + esc(HANDLE) + '</em>. Its cards arrive here, in this same row.</p></div>');
+  out.push('<div class="foot" style="border:none;margin:0;padding-top:18px">'
+    + 'Each deck deals from what it is asking at today and this week. For a deal that reads more carefully — across '
+    + 'other people\u2019s readings, or aimed at whatever you are actually thinking about — ask at '
+    + '<a href="https://mirror.onen.ai">mirror.onen.ai</a>, which already holds your key, or in any chat that can reach '
+    + 'this beach. Tell it: <em>deal me a card from beach-venture — I am ' + esc(HANDLE) + '</em>. Its cards arrive here, '
+    + 'in that deck\u2019s row.</div>');
 
   $('rows').innerHTML = out.join('');
-  const db = $('btn-deal');
-  if (db) db.addEventListener('click', async () => {
-    db.disabled = true; db.textContent = 'dealing…';
-    try {
-      const r = await deal();
-      if (r.ok) toast('✓ dealt ' + r.landed + ' — keep the ones you want');
-      else if (r.none) toast('nothing new is being asked at today or this week');
-      else if (!r.quiet) toast('the deal did not land', true);
-      await reload();
-    } catch(e){ toast(String(e.message || e), true); db.disabled = false; db.textContent = 'deal ' + DEAL_SIZE + ' →'; }
+  Array.prototype.forEach.call(document.querySelectorAll('button[data-deal]'), b => {
+    b.addEventListener('click', async () => {
+      const d = b.dataset.deal;
+      b.disabled = true; b.textContent = 'dealing…';
+      try {
+        const r = await deal(d);
+        if (r.ok) toast('✓ dealt from ' + deckLabel(d));
+        else if (r.none) toast(deckLabel(d) + ' is asking nothing new at today or this week');
+        else if (!r.quiet) toast('the deal did not land', true);
+        await reload();
+      } catch(e){ toast(String(e.message || e), true); b.disabled = false; b.textContent = 'deal one →'; }
+    });
   });
 }
 
@@ -609,27 +607,29 @@ function render(){
 document.addEventListener('click', async e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const card = b.closest('.dcard'); if (!card) return;
-  const addr = card.dataset.addr;
-  const find = () => DEALT.concat.apply(DEALT, PILES.map(p => PILES_HELD[p.d] || [])).find(x => x.addr === addr);
+  const find = () => CARDS.find(x => x.addr === card.dataset.addr);
   b.disabled = true;
   try {
-    if (b.dataset.act === 'witness'){
+    const act = b.dataset.act;
+    if (act === 'witness'){
       const ask = ASKS[Number(card.dataset.ask)];
       if (!ask) return;
       const w = await confirm(ask);
       if (w.ok){ ACTED.add(askKey(ask)); toast('✓ confirmed — one line in your ' + ask.family + ' reading'); await reload(); }
       else if (!w.quiet) toast('the confirmation did not land', true);
-    } else if (b.dataset.act === 'keep'){
+    } else if (act === 'hold' || act === 'release'){
+      /* COMPILING IS A SELECTION, NEVER A MOVE. The card stays at its own address,
+       * in the pile it was written to, under the deck it came from; all that
+       * changes is whether its own leading word says it is in the hand. */
       const c = find(); if (!c) return;
-      const w = await keepCard(c);
-      if (w.ok){ toast('✓ kept — ' + pileLabel(c.pile)); await reload(); }
+      const w = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
+        content: act === 'hold' ? 'HELD ' + stamp() + ' — ' + c.text : c.text });
+      if (w.ok){ toast(act === 'hold' ? '✓ in your hand' : '✓ set down'); await reload(); }
       else if (!w.quiet) toast('it did not land', true);
-    } else if (b.dataset.act === 'edit'){
+    } else if (act === 'edit'){
       const c = find(); if (!c) return;
-      openEdit(card, c);
-      b.disabled = false;
-      return;
-    } else if (b.dataset.act === 'drop'){
+      openEdit(card, c); b.disabled = false; return;
+    } else if (act === 'drop'){
       const c = find(); if (!c) return;
       const w = await letGo(c);
       if (w.ok){ toast('✓ let go'); await reload(); }
@@ -638,6 +638,41 @@ document.addEventListener('click', async e => {
   } catch(err){ toast(String(err.message || err), true); }
   b.disabled = false;
 });
+
+/* THE BLANK CARD OPENS WHERE IT SITS. Enter lands the intent and Escape leaves,
+ * so a run of them goes down without the hand leaving the keyboard — the one
+ * thing /ahead did that nothing else did, which is why folding it in had to bring
+ * this rather than only its links. */
+document.addEventListener('click', e => {
+  const blank = e.target.closest('.dcard.blank');
+  if (!blank || blank.querySelector('textarea')) return;
+  openBlank(blank);
+});
+function openBlank(el){
+  const pile = el.dataset.pile || '1';
+  const box = el.querySelector('.txt');
+  const ta = document.createElement('textarea');
+  ta.placeholder = 'one thing you are holding toward';
+  ta.style.cssText = 'width:100%;min-height:90px;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);'
+    + 'border-radius:6px;color:var(--foam);font:inherit;padding:8px;resize:vertical';
+  box.replaceWith(ta); ta.focus();
+  let busy = false, done = false;
+  const finish = async commit => {
+    if (busy || done) return;
+    const v = ta.value.trim();
+    if (!commit || !v){ done = true; await reload(); return; }
+    busy = true;
+    const w = await addCard(pile, v);
+    busy = false;
+    if (w.ok){ toast('✓ minted'); done = true; await reload(); }
+    else if (!w.quiet) toast('it did not land', true);
+  };
+  ta.addEventListener('keydown', ev => {
+    if (ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); finish(true); }
+    else if (ev.key === 'Escape'){ ev.preventDefault(); finish(false); }
+  });
+  ta.addEventListener('blur', () => finish(true));
+}
 
 /* EDIT IN PLACE — a mechanically split card often wants one word changed before
  * it is really yours, and sending that through a dialog would make the cheapest
