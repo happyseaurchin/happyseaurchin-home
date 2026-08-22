@@ -143,6 +143,7 @@
   <div id="rows"></div>
   <div class="foot">
     A card is yours the moment you take it up — the project is never written to, and nothing is assigned to anybody. Where a done card lands is read off the words it carries: a card aimed at a project lands in your reading of that project, and one aimed at nothing lands in your now.
+    <br>These cards are dealt by reading the rungs, here, with nothing else needed. A mind reading with you — in a chat that can reach this beach — reads the same rungs better and can deal from places a page does not go: other people's readings, what is offered to you, anywhere you happen to be looking. It deals more; it is never what makes dealing possible.
     <br><a id="foot-ahead" href="/ahead">the piles →</a> · <a id="foot-flick" href="/next">flick your hand →</a> · <a href="/now">your now →</a>
   </div>
 </div>
@@ -171,9 +172,21 @@ const RUNGS = { 2:'today', 3:'this week', 4:'this month', 5:'this season', 6:'th
  * up from today's asking is for now. */
 const pileForPscale = p => (p <= 2 ? '1' : String(Math.min(7, p)));
 
-let HANDLE = null, HAND = [], ROWS = [], FIELDS = [];
+let HANDLE = null, HAND = [], ROWS = [], FIELDS = [], ASKS = [];
+/* WHAT THIS HAND HAS ALREADY CONFIRMED IN THIS SITTING. The beach is read again
+ * the moment a confirmation lands, and that read can still be answered from
+ * before the write — so without this the card stays on screen and the obvious
+ * next move is to confirm it a second time. The stored line is what settles it;
+ * this only stops a stale read from offering the same account twice. */
+const ACTED = new Set();
+const askKey = a => a.family + '|' + String(a.who).toLowerCase() + '|' + norm(a.claim);
 
 /* ── tiny beach client ── */
+async function readIndex(){
+  const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (!r.ok) throw new Error('beach index failed: ' + r.status);
+  return r.json();
+}
 async function readBlock(name){
   const r = await fetch(BEACH + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
   if (r.status === 404) return null;
@@ -215,7 +228,8 @@ function ladder(block, addr){
     n = (n && typeof n === 'object') ? (ch === '0' ? n['_'] : n[ch]) : undefined;
     if (n === undefined || n === null) break;
     const v = typeof n === 'string' ? n : voice(n);
-    if (v && v.trim()) out.push({ pscale: fl - (i + 1), text: v.trim() });
+    let at = digits.slice(0, i + 1).join(''); while (at.length < fl) at += '0';
+    if (v && v.trim()) out.push({ pscale: fl - (i + 1), text: v.trim(), addr: at });
   }
   return out;
 }
@@ -335,18 +349,24 @@ async function load(){
     return { key: src.key, label: src.label, personal: !!src.personal, frame,
              mine: src.personal ? [] : HAND.filter(c => aimOf(c.raw) === src.key), deals };
   }));
+
+  /* the asks ride the same load — one deal, two kinds of card */
+  ASKS = (FIELDS.length ? await gatherAsks(await readIndex().catch(() => ({})), addr).catch(() => []) : [])
+    .filter(a => !ACTED.has(askKey(a)));
 }
 
 /* ── writes ── */
-function latchKey(){ return 'next-latch:ahead:' + HANDLE; }
-async function withLatch(body){
-  const secret = localStorage.getItem(latchKey());
+/* the latch key follows the BLOCK and is named exactly as /next names it, so a
+ * key set on one surface is a key set on the other — one hand, one key per block */
+const latchKey = block => 'next-latch:' + block;
+async function withLatch(block, body){
+  const secret = localStorage.getItem(latchKey(block));
   let w = await writeBlock(secret ? Object.assign({}, body, { secret }) : body);
   if (lockRequired(w)){
-    const v = prompt('ahead:' + HANDLE + ' is latched — enter your key for your piles (kept on this device):');
+    const v = prompt(block + ' is latched — enter your key for it (kept on this device):');
     if (!v || !v.trim()) return { ok:false, quiet:true };
     w = await writeBlock(Object.assign({}, body, { secret: v.trim() }));
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+    if (w.ok) localStorage.setItem(latchKey(block), v.trim());
   }
   return w;
 }
@@ -359,11 +379,11 @@ async function takeUp(deal){
   const pile = pileForPscale(deal.pscale);
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
   if (!mine){
-    const w = await withLatch({ block: 'ahead:' + HANDLE, content: { '_': 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." } });
+    const w = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, content: { '_': 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." } });
     if (!w.ok) return w;
   }
   const has = mine && mine[pile] && typeof mine[pile] === 'object';
-  return withLatch(has
+  return withLatch('ahead:' + HANDLE, has
     ? { block: 'ahead:' + HANDLE, spindle: pile, append: true, content: text }
     : { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': text } });
 }
@@ -371,7 +391,92 @@ async function takeUp(deal){
  * hand, retired by their leading word exactly as /next retires them. */
 async function letGo(card){
   const stamp = 'DROP ' + new Date().toISOString().slice(0,16) + 'Z — ' + card.text;
-  return withLatch({ block: 'ahead:' + HANDLE, spindle: card.addr, content: stamp });
+  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: card.addr, content: stamp });
+}
+
+/* ── THE WITNESS.
+ *
+ * Everything up to a done card is self-report; a witness is the one point in the
+ * whole family where a second party is structurally required, and it is what
+ * turns an account into a settled one. The mechanics are the same as every other
+ * act here and add no organ: the CLAIM is the done card's landed line in the
+ * claimant's own mirror, and the WITNESS writes one line in THEIR OWN mirror at
+ * the self-same address, naming whose account it confirms. Nothing shared is
+ * written, so collision stays impossible and no lock model changes.
+ *
+ * TWO PROPERTIES KEEP THIS FROM BECOMING APPROVAL WORKFLOW. Settlement is never
+ * a gate — the account stands whether or not anyone confirms it, and confirming
+ * only adds weight, endorsed by pointer like every other fold on this beach. And
+ * the natural witness is the BENEFICIARY, not a neutral observer: confirm what
+ * you received rather than what you gave, because the party whose need was met
+ * both knows and cares, and the asymmetry removes the reciprocal structure a
+ * reputation ring would depend on. That is said in the row's own words rather
+ * than enforced, because the only thing worth enforcing is that nobody is
+ * offered their own claim to confirm.
+ *
+ * An ask is a CARD, off the same deal and resolved by the same one line, which
+ * is what makes settlement affordable: there is no verification inbox because
+ * there is no inbox — there is a hand.
+ *
+ * A claim is recognised by the mark slice one writes when a card is done: a line
+ * opening with '·' in a mirror at a rung. Prose a person typed themselves is not
+ * a claim and is never offered — settlement arises from done cards, which is
+ * exactly what it is for. */
+const CLAIM_LINE = /^·\s*(.+)$/;
+const WITNESS_LINE = /^WITNESSED\b[^—]*—\s*([^:]+):\s*(.*)$/;
+async function gatherAsks(index, addr){
+  const asks = [];
+  for (const fam of FIELDS){
+    const others = (index.blocks || []).filter(b =>
+      b.startsWith(fam + ':') && b.slice(fam.length + 1).indexOf(':') === -1 && b !== fam + ':' + HANDLE);
+    if (!others.length) continue;
+    /* what this hand has already confirmed, so an ask is offered once and no more */
+    const done = new Set();
+    const mineB = await readBlock(fam + ':' + HANDLE).catch(() => null);
+    if (mineB) for (const rung of ladder(mineB, addr))
+      for (const l of rung.text.split('\n')){
+        const m = l.match(WITNESS_LINE);
+        if (m) done.add(m[1].trim().toLowerCase() + '|' + norm(m[2]));
+      }
+    for (const name of others){
+      const who = name.slice(fam.length + 1);
+      const b = await readBlock(name).catch(() => null);
+      if (!b) continue;
+      for (const rung of ladder(b, addr)){
+        if (rung.pscale < 2 || rung.pscale > 3) continue;
+        for (const l of rung.text.split('\n')){
+          const m = l.match(CLAIM_LINE);
+          if (!m) continue;
+          const claim = m[1].trim();
+          if (done.has(who.toLowerCase() + '|' + norm(claim))) continue;
+          asks.push({ who, claim, family: fam, addr: rung.addr, rung: RUNGS[rung.pscale] || '' });
+        }
+      }
+    }
+  }
+  return asks;
+}
+async function confirm(ask){
+  const name = ask.family + ':' + HANDLE;
+  let block = await readBlock(name).catch(() => null);
+  if (!block){
+    /* a mirror born to carry a confirmation is still a mirror, and is born at the
+     * clock's floor so every rung of the family has somewhere to stand */
+    let root = 'MIRROR — ' + HANDLE + "'s readings on the " + ask.family + ' field, at the spine\u2019s own addresses. Sovereign; silence at an address is honest absence.';
+    for (let i = 0; i < 10; i++) root = { '_': root };
+    const w0 = await withLatch(name, { block: name, content: root });
+    if (!w0.ok) return w0;
+    block = await readBlock(name).catch(() => null);
+  }
+  let n = block;
+  for (const ch of String(ask.addr).replace(/0+$/, '')){
+    if (!n || typeof n !== 'object'){ n = null; break; }
+    n = (ch === '0') ? n['_'] : n[ch];
+  }
+  const prior = typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null);
+  const line = 'WITNESSED ' + new Date().toISOString().slice(0,16) + 'Z — ' + ask.who + ': ' + ask.claim;
+  return withLatch(name, { block: name, spindle: ask.addr,
+    content: prior && prior.trim() ? prior + '\n' + line : line });
 }
 
 /* ── render ── */
@@ -397,6 +502,12 @@ function dealCardEl(d, i, key){
     + '<div class="acts"><button data-act="take">＋ hand</button>'
     + '<span class="x" style="border:none">→ ' + esc(pileLabel(pileForPscale(d.pscale))) + '</span></div></div>';
 }
+function askCardEl(a, i){
+  return '<div class="dcard deal fam" style="--fam-h:' + famHue(a.family) + '" data-ask="' + i + '">'
+    + '<span class="aim">' + esc(a.who) + ' says<span class="rung">' + esc(a.family) + ' · ' + esc(a.rung) + '</span></span>'
+    + '<div class="txt">' + esc(a.claim) + '</div>'
+    + '<div class="acts"><button data-act="witness">✓ I saw this</button></div></div>';
+}
 function render(){
   $('bar-who').textContent = HANDLE;
   $('bar-flick').href = '/next/' + encodeURIComponent(HANDLE);
@@ -410,6 +521,12 @@ function render(){
   out.push(HAND.length
     ? '<div class="carousel">' + HAND.map(handCardEl).join('') + '</div>'
     : '<div class="empty-row">an empty hand — take a card up from a row below, or lay your own out at <a href="/ahead/' + encodeURIComponent(HANDLE) + '">the piles</a></div>');
+  if (ASKS.length){
+    out.push('<div class="rowhead"><span class="fdot plain"></span><span class="name">to confirm</span>'
+      + '<span class="n">' + ASKS.length + (ASKS.length === 1 ? ' account' : ' accounts') + '</span>'
+      + '<p class="sub">Someone else says this happened, at a rung you stand at too. Confirm what you received rather than what you gave — the person whose need was met is the one who knows. It writes one line in your own reading and nothing else moves, and the account stands whether or not you confirm it.</p></div>');
+    out.push('<div class="carousel">' + ASKS.map(askCardEl).join('') + '</div>');
+  }
   for (const row of ROWS){
     const flick = row.mine.length
       ? '<a href="/next/' + encodeURIComponent(HANDLE) + (row.personal ? '' : '?aim=' + encodeURIComponent(row.key)) + '">flick these →</a>' : '';
@@ -441,6 +558,12 @@ document.addEventListener('click', async e => {
       const w = await takeUp(deal);
       if (w.ok){ toast('✓ taken up — ' + pileLabel(pileForPscale(deal.pscale))); await reload(); }
       else if (!w.quiet) toast('it did not land' + (lockRequired(w) ? ' — your piles are latched' : ''), true);
+    } else if (b.dataset.act === 'witness'){
+      const ask = ASKS[Number(card.dataset.ask)];
+      if (!ask) return;
+      const w = await confirm(ask);
+      if (w.ok){ ACTED.add(askKey(ask)); toast('✓ confirmed — one line in your ' + ask.family + ' reading'); await reload(); }
+      else if (!w.quiet) toast('the confirmation did not land', true);
     } else if (b.dataset.act === 'drop'){
       const c = HAND.find(x => x.addr === card.dataset.addr);
       if (!c) return;
