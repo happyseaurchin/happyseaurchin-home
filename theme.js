@@ -389,6 +389,13 @@
     '.projrow a:hover{color:var(--liquid);background:rgba(var(--wash-rgb),0.07)}' +
     '.projrow .here{color:var(--foam);padding:1px 5px}' +
     '.projrow .sep{color:var(--vapour-dim);opacity:0.4}' +
+    '.projrow--ask{gap:8px 10px;align-items:center;flex-wrap:wrap}' +
+    '.projrow__ask-lab{font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:var(--vapour-dim);flex:none}' +
+    '.projrow__ask-in{background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);border-radius:4px;' +
+      'padding:6px 10px;color:var(--foam);font-family:var(--mono);font-size:13px;min-width:0;flex:1 1 130px}' +
+    '.projrow__ask-go{background:var(--liquid);border:none;border-radius:4px;color:var(--abyss);' +
+      'font-family:var(--mono);font-size:12px;font-weight:700;padding:6px 14px;cursor:pointer}' +
+    '.projrow__ask-go:hover{background:var(--foam)}' +
     '.projrow__pick{margin-left:10px;background:none;border:none;color:var(--vapour-dim);' +
       'font-family:var(--mono);font-size:11px;letter-spacing:0.06em;cursor:pointer;padding:1px 4px}' +
     '.projrow__pick:hover{color:var(--liquid)}' +
@@ -408,6 +415,13 @@
     '.projrow__note a:hover{color:var(--foam);background:none}' +
     '@media print{.projrow{display:none}}';
   var rowStyled = false;
+  /* Both the row and the ask share these, and the ask reaches them by a path that
+   * never ran the read — which is how it came to render as unstyled block text
+   * with the label clipped off the left edge. Styling is not the read's to own. */
+  function rowStyle(){
+    if (rowStyled) return; rowStyled = true;
+    var st = document.createElement('style'); st.textContent = ROW_CSS; document.head.appendChild(st);
+  }
 
   /* The bar is sticky at the top and this row sits under it, so its offset is the
    * bar's height — measured, never assumed, because the bar wraps to two or three
@@ -445,11 +459,47 @@
     wrap.appendChild(row);
   }
 
+  /* WITHOUT A HANDLE, ASK FOR ONE — here, where the row would have been, rather
+   * than telling someone their URL is missing something. A person who does not
+   * know they are supposed to be in the address cannot act on being told they are
+   * not; a box they can type into is the same information made usable. Typing it
+   * puts them on the same page as themselves, and everything else follows. */
+  function askForHandle(cfg, bar){
+    if (document.querySelector('.projrow')) return;
+    rowStyle();
+    var row = document.createElement('div');
+    row.className = 'projrow projrow--ask';
+    var lab = document.createElement('span');
+    lab.className = 'projrow__ask-lab';
+    lab.textContent = 'your handle —';
+    var input = document.createElement('input');
+    input.type = 'text'; input.className = 'projrow__ask-in';
+    input.placeholder = 'who are you here?';
+    input.setAttribute('autocapitalize','none'); input.setAttribute('spellcheck','false');
+    input.setAttribute('aria-label','your handle');
+    var go = document.createElement('button');
+    go.type = 'button'; go.className = 'projrow__ask-go'; go.textContent = 'ok';
+    function land(){
+      var h = input.value.replace(/[^a-z0-9 _-]/gi, '').trim();
+      if (!h) { input.focus(); return; }
+      /* the page keeps its own shape: a family page keeps its family and gains a
+       * handle; a page that takes only a handle takes it and nothing else */
+      location.href = cfg.family
+        ? '/' + cfg.page + '/' + encodeURIComponent(cfg.family) + '/' + encodeURIComponent(h)
+        : '/' + cfg.page + '/' + encodeURIComponent(h);
+    }
+    go.addEventListener('click', land);
+    input.addEventListener('keydown', function(e){ if (e.key === 'Enter') land(); });
+    row.appendChild(lab); row.appendChild(input); row.appendChild(go);
+    stickTogether(row, bar);
+  }
+
   window.siteProjects = function(cfg){
     cfg = cfg || {};
-    if (!cfg.handle || !cfg.page) return;
+    if (!cfg.page) return;
     var bar = document.querySelector('.bar');
     if (!bar || document.querySelector('.projrow')) return;
+    if (!cfg.handle) return askForHandle(cfg, bar);
     var origin = cfg.beach || 'https://beach.happyseaurchin.com';
 
     Promise.all([readIndex(origin), readBranch(origin, cfg.handle, 1)]).then(function(both){
@@ -489,8 +539,7 @@
       if (visible.length < 2 && mine.length < 2) return;   /* a row of one is furniture, not a choice */
       function shown(f){ return visible.indexOf(f) >= 0; }
 
-      if (!rowStyled){ rowStyled = true;
-        var st = document.createElement('style'); st.textContent = ROW_CSS; document.head.appendChild(st); }
+      rowStyle();
 
       var row = document.createElement('div');
       row.className = 'projrow';
@@ -615,8 +664,8 @@
   };
 
   window.siteDoors = function(cfg){
-
     cfg = cfg || {};
+    var doorsRead = Promise.resolve();
     style(); wire();
     var mount = cfg.mount || document.querySelector('.bar');
     if (!mount || document.querySelector('details.dd[data-doors]')) return null;
@@ -670,7 +719,11 @@
       }
       var edit = document.createElement('button');
       edit.className = 'dd__edit'; edit.type = 'button'; edit.setAttribute('data-keep-open',''); edit.textContent = 'choose what shows';
-      edit.addEventListener('click', function(e){ e.stopPropagation(); editor(); });
+      edit.addEventListener('click', function(e){
+        e.stopPropagation();
+        edit.textContent = 'reading your list\u2026';
+        doorsRead.then(editor);
+      });
       menu.appendChild(edit);
     }
 
@@ -747,13 +800,19 @@
     /* The menu opens on the default immediately and settles onto the stated list
      * when it arrives: a door a reader might tap in the first half-second matters
      * more than the order being right on the first frame. */
-    if (cfg.handle){
-      readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
-        if (!list || !list.length) return;
-        STATED_DOORS = list;
-        if (!menu.querySelector('.dd__row')) paint();   /* not while it is being edited */
-      });
-    }
+    /* THE EDITOR MUST WAIT, though the menu need not. Drawn before the read lands
+     * the editor shows every place TICKED — no stated list means the default, and
+     * the default is everything — and saving from there writes all fourteen as the
+     * reader's own list, silently replacing the four they chose. Reading is safe to
+     * do optimistically; writing is not, and on a phone that gap is real. */
+    doorsRead = cfg.handle
+      ? readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
+          if (list && list.length){
+            STATED_DOORS = list;
+            if (!menu.querySelector('.dd__row')) paint();   /* not while it is being edited */
+          }
+        })
+      : Promise.resolve();
     d.appendChild(menu);
     /* GO IS ALWAYS THE TOP RIGHT, on every page and whatever else the bar carries,
      * because a fixed corner is what makes a control findable without looking for
