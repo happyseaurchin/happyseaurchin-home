@@ -318,7 +318,7 @@
     <div class="band-head">
       <p class="eyebrow"><span class="n">2</span>news</p>
       <h2>What others have declared.</h2>
-      <p>Outward declarations from every hand on the beach, at the two day rungs a morning spans — yesterday first, because a morning opened early finds today still empty.</p>
+      <p>Outward declarations from every hand on the beach — only what has landed since you last read each channel, newest first.</p>
     </div>
     <div id="news-body"></div>
   </section>
@@ -515,7 +515,7 @@ if (_vq !== 'beach-venture'){
 }
 const VENTURE = 'beach-venture';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
-let NEWS = [];              /* [handle, block] for every news:<handle> on the beach */
+let NEWS = [], NEWS_SPINE = null;   /* every news:<handle> mirror, and the spine that names the channels */
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
@@ -733,8 +733,9 @@ async function load(){
    * morning is a dashboard, and a family that is not on this beach should leave a
    * section empty rather than take the page down with it. */
   const nNames = blocks.filter(b => b.startsWith('news:') && nameOk(b.slice(5)));
-  const nGot = await Promise.all(nNames.map(n => readBlock(n).catch(() => null)));
+  const nGot = await Promise.all(nNames.concat(['spine:news']).map(n => readBlock(n).catch(() => null)));
   NEWS = nNames.map((n, i) => [n.slice(5), nGot[i]]).filter(x => x[1]);
+  NEWS_SPINE = nGot[nNames.length] || null;
 
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
@@ -920,32 +921,42 @@ function renderStats(){
 }
 
 /* ── 2 · this morning: today under its ladder ── */
-/* THE MORNING READS YESTERDAY AND TODAY, and only those two. The news family
- * lets a hand stand at any rung it likes (function:news:1 — the rung is the
- * claim), but a page called the morning is a day-scale read by its own name, and
- * a coarser standing claim belongs on /news where the whole ladder is laid out.
- * Yesterday comes first and is not decoration: a morning opened at seven o'clock
- * finds today empty, and last night's declaration is the freshest thing there is. */
+/* THE MORNING SHOWS WHAT IS NEW SINCE THIS HAND LAST READ. The news family runs
+ * on channels rather than a clock: a position on spine:news names a channel, a
+ * hand's standing declaration sits at that position in its own mirror, when it
+ * was said sits at .91 beneath it, and when THIS hand last read the channel sits
+ * at .92 in its OWN mirror. So "new to me" is a comparison between two numbers
+ * this page already holds, and nothing central is consulted to make it. Falling
+ * back to a day when a hand has no marker yet keeps a first visit useful. */
 function renderNews(){
-  const yd = new Date(Date.UTC(TODAY.y, TODAY.m0, TODAY.d - 1));
-  const rungs = [
-    { word: 'yesterday', addr: dayAddr(yd.getUTCFullYear(), yd.getUTCMonth(), yd.getUTCDate()) },
-    { word: 'today',     addr: TODAY_ADDR },
-  ];
+  const chanNode = (blk, pos) => (blk && typeof blk[pos] === 'object' && blk[pos]) || null;
+  const declOf = (blk, pos) => { const n = chanNode(blk, pos); return n && typeof n._ === 'string' ? n._ : null; };
+  const metaOf = (blk, pos, k) => { const n = chanNode(blk, pos);
+    const m = n && typeof n['9'] === 'object' ? n['9'] : null; return (m && m[k]) || null; };
+
+  const chans = NEWS_SPINE
+    ? Object.keys(NEWS_SPINE).filter(k => /^[1-9]$/.test(k)).sort()
+    : ['1'];
+  const mine = NEWS.find(m => m[0] === HANDLE);
   const out = [];
-  for (const r of rungs){
-    const a = pad10(r.addr);
-    const voices = NEWS.map(([who, blk]) => ({ who, t: textAt(blk, a) })).filter(v => v.t);
+
+  for (const pos of chans){
+    const since = (mine && metaOf(mine[1], pos, '2')) || new Date(Date.now() - H24).toISOString();
+    const voices = NEWS
+      .map(([who, blk]) => ({ who, t: declOf(blk, pos), when: metaOf(blk, pos, '1') }))
+      .filter(v => v.t && (!v.when || Date.parse(v.when) > Date.parse(since)))
+      .sort((a, b) => (Date.parse(b.when || 0) || 0) - (Date.parse(a.when || 0) || 0));
     if (!voices.length) continue;
-    out.push('<p class="newsrung">' + esc(r.word) + '<span class="addr work">' + esc(a) + '</span></p>');
+    const what = NEWS_SPINE && typeof NEWS_SPINE[pos] === 'string' ? NEWS_SPINE[pos].split('—')[0].trim() : 'channel ' + pos;
+    out.push('<p class="newsrung">' + esc(what) + '<span class="addr work">' + esc(pos) + '</span></p>');
     for (const v of voices)
-      out.push('<div class="newsline"><span class="who">' + esc(v.who) + '</span>' +
-        '<p>' + esc(short(v.t, 420)) + '</p></div>');
+      out.push('<div class="newsline"><span class="who">' + esc(v.who) +
+        (v.when ? ' · ' + esc(ago(v.when) || '') : '') + '</span><p>' + esc(short(v.t, 420)) + '</p></div>');
   }
+
   $('news-body').innerHTML = out.length
-    ? out.join('') + '<p class="newsmore"><a href="/news">every rung, and add your own →</a></p>'
-    : '<p class="newsquiet">Nobody has declared anything new since yesterday. ' +
-      '<a href="/news">Say yours →</a></p>';
+    ? out.join('') + '<p class="newsmore"><a href="/news">every channel, and add your own →</a></p>'
+    : '<p class="newsquiet">Nothing new since you last read. <a href="/news">Say yours →</a></p>';
 }
 
 function renderTemporal(){
