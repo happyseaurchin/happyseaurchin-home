@@ -516,7 +516,9 @@ function deepText(n, out){
  * fixed: it leads with no verb, so the choke point returns the card. */
 const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED','HELD'];
 function leadingVerb(text){
-  const w = (String(text).trim().split(/\s+/)[0] || '').toUpperCase();
+  /* exact case on purpose: every surface writes marks UPPERCASE, so prose that
+   * happens to open "Done with the rent" stays a card's words, never a mark */
+  const w = String(text).trim().split(/\s+/)[0] || '';
   return MARK_VERBS.includes(w) ? w : null;
 }
 function personalContent(addr, content){
@@ -548,9 +550,11 @@ function cardFromEntry(f){
 
 async function loadField(){
   const [spine, index] = await Promise.all([readBlock(SPINE), readIndex()]);
-  if (!spine) throw new Error(SPINE + ' not found at the beach');
-  SPINE_BLOCK = spine;
-  FLOOR = floorOf(spine) || 3;
+  /* the hand reads no content from its template spine, so its absence must not
+   * take the page down — anything else still requires its skeleton */
+  if (!spine && !HAND) throw new Error(SPINE + ' not found at the beach');
+  SPINE_BLOCK = spine || {};
+  FLOOR = floorOf(SPINE_BLOCK) || (HAND ? 1 : 3);
   OP = await readOperator();
   /* sed-gating is convention, not enforcement — the check is a courteous read */
   if (OP.access.startsWith('sed:')){
@@ -1195,7 +1199,14 @@ async function landRecord(recordText, aimSource, elapsed){
   const block = await readBlock(name).catch(() => null);
   if (!block) return { skipped: true, name };   // no reading there yet — the card stands alone
   const line = '· ' + pastTense(withoutAim(recordText)) + (elapsed ? ' (' + elapsed + ')' : '');
-  const secret = localStorage.getItem(latchKey());
+  /* THE LANDING'S KEY FOLLOWS THE TARGET, never the hand. Each surface has
+   * historically named its latch its own way, so read every home that block's
+   * key may live in, newest convention first; a success re-stores it under the
+   * shared name so the next landing finds it first try. */
+  const keyHomes = ['next-latch:' + name];
+  if (fam === 'now') keyHomes.push('now-latch:' + HANDLE);
+  keyHomes.push('mirror-latch:' + fam + ':' + HANDLE);
+  const secret = keyHomes.map(k => localStorage.getItem(k)).find(v => v) || null;
   /* A CLOCK FAMILY TAKES THE DAY'S RUNG; ANYTHING ELSE TAKES AN APPEND. The day
    * rung is ten digits and only a block whose floor reaches that far can hold it —
    * a floor-1 mirror would refuse the address outright. So the SHAPE OF THE TARGET
@@ -1210,8 +1221,18 @@ async function landRecord(recordText, aimSource, elapsed){
   } else {
     body = { block: name, append: true, content: line };
   }
-  const w = await writeBlock(Object.assign(body, secret ? { secret } : {}));
-  if (w.ok) return { addr, name, fam, append: !deep };
+  let w = await writeBlock(Object.assign(body, secret ? { secret } : {}));
+  if (w.ok){
+    if (secret) localStorage.setItem('next-latch:' + name, secret);
+    return { addr, name, fam, append: !deep };
+  }
+  if (lockRequired(w)){
+    const v = prompt(name + ' is latched — its key (the one you set where you write it), kept on this device:');
+    if (v !== null && v.trim()){
+      w = await writeBlock(Object.assign(body, { secret: v.trim() }));
+      if (w.ok){ localStorage.setItem('next-latch:' + name, v.trim()); return { addr, name, fam, append: !deep }; }
+    }
+  }
   return { refused: true, name, fam, why: (w.data && (w.data.error || w.data.code)) || w.status };
 }
 function bodyText(raw){
@@ -1550,9 +1571,19 @@ async function boot(){
 if (window.siteDoors) siteDoors(Object.assign({ handle: HANDLE, here: 'next' }, HAND ? {} : { family: FIELD }));
   $('bar-field').textContent = (HAND ? 'my hand' : 'the ' + FIELD + ' field') + (AIM ? ' \u00b7 ' + AIM : '');
   $('link-field').href = '/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(SPINE);
-  $('link-fold').href = '/fold?field=' + encodeURIComponent(FIELD);
+  /* on the hand, "what everyone said" would read EVERY holder's piles \u2014 a
+   * cross-beach read offered from a personal page. The honest doors from a hand
+   * are the hands page and your own piles rendered raw. */
+  if (HAND){
+    $('link-fold').textContent = 'my hands \u2192';
+    $('link-fold').href = '/hands/' + encodeURIComponent(HANDLE);
+    $('state-link').textContent = 'look at your piles \u2192';
+    $('state-link').href = '/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('ahead:' + HANDLE);
+  } else {
+    $('link-fold').href = '/fold?field=' + encodeURIComponent(FIELD);
+    $('state-link').href = $('link-fold').href;
+  }
   $('link-decks').href = '/hands/' + encodeURIComponent(HANDLE);
-  $('state-link').href = $('link-fold').href;
   restoreTimer(); tickClocks();
   $('btn-next').addEventListener('click', () => {
     const top = document.querySelector('.cardface.top');

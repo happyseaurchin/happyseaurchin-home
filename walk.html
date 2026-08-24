@@ -341,8 +341,8 @@
     <div class="sheet">
       <div class="sheet__head"><span class="sheet__where" id="sh-where">—</span><a id="sh-mirror" class="mlink" target="_blank" rel="noopener">mirror ↗</a><button class="sheet__close" id="sh-close" title="close">×</button></div>
       <div class="tabs" id="sh-tabs">
-        <button data-p="text">what’s written</button>
-        <button data-p="voices">voices</button>
+        <button data-p="text">the spine</button>
+        <button data-p="voices">your mirror · voices</button>
         <button data-p="cards">cards</button>
       </div>
       <div class="sheet__body" id="sh-body"></div>
@@ -352,7 +352,7 @@
   <div class="foot">
     Everything on this page is read live from the venture itself — nothing lives here. Your words land on the beach signed by your own key, and nowhere else.
     <span class="work" id="foot-work"></span>
-    <br><a id="foot-next" href="/next">your deck →</a> · <a id="foot-tree" href="/tree/beach-venture">node by node →</a> · <a id="foot-fold" href="/fold">the fold →</a>
+    <br><a id="foot-next" href="/next">your hand →</a> · <a id="foot-tree" href="/tree/beach-venture">node by node →</a> · <a id="foot-fold" href="/fold">the fold →</a>
   </div>
 </div>
 
@@ -636,7 +636,14 @@ const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) 
 
 /* ── writes — the deck page's write path, held to exactly ── */
 async function writeWithLatch(body, what){
-  const latch = localStorage.getItem(latchKey());
+  /* THE KEY FOLLOWS THE BLOCK BEING WRITTEN — one name per block, shared with
+   * /next and /hands — with this page's old deck-scoped key and the recency
+   * page's mirror-latch as read-fallbacks, so nobody re-types a key they set
+   * elsewhere. A success re-homes it under the shared name. */
+  const home = 'next-latch:' + body.block;
+  const latch = localStorage.getItem(home)
+    || localStorage.getItem('mirror-latch:' + body.block)
+    || localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -644,8 +651,8 @@ async function writeWithLatch(body, what){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
-  }
+    if (w.ok) localStorage.setItem(home, v.trim());
+  } else if (w.ok && latch) localStorage.setItem(home, latch);
   return w;
 }
 async function ensureVentureMirror(){
@@ -688,21 +695,24 @@ async function writeSpine(addr, content){
   } else if (w.ok) localStorage.setItem(keeperKey(), latch);
   return w;
 }
-async function ensureDeck(){
-  const name = FIELD + ':' + HANDLE;
+async function appendCard(text, pile){
+  /* A CAPTURED CARD LANDS IN THE HAND — ahead:<handle>, the piles /next flicks
+   * and /hands sorts — never in the retired today-beach-deck store. Your own
+   * words carry no mark; the aim rides in the words so a DONE lands home. */
+  const name = 'ahead:' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
-  if (existing) return true;
-  let root = 'MIRROR — ' + HANDLE + "'s own deck on the " + FIELD + ' template (spine:' + FIELD + '). Sovereign: these are the cards being held right now, nobody else writes here, and silence at an address means the card was put down rather than lost.';
-  const body = { block: name, content: { '_': root } };
-  const latch = localStorage.getItem(latchKey());
-  if (latch) body.new_lock = latch;
-  const w = await writeBlock(body);
-  return w.ok;
-}
-async function appendCard(text){
-  const ok = await ensureDeck();
-  if (!ok) return { ok: false };
-  return writeWithLatch({ block: FIELD + ':' + HANDLE, append: true, content: text }, FIELD + ':' + HANDLE);
+  if (!existing){
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    const body = { block: name, content: { '_': root } };
+    const latch = localStorage.getItem('next-latch:' + name);
+    if (latch) body.new_lock = latch;
+    const born = await writeBlock(body);
+    if (!born.ok) return { ok: false };
+  }
+  let w = await writeWithLatch({ block: name, spindle: pile || '1', append: true, content: text }, name);
+  if (!w.ok && !w.quiet)
+    w = await writeWithLatch({ block: name, spindle: pile || '1', content: { '1': text } }, name);
+  return w;
 }
 
 /* families and their colours — one steady hue per family, its name always written beside it */
@@ -764,10 +774,13 @@ async function load(){
   const blocks = (index && index.blocks) || [];
   const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
   const mNames = blocks.filter(b => b.startsWith(VENTURE + ':') && nameOk(b.slice(VENTURE.length + 1)));
-  const dNames = blocks.filter(b => b.startsWith(FIELD + ':') && nameOk(b.slice(FIELD.length + 1)));
+  /* CARDS LIVE IN HANDS NOW — ahead:<holder> — with the old today-beach-deck
+   * mirrors still read beside them so nothing already placed goes dark; the
+   * placement grammar (aim + TOMORROW) is the same in both. */
+  const dNames = blocks.filter(b => (b.startsWith('ahead:') || b.startsWith(FIELD + ':')) && nameOk(b.slice(b.indexOf(':') + 1)));
   const got = await Promise.all(mNames.concat(dNames).map(n => readBlock(n).catch(() => null)));
   MIRRORS = mNames.map((n, i) => [n.slice(VENTURE.length + 1), got[i]]).filter(x => x[1]);
-  DECKS = dNames.map((n, i) => [n.slice(FIELD.length + 1), got[mNames.length + i]]).filter(x => x[1]);
+  DECKS = dNames.map((n, i) => [n.slice(n.indexOf(':') + 1), got[mNames.length + i]]).filter(x => x[1]);
 
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
@@ -810,7 +823,7 @@ function render(){
   $('bar-who').textContent = HANDLE || 'anyone';
   $('foot-tree').href = '/tree/' + encodeURIComponent(VENTURE) + (HANDLE ? '?h=' + encodeURIComponent(HANDLE) : '');
   $('foot-fold').href = '/fold?field=' + encodeURIComponent(VENTURE) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
-  $('foot-next').href = HANDLE ? '/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD : '/next';
+  $('foot-next').href = HANDLE ? '/next/' + encodeURIComponent(HANDLE) : '/next';
   $('mast-title').innerHTML = esc(VENTURE) + ', <span class="cool">walked</span>.';
   $('band-title').textContent = 'Walk ' + VENTURE + '.';
   if (HANDLE) $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
@@ -1050,7 +1063,34 @@ function selLabel(){
 }
 /* ── the sheet — one popup over the rack, three panes; where you tapped chooses the pane ── */
 let SHEET = null;                    /* {pane:'text'|'voices'|'cards'} at the standing address, or {gather:true} */
-function openSheet(pane){ SHEET = { pane }; paintSheet(); $('sheet-veil').classList.remove('hidden'); }
+function openSheet(pane){
+  /* a plain tap opens the side YOU work — remembered per device, the mirror by
+   * default (the sovereign act); the spine is one tab away and a tab choice
+   * becomes the new default. Badge taps still open exactly what was tapped. */
+  if (pane === 'text'){
+    try { pane = localStorage.getItem('walk-pane') || 'voices'; } catch(e){}
+  }
+  SHEET = { pane }; paintSheet(); $('sheet-veil').classList.remove('hidden');
+}
+/* FAMILY FIRST, STRETCH AFTER A COMMA (ways:deck 3.2) — where a card born at
+ * this point aims, and which pile of the hand it lives in, from the rung alone. */
+function aimAndPile(){
+  const stretch = SEL.level === 'w' ? (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? 'this week' : selLabel())
+    : SEL.level === 'm' ? MN[SEL.m0]
+    : SEL.level === 'y' ? String(SEL.y)
+    : '';
+  return { suffix: ' — toward ' + VENTURE + (stretch ? ', ' + stretch : ''),
+           pile: SEL.level === 'w' ? '3' : SEL.level === 'm' ? '4' : SEL.level === 'y' ? '6'
+             : (SEL.level === 'de' || SEL.level === 'ce' || SEL.level === 't') ? '7' : '1' };
+}
+/* the /now keys, here too: Enter commits, Shift+Enter breaks a line, Esc leaves */
+function wireEnter(el, go){
+  if (!el) return;
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Escape'){ e.preventDefault(); closeSheet(); return; }
+    if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); go(); }
+  });
+}
 function openGatherSheet(){ SHEET = { gather: true }; paintSheet(); $('sheet-veil').classList.remove('hidden'); }
 function closeSheet(){ SHEET = null; $('sheet-veil').classList.add('hidden'); }
 function paintSheet(){
@@ -1093,6 +1133,10 @@ function paintSheet(){
       b.push('<span class="silent">the century shares its wire address with the millennium, so this page keeps the pen sheathed at this rung — nothing beneath is ever eaten; voice the coarse rungs at /now, which holds them the safe way</span>');
     else
       b.push('<button class="editbtn" id="sp-edit">edit what’s written — keeper’s key</button>');
+    /* the deal, from right here: what this point is asking becomes one card in
+     * your own hand, aimed at this family, edited later wherever you sort */
+    if (HANDLE && textAt(SPINE, addr))
+      b.push('<button class="editbtn" id="deal-here">deal this as a card — into your hand</button>');
     b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(wireAddr(addr)) +
       ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
@@ -1176,6 +1220,22 @@ function paintSheet(){
       } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
       finally { BUSY = false; const g = document.getElementById('mir-go'); if (g) g.disabled = false; }
     });
+    wireEnter($('mir-text'), () => $('mir-go').click());
+  }
+  if (SHEET.pane === 'text' && $('deal-here')){
+    $('deal-here').addEventListener('click', async () => {
+      if (BUSY) return;
+      const line = (textAt(SPINE, addr) || '').trim();
+      if (!line){ toast('nothing written here to deal', true); return; }
+      const ap = aimAndPile();
+      BUSY = true; $('deal-here').disabled = true;
+      try {
+        const w = await appendCard(line + ap.suffix, ap.pile);
+        if (w.ok) toast('✓ dealt into your hand — sort it at /hands, flick it at /next');
+        else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
+      } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
+      finally { BUSY = false; const g = document.getElementById('deal-here'); if (g) g.disabled = false; }
+    });
   }
   if (SHEET.pane === 'text' && $('sp-edit')){
     $('sp-edit').addEventListener('click', () => {
@@ -1197,6 +1257,7 @@ function paintSheet(){
         } catch(e){ const g = document.getElementById('sp-go'); if (g) g.disabled = false; toast('the beach did not answer — ' + String(e.message || e), true); }
         finally { BUSY = false; }
       });
+      wireEnter($('sp-text'), () => $('sp-go').click());
     });
   }
   if (SHEET.pane === 'cards' && HANDLE){
@@ -1204,13 +1265,10 @@ function paintSheet(){
       if (BUSY) return;
       const t = $('addto-text').value.trim();
       if (!t){ toast('a card needs words', true); return; }
-      /* born at a point of this family means attached to this family — a day-level
-       * add carries the family aim, finer levels carry their stretch */
-      const suffix = SEL.level === 't' || SEL.level === 'ce' || SEL.level === 'de' ? ' — toward ' + VENTURE
-        : SEL.level === 'd' ? ' — toward ' + VENTURE
-        : SEL.level === 'w' ? (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? ' — toward this week' : ' — toward ' + selLabel())
-        : SEL.level === 'm' ? ' — toward ' + MN[SEL.m0]
-        : ' — toward ' + SEL.y;
+      /* born at a point of this family means attached to this family — FAMILY
+       * FIRST, STRETCH AFTER A COMMA (ways:deck 3.2), and the pile follows the
+       * rung the card was born at */
+      const { suffix, pile } = aimAndPile();
       /* a card written at a day still ahead is DEFERRED to it by the deck's own
        * grammar (ways:deck 3), so it waits there and stays out of the hand until
        * the day comes — unless the tick says to hold it today after all */
@@ -1218,18 +1276,20 @@ function paintSheet(){
       const defer = futureDay() && !keepNow ? 'TOMORROW ' + selDate() + ' — ' : '';
       BUSY = true; $('addto-go').disabled = true;
       try {
-        const w = await appendCard(defer + t + suffix);
-        if (w.ok){ toast(defer ? '✓ waiting at ' + selLabel() : '✓ in your deck'); await load(); paintSheet(); }
+        const w = await appendCard(defer + t + suffix, pile);
+        if (w.ok){ toast(defer ? '✓ waiting at ' + selLabel() : '✓ in your hand'); await load(); paintSheet(); }
         else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
       } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
       finally { BUSY = false; const g = document.getElementById('addto-go'); if (g) g.disabled = false; }
     });
+    wireEnter($('addto-text'), () => $('addto-go').click());
   }
 }
 $('sh-close').addEventListener('click', closeSheet);
 $('sheet-veil').addEventListener('click', e => { if (e.target === $('sheet-veil')) closeSheet(); });
 $('sh-tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || !SHEET || SHEET.gather) return;
+  try { localStorage.setItem('walk-pane', b.dataset.p); } catch(err){}
   SHEET.pane = b.dataset.p; paintSheet();
 });
 /* ── chrome ── */
