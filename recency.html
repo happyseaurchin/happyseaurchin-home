@@ -249,6 +249,7 @@ let NOW10 = nowAddr();
 let LENS = 'all';                 /* 'all' — everyone's voices · 'mine' — where you have voiced */
 let ACTFILTER = 'all';            /* 'all' — standing voices · 'week'|'today' — who ACTED lately */
 let ACTS = [];                    /* {who, at, ts} — acts read from the beach's marks */
+let TOUCHED = null;               /* the beach's block→last-write map, when it serves one */
 
 const $ = id => document.getElementById(id);
 const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
@@ -784,6 +785,7 @@ async function sweepSlow(){
   SPINE = spine;
   MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
   const blocks = (index && index.blocks) || [];
+  TOUCHED = (index && index.touched && typeof index.touched === 'object') ? index.touched : null;
   const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
   const mNames = blocks.filter(b => b.startsWith(FAMILY + ':') && nameOk(b.slice(FAMILY.length + 1)));
   const got = await Promise.all(mNames.map(n => readBlock(n).catch(() => null)));
@@ -857,6 +859,39 @@ async function reread(){
   }
   b.textContent = '↻ re-read';
 }
+/* ── the live tick — rides the beach's `touched` map (bsp-mcp#294,
+ * pscale-beach#63) when the surface serves one; without it the page stays
+ * read-once exactly as before. One index GET a minute while visible; a
+ * change to this family's blocks triggers one real re-read; presence
+ * moving alone refreshes just the chips. ~6-60 GETs an hour, not hundreds. */
+const relevantName = n => n === 'spine:' + FAMILY || n === 'marks' || n === 'presence' ||
+  (n.startsWith(FAMILY + ':') && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(n.slice(FAMILY.length + 1)));
+let TICKING = false;
+async function tick(){
+  if (document.hidden || TICKING || !TOUCHED) return;
+  TICKING = true;
+  try {
+    const idx = await readIndex().catch(() => null);
+    const t = idx && idx.touched;
+    if (t && typeof t === 'object'){
+      const moved = Object.keys(t).filter(n => relevantName(n) && t[n] !== TOUCHED[n]);
+      if (moved.length){
+        if (moved.every(n => n === 'presence')){
+          await sweepPresence().catch(() => {});
+          drawEve(); updateDecor();
+          TOUCHED = { ...TOUCHED, presence: t.presence };
+        } else {
+          await sweepSlow();
+          await sweepPresence().catch(() => {});
+          drawD3(); drawEve();
+        }
+      } else {
+        TOUCHED = t;
+      }
+    }
+  } catch (e) { /* a missed tick is only a missed tick */ }
+  TICKING = false;
+}
 async function start(){
   $('b-fam').textContent = FAMILY;
   $('b-mirror').href = mirrorUrl('');
@@ -867,6 +902,12 @@ async function start(){
       ? 'You are <b>' + esc(HANDLE) + '</b> here: the say box under any part writes your own mirror — and leaves an act-mark on the beach, which is what the recency heat reads. The <b>mine</b> lens shows your own trail in sand.'
       : 'Arrive as yourself — <span style="font-family:var(--mono)">/heatmap/' + esc(FAMILY) + '/&lt;your-name&gt;</span> — to write your voice at any part and to flick between everyone’s heat and your own trail.');
   await reread();
+  if (TOUCHED){
+    setInterval(() => { void tick(); }, 60e3);
+    $('m-mode').textContent += ' · live';
+    $('wh').innerHTML = 'This beach carries <span style="font-family:var(--mono)">touched</span> stamps, so the page stays current by itself — one light look a minute, fetching only what moved. ' +
+      $('wh').innerHTML.replace('One reading then stillness — <span style="font-family:var(--mono)">↻ re-read</span> fetches the beach again; the page never polls. ', '');
+  }
 }
 start();
 </script>
