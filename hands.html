@@ -316,9 +316,24 @@ async function load(){
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
   CARDS = readHand(mine).filter(inPlay);
 
-  const dash = await readBlock('dashboard:' + HANDLE).catch(() => null);
-  FIELDS = dash ? childDigits(dash).map(d => (typeof dash[d] === 'string' ? dash[d] : voice(dash[d]) || '').trim())
-                    .filter(Boolean).filter(f => !f.includes(':')) : [];
+  /* ONE SOURCE FOR THE CHOSEN PROJECTS: lists:<handle> branch 1 (rank is depth),
+   * the block the project row edits; dashboard:<handle> stays as the fallback
+   * while the two coexist. Own-page families are decks of their own, never here. */
+  const OWN = { now: 1, ahead: 1, 'today-beach-deck': 1 };
+  FIELDS = [];
+  const lists = await readBlock('lists:' + HANDLE).catch(() => null);
+  let ln = lists && lists['1'] && lists['1']['1'];
+  while (ln && typeof ln === 'object'){
+    const v = typeof ln['_'] === 'string' ? ln['_'].trim() : '';
+    if (v) FIELDS.push(v);
+    ln = ln['1'];
+  }
+  if (!FIELDS.length){
+    const dash = await readBlock('dashboard:' + HANDLE).catch(() => null);
+    FIELDS = dash ? childDigits(dash).map(d => (typeof dash[d] === 'string' ? dash[d] : voice(dash[d]) || '').trim())
+                      .filter(Boolean) : [];
+  }
+  FIELDS = FIELDS.filter(f => !f.includes(':')).filter(f => !OWN[f.toLowerCase()]);
 
   /* THE DECKS A PERSON HAS: the projects they chose, their own now, and any
    * source a card already in their hand names. That last one matters — a card

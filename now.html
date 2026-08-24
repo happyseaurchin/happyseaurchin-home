@@ -254,6 +254,7 @@
   <div class="row">
     <span class="why" id="s-why">written to your own mirror · revisable forever · silence is honest</span>
     <button class="ghost" id="s-cancel">leave it</button>
+    <button class="ghost" id="s-deal" title="one card in your hand — unaimed, so its done lands back in your now">→ my hand</button>
     <button class="save" id="s-save">voice it</button>
   </div>
 </div>
@@ -578,14 +579,28 @@ function nearestVoiced(block, c){
 async function renderProjects(){
   const box = $('projects');
   box.innerHTML = '<p class="hand-quiet">reading the beach…</p>';
+  /* ONE SOURCE FOR THE CHOSEN PROJECTS: lists:<handle> branch 1 (rank is depth),
+   * the block the project row edits; dashboard:<handle> stays as the fallback
+   * while the two coexist. Own-page families never count as projects here. */
+  const OWN = { now: 1, ahead: 1, 'today-beach-deck': 1 };
   let names = [];
   try {
+    const lists = await readBlock('lists:' + HANDLE);
+    let node = lists && lists['1'] && lists['1']['1'];
+    while (node && typeof node === 'object'){
+      const v = typeof node['_'] === 'string' ? node['_'].trim() : '';
+      if (v) names.push(v);
+      node = node['1'];
+    }
+  } catch(e){}
+  if (!names.length) try {
     const dash = await readBlock('dashboard:' + HANDLE);
     if (dash) names = Object.keys(dash).filter(k => /^[1-9]$/.test(k)).sort()
       .map(k => typeof dash[k] === 'string' ? dash[k].trim() : null).filter(Boolean);
   } catch(e){}
+  names = names.filter(n => !OWN[n.toLowerCase()]);
   if (!names.length){
-    box.innerHTML = '<p class="hand-quiet">no chosen projects yet — a hand-edited list names them, in the order they should be met<span class="work"> (dashboard:' + esc(HANDLE) + ')</span>.</p>';
+    box.innerHTML = '<p class="hand-quiet">no chosen projects yet — pick them from the project row on the walk or recency page<span class="work"> (lists:' + esc(HANDLE) + ' branch 1)</span>.</p>';
     return;
   }
   const reads = await Promise.all(names.map(async f => {
@@ -628,16 +643,22 @@ function leaves(node, addr, out){
 }
 async function renderHand(){
   const box = $('hand');
-  const deckNames = ['beach-venture-deck', 'today-beach-deck'];
-  const decks = await Promise.all(deckNames.map(n => readBlock(n + ':' + HANDLE).catch(() => null)));
+  /* THE HAND IS ahead:<handle> — the piles /next flicks and /hands sorts. The two
+   * retired deck blocks are history, not the hand; reading them here meant a
+   * do-now claim never showed on this page. A DOING entry is verb + stamp + the
+   * card's own words; strip the mark, keep the words. */
+  const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
   const doing = [];
-  decks.forEach((d, i) => { if (d) leaves(d, '', []).forEach(c => {
-    if (/^DOING\b/i.test(c.text)) doing.push({ deck: deckNames[i], text: c.text.replace(/^DOING\s*/i, '') });
-  }); });
+  if (mine) leaves(mine, '', []).forEach(c => {
+    if (/^DOING\b/.test(c.text)){
+      const words = c.text.replace(/^DOING\s+\S+(\s*—\s*from \/next)?\s*(—\s*)?/, '').trim();
+      doing.push({ deck: 'my hand', text: words || c.text.replace(/^DOING\s*/, '') });
+    }
+  });
   box.innerHTML = '';
   if (!doing.length){
     box.innerHTML = '<p class="hand-quiet">nothing claimed right now — <a id="hand-next" href="/next/' +
-      encodeURIComponent(HANDLE) + '">flick the deck</a> to take one up.</p>';
+      encodeURIComponent(HANDLE) + '">flick your hand</a> to take one up.</p>';
     return;
   }
   doing.slice(0, 3).forEach(c => {
@@ -772,6 +793,7 @@ function openSheet(rung, addr, existing, opts){
   $('s-eve').classList.remove('on');
   $('s-fold').classList.add('hidden');
   $('s-addr').textContent = opts.root ? 'the root' : pad10(addr);
+  $('s-deal').classList.toggle('hidden', !!opts.root);
   /* the walk's invite-link law, carried here: a place, never a person — and on
    * the clock always the FULL-WIDTH spelling (the wire anchors dot-free
    * numbers at the floor; short forms land in the supernest headroom). The
@@ -809,6 +831,51 @@ $('s-eve').addEventListener('click', () => {
 $('s-text').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('s-save').click(); }
   else if (e.key === 'Escape'){ e.preventDefault(); closeSheet(); }
+});
+/* THE DEAL, FROM RIGHT HERE — this rung's words become one card in your hand
+ * (ahead:<handle>, the piles /next flicks and /hands sorts), the pile following
+ * the rung. Unaimed on purpose: a card born of your now lands its DONE back in
+ * your now. The page is the mechanical dealer; a mind deals better, from more
+ * places — this button is the floor, never the ceiling. */
+const PILE_BY_RUNG = { beat: '1', gathering: '1', day: '1', week: '3', month: '4', season: '5', year: '6' };
+async function writeCardToHand(text, pile){
+  const name = 'ahead:' + HANDLE;
+  const home = 'next-latch:' + name;
+  let latch = localStorage.getItem(home);
+  const existing = await readBlock(name).catch(() => null);
+  if (!existing){
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    const body = { block: name, content: { '_': root } };
+    if (latch) body.new_lock = latch;
+    const born = await writeBlock(body);
+    if (!born.ok) return false;
+  }
+  async function put(body){
+    if (latch) body.secret = latch;
+    let w = await writeBlock(body);
+    if (!w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required')){
+      const v = prompt(name + ' is latched — its key (kept on this device):');
+      if (v === null || !v.trim()) return { ok: false, quiet: true };
+      latch = v.trim();
+      body.secret = latch;
+      w = await writeBlock(body);
+      if (w.ok) localStorage.setItem(home, latch);
+    }
+    return w;
+  }
+  let w = await put({ block: name, spindle: pile, append: true, content: text });
+  if (!w.ok && !w.quiet) w = await put({ block: name, spindle: pile, content: { '1': text } });
+  return !!w.ok;
+}
+$('s-deal').addEventListener('click', async () => {
+  if (!SHEET || SHEET.root) return;
+  const text = $('s-text').value.trim();
+  if (!text){ refuseInSheet('a card needs words — write them first, then deal'); return; }
+  $('s-deal').disabled = true;
+  const ok = await writeCardToHand(text, PILE_BY_RUNG[SHEET.rung.key] || '7');
+  $('s-deal').disabled = false;
+  if (ok) toast('✓ in your hand — flick it at /next, sort it at /hands');
+  else refuseInSheet('the deal did not land');
 });
 $('s-save').addEventListener('click', async () => {
   if (!SHEET) return;

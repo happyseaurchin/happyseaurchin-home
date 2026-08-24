@@ -405,7 +405,7 @@
   <div class="foot">
     Everything on this page is read live from the venture itself — nothing lives here. Your words land on the beach signed by your own key, and nowhere else.
     <span class="work" id="foot-work"></span>
-    <br><a id="foot-next" href="/next">your deck →</a> · <a id="foot-tree" href="/tree/beach-venture">the family, node by node →</a>
+    <br><a id="foot-next" href="/next">your hand →</a> · <a id="foot-tree" href="/tree/beach-venture">the family, node by node →</a>
   </div>
 </div>
 
@@ -594,7 +594,14 @@ function doneCount(deck, sinceMs){
 
 /* ── writes — the deck page's write path, held to exactly ── */
 async function writeWithLatch(body, what){
-  const latch = localStorage.getItem(latchKey());
+  /* THE KEY FOLLOWS THE BLOCK BEING WRITTEN — one name per block, shared with
+   * /next and /hands — with the older per-page keys as read-fallbacks so nobody
+   * re-types a key they set elsewhere. A success re-homes it. */
+  const home = 'next-latch:' + body.block;
+  const latch = localStorage.getItem(home)
+    || localStorage.getItem('mirror-latch:' + body.block)
+    || (body.block === 'now:' + HANDLE ? localStorage.getItem('now-latch:' + HANDLE) : null)
+    || localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -602,8 +609,8 @@ async function writeWithLatch(body, what){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
-  }
+    if (w.ok) localStorage.setItem(home, v.trim());
+  } else if (w.ok && latch) localStorage.setItem(home, latch);
   return w;
 }
 async function ensureVentureMirror(){
@@ -625,21 +632,24 @@ async function writeMirrorAt(addr, content){
   if (!ok) return { ok: false };
   return writeWithLatch({ block: VENTURE + ':' + HANDLE, spindle: wireAddr(addr), content }, VENTURE + ':' + HANDLE);
 }
-async function ensureDeck(){
-  const name = FIELD + ':' + HANDLE;
-  const existing = await readBlock(name).catch(() => null);
-  if (existing) return true;
-  let root = 'MIRROR — ' + HANDLE + "'s own deck on the " + FIELD + ' template (spine:' + FIELD + '). Sovereign: these are the cards being held right now, nobody else writes here, and silence at an address means the card was put down rather than lost.';
-  const body = { block: name, content: { '_': root } };
-  const latch = localStorage.getItem(latchKey());
-  if (latch) body.new_lock = latch;
-  const w = await writeBlock(body);
-  return w.ok;
-}
 async function appendCard(text){
-  const ok = await ensureDeck();
-  if (!ok) return { ok: false };
-  return writeWithLatch({ block: FIELD + ':' + HANDLE, append: true, content: text }, FIELD + ':' + HANDLE);
+  /* A CAPTURED CARD LANDS IN THE HAND — ahead:<handle>, the piles /next flicks
+   * and /hands sorts — never in the retired today-beach-deck store. Your own
+   * words carry no mark; an aim in the words lands the DONE home. */
+  const name = 'ahead:' + HANDLE;
+  const existing = await readBlock(name).catch(() => null);
+  if (!existing){
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    const body = { block: name, content: { '_': root } };
+    const latch = localStorage.getItem('next-latch:' + name);
+    if (latch) body.new_lock = latch;
+    const born = await writeBlock(body);
+    if (!born.ok) return { ok: false };
+  }
+  let w = await writeWithLatch({ block: name, spindle: '1', append: true, content: text }, name);
+  if (!w.ok && !w.quiet)
+    w = await writeWithLatch({ block: name, spindle: '1', content: { '1': text } }, name);
+  return w;
 }
 
 /* families and their colours — one steady hue per family, its name always written beside it */
@@ -787,6 +797,19 @@ async function load(){
     readBlock('dashboard:' + HANDLE).catch(() => null),
   ]);
   EXTRA.dashboard = dashB ? childDigits(dashB).map(d => (typeof dashB[d] === 'string' ? dashB[d] : voice(dashB[d]) || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '')).filter(Boolean) : null;
+  /* lists:<handle> branch 1 (rank is depth) is the chosen list where it stands;
+   * dashboard:<handle> remains the fallback while the two coexist */
+  try {
+    const lists = await readBlock('lists:' + HANDLE);
+    const ls = [];
+    let ln = lists && lists['1'] && lists['1']['1'];
+    while (ln && typeof ln === 'object'){
+      const v = typeof ln['_'] === 'string' ? ln['_'].trim().toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
+      if (v) ls.push(v);
+      ln = ln['1'];
+    }
+    if (ls.length) EXTRA.dashboard = ls.filter(f => !['now', 'ahead', 'today-beach-deck'].includes(f));
+  } catch(e){}
   renderNowProj();
   const markSlots = marksB ? collectSlots(marksB).filter(m => m.ts && Number.isFinite(Date.parse(m.ts))) : [];
   markSlots.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
@@ -1105,9 +1128,9 @@ function renderIntend(){
     'setting the day performs one write, with your key, in your own block:<br>' +
     '<b>write · ' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(TODAY_ADDR) + '</b> — the words above, dated — the marker tomorrow\u2019s sweep measures from.';
   $('foot-work').innerHTML = '<br><br><b>the blocks</b> — spine:' + esc(VENTURE) + ' · ' + esc(VENTURE) + ':&lt;handle&gt; · ' +
-    esc(FIELD) + ':&lt;handle&gt; · pool:' + esc(VENTURE) +
+    'ahead:&lt;handle&gt; · pool:' + esc(VENTURE) +
     '<br><b>the address</b> — one number on the sundial clock, its digits walking coarse to fine (millennium · century · decade · year · season · month-in-season · week band · day-in-band · gathering · beat), so 2026322600 reads Thursday 13 August 2026, to the day.';
-  $('foot-next').href = '/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD;
+  $('foot-next').href = '/next/' + encodeURIComponent(HANDLE);
 }
 document.getElementById('btn-set').addEventListener('click', async () => {
   if (BUSY) return; BUSY = true;
