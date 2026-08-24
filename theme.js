@@ -115,7 +115,8 @@
     ['across',  'across',  'handle'],
     ['the field', 'field',  'handle'],
     ['the reach', 'reach',  'optional'],
-    ['earth',   'earth',    'optional']
+    ['earth',   'earth',    'optional'],
+    ['globe',   'globe',    'optional']
   ];
   /* who you do it with: the door in, and the live surface where people actually
    * meet. The mirror named here is the BARE place — a page's own 'mirror ↗'
