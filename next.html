@@ -320,11 +320,11 @@ const SPINE = 'spine:' + FIELD;
 /* aim filter — flick one hand of the personal deck: cards aiming at ?aim=<family>
  * (a time-shaped aim — this week, August, 20xx — belongs to the deck's venture) */
 const AIM = ((new URLSearchParams(location.search).get('aim') || '').replace(/[^a-z0-9-]/gi, '')).toLowerCase();
-/* A HAND IS A PILE, so ?pile=<digit> flicks ONE of them — today's hand, the
- * week's hand — and no pile flicks the union. The two filters are orthogonal:
- * a pile is a GRAIN and an aim is a PROJECT, and a person picks one at a time
- * rather than meeting every cut of the list at once. */
-const PILE = (new URLSearchParams(location.search).get('pile') || '').replace(/[^1-9]/g, '');
+/* THE HAND IS WHAT WAS COMPILED, not a time band. A card is put in the hand by
+ * its holder at /hands, one at a time, from whichever deck it was dealt from —
+ * so the bare flick is the compiled hand, and ?aim=<deck> flicks one deck's cards
+ * whether or not they were compiled. The pile a card sits in is where it lives,
+ * never how a hand is cut. */
 /* cards dealt but not yet kept — counted so an empty flick can say WHY it is
  * empty rather than sending a person to add a card they have already been dealt */
 let OFFERED = 0;
@@ -514,7 +514,7 @@ function deepText(n, out){
  * it is the card being put back down, so the bare words are what land. That is
  * why the old release string, 'held …, released …', is now harmless rather than
  * fixed: it leads with no verb, so the choke point returns the card. */
-const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED'];
+const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED','HELD'];
 function leadingVerb(text){
   const w = (String(text).trim().split(/\s+/)[0] || '').toUpperCase();
   return MARK_VERBS.includes(w) ? w : null;
@@ -637,8 +637,9 @@ async function loadField(){
        * /hands — so it must not arrive in the flick as though it were theirs. */
       OFFERED = CARDS.filter(c => leadingVerb(c.raw || '') === 'PROPOSED').length;
       CARDS = CARDS.filter(c => leadingVerb(c.raw || '') !== 'PROPOSED');
-      if (PILE) CARDS = CARDS.filter(c => String(c.pile) === PILE);
+      /* a named deck flicks that deck; the bare flick is the compiled hand */
       if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));
+      else CARDS = CARDS.filter(c => leadingVerb(c.raw || '') === 'HELD');
       rebuildDeck(false);
       return;
     }
@@ -814,11 +815,11 @@ function renderDeck(){
   if (!DECK.length){
     /* three different silences, and calling them all 'clear' was a lie: a field with no
      * mount is not a deck at all, and one with cards nobody has reached is not finished. */
-    if (HAND && !CARDS.length && PILE)
-      showState('That hand is empty.',
-        'Nothing in your ' + esc((PILES.find(x => x.d === PILE) || {}).label || 'pile') + ' pile. '
-        + '<a href="/hands/' + encodeURIComponent(HANDLE) + '">Deal yourself some</a>, or '
-        + '<a href="/next/' + encodeURIComponent(HANDLE) + '">flick everything</a>.');
+    if (HAND && !CARDS.length && AIM)
+      showState('Nothing from that deck.',
+        'No cards of yours are aimed at ' + esc(AIM) + ' right now. '
+        + '<a href="/hands/' + encodeURIComponent(HANDLE) + '">Deal one from it</a>, or '
+        + '<a href="/next/' + encodeURIComponent(HANDLE) + '">flick your hand</a>.');
     else if (HAND && !CARDS.length && OFFERED)
       showState('Nothing kept yet.',
         OFFERED + (OFFERED === 1 ? ' card has' : ' cards have') + ' been dealt to you and '
@@ -827,13 +828,12 @@ function renderDeck(){
         + 'A dealt card is offered, not yours — so it does not arrive in the flick until you keep it.');
     else if (HAND && !CARDS.length)
       showState('An empty hand.',
-        'Nothing in your piles yet. Deal yourself some at <a href="/hands/' + encodeURIComponent(HANDLE) + '">your hands</a>, '
-        + 'add one here with ＋, or lay several out at once on '
-        + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">your ahead page</a>, which writes the same block.');
+        'Nothing compiled into your hand yet. At <a href="/hands/' + encodeURIComponent(HANDLE) + '">your hands</a>, '
+        + '＋ on any card puts it here — deal one from a deck, or write your own.');
     else if (HAND)
       showState('Hand played out.',
         'Everything in your piles is done, dropped or waiting on a later day. '
-        + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">Add to a pile</a>, or come back tomorrow.');
+        + '<a href="/hands/' + encodeURIComponent(HANDLE) + '">Add to a pile, or deal yourself more</a>, or come back tomorrow.');
     else if (!CARDS.length && !OP.declared)
       showState('Not a deck.',
         esc(FIELD) + ' is a field on this beach, but no operator block (function:' + esc(FIELD) + ') says how its '
@@ -1383,7 +1383,7 @@ function openCapture(){
   $('cap-sub').textContent = HAND ? 'Which pile — how far out is it?'
     : PERSONAL ? 'One thing you can pick up and put down inside a day.' : 'Into which part of the field?';
   $('cap-hint').textContent = HAND
-    ? 'It lands in your own hand at that pile — the same block /ahead writes, sovereign and yours to revise forever.'
+    ? 'It lands in your own hand at that pile — sovereign, and yours to revise forever.'
     : PERSONAL
     ? 'It lands in your own deck straight away — nobody adopts it, because nobody else can see it as theirs.'
     : keeperLatch()
@@ -1548,8 +1548,7 @@ async function boot(){
  * family, so none is passed and the doors leave the project door out, which is
  * exactly what they do everywhere else there is nowhere honest to go. */
 if (window.siteDoors) siteDoors(Object.assign({ handle: HANDLE, here: 'next' }, HAND ? {} : { family: FIELD }));
-  $('bar-field').textContent = (HAND ? (PILE ? (PILES.find(x => x.d === PILE) || {}).label || 'my hand' : 'my hand')
-                                     : 'the ' + FIELD + ' field') + (AIM ? ' \u00b7 ' + AIM : '');
+  $('bar-field').textContent = (HAND ? 'my hand' : 'the ' + FIELD + ' field') + (AIM ? ' \u00b7 ' + AIM : '');
   $('link-field').href = '/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(SPINE);
   $('link-fold').href = '/fold?field=' + encodeURIComponent(FIELD);
   $('link-decks').href = '/hands/' + encodeURIComponent(HANDLE);
