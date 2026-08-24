@@ -382,6 +382,73 @@
       .then(function(b){ return b ? chainToList(b[String(digit)]) : null; })
       .catch(function(){ return null; });
   }
+  var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
+  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and nothing else. Naming a place here is choosing it; leaving one out is not hiding it, since the catalogue a page offers is always larger than any one hand's list.";
+  var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
+
+  function latchFor(handle){ return 'lists-latch:' + handle; }
+
+  function post(origin, body){
+    return fetch(origin + '/.well-known/pscale-beach', { method:'POST', cache:'no-store',
+      headers:{'Content-Type':'application/json', Accept:'application/json'},
+      body: JSON.stringify(body) })
+      .then(function(r){ return r.json().catch(function(){ return null; })
+        .then(function(d){ return { ok:r.ok, status:r.status, data:d }; }); });
+  }
+  function lockRequired(w){
+    return !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+  }
+
+  /* Save ONE BRANCH, writing the block whole so nothing else in it is lost.
+   *
+   * Whole-block rather than a spindle write for two reasons, both learned by
+   * probing the live beach rather than assumed. A new_lock sent ALONGSIDE a
+   * spindle seals only that digit and leaves every other branch homesteadable —
+   * so claiming has to happen at the root. And a whole-block write replaces
+   * everything, so the other branches must be carried across deliberately; the
+   * go list at branch 2 would otherwise be wiped every time the projects were
+   * saved.
+   *
+   * One path covers create, claim and update, because sending secret and new_lock
+   * together is admitted in every case: absent creates locked, unlocked takes the
+   * lock, already-locked rotates to the same value, and a wrong key is refused. */
+  function saveBranch(origin, handle, digit, branchSays, items){
+    var name = listBlockName(handle);
+    var branch = { '_': branchSays };
+    var chain = listToChain(items);
+    if (chain) branch['1'] = chain;
+
+    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
+                 { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.status === 404 ? null : r.json(); })
+      .then(function(existing){
+        var content = existing ? JSON.parse(JSON.stringify(existing)) : {};
+        if (typeof content._ !== 'string' || !content._) content._ = ROOT_SAYS;
+        content[String(digit)] = branch;
+
+        var key = null;
+        try { key = localStorage.getItem(latchFor(handle)); } catch(e){}
+        if (!key){
+          key = prompt('Your key for ' + name + ' — invent one now if this is the first time; it keeps these lists yours to edit:');
+          if (key === null || !key.trim()) return { ok:false, quiet:true };
+          key = key.trim();
+        }
+        var body = { block: name, content: content, secret: key, new_lock: key };
+        if (existing) body.confirm = true;      /* replacing a block that stands */
+
+        return post(origin, body).then(function(w){
+          if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} return w; }
+          if (!lockRequired(w)) return w;
+          var v = prompt('That key was refused for ' + name + '. Try again:');
+          if (v === null || !v.trim()) return { ok:false, quiet:true };
+          body.secret = v.trim(); body.new_lock = v.trim();
+          return post(origin, body).then(function(w2){
+            if (w2.ok) try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){}
+            return w2;
+          });
+        });
+      });
+  }
 
   var ROW_CSS = '' +
     /* not sticky itself any more — it rides inside .stickyhead with the bar */
