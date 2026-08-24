@@ -3,18 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Earth — the real, by address</title>
-<meta name="description" content="The world as the beach holds it: one address ladder from the solar system down to the room, every place at the rung its lives fill — fly to any address.">
-<meta property="og:title" content="Earth — the real, by address">
-<meta property="og:description" content="The world as the beach holds it: one address ladder from the solar system down to the room — fly to any address.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<title>Earth — the globe, by address</title>
+<meta name="description" content="The world as the beach holds it, on the sphere: one address ladder from the solar system down to the room — every flight bends over the curve of the planet.">
+<meta property="og:title" content="Earth — the globe, by address">
+<meta property="og:description" content="The world as the beach holds it, on the sphere — fly any pscale address from orbit down to the room.">
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='6' fill='%2333C2D2'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="/theme.css">
+<link rel="stylesheet" href="/vendor/maplibre-gl.v5.css">
 <script src="/theme.js"></script>
-<script src="/vendor/d3.v7.min.js"></script>
-<script src="/vendor/d3-tile.v1.min.js"></script>
+<script src="/vendor/maplibre-gl.v5.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0;height:100%;overflow:hidden}
   body{
@@ -28,7 +26,6 @@
   button{font-family:var(--mono)}
   button:focus-visible,input:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
 
-  /* the workings — addresses and block names, one tap for authors */
   .work{display:none}
   body.workings .work{display:revert;font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);letter-spacing:0.06em}
 
@@ -45,24 +42,28 @@
   .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
   .bar button.on{color:var(--liquid);border-color:var(--liquid)}
 
-  /* ── the map ── */
-  #map{position:fixed;inset:0;width:100vw;height:100dvh;cursor:grab}
-  #map:active{cursor:grabbing}
-  #map .tile{image-rendering:auto}
-  /* the tiles carry someone else's palette; a wash of our own ground keeps the register */
-  #tilewash{pointer-events:none}
+  /* ── the sphere ── */
+  #map{position:fixed;inset:0;width:100vw;height:100dvh}
+  .maplibregl-canvas{outline:none;cursor:grab}
+  .maplibregl-canvas:active{cursor:grabbing}
 
-  .place-dot{fill:var(--liquid);stroke:var(--abyss);stroke-width:1.2}
-  .place-ring{fill:none;stroke:rgba(var(--liquid-rgb),0.55);stroke-width:1.2}
-  .place-label{font-family:var(--mono);font-size:11px;fill:var(--foam);
-    paint-order:stroke;stroke:var(--abyss);stroke-width:3px;stroke-linejoin:round;cursor:pointer}
-  .place-g{cursor:pointer}
-  .folk-disc{fill:rgba(var(--solid-rgb),0.14);stroke:rgba(var(--solid-rgb),0.6);stroke-width:1.4}
-  .folk-pin{fill:var(--solid);stroke:var(--abyss);stroke-width:1.4}
-  .folk-label{font-family:var(--mono);font-size:11px;fill:var(--solid);
-    paint-order:stroke;stroke:var(--abyss);stroke-width:3px;stroke-linejoin:round}
+  /* place markers — a dot and a name that breathe around their own rung */
+  .place-m{display:flex;align-items:center;gap:6px;cursor:pointer;transition:opacity 200ms linear}
+  .place-m .pd{width:7px;height:7px;border-radius:50%;background:var(--liquid);
+    box-shadow:0 0 0 3px rgba(var(--liquid-rgb),0.22), 0 0 10px rgba(var(--liquid-rgb),0.5);flex:none}
+  .place-m .pl{font-family:var(--mono);font-size:11px;color:var(--foam);white-space:nowrap;
+    text-shadow:0 1px 4px rgba(var(--well-rgb),0.95), 0 0 2px rgba(var(--well-rgb),0.9)}
 
-  /* ── the solar strip — the top rung is not a map ── */
+  /* residents — amber, at exactly the size of what they divulged */
+  .folk-m{display:flex;flex-direction:column;align-items:center;transition:opacity 200ms linear}
+  .folk-m .fl{font-family:var(--mono);font-size:11px;color:var(--solid);white-space:nowrap;
+    text-shadow:0 1px 4px rgba(var(--well-rgb),0.95);margin-bottom:3px}
+  .folk-m.pin .fd{width:9px;height:9px;border-radius:50%;background:var(--solid);
+    border:1.5px solid var(--abyss);box-shadow:0 0 12px rgba(var(--solid-rgb),0.8)}
+  .folk-m.disc .fd{border-radius:50%;background:rgba(var(--solid-rgb),0.13);
+    border:1.4px solid rgba(var(--solid-rgb),0.6)}
+
+  /* ── the solar strip — above the sphere, the top rung is not a map ── */
   #solar{position:fixed;inset:0;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;
     background:radial-gradient(1200px 700px at 50% 60%, rgba(var(--well-rgb),0.55), rgba(var(--well-rgb),0.92));
     transition:opacity 400ms ease;pointer-events:none;opacity:0}
@@ -83,10 +84,9 @@
   .sol-hint{position:absolute;bottom:96px;left:0;right:0;text-align:center;
     font-family:var(--mono);font-size:11.5px;letter-spacing:0.1em;color:var(--vapour-dim)}
 
-  /* the instruments stay above the curtain */
   #addr{z-index:16} #ladder{z-index:16}
 
-  /* ── the panel — where the walk reads ── */
+  /* ── the panel ── */
   #panel{position:fixed;top:58px;left:14px;z-index:10;width:min(390px, calc(100vw - 28px));
     max-height:calc(100dvh - 170px);overflow:auto;overscroll-behavior:contain;
     background:rgba(var(--card-rgb),0.82);backdrop-filter:blur(10px);
@@ -119,8 +119,8 @@
   #panel.tucked > *{display:none}
   #panel.tucked > #panel-tuck{display:block;position:static}
 
-  /* ── the ladder — the same geometry as /now, at the spatial aspect ── */
-  #ladder{position:fixed;top:70px;right:14px;z-index:10;width:230px;
+  /* ── the ladder ── */
+  #ladder{position:fixed;top:70px;right:14px;z-index:16;width:230px;
     background:rgba(var(--card-rgb),0.7);backdrop-filter:blur(10px);
     border:1px solid var(--line);border-radius:10px;padding:10px 12px}
   .rung2{display:flex;align-items:baseline;gap:8px;padding:4px 6px;margin:0 -6px;border-radius:6px;cursor:pointer}
@@ -134,7 +134,7 @@
   .rung2.blank .nm{color:rgba(var(--vapour-rgb),0.35)}
 
   /* ── the address line ── */
-  #addr{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:10;text-align:center}
+  #addr{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;text-align:center}
   #addr .walk{display:inline-block;font-family:var(--mono);font-size:15px;letter-spacing:0.12em;color:var(--foam);
     background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
     border:1px solid var(--line);border-radius:999px;padding:9px 18px;cursor:text}
@@ -160,16 +160,16 @@
 
 <div class="bar">
   <span class="dot"></span>
-  <span><b>earth</b> · the real, by address</span>
+  <span><b>earth</b> · the globe, by address</span>
   <span class="work" id="work-src"></span>
   <span class="spacer"></span>
-  <a href="/globe">globe</a>
+  <a href="/earth">flat</a>
   <a href="/where">where</a>
   <a href="/now">now</a>
   <button id="btn-workings" title="show the addresses and block names under the page">workings</button>
 </div>
 
-<svg id="map" aria-label="the world, navigable by pscale address"></svg>
+<div id="map" aria-label="the world as a globe, navigable by pscale address"></div>
 
 <div id="solar" aria-hidden="true">
   <div class="sol-row" id="sol-row"><div class="sol-sun" title="one star"></div></div>
@@ -196,47 +196,29 @@
   <span class="padded work" id="addr-padded"></span>
 </div>
 
-<div id="attrib">map © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a> · ground © the beach</div>
+<div id="attrib">globe © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a> · ground © the beach</div>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
-   /earth — the real, by address.
+   /globe — the same address, on the sphere.
 
-   One block is the ground: spatial:earth at earth.beach.happyseaurchin.com —
-   a floor-11 pscale block whose rungs are population-anchored (+11 the solar
-   system … 0 the room; a place sits at the pscale whose power of ten matches
-   the lives it holds; zeros are unresolved ground). This page is a d3 lens on
-   it: the address IS the camera. Walking a digit descends a rung; the map
-   flies to wherever the rung's ground is anchored.
+   The sibling of /earth: identical intelligence (spatial:earth walked live,
+   identity:earth folded at the address, residents by the Location star-ref
+   convention, zeros as unresolved ground), but the engine is MapLibre GL with
+   the globe projection — you arrive at a slowly turning planet, and every
+   flight bends over the curve. Anchors come from geo:earth on the beach
+   (the geographic register at spatial's self-same addresses); the page-local
+   gazetteer is only the fallback if the beach is unreachable.
 
-   d3 v7 + d3-tile, both vendored (no CDN at runtime). Raster tiles from
-   CARTO's public basemaps (dark_all in the dark register, voyager in the
-   light), attributed below-right. The geographic anchors are a page-local
-   gazetteer for now, keyed by the very addresses a future geo:earth mirror
-   block would carry — the page already tries to read geo:earth first, so
-   authoring that block retires the gazetteer with no page change.
-
-   Residents place themselves by the standing convention: a passport position
-   carrying `Location: *:<origin>:spatial:earth:<address>`. The address length
-   is the divulgence — `3` says "on the planet", five digits say Birmingham,
-   all eleven say the room. The map renders each at exactly the size of what
-   they chose to say.
+   MapLibre v5 vendored (no CDN at runtime); basemap styles are CARTO's free
+   GL styles — dark-matter in the dark register, voyager in the light —
+   attributed below-right. The sky and atmosphere are painted from the page's
+   own theme variables, so the space around the planet is the house abyss.
    ═══════════════════════════════════════════════════════════════════════ */
 'use strict';
 const $ = id => document.getElementById(id);
 const BEACH = 'https://earth.beach.happyseaurchin.com/.well-known/pscale-beach';
 const RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-/* /earth/<handle> — this page is handle-free by nature: it is a lens on a world,
- * not on a person. But a walker who arrived from their own now must not be dropped
- * here with no way back, so the segment is CARRIED and never read. */
-const HANDLE = (function(){
-  const m = location.pathname.match(/\/earth\/([^\/]+)\/?$/);
-  const q = new URLSearchParams(location.search).get('h');
-  return ((m && decodeURIComponent(m[1])) || q || '').replace(/[^a-z0-9 _-]/gi, '').trim() || null;
-})();
-/* the page hands over what only it knows; the catalogue is shared in theme.js */
-if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'earth' });
 
 /* ── pscale tree — the walk, exactly as the walker walks it ─────────────── */
 function floorOf(block){
@@ -258,7 +240,7 @@ const kidsOf = n => (n && typeof n === 'object')
   ? [1,2,3,4,5,6,7,8,9].filter(d => n[String(d)] !== undefined).map(d => ({d, node:n[String(d)]}))
   : [];
 const groundBelow = n => !!(n && typeof n === 'object' && n._ && typeof n._ === 'object');
-function previewThroughZeros(node){ /* nearest resolved name down the zero-chain */
+function previewThroughZeros(node){
   let m = node, steps = 0;
   while (m && typeof m === 'object' && steps < 10){
     const s = semOf(m);
@@ -267,7 +249,7 @@ function previewThroughZeros(node){ /* nearest resolved name down the zero-chain
   }
   return null;
 }
-function jumpZeros(path){ /* extend an address through unresolved rungs to the next resolved one */
+function jumpZeros(path){
   const p = path.slice();
   let n = nodeAt(SPATIAL, p), guard = 0;
   while (n && typeof n === 'object' && !semOf(n) && n._ && typeof n._ === 'object' && guard++ < 9){
@@ -275,13 +257,10 @@ function jumpZeros(path){ /* extend an address through unresolved rungs to the n
   }
   return p;
 }
-const nameOf  = s => s == null ? null : s.split(' — ')[0].split(' — ')[0];
+const nameOf  = s => s == null ? null : s.split(' — ')[0];
 const proseOf = s => { if (s == null) return ''; const i = s.indexOf('—'); return i < 0 ? '' : s.slice(i+1).trim(); };
 
-/* ── geography — the join the substrate does not yet hold ───────────────────
-   Anchor strings, in the exact form a geo:earth mirror block would carry at
-   the self-same addresses:  "lat,lon @zoom"  or  "lat,lon · latS,latN,lonW,lonE".
-   Seeded once from OpenStreetMap's Nominatim, 2026-08-20. */
+/* ── geography — geo:earth first, page gazetteer as the fallback ────────── */
 const GAZ = {
   '3':                     '23,12 · -55,72,-170,179',
   '3,1':                   '51,15 · 34,71.5,-11,40',
@@ -292,6 +271,7 @@ const GAZ = {
   '3,1,1,2':               '52.505,-1.965 · 52.348,52.663,-2.207,-1.424',
   '3,1,1,2,1':             '52.4949,-1.8518 · 52.381,52.609,-2.034,-1.729',
   '3,1,1,2,1,1,0,0':       '52.5623,-1.824 · 52.509,52.609,-1.892,-1.729',
+  '3,1,1,2,1,1,0,0,1':     '52.5559,-1.8106 · 52.5553,52.5564,-1.8116,-1.8096',
   '3,1,1,3':               '53.48,-1.38 · 53.302,53.661,-1.823,-0.865',
   '3,1,1,3,1,0':           '53.3807,-1.4702 · 53.305,53.503,-1.801,-1.325',
   '3,1,1,3,1,0,1,0':       '53.3597,-1.4875 · 53.348,53.372,-1.503,-1.472',
@@ -310,12 +290,12 @@ function parseGeo(s){
   if (m) return { lat:+m[1], lon:+m[2] };
   return null;
 }
-let GEOBLOCK = null; /* geo:earth, if it ever exists on the beach */
+let GEOBLOCK = null;
 function geoOwn(path){
   if (GEOBLOCK){ const g = parseGeo(semOf(nodeAt(GEOBLOCK, path))); if (g) return g; }
   return parseGeo(GAZ[path.join(',')]) || null;
 }
-function geoNearest(path){ /* own anchor, else the deepest anchored ancestor */
+function geoNearest(path){
   for (let i = path.length; i >= 1; i--){
     const g = geoOwn(path.slice(0, i));
     if (g) return { geo:g, at:path.slice(0, i), inherited:i < path.length };
@@ -323,115 +303,111 @@ function geoNearest(path){ /* own anchor, else the deepest anchored ancestor */
   return null;
 }
 
-/* ── the map — mercator in the unit square, tiles under it ──────────────── */
-const svg = d3.select('#map');
-let W = innerWidth, H = innerHeight;
-const projection = d3.geoMercator().scale(1/(2*Math.PI)).translate([0,0]);
-let tiler = d3.tile().extent([[0,0],[W,H]]).tileSize(256);
-const gTiles = svg.append('g');
-const washRect = svg.append('rect').attr('id','tilewash').attr('width','100%').attr('height','100%')
-  .attr('fill','var(--abyss)').attr('opacity',0.14);
-const gFolk   = svg.append('g');
-const gPlaces = svg.append('g');
+/* ── the sphere — MapLibre with the globe projection ────────────────────── */
+const STYLES = {
+  dark:  'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',
+  light: 'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json'
+};
+const themeNow = () => document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
-const Z0 = 256; /* transform.k at tile-zoom 0 */
-const zTile = k => Math.log2(k / Z0);
-let USERZOOMED = false;
-const zoom = d3.zoom()
-  .scaleExtent([80, Z0 * 2**19.2])
-  .on('zoom', ev => { if (ev.sourceEvent) USERZOOMED = true; render(ev.transform); });
-svg.call(zoom).on('dblclick.zoom', null);
-
-function tileURL(x, y, z){
-  const light = document.documentElement.getAttribute('data-theme') === 'light';
-  const s = 'abcd'[Math.abs(x + y) % 4];
-  return light
-    ? `https://${s}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}@2x.png`
-    : `https://${s}.basemaps.cartocdn.com/dark_all/${z}/${x}/${y}@2x.png`;
+const map = new maplibregl.Map({
+  container: 'map',
+  style: STYLES[themeNow()],
+  center: [12, 23], zoom: 1.1,
+  minZoom: 0, maxZoom: 19,
+  attributionControl: false,
+  hash: false, fadeDuration: 150
+});
+map.on('style.load', () => {
+  try { map.setProjection({ type: 'globe' }); } catch(e){}
+  applySky();
+});
+function applySky(){
+  try {
+    map.setSky({
+      'sky-color': cssVar('--abyss') || '#06171E',
+      'horizon-color': cssVar('--liquid-deep') || '#1B8B99',
+      'fog-color': cssVar('--deep') || '#0A2129',
+      'sky-horizon-blend': 0.7,
+      'horizon-fog-blend': 0.6,
+      'fog-ground-blend': 0.6,
+      'atmosphere-blend': ['interpolate', ['linear'], ['zoom'], 0, 1, 6, 1, 8, 0]
+    });
+  } catch(e){}
 }
 
-let T = d3.zoomIdentity;
-function render(t){
-  T = t;
-  const tiles = tiler(t);
-  gTiles.selectAll('image')
-    .data(tiles, d => d.join('/'))
-    .join(enter => enter.append('image').attr('class','tile'))
-    .attr('href', ([x,y,z]) => tileURL(x,y,z))
-    .attr('x', ([x]) => (x + tiles.translate[0]) * tiles.scale)
-    .attr('y', ([,y]) => (y + tiles.translate[1]) * tiles.scale)
-    .attr('width', tiles.scale).attr('height', tiles.scale);
-  drawPlaces(); drawFolk();
-  const insolar = t.k < worldFitK() * 0.82;
-  $('solar').classList.toggle('show', insolar);
-  document.body.classList.toggle('insolar', insolar);
-  markLadderZoom();
+let WORLDZ = 1.2;
+function computeWorldZ(){
+  try {
+    const c = map.cameraForBounds([[-170, -55], [179, 72]], { padding: 30 });
+    if (c && isFinite(c.zoom)) WORLDZ = Math.max(0.4, Math.min(3, c.zoom));
+  } catch(e){}
+  try { map.setMinZoom(Math.max(0, WORLDZ - 1.3)); } catch(e){}
 }
-function worldFitK(){ return fitTransform(parseGeo(GAZ['3'])).k; }
-function solarTransform(){
-  const t = fitTransform(parseGeo(GAZ['3']));
-  const k = t.k * 0.68, p = projection([12, 23]);
-  return d3.zoomIdentity.translate(W/2 - k*p[0], H/2 - k*p[1]).scale(k);
-}
-const screenOf = lonlat => { const p = projection(lonlat); return [p[0]*T.k + T.x, p[1]*T.k + T.y]; };
 
-function fitTransform(g, pad){
+/* the idle spin — the planet turns until a hand or an address takes it */
+let SPIN = !RM, USERMOVED = false;
+function spinStep(){
+  if (!SPIN || RM || document.hidden) return;
+  if (map.getZoom() > WORLDZ + 0.7 || ADDR.length > 1) return;
+  const c = map.getCenter();
+  map.easeTo({ center: [c.lng + 14, c.lat], duration: 7000, easing: n => n, essential: false });
+}
+map.on('moveend', spinStep);
+['mousedown','wheel','touchstart','dragstart'].forEach(ev =>
+  map.on(ev, () => { SPIN = false; USERMOVED = true; }));
+
+/* ── flights — the address is the camera ────────────────────────────────── */
+function zoomFor(g){
   if (g.bbox){
-    const [latS, latN, lonW, lonE] = g.bbox;
-    const nw = projection([lonW, latN]), se = projection([lonE, latS]);
-    const dx = Math.max(1e-9, se[0]-nw[0]), dy = Math.max(1e-9, se[1]-nw[1]);
-    const k = Math.max(80, Math.min((pad||0.84) * Math.min(W/dx, H/dy), Z0*2**19.2));
-    return d3.zoomIdentity.translate(W/2 - k*(nw[0]+se[0])/2, H/2 - k*(nw[1]+se[1])/2).scale(k);
+    try {
+      const c = map.cameraForBounds([[g.bbox[2], g.bbox[0]], [g.bbox[3], g.bbox[1]]], { padding: 70 });
+      if (c && isFinite(c.zoom)) return Math.min(c.zoom, 19);
+    } catch(e){}
   }
-  const z = g.z != null ? g.z : 12;
-  const k = Z0 * 2**z, p = projection([g.lon, g.lat]);
-  return d3.zoomIdentity.translate(W/2 - k*p[0], H/2 - k*p[1]).scale(k);
+  return g.z != null ? g.z : 12;
 }
-function transformFor(path){
+function targetFor(path){
   const near = geoNearest(path);
   if (!near) return null;
-  let t = fitTransform(near.geo);
-  if (near.inherited){ /* finer than the map knows — stand at the anchor, one step closer */
-    const k = Math.min(t.k * 2**0.9, Z0*2**17);
-    const p = projection([near.geo.lon, near.geo.lat]);
-    t = d3.zoomIdentity.translate(W/2 - k*p[0], H/2 - k*p[1]).scale(k);
-  }
-  return t;
+  let z = zoomFor(near.geo);
+  if (near.inherited) z = Math.min(z + 0.9, 17);
+  return { center: [near.geo.lon, near.geo.lat], zoom: z };
 }
+const SOLAR_TGT = () => ({ center: [12, 23], zoom: Math.max(0, WORLDZ - 1.1) });
 let FLYGUARD = null;
-function flyTo(t){
+function flyToAddr(){
+  const t = ADDR.length
+    ? (targetFor(ADDR) || (ADDR.length === 1 ? SOLAR_TGT() : null))
+    : SOLAR_TGT();
   if (!t) return;
-  USERZOOMED = false;
-  /* no animation frames while hidden (or unwanted) — arrive at once */
-  if (RM || document.hidden){ svg.call(zoom.transform, t); return; }
-  const va = [(W/2 - T.x)/T.k, (H/2 - T.y)/T.k, W/T.k];
-  const vb = [(W/2 - t.x)/t.k, (H/2 - t.y)/t.k, W/t.k];
-  let dur = 900;
-  try { dur = Math.min(2600, Math.max(650, d3.interpolateZoom(va, vb).duration)); } catch(e){}
-  svg.transition('fly').duration(dur).call(zoom.transform, t);
-  /* a throttled tab freezes the flight mid-arc — land it by hand */
+  SPIN = false; USERMOVED = false;
+  if (RM || document.hidden){ map.jumpTo(t); armSpin(); return; }
+  const dur = Math.min(3400, 800 + Math.abs(map.getZoom() - t.zoom) * 170);
+  map.flyTo({ ...t, duration: dur, essential: true });
   clearTimeout(FLYGUARD);
   FLYGUARD = setTimeout(() => {
-    if (USERZOOMED) return;
-    const k = d3.zoomTransform(svg.node()).k;
-    if (Math.abs(Math.log2(k / t.k)) > 0.05){ svg.interrupt('fly'); svg.call(zoom.transform, t); }
-  }, dur + 800);
+    if (!USERMOVED && Math.abs(map.getZoom() - t.zoom) > 0.25) map.jumpTo(t);
+    armSpin();
+  }, dur + 900);
 }
+function armSpin(){ if (ADDR.length <= 1 && !USERMOVED){ SPIN = !RM; spinStep(); } }
 
-/* ── the data — read from the beach, held whole (both blocks are small) ── */
+/* ── the data — read from the beach, held whole ─────────────────────────── */
 let SPATIAL = null, IDENTITY = null, FLOOR = 11, FOLK = [], PLACES = [];
 async function readBlock(name){
   const r = await fetch(BEACH + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
   if (!r.ok) throw new Error(name + ' → ' + r.status);
   return r.json();
 }
-function collectPlaces(){ /* every node with its own anchor becomes a dot — below planet rung */
+function collectPlaces(){
   PLACES = [];
   (function walk(node, path){
     if (path.length > 1){
       const g = geoOwn(path), s = semOf(node);
       if (g && s) PLACES.push({ path:path.slice(), key:path.join(','), name:nameOf(s),
-        lonlat:[g.lon,g.lat], g });
+        lonlat:[g.lon, g.lat], g });
     }
     if (node && typeof node === 'object'){
       for (const {d, node:ch} of kidsOf(node)) walk(ch, path.concat(d));
@@ -439,56 +415,90 @@ function collectPlaces(){ /* every node with its own anchor becomes a dot — be
     }
   })(SPATIAL, []);
 }
-function drawPlaces(){
-  const z = zTile(T.k);
-  const vis = PLACES.map(p => {
-    const [x,y] = screenOf(p.lonlat);
-    const dz = z - zTile(fitTransform(p.g).k);
-    /* a place breathes around its own rung: faint far above, gone well below */
+async function loadFolk(indexBlocks){
+  const names = (indexBlocks || []).filter(n => n.startsWith('passport:'));
+  const out = [];
+  await Promise.all(names.map(async name => {
+    try {
+      const p = await readBlock(name);
+      const m = JSON.stringify(p).match(/spatial:earth:([0-9]+)/);
+      const handle = name.slice('passport:'.length);
+      if (!m){ out.push({ handle, path: [] }); return; }
+      const digits = m[1].replace(/0+$/, '');
+      const path = digits ? digits.split('').map(Number) : [];
+      const near = geoNearest(path);
+      out.push({ handle, path, near, pin: !!near && (near.inherited || !near.geo.bbox) && path.length >= FLOOR - 2 });
+    } catch(e){}
+  }));
+  FOLK = out;
+}
+
+/* ── markers — DOM riders on the sphere ─────────────────────────────────── */
+let PLACEMS = [], FOLKMS = [];
+function buildMarkers(){
+  for (const {m} of PLACEMS) m.remove();
+  for (const {m} of FOLKMS) m.remove();
+  PLACEMS = []; FOLKMS = [];
+  for (const p of PLACES){
+    const el = document.createElement('div');
+    el.className = 'place-m';
+    const pd = document.createElement('span'); pd.className = 'pd';
+    const pl = document.createElement('span'); pl.className = 'pl'; pl.textContent = p.name;
+    el.appendChild(pd); el.appendChild(pl);
+    el.addEventListener('click', ev => { ev.stopPropagation(); setAddress(p.path); });
+    const m = new maplibregl.Marker({ element: el, anchor: 'left', offset: [-3, 0] })
+      .setLngLat(p.lonlat).addTo(map);
+    PLACEMS.push({ p, el, m, zr: zoomFor(p.g) });
+  }
+  for (const f of FOLK.filter(f => f.near)){
+    const el = document.createElement('div');
+    el.className = 'folk-m ' + (f.pin ? 'pin' : 'disc');
+    const fl = document.createElement('span'); fl.className = 'fl'; fl.textContent = f.handle;
+    const fd = document.createElement('span'); fd.className = 'fd';
+    el.appendChild(fl); el.appendChild(fd);
+    el.addEventListener('click', ev => { ev.stopPropagation(); setAddress(f.path); });
+    const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([f.near.geo.lon, f.near.geo.lat]).addTo(map);
+    FOLKMS.push({ f, el, m });
+  }
+  refreshRungCaches();
+}
+function refreshRungCaches(){
+  for (const pm of PLACEMS) pm.zr = zoomFor(pm.p.g);
+  buildRungZooms();
+}
+function updateOverlays(){
+  const z = map.getZoom();
+  for (const {el, zr} of PLACEMS){
+    const dz = z - zr;
     const o = dz < -3.5 ? 0 : dz > 5 ? 0 : dz < 0 ? 1 + dz/3.5 : Math.max(0, 1 - dz/5);
-    return { ...p, x, y, o };
-  }).filter(p => p.o > 0.03 && p.x > -60 && p.x < W+60 && p.y > -40 && p.y < H+40);
-  const g = gPlaces.selectAll('g.place-g').data(vis, d => d.key)
-    .join(enter => {
-      const e = enter.append('g').attr('class','place-g')
-        .on('click', (ev,d) => { ev.stopPropagation(); setAddress(d.path); });
-      e.append('circle').attr('class','place-ring').attr('r', 7);
-      e.append('circle').attr('class','place-dot').attr('r', 2.6);
-      e.append('text').attr('class','place-label').attr('x', 10).attr('y', 4);
-      return e;
-    });
-  g.attr('transform', d => `translate(${d.x},${d.y})`).attr('opacity', d => d.o);
-  g.select('text').text(d => d.name);
-}
-function drawFolk(){
-  const rows = FOLK.filter(f => f.near).map(f => {
-    const [x,y] = screenOf([f.near.geo.lon, f.near.geo.lat]);
-    let r = 7, pin = f.pin;
-    if (!pin && f.near.geo.bbox){
+    el.style.opacity = o;
+    el.style.pointerEvents = o > 0.1 ? 'auto' : 'none';
+  }
+  for (const {f, el} of FOLKMS){
+    const fd = el.lastChild;
+    if (!f.pin && f.near.geo.bbox){
       const b = f.near.geo.bbox;
-      const nw = projection([b[2], b[1]]), se = projection([b[3], b[0]]);
-      r = Math.max(7, T.k * Math.max(se[0]-nw[0], se[1]-nw[1]) / 2);
+      const a = map.project([b[2], b[1]]), c = map.project([b[3], b[0]]);
+      const d = Math.max(14, Math.abs(c.x - a.x), Math.abs(c.y - a.y));
+      fd.style.width = fd.style.height = d + 'px';
+      fd.style.opacity = Math.max(0.25, Math.min(1, 140 / d));
     }
-    return { ...f, x, y, r, pin };
-  }).filter(f => f.x > -f.r-40 && f.x < W+f.r+40 && f.y > -f.r-40 && f.y < H+f.r+40);
-  const g = gFolk.selectAll('g.folk-g').data(rows, d => d.handle)
-    .join(enter => {
-      const e = enter.append('g').attr('class','folk-g');
-      e.append('circle');
-      e.append('text').attr('class','folk-label');
-      return e;
-    });
-  g.attr('transform', d => `translate(${d.x},${d.y})`);
-  g.select('circle')
-    .attr('class', d => d.pin ? 'folk-pin' : 'folk-disc')
-    .attr('r', d => d.pin ? 4.5 : d.r)
-    .attr('opacity', d => d.pin ? 1 : Math.max(0.25, Math.min(1, 140/d.r)));
-  g.select('text')
-    .text(d => d.handle)
-    .attr('x', 0).attr('y', d => d.pin ? -9 : Math.min(-d.r-4, -11))
-    .attr('text-anchor','middle')
-    .attr('opacity', d => d.r < Math.max(W,H)*1.2 ? 1 : 0);
+  }
+  const insolar = z < WORLDZ - 0.55;
+  $('solar').classList.toggle('show', insolar);
+  document.body.classList.toggle('insolar', insolar);
+  markLadderZoom();
 }
+map.on('move', updateOverlays);
+map.on('resize', () => { computeWorldZ(); refreshRungCaches(); updateOverlays(); });
+/* a tab born hidden measures a wrong canvas and paints nothing — heal on reveal */
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden){
+    map.resize(); computeWorldZ(); refreshRungCaches();
+    if (!USERMOVED) flyToAddr(); else updateOverlays();
+  }
+});
 
 /* ── the address — one state, everything follows it ─────────────────────── */
 let ADDR = [3];
@@ -504,8 +514,8 @@ let RUNGZOOMS = [];
 function buildRungZooms(){
   RUNGZOOMS = [];
   for (let L = 0; L <= ADDR.length; L++){
-    const t = L === 0 ? solarTransform() : transformFor(ADDR.slice(0, L));
-    if (t) RUNGZOOMS.push({ p: FLOOR - L, z: zTile(t.k) });
+    const t = L === 0 ? SOLAR_TGT() : targetFor(ADDR.slice(0, L));
+    if (t) RUNGZOOMS.push({ p: FLOOR - L, z: t.zoom });
   }
 }
 function setAddress(path, opts){
@@ -516,11 +526,7 @@ function setAddress(path, opts){
   buildRungZooms();
   renderPanel(); renderLadder(); renderAddr(); solarCaption();
   try{ history.replaceState(null, '', '#' + (ADDR.join(',') || '')); }catch(e){}
-  if (o.fly !== false){
-    /* a planet with no ground to stand on is seen from the strip */
-    const t = ADDR.length ? (transformFor(ADDR) || (ADDR.length === 1 ? solarTransform() : null)) : solarTransform();
-    flyTo(t);
-  }
+  if (o.fly !== false) flyToAddr();
 }
 function solarCaption(){
   const cap = $('sol-cap'); if (!cap) return;
@@ -570,7 +576,6 @@ function renderPanel(){
     $('here-prose').textContent = 'this rung has not been decided — the address passes through; the world fills it in as it locates itself.';
     $('here-prose').className = 'quiet';
   }
-  /* finer ground */
   const kids = $('kids'); kids.innerHTML = '';
   const ks = ADDR.length ? kidsOf(node) : kidsOf(SPATIAL);
   for (const {d, node:ch} of ks){
@@ -597,7 +602,6 @@ function renderPanel(){
     kids.appendChild(b);
   }
   $('sec-kids').classList.toggle('hidden', !kids.children.length);
-  /* how this place is held — nearest fan at or above (identity:earth's own law) */
   const holds = $('holds'); holds.innerHTML = '';
   const idSem = ADDR.length ? semOf(nodeAt(IDENTITY, ADDR)) : null;
   if (idSem){
@@ -627,7 +631,6 @@ function renderPanel(){
     }
   }
   $('sec-holds').classList.toggle('hidden', !holdRows.length && !idSem);
-  /* who has placed themselves at-or-below here */
   const folk = $('folk'); folk.innerHTML = '';
   const under = FOLK.filter(f => f.path.length >= ADDR.length && ADDR.every((d,i) => f.path[i] === d));
   for (const f of under){
@@ -655,7 +658,7 @@ function renderLadder(){
   const el = $('ladder'); el.innerHTML = '';
   for (let p = FLOOR; p >= 0; p--){
     const L = FLOOR - p;
-    const row = document.createElement('div'); row.className = 'rung2'; row.dataset.p = p;
+    const row = document.createElement('div'); row.dataset.p = p;
     let nm, cls = '';
     if (L === 0){ nm = 'the solar system'; }
     else if (L <= ADDR.length){
@@ -673,8 +676,8 @@ function renderLadder(){
   markLadderZoom();
 }
 function markLadderZoom(){
-  if (!RUNGZOOMS.length){ return; }
-  const z = zTile(T.k);
+  if (!RUNGZOOMS.length) return;
+  const z = map.getZoom();
   let best = RUNGZOOMS[0];
   for (const r of RUNGZOOMS) if (Math.abs(r.z - z) < Math.abs(best.z - z)) best = r;
   document.querySelectorAll('#ladder .rung2').forEach(r =>
@@ -683,6 +686,7 @@ function markLadderZoom(){
 
 function renderAddr(){
   const walk = $('addr-walk');
+  if (!walk) return;
   walk.innerHTML = '';
   if (!ADDR.length){ walk.textContent = '☉'; }
   else {
@@ -696,7 +700,7 @@ function renderAddr(){
   $('addr-padded').textContent = ADDR.length ? 'spatial:earth : ' + padded(ADDR) : 'spatial:earth : the root';
 }
 function flashAddr(){
-  const w = $('addr-walk');
+  const w = $('addr-walk'); if (!w) return;
   w.style.borderColor = 'var(--solid)';
   setTimeout(() => w.style.borderColor = '', 600);
 }
@@ -754,25 +758,6 @@ function buildSolar(){
   }
 }
 
-/* ── residents — the Location star-ref convention ────────────────────────── */
-async function loadFolk(indexBlocks){
-  const names = (indexBlocks || []).filter(n => n.startsWith('passport:'));
-  const out = [];
-  await Promise.all(names.map(async name => {
-    try {
-      const p = await readBlock(name);
-      const m = JSON.stringify(p).match(/spatial:earth:([0-9]+)/);
-      const handle = name.slice('passport:'.length);
-      if (!m){ out.push({ handle, path: [] }); return; }
-      const digits = m[1].replace(/0+$/, '');
-      const path = digits ? digits.split('').map(Number) : [];
-      const near = geoNearest(path);
-      out.push({ handle, path, near, pin: !!near && (near.inherited || !near.geo.bbox) && path.length >= FLOOR - 2 });
-    } catch(e){ /* a passport that cannot be read places nobody */ }
-  }));
-  FOLK = out.filter(f => f.path.length || true);
-}
-
 /* ── boot ────────────────────────────────────────────────────────────────── */
 (async function boot(){
   $('btn-workings').addEventListener('click', () => {
@@ -781,19 +766,9 @@ async function loadFolk(indexBlocks){
   });
   $('panel-tuck').addEventListener('click', () => $('panel').classList.toggle('tucked'));
   $('work-src').textContent = 'earth.beach.happyseaurchin.com';
-  addEventListener('resize', () => {
-    W = innerWidth; H = innerHeight;
-    tiler = d3.tile().extent([[0,0],[W,H]]).tileSize(256);
-    /* the view follows the address until a hand takes the wheel */
-    if (SPATIAL) buildRungZooms();
-    if (!USERZOOMED && SPATIAL){
-      const t = ADDR.length ? transformFor(ADDR) : solarTransform();
-      if (t){ svg.call(zoom.transform, t); return; }
-    }
-    render(T);
-  });
-  new MutationObserver(() => render(T))
-    .observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
+  new MutationObserver(() => {
+    map.setStyle(STYLES[themeNow()]); /* style.load re-applies globe + sky */
+  }).observe(document.documentElement, { attributes:true, attributeFilter:['data-theme'] });
   addEventListener('hashchange', () => {
     const h = (location.hash || '').replace(/^#/, '').replace(/[\s.]/g, '').replace(/,/g, '');
     if (!/^[0-9]+$/.test(h)) return;
@@ -815,7 +790,7 @@ async function loadFolk(indexBlocks){
   try { GEOBLOCK = await readBlock('geo:earth'); } catch(e){ GEOBLOCK = null; }
   $('status').textContent = GEOBLOCK
     ? 'ground: spatial:earth · anchors: geo:earth'
-    : 'ground: spatial:earth · anchors: page gazetteer (geo:earth not yet on the beach)';
+    : 'ground: spatial:earth · anchors: page gazetteer (geo:earth unreachable)';
   $('status').className = 'work';
 
   FLOOR = floorOf(SPATIAL);
@@ -823,12 +798,27 @@ async function loadFolk(indexBlocks){
   collectPlaces();
   await loadFolk(index && index.blocks);
 
-  /* arrive on the world, then honour a deep link */
-  const hash = (location.hash || '').replace(/^#/, '').replace(/[\s.]/g, '').replace(/,/g, '');
-  const start = /^[0-9]+$/.test(hash) ? hash.replace(/0+$/, '').split('').map(Number) : [3];
-  svg.call(zoom.transform, fitTransform(parseGeo(GAZ['3'])));
-  setAddress([3], { fly:false });
-  if (start.length > 1 || start[0] !== 3) setTimeout(() => setAddress(start), RM ? 0 : 700);
+  const start = (function(){
+    const h = (location.hash || '').replace(/^#/, '').replace(/[\s.]/g, '').replace(/,/g, '');
+    return /^[0-9]+$/.test(h) ? h.replace(/0+$/, '').split('').map(Number) : [3];
+  })();
+
+  /* the reading side never waits for the sphere — panel, ladder and address
+     stand the moment the blocks are read; the map catches up when it can */
+  computeWorldZ();
+  buildMarkers();
+  setAddress([3], { fly: false });
+  updateOverlays();
+  if (start.length > 1 || start[0] !== 3) setTimeout(() => setAddress(start), RM ? 0 : 900);
+  map.once('load', () => {
+    computeWorldZ();
+    refreshRungCaches();
+    if (!USERMOVED && ADDR.length === 1 && ADDR[0] === 3 && start.length === 1 && start[0] === 3){
+      map.jumpTo({ center: [12, 23], zoom: WORLDZ });
+    }
+    updateOverlays();
+    spinStep();
+  });
 })();
 </script>
 </body>
