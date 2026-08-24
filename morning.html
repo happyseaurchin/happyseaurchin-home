@@ -64,6 +64,12 @@
   .stamp{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;color:var(--vapour-dim);margin-top:8px}
 
   section{padding:24px 0 6px}
+  .newsrung{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--vapour-dim);margin:14px 0 8px;display:flex;gap:10px;align-items:baseline}
+  .newsline{margin:0 0 14px;padding:0 0 0 12px;border-left:2px solid rgba(var(--liquid-rgb),.35)}
+  .newsline .who{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--liquid);display:block;margin:0 0 3px}
+  .newsline p{margin:0;white-space:pre-wrap}
+  .newsquiet,.newsmore{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:10px 0 0}
   .band-head{max-width:720px;margin:0 auto;padding:0 18px 12px}
   .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--liquid);margin:0 0 6px}
   .eyebrow .n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;
@@ -308,9 +314,18 @@
     <div class="stats" id="stats"></div>
   </section>
 
+  <section id="news">
+    <div class="band-head">
+      <p class="eyebrow"><span class="n">2</span>news</p>
+      <h2>What others have declared.</h2>
+      <p>Outward declarations from every hand on the beach — only what has landed since you last read each channel, newest first.</p>
+    </div>
+    <div id="news-body"></div>
+  </section>
+
   <section id="temporal">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">2</span>this morning</p>
+      <p class="eyebrow"><span class="n">3</span>this morning</p>
       <h2>Today, under its ladder.</h2>
       <p>The stretches of time standing over this morning — tap one for what stands there: the objective, the voices, your cards aiming at it.</p>
     </div>
@@ -319,7 +334,7 @@
 
   <section id="review2">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">3</span>review</p>
+      <p class="eyebrow"><span class="n">4</span>review</p>
       <h2>Your areas.</h2>
       <p>The places you're working, steady in position, each sized by how much has moved there — like currents dilated by what they carry. Tap for the detail.</p>
     </div>
@@ -338,7 +353,7 @@
   </style>
   <section id="nowproj">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">4</span>now by project</p>
+      <p class="eyebrow"><span class="n">5</span>now by project</p>
       <h2>One clock, every mirror of yours.</h2>
       <p>Your now-mirror beside your project mirrors, rung by rung down the ladder — the same
          moment read across everything you are doing. A quiet cell is honest silence.</p>
@@ -355,7 +370,7 @@
 
   <section id="projects">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">5</span>projects</p>
+      <p class="eyebrow"><span class="n">6</span>projects</p>
       <h2>Your projects.</h2>
       <p>The projects you have deliberately chosen — each with its pulse, its walk one tap away. Your list lives in your own block; the page just reads it.</p>
     </div>
@@ -364,7 +379,7 @@
 
   <section id="intend">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">6</span>intend</p>
+      <p class="eyebrow"><span class="n">7</span>intend</p>
       <h2>Set the day.</h2>
       <p>Your intention for the day, in your own words — drafted from the week standing above; rewrite it until it is yours. Setting it lands it as your voice at today, and tomorrow measures “since” from it. Cards live elsewhere: born at the rack’s detail, held at my decks.</p>
     </div>
@@ -500,6 +515,7 @@ if (_vq !== 'beach-venture'){
 }
 const VENTURE = 'beach-venture';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
+let NEWS = [], NEWS_SPINE = null;   /* every news:<handle> mirror, and the spine that names the channels */
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
@@ -712,6 +728,15 @@ async function load(){
   MIRRORS = mNames.map((n, i) => [n.slice(VENTURE.length + 1), got[i]]).filter(x => x[1]);
   DECKS = dNames.map((n, i) => [n.slice(FIELD.length + 1), got[mNames.length + i]]).filter(x => x[1]);
 
+  /* the news field — everyone's outward declarations, read for the morning at the
+   * two day rungs a morning actually spans. Failure here is quiet on purpose: the
+   * morning is a dashboard, and a family that is not on this beach should leave a
+   * section empty rather than take the page down with it. */
+  const nNames = blocks.filter(b => b.startsWith('news:') && nameOk(b.slice(5)));
+  const nGot = await Promise.all(nNames.concat(['spine:news']).map(n => readBlock(n).catch(() => null)));
+  NEWS = nNames.map((n, i) => [n.slice(5), nGot[i]]).filter(x => x[1]);
+  NEWS_SPINE = nGot[nNames.length] || null;
+
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
   /* the beach in numbers: totals, what's new to this hand (a local cursor), the marks tide */
@@ -828,6 +853,7 @@ if (window.siteDoors) siteDoors({ handle: HANDLE, family: VENTURE, here: 'mornin
   $('mast-title').innerHTML = esc(DAYS[dn.getUTCDay()] + ' ' + dn.getUTCDate() + ' ' + MN[dn.getUTCMonth()]) + ', <span class="cool">before the day</span>.';
   $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
   renderStats();
+  renderNews();
   renderTemporal();
   renderCollage();
   renderProjects();
@@ -895,6 +921,44 @@ function renderStats(){
 }
 
 /* ── 2 · this morning: today under its ladder ── */
+/* THE MORNING SHOWS WHAT IS NEW SINCE THIS HAND LAST READ. The news family runs
+ * on channels rather than a clock: a position on spine:news names a channel, a
+ * hand's standing declaration sits at that position in its own mirror, when it
+ * was said sits at .91 beneath it, and when THIS hand last read the channel sits
+ * at .92 in its OWN mirror. So "new to me" is a comparison between two numbers
+ * this page already holds, and nothing central is consulted to make it. Falling
+ * back to a day when a hand has no marker yet keeps a first visit useful. */
+function renderNews(){
+  const chanNode = (blk, pos) => (blk && typeof blk[pos] === 'object' && blk[pos]) || null;
+  const declOf = (blk, pos) => { const n = chanNode(blk, pos); return n && typeof n._ === 'string' ? n._ : null; };
+  const metaOf = (blk, pos, k) => { const n = chanNode(blk, pos);
+    const m = n && typeof n['9'] === 'object' ? n['9'] : null; return (m && m[k]) || null; };
+
+  const chans = NEWS_SPINE
+    ? Object.keys(NEWS_SPINE).filter(k => /^[1-9]$/.test(k)).sort()
+    : ['1'];
+  const mine = NEWS.find(m => m[0] === HANDLE);
+  const out = [];
+
+  for (const pos of chans){
+    const since = (mine && metaOf(mine[1], pos, '2')) || new Date(Date.now() - H24).toISOString();
+    const voices = NEWS
+      .map(([who, blk]) => ({ who, t: declOf(blk, pos), when: metaOf(blk, pos, '1') }))
+      .filter(v => v.t && (!v.when || Date.parse(v.when) > Date.parse(since)))
+      .sort((a, b) => (Date.parse(b.when || 0) || 0) - (Date.parse(a.when || 0) || 0));
+    if (!voices.length) continue;
+    const what = NEWS_SPINE && typeof NEWS_SPINE[pos] === 'string' ? NEWS_SPINE[pos].split('—')[0].trim() : 'channel ' + pos;
+    out.push('<p class="newsrung">' + esc(what) + '<span class="addr work">' + esc(pos) + '</span></p>');
+    for (const v of voices)
+      out.push('<div class="newsline"><span class="who">' + esc(v.who) +
+        (v.when ? ' · ' + esc(ago(v.when) || '') : '') + '</span><p>' + esc(short(v.t, 420)) + '</p></div>');
+  }
+
+  $('news-body').innerHTML = out.length
+    ? out.join('') + '<p class="newsmore"><a href="/news">every channel, and add your own →</a></p>'
+    : '<p class="newsquiet">Nothing new since you last read. <a href="/news">Say yours →</a></p>';
+}
+
 function renderTemporal(){
   const rungs = [
     { word: 'today',      addr: TODAY_ADDR,                              label: 'today' },

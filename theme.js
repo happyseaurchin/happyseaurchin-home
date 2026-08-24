@@ -114,6 +114,7 @@
     ['recency', 'recency', 'family'],
     ['across',  'across',  'handle'],
     ['the field', 'field',  'handle'],
+    ['the reach', 'reach',  'optional'],
     ['earth',   'earth',    'optional']
   ];
   /* who you do it with: the door in, and the live surface where people actually
