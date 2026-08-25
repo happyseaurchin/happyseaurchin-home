@@ -92,6 +92,8 @@
   .plinks{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;font-family:var(--mono);font-size:12px}
   .plinks a{border:1px solid var(--line);border-radius:6px;padding:7px 12px;color:var(--vapour);border-bottom-width:1px}
   .plinks a:hover{border-color:var(--liquid);color:var(--foam)}
+  .plinks button{background:none;border:1px solid var(--line);border-radius:6px;padding:7px 12px;color:var(--vapour);font-family:var(--mono);font-size:12px;cursor:pointer}
+  .plinks button:hover:not(:disabled){border-color:var(--liquid);color:var(--foam)}
 
   .whisper{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:10px 0 0;line-height:1.6}
   .whisper a{color:var(--vapour-dim)} .whisper a:hover{color:var(--liquid)}
@@ -660,14 +662,70 @@ function drawPanel(){
   }
   rows.push('<div class="plinks">' +
     '<a target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">this part in the mirror ↗</a>' +
-    '<a target="_blank" rel="noopener" href="/walk/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">walk this field ↗</a></div>');
+    '<a target="_blank" rel="noopener" href="/walk/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">walk this field ↗</a>' +
+    (HANDLE && word ? '<button id="p-deal" title="one card in your hand, aimed here — pile by rung">deal this as a card</button>' : '') +
+    '</div>');
   el.innerHTML = rows.join('');
   el.classList.remove('hidden');
+  const pd = document.getElementById('p-deal');
+  if (pd) pd.addEventListener('click', async () => {
+    pd.disabled = true; pd.textContent = 'dealing…';
+    const r = await dealToHand(word, addr);
+    pd.textContent = r === true ? '✓ in your hand — flick it at /next'
+      : r === 'full' ? 'that pile holds nine — finish or let go first'
+      : 'the deal did not land';
+  });
   const t = $('say-t');
   if (t){
     t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); void sayAt(addr, t.value.trim()); } });
     $('say-b').addEventListener('click', () => { void sayAt(addr, $('say-t').value.trim()); });
   }
+}
+
+/* THE DEAL, FROM THE FOCUSED PART — its words become one card in the holder's
+ * hand (ahead:<handle>), aimed at this family, the pile following the part's
+ * rung. A digit position holds nine and does not grow: room appends; a full
+ * pile reuses its lowest RETIRED slot (empty or DONE/DROP strings only); nine
+ * live cards refuses. The page is the mechanical dealer — a mind deals better. */
+async function dealToHand(text, addr){
+  if (!HANDLE || !text) return false;
+  const name = 'ahead:' + HANDLE;
+  const home = 'next-latch:' + name;
+  let latch = localStorage.getItem(home);
+  const fl = MODE === 'clock' ? 10 : (floorOf(SPINE) || 1);
+  const p = fl - String(addr || '').length;
+  const pile = p <= 2 ? '1' : p === 3 ? '3' : p === 4 ? '4' : p === 5 ? '5' : p === 6 ? '6' : '7';
+  const aimed = (FAMILY === 'now' || /toward\s+[a-z0-9-]/i.test(text)) ? text : text + ' — toward ' + FAMILY;
+  async function put(body){
+    if (latch) body.secret = latch;
+    let w = await writeBlock(body);
+    if (lockRequired(w)){
+      const v = prompt(name + ' is latched — its key (kept on this device):');
+      if (v === null || !v.trim()) return { ok: false };
+      latch = v.trim(); body.secret = latch;
+      w = await writeBlock(body);
+      if (w.ok) localStorage.setItem(home, latch);
+    }
+    return w;
+  }
+  const cur = await readBlock(name).catch(() => null);
+  if (!cur){
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    const body = { block: name, content: { '_': root, [pile]: { '1': aimed } } };
+    if (latch) body.new_lock = latch;
+    return (await writeBlock(body)).ok === true;
+  }
+  const node = cur[pile];
+  if (!node) return (await put({ block: name, spindle: pile, content: { '1': aimed } })).ok === true;
+  if (typeof node === 'string')
+    return (await put({ block: name, spindle: pile, content: { '_': node, '1': aimed } })).ok === true;
+  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
+  if (digs.length < 9)
+    return (await put({ block: name, spindle: pile, append: true, content: aimed })).ok === true;
+  const retired = digs.filter(d => typeof node[d] === 'string' &&
+    (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim()))).sort();
+  if (!retired.length) return 'full';
+  return (await put({ block: name, spindle: pile + retired[0], content: aimed })).ok === true;
 }
 
 /* ── the say — the one write this page can make: your own line, your own
