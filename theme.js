@@ -106,6 +106,7 @@
     ['your now',    'now',      'handle'],
     ['the project', 'walk',     'family'],
     ['my hands',     'hands',    'handle'],
+    ['the piles',   'ahead',    'handle'],
     ['one at a time','next',     'handle'],
     ['the morning', 'morning',  'handle'],
     ['the ledger',  'ledger',   'handle']
@@ -308,7 +309,7 @@
   /* a family whose own page is better than its walk. 'ahead' was here until its
    * page folded into /hands — the FAMILY is untouched and its blocks are still
    * ahead:<handle>; only the surface went, so it walks like any other now. */
-  var OWN_PAGE = { 'now':'now', 'today-beach-deck':'today-beach-deck' };
+  var OWN_PAGE = { 'now':'now', 'today-beach-deck':'today-beach-deck', 'ahead':'ahead' };
   /* A DEFAULT, NOT A LAW. There is no substrate fact that means 'project' — the
    * floor does not say it (beach-venture and genus-one are clocks; doing,
    * experiences and molequle are trees, and all five are projects), and nothing

@@ -695,10 +695,19 @@ async function dealToHand(text, addr){
   const fl = MODE === 'clock' ? 10 : (floorOf(SPINE) || 1);
   const p = fl - String(addr || '').length;
   const pile = p <= 2 ? '1' : p === 3 ? '3' : p === 4 ? '4' : p === 5 ? '5' : p === 6 ? '6' : '7';
-  /* every dealt card carries its deck as its aim — the now included, so it
-   * stands in the hand's my-now row; 'toward now' routes its DONE back to the
-   * now mirror exactly as unaimed would */
-  const aimed = /toward\s+[a-z0-9-]/i.test(text) ? text : text + ' — toward ' + FAMILY;
+  /* every dealt card carries its deck as its aim — the now included — and the
+   * STRETCH when the part's rung names one (FAMILY FIRST, STRETCH AFTER A
+   * COMMA): the card then points exactly where it was dealt from, and the walk
+   * homes it there by proxy */
+  let stretch = '';
+  if (MODE === 'clock' && addr){
+    const a = String(addr);
+    if (p === 3) stretch = 'this week';
+    else if (p === 4 && a.length >= 6) stretch = MN[((+a[4] - 1) * 3 + (+a[5] - 1))] || '';
+    else if (p === 6) stretch = a.slice(0, 4);
+  }
+  const aimed = /toward\s+[a-z0-9-]/i.test(text) ? text
+    : text + ' — toward ' + FAMILY + (stretch ? ', ' + stretch : '');
   async function put(body){
     if (latch) body.secret = latch;
     let w = await writeBlock(body);
