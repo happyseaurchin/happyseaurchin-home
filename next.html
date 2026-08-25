@@ -76,6 +76,7 @@
   .card__badge{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;color:var(--solid);margin:0 0 8px}
   .card__badge.prop{color:var(--liquid)}
   .card__text{font-family:var(--body);font-weight:500;font-size:clamp(1.25rem,4.6vw,1.6rem);line-height:1.42;color:var(--foam);flex:1;overflow-y:auto;padding-right:4px;touch-action:pan-y}
+  .card__aim{font-family:var(--mono);font-size:10.5px;letter-spacing:0.06em;color:var(--vapour-dim);margin:0 0 8px;flex:none}
   .card__notes{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);font-size:0.9rem;color:var(--vapour);max-height:22%;overflow-y:auto;touch-action:pan-y}
   .card__notes .nrow{margin:0 0 6px;display:flex;gap:8px}
   .card__notes .nwho{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;padding-top:3px}
@@ -330,6 +331,16 @@ const AIM = ((new URLSearchParams(location.search).get('aim') || '').replace(/[^
 let OFFERED = 0;
 const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
 const FAMILY_AIM_TEST = /toward\s+[a-z0-9-]+/i;
+/* the aim clause whole — family, optional stretch — so the face can wear it as
+ * a chip instead of trailing prose that reads as part of the task */
+const AIM_CLAUSE = /\s*[—-]?\s*toward\s+([a-z0-9-]+)(?:\s*,\s*([^—]+?))?\s*$/i;
+function aimParts(raw){
+  const s = String(raw || '');
+  if (TIME_AIM.test(s)) return null;
+  const m = s.match(AIM_CLAUSE);
+  return m ? { fam: m[1].toLowerCase(), stretch: (m[2] || '').trim() } : null;
+}
+const sansAim = t => String(t || '').replace(AIM_CLAUSE, '').trim() || String(t || '').trim();
 const aimMatch = text => !AIM ? true
   /* ?aim=mine flicks the UNAIMED — the hand's held-lightly slice, conformal
    * with every named deck's flick */
@@ -795,7 +806,10 @@ function cardEl(card, layer){
      * is toward). Above the card it read as preamble to be got past. */
     (tally ? '<p class="card__stem">' + tally + '</p>' : '') +
     doingBadge + propBadge +
-    '<div class="card__text">' + esc(card.text) + '</div>' + notes + act +
+    /* the aim rides as a CHIP, never as trailing prose — the task reads clean */
+    (function(){ const ap = aimParts(card.text);
+      return (ap ? '<p class="card__aim">→ ' + esc(ap.fam + (ap.stretch ? ' · ' + ap.stretch : '')) + '</p>' : '') +
+        '<div class="card__text">' + esc(ap ? sansAim(card.text) : card.text) + '</div>'; })() + notes + act +
     (layer === 'top' && OP.mode === 'doing' && !card.proposed ? '<button class="cog" title="card options">⚙</button>' : '') +
     '<div class="stamp">DONE</div>';
   return el;

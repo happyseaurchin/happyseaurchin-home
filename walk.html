@@ -209,6 +209,8 @@
   .cardenv .cwho{display:block;font-family:var(--mono);font-size:10px;letter-spacing:0.05em;color:var(--vapour-dim);margin-bottom:4px}
   .cardenv.you .cwho{color:var(--liquid)}
   .cardenv .ctext{font-size:13px;line-height:1.5;color:var(--vapour);white-space:pre-wrap}
+  .hlink{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);border-bottom:none;margin-left:6px}
+  .hlink:hover{color:var(--liquid)}
   .addwrap{border-top:1px solid var(--line);padding-top:10px}
   .addwrap .addto{border-top:none;padding-top:0}
   .keepnow{display:flex;gap:7px;align-items:flex-start;margin-top:8px;font-size:11px;color:var(--vapour-dim);cursor:pointer}
@@ -1208,12 +1210,14 @@ function paintSheet(){
   } else {
     const finer = cardsUnder(addr) - cs.length;
     b.push(cs.length
-      ? cs.map(c => '<div class="cardenv' + (c.who === HANDLE ? ' you' : '') + '"><span class="cwho">' + esc(whoName(c.who)) + '</span><div class="ctext">' + esc(c.text) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</div></div>').join('')
+      ? cs.map(c => '<div class="cardenv' + (c.who === HANDLE ? ' you' : '') + '"><span class="cwho">' + esc(whoName(c.who)) +
+          (c.who === HANDLE ? ' <a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">hands ↗</a>' : '') +
+          '</span><div class="ctext">' + esc(c.text) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</div></div>').join('')
       : '<span class="silent">no cards held toward this right now</span>');
     if (finer > 0) b.push('<span class="silent">and ' + finer + ' held at finer times beneath — stand there to see them</span>');
     if (HANDLE)
       b.push('<div class="addwrap"><div class="mintbox">' +
-        '<div class="sub">mint a card — one thing you can pick up and put down inside a day</div>' +
+        '<div class="sub">mint a card — one thing you can pick up and put down inside a day · <a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a></div>' +
         '<textarea id="addto-text" placeholder="in your own words…"></textarea>' +
         /* the deal sits beside the mint on EVERY point: it PREFILLS the box
          * with this cell's standing line — or, at a silent point, the nearest
@@ -1273,19 +1277,35 @@ function paintSheet(){
     wireEnter($('mir-text'), () => $('mir-go').click());
   }
   if (SHEET.pane === 'cards' && $('addto-deal')){
-    /* a silent point deals from its LADDER — the nearest voiced ancestor */
-    const nearestSaid = () => {
-      const tries = [addr];
-      if (SEL.level === 'd') tries.push(weekAddr(SEL.y, SEL.m0, SEL.band), monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y));
-      else if (SEL.level === 'w') tries.push(monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y));
-      else if (SEL.level === 'm') tries.push(yearAddr(SEL.y));
-      for (const a of tries){ const x = lensText(a); if (x) return x; }
-      return '';
-    };
+    /* THE DEAL CUTS CARD-SIZED PIECES. A day's voicing is several doable things
+     * in prose, so each press offers the NEXT sentence-sized candidate from
+     * this point's LADDER (the cell's own line, then the nearest voiced rungs
+     * above) that is not already in your hand — deal ↓, deal ↓, deal ↓ — and
+     * you edit before minting. The whole-line prefill handed a person their own
+     * paragraph back as one impossible card. */
+    const candSplit = t => String(t || '').split(/[;\n]+|(?<=[.!?])\s+(?=[A-Z“"])/)
+      .map(s => s.trim().replace(/^[-–—·*]\s*/, '')).filter(s => s.length >= 12);
+    const normTxt = t => String(t || '').toLowerCase().replace(/toward\s+[a-z0-9-]+.*$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const ownDeck = (DECKS.find(d => d[0] === HANDLE) || [])[1];
+    const known = new Set(ownDeck ? planeCards(ownDeck).map(c => normTxt(cleanCard(c.raw))) : []);
+    let cands = null, ci = 0;
     $('addto-deal').addEventListener('click', () => {
-      const said = (nearestSaid() || '').trim();
-      if (!said){ toast('nothing voiced on this ladder yet — write the card in your own words', true); $('addto-text').focus(); return; }
-      $('addto-text').value = said;
+      if (!cands){
+        const src = [], seenA = new Set();
+        [addr].concat(
+          SEL.level === 'd' ? [weekAddr(SEL.y, SEL.m0, SEL.band), monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y)]
+          : SEL.level === 'w' ? [monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y)]
+          : SEL.level === 'm' ? [yearAddr(SEL.y)] : []
+        ).forEach(a => { const x = lensText(a); if (x) src.push(x); });
+        cands = [];
+        src.forEach(x => candSplit(x).forEach(s => {
+          const k = normTxt(s);
+          if (k && !seenA.has(k) && !known.has(k)){ seenA.add(k); cands.push(s); }
+        }));
+      }
+      if (!cands.length){ toast('nothing card-sized on this ladder that is not already in your hand — write your own', true); $('addto-text').focus(); return; }
+      $('addto-text').value = cands[ci % cands.length];
+      ci++;
       $('addto-text').focus();
     });
   }
