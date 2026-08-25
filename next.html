@@ -1219,9 +1219,20 @@ async function landRecord(recordText, aimSource, elapsed){
   const addr = deep ? dayRung() : null;
   let body;
   if (deep){
-    const prior = (function(){ const n = walkZeroAware(block, addr);
-      return typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null); })();
-    body = { block: name, spindle: addr, content: prior && prior.trim() ? prior + '\n' + line : line };
+    /* MERGE, NEVER REPLACE: the day cell may already be an object — the day's
+     * voicing at its underscore with gathering cells beneath — and a string
+     * written over it would eat the gatherings. The record joins the cell's own
+     * voice; everything beneath rides through untouched (the /now composeWrite
+     * lesson, applied here). */
+    const node = walkZeroAware(block, addr);
+    if (node && typeof node === 'object'){
+      const prior = typeof node['_'] === 'string' ? node['_'] : '';
+      body = { block: name, spindle: addr,
+               content: Object.assign({}, node, { '_': prior && prior.trim() ? prior + '\n' + line : line }) };
+    } else {
+      const prior = typeof node === 'string' ? node : '';
+      body = { block: name, spindle: addr, content: prior && prior.trim() ? prior + '\n' + line : line };
+    }
   } else {
     body = { block: name, append: true, content: line };
   }
