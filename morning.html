@@ -646,10 +646,21 @@ async function appendCard(text){
     const born = await writeBlock(body);
     if (!born.ok) return { ok: false };
   }
-  let w = await writeWithLatch({ block: name, spindle: '1', append: true, content: text }, name);
-  if (!w.ok && !w.quiet)
-    w = await writeWithLatch({ block: name, spindle: '1', content: { '1': text } }, name);
-  return w;
+  const cur = await readBlock(name).catch(() => null);
+  const node = cur && cur['1'];
+  if (!node) return writeWithLatch({ block: name, spindle: '1', content: { '1': text } }, name);
+  if (typeof node === 'string')
+    return writeWithLatch({ block: name, spindle: '1', content: { '_': node, '1': text } }, name);
+  /* a digit position holds nine and does not grow — room appends; a full pile
+   * reuses its lowest RETIRED slot (empty or DONE/DROP strings only); nine live
+   * cards refuses plainly — never overwrite a pile wholesale */
+  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
+  if (digs.length < 9)
+    return writeWithLatch({ block: name, spindle: '1', append: true, content: text }, name);
+  const retired = digs.filter(d => typeof node[d] === 'string' &&
+    (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim()))).sort();
+  if (!retired.length) return { full: true };
+  return writeWithLatch({ block: name, spindle: '1' + retired[0], content: text }, name);
 }
 
 /* families and their colours — one steady hue per family, its name always written beside it */
