@@ -292,6 +292,16 @@ const inHand = c => c.verb === 'HELD';
  * done card lands, so what a row shows and where a card goes cannot drift. ── */
 const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
 const FAMILY_AIM = /toward\s+([a-z0-9-]+)/i;
+/* the aim clause, whole: family plus the optional stretch after the comma —
+ * FAMILY FIRST, STRETCH AFTER A COMMA (ways:deck 3.2). Trailing by grammar. */
+const AIM_CLAUSE = /\s*[—-]?\s*toward\s+([a-z0-9-]+)(?:\s*,\s*([^—]+?))?\s*$/i;
+function aimParts(raw){
+  const s = String(raw || '');
+  if (TIME_AIM.test(s)) return null;
+  const m = s.match(AIM_CLAUSE);
+  return m ? { fam: m[1].toLowerCase(), stretch: (m[2] || '').trim() } : null;
+}
+const sansAim = t => String(t || '').replace(AIM_CLAUSE, '').trim() || String(t || '').trim();
 function aimOf(raw){
   const s = String(raw || ''); const m = s.match(FAMILY_AIM);
   return (m && !TIME_AIM.test(s)) ? m[1].toLowerCase() : null;
@@ -388,7 +398,8 @@ async function deal(deck){
    * dealt from your now stands in the my-now row, not among the unaimed; the
    * routing is unchanged ('toward now' lands its DONE in now:<handle>, exactly
    * where an unaimed card lands it) */
-  const text = aimOf(pick.text) ? pick.text : pick.text + ' toward ' + deck;
+  const text = aimOf(pick.text) ? pick.text
+    : pick.text + ' toward ' + deck + (pick.pscale === 3 ? ', this week' : '');
   const w = await addCard(pileForPscale(pick.pscale), text);
   return w.ok ? { ok: true, pile: pileForPscale(pick.pscale) } : w;
 }
@@ -551,11 +562,19 @@ function toast(msg, err){
 function cardEl(c, opts){
   const held = inHand(c);
   const deck = aimOf(c.raw);
+  /* TWO CHIPS, TWO MEANINGS: the pile is how far out YOU hold it; the aim is
+   * where it POINTS — family and, when the deal knew it, the stretch (the
+   * pointed rung, read by proxy from the words, never stored). The aim clause
+   * leaves the display text and stands as its own chip. */
+  const ap = aimParts(c.raw);
+  const stretch = ap && ap.stretch ? ap.stretch : '';
   return '<div class="dcard' + (held ? ' fam' : '') + '"'
     + (deck ? ' style="--fam-h:' + famHue(deck) + '"' : '') + ' data-addr="' + esc(c.addr) + '">'
-    + '<span class="aim">' + (opts && opts.showDeck && deck ? esc(deck) : '<span class="pile">' + esc(pileLabel(c.pile)) + '</span>')
+    + '<span class="aim">' + (opts && opts.showDeck && deck
+        ? esc(deckLabel(deck) + (stretch ? ', ' + stretch : ''))
+        : '<span class="pile">' + esc(pileLabel(c.pile)) + '</span>' + (stretch ? '<span class="rung">→ ' + esc(stretch) + '</span>' : ''))
     + (held ? '<span class="rung">in hand</span>' : '') + '</span>'
-    + '<div class="txt">' + esc(c.text) + '</div>'
+    + '<div class="txt">' + esc(deck ? sansAim(c.text) : c.text) + '</div>'
     + '<div class="acts">'
     + (held ? '<button data-act="release">− hand</button>' : '<button data-act="hold">＋ hand</button>')
     + '<button data-act="edit">✎</button>'
@@ -636,6 +655,7 @@ function render(){
   /* ── MINE — written, not dealt; the bottom on purpose. ── */
   const mine = CARDS.filter(c => !aimOf(c.raw));
   out.push(rowHead('mine', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
+    links: (mine.length ? flick('?aim=mine') + ' ' : '') + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">the deck →</a>',
     sub: 'Held lightly — written by hand, on no clock and toward no spine. The grounded work lives above: your now, and the projects. Click the blank card and type; Enter lands it, Escape leaves.' }));
   out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
 
