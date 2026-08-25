@@ -340,7 +340,9 @@ async function load(){
    * dealt from somewhere unusual BRINGS ITS DECK WITH IT, so nothing has to be
    * added to a list before it can be dealt from. */
   const named = [];
-  for (const f of FIELDS.concat(['now'])) if (named.indexOf(f) < 0) named.push(f);
+  /* the now leads the decks — grounded in the subject's own intention, with the
+   * spine-defined projects beside it; the unattached "mine" pile renders last */
+  for (const f of ['now'].concat(FIELDS)) if (named.indexOf(f) < 0) named.push(f);
   for (const c of CARDS){ const a = aimOf(c.raw); if (a && named.indexOf(a) < 0) named.push(a); }
   DECKS = named;
 
@@ -382,7 +384,11 @@ async function deal(deck){
   found.sort((a, b) => a.pscale - b.pscale);
   const pick = found.find(f => { const k = norm(f.text); return k && !known.has(k); });
   if (!pick) return { none: true };
-  const text = personal ? pick.text : (aimOf(pick.text) ? pick.text : pick.text + ' toward ' + deck);
+  /* EVERY dealt card carries its deck as its aim — the now included, so a card
+   * dealt from your now stands in the my-now row, not among the unaimed; the
+   * routing is unchanged ('toward now' lands its DONE in now:<handle>, exactly
+   * where an unaimed card lands it) */
+  const text = aimOf(pick.text) ? pick.text : pick.text + ' toward ' + deck;
   const w = await addCard(pileForPscale(pick.pscale), text);
   return w.ok ? { ok: true, pile: pileForPscale(pick.pscale) } : w;
 }
@@ -606,13 +612,9 @@ function render(){
     ? '<div class="carousel">' + held.map(c => cardEl(c, { showDeck: true })).join('') + '</div>'
     : '<div class="empty-row">nothing compiled yet — ＋ on any card below puts it here</div>');
 
-  /* ── MINE — written, not dealt. ── */
-  const mine = CARDS.filter(c => !aimOf(c.raw));
-  out.push(rowHead('mine', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
-    sub: 'Cards you write yourself, aimed at nothing in particular. Click the blank card and type; Enter lands it, Escape leaves.' }));
-  out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
-
-  /* ── ONE ROW PER DECK — a project, your now, anywhere a card was dealt from. ── */
+  /* ── ONE ROW PER DECK — your now first, then the projects: the grounded work
+   * (the subject's own intention; the spine-defined objectives). The unattached
+   * MINE pile renders at the bottom, held lightly, out of the way. ── */
   for (const d of DECKS){
     const cards = CARDS.filter(c => aimOf(c.raw) === d);
     out.push(rowHead(deckLabel(d), cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty', {
@@ -630,6 +632,12 @@ function render(){
       sub: 'Someone else says this happened, at a rung you stand at too. Confirm what you received rather than what you gave — the person whose need was met is the one who knows. It writes one line in your own reading and nothing else moves, and the account stands whether or not you confirm it.' }));
     out.push('<div class="carousel">' + ASKS.map(askCardEl).join('') + '</div>');
   }
+
+  /* ── MINE — written, not dealt; the bottom on purpose. ── */
+  const mine = CARDS.filter(c => !aimOf(c.raw));
+  out.push(rowHead('mine', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
+    sub: 'Held lightly — written by hand, on no clock and toward no spine. The grounded work lives above: your now, and the projects. Click the blank card and type; Enter lands it, Escape leaves.' }));
+  out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
 
   out.push('<div class="foot" style="border:none;margin:0;padding-top:18px">'
     + 'Each deck deals from what it is asking at today and this week. For a deal that reads more carefully — across '
