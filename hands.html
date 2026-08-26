@@ -416,8 +416,8 @@ const stamp = () => new Date().toISOString().slice(0,16) + 'Z';
 async function addCard(pile, text){
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
   if (!mine){
-    const w0 = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, content: { '_':
-      'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." } });
+    const w0 = await foundLatched('ahead:' + HANDLE, { '_':
+      'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." });
     if (!w0.ok) return w0;
   }
   const now = await readBlock('ahead:' + HANDLE).catch(() => null);
@@ -447,8 +447,48 @@ async function editCard(c, text){
 /* the latch key follows the BLOCK and is named exactly as /next names it, so a
  * key set on one surface is a key set on the other — one hand, one key per block */
 const latchKey = block => 'next-latch:' + block;
+
+/* A BLOCK A PERSON WRITES IS BORN LATCHED TO THEM — the act /now already makes at
+ * a mirror's first voicing ("First voicing founds your mirror, locked to you").
+ * An open hand is anyone's to rewrite: cards could be spammed into it, and a
+ * person could come back to find their own intents changed. Creating with
+ * new_lock needs no prior secret (lock rule R1), so the founding asks once and
+ * locks in the same write. */
+async function foundLatched(block, content){
+  /* new_lock rides EVERY founding, held key or fresh one: a secret alone proves
+   * authority over a block that already exists and locks nothing on one being
+   * born, so the held-key path founding open was the same fault wearing a key. */
+  let key = localStorage.getItem(latchKey(block));
+  if (!key){
+    const v = prompt('This founds ' + (block.startsWith('ahead:') ? 'your hand — the cards you hold' : 'your mirror') + ', locked to you.\nInvent a key that is yours alone (kept on this device):');
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    key = v.trim();
+  }
+  const w = await writeBlock({ block, content, new_lock: key });
+  if (w.ok) localStorage.setItem(latchKey(block), key);
+  return w;
+}
+
+/* A HAND FOUNDED OPEN BEFORE THIS IS OFFERED ITS LATCH, never given one behind
+ * its holder's back — homesteading an unlocked block needs no secret either
+ * (rule R2), so one write closes it, and it is the holder who types the key.
+ * Declining is honest and remembered for this visit only: the protection matters
+ * enough to ask again next time, not enough to ask twice in a sitting. A block
+ * already latched on another device refuses the homestead, and the ordinary
+ * key prompt below takes over. */
+async function offerLatch(block){
+  try { if (sessionStorage.getItem('latch-declined:' + block)) return null; } catch(e){ return null; }
+  const v = prompt(block + ' is not protected yet — anyone can rewrite it.\nSet a key that is yours alone (kept on this device), or cancel to leave it open:');
+  if (v === null || !v.trim()){ try { sessionStorage.setItem('latch-declined:' + block, '1'); } catch(e){} return null; }
+  const key = v.trim();
+  const w = await writeBlock({ block, new_lock: key });
+  if (!w.ok){ try { sessionStorage.setItem('latch-declined:' + block, '1'); } catch(e){} return null; }
+  localStorage.setItem(latchKey(block), key);
+  return key;
+}
+
 async function withLatch(block, body){
-  const secret = localStorage.getItem(latchKey(block));
+  const secret = localStorage.getItem(latchKey(block)) || await offerLatch(block);
   let w = await writeBlock(secret ? Object.assign({}, body, { secret }) : body);
   if (lockRequired(w)){
     const v = prompt(block + ' is latched — enter your key for it (kept on this device):');
@@ -535,7 +575,7 @@ async function confirm(ask){
      * clock's floor so every rung of the family has somewhere to stand */
     let root = 'MIRROR — ' + HANDLE + "'s readings on the " + ask.family + ' field, at the spine\u2019s own addresses. Sovereign; silence at an address is honest absence.';
     for (let i = 0; i < 10; i++) root = { '_': root };
-    const w0 = await withLatch(name, { block: name, content: root });
+    const w0 = await foundLatched(name, root);
     if (!w0.ok) return w0;
     block = await readBlock(name).catch(() => null);
   }
