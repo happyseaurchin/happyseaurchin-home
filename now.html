@@ -840,13 +840,13 @@ $('s-text').addEventListener('keydown', e => {
  * your now. The page is the mechanical dealer; a mind deals better, from more
  * places — this button is the floor, never the ceiling. */
 const PILE_BY_RUNG = { beat: '1', gathering: '1', day: '1', week: '3', month: '4', season: '5', year: '6' };
-async function writeCardToHand(text, pile){
+async function writeCardToHand(entry, pile){
   const name = 'ahead:' + HANDLE;
   const home = 'next-latch:' + name;
   let latch = localStorage.getItem(home);
   const existing = await readBlock(name).catch(() => null);
   if (!existing){
-    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future: intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
     /* BORN LATCHED, as the now mirror already is. An open block is anyone's to
      * rewrite — cards spammed in, a person's own intents changed under them — so
      * the founding asks for a key once and locks in the same write (rule R1:
@@ -876,28 +876,33 @@ async function writeCardToHand(text, pile){
   }
   const cur = await readBlock(name).catch(() => null);
   const node = cur && cur[pile];
-  if (!node) return !!(await put({ block: name, spindle: pile, content: { '1': text } })).ok;
+  if (!node) return !!(await put({ block: name, spindle: pile, content: { '1': entry } })).ok;
   if (typeof node === 'string')
-    return !!(await put({ block: name, spindle: pile, content: { '_': node, '1': text } })).ok;
+    return !!(await put({ block: name, spindle: pile, content: { '_': node, '1': entry } })).ok;
   /* a digit position holds nine and does not grow — room appends; a full pile
-   * reuses its lowest RETIRED slot (empty or DONE/DROP strings only); nine live
-   * cards refuses — never overwrite a pile wholesale */
+   * reuses its lowest RETIRED slot (an empty string, or an entry whose state at
+   * 4 is done or drop); nine live cards refuses — never overwrite a pile */
+  const isEntry = n => n && typeof n === 'object' && typeof n._ === 'string'
+    && Object.keys(n).every(d => d === '_' || typeof n[d] !== 'object');
   const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
   if (digs.length < 9)
-    return !!(await put({ block: name, spindle: pile, append: true, content: text })).ok;
-  const retired = digs.filter(d => typeof node[d] === 'string' &&
-    (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim()))).sort();
+    return !!(await put({ block: name, spindle: pile, append: true, content: entry })).ok;
+  const retired = digs.filter(d =>
+    (typeof node[d] === 'string' && !node[d].trim())
+    || (isEntry(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
   if (!retired.length) return false;
-  return !!(await put({ block: name, spindle: pile + retired[0], content: text })).ok;
+  return !!(await put({ block: name, spindle: pile + retired[0], content: entry })).ok;
 }
 $('s-deal').addEventListener('click', async () => {
   if (!SHEET || SHEET.root) return;
   const text = $('s-text').value.trim();
   if (!text){ refuseInSheet('a card needs words — write them first, then deal'); return; }
   $('s-deal').disabled = true;
-  /* aimed 'toward now' so the card stands in the hand's my-now row — the
-   * routing is unchanged: its DONE lands back in this mirror either way */
-  const ok = await writeCardToHand(text + ' — toward now', PILE_BY_RUNG[SHEET.rung.key] || '7');
+  /* the door stamps the aim at field 2 (function:ahead:4) — 'now', so the card
+   * stands in the hand's my-now row and its DONE lands back in this mirror */
+  const ok = await writeCardToHand(
+    { '_': text, '2': 'now', '3': new Date().toISOString().slice(0,16) + 'Z', '5': '/now' },
+    PILE_BY_RUNG[SHEET.rung.key] || '7');
   $('s-deal').disabled = false;
   if (ok) toast('✓ in your hand — flick it at /next, sort it at /hands');
   else refuseInSheet('the deal did not land');

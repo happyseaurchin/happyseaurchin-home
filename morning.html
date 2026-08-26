@@ -541,53 +541,53 @@ function showState(title, body){
 }
 
 /* ── deck reading (the deck page's grammar, held to exactly) ── */
+/* A STORED ENTRY IS A SENTENCE WITH ITS CONDITIONS BENEATH (function:ahead:2):
+ * _ the words; 2 toward; 3 the stamp; 4 the state; 5 dealt-from. A bare string
+ * is a standing personal card. Nothing parses the sentence. */
+function isEntryNode(n){
+  if (!n || typeof n !== 'object' || typeof n._ !== 'string') return false;
+  for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
+  return true;
+}
 function planeCards(deck){
   if (!deck) return [];
-  const mfloor = floorOf(deck) || 1;
   const found = [];
-  (function plane(node, digits){
-    if (digits.length === mfloor){
-      if (digits.every(d => d === '0')) return;
-      const raw = (typeof node === 'string' ? node : (voice(node) || '')).trim();
-      if (raw) found.push({ addr: digits.join(''), raw });
-      return;
-    }
-    if (!node || typeof node !== 'object') return;
-    if ('_' in node) plane(node['_'], digits.concat('0'));
-    for (const d of childDigits(node)) plane(node[d], digits.concat(d));
-  })(deck, []);
+  for (const pile of childDigits(deck)){
+    (function leaves(node, digits){
+      if (typeof node === 'string'){
+        if (digits.slice(1).every(d => d === '0')) return;
+        if (node.trim()) found.push({ addr: digits.join(''), node: node.trim() });
+        return;
+      }
+      if (!node || typeof node !== 'object') return;
+      if (isEntryNode(node)){ found.push({ addr: digits.join(''), node }); return; }
+      if (node['_'] !== undefined) leaves(node['_'], digits.concat('0'));
+      for (const d of childDigits(node)) leaves(node[d], digits.concat(d));
+    })(deck[pile], [pile]);
+  }
   return found;
 }
-function cleanCard(raw){
-  let text = raw;
-  for (let k = 0; k < 4; k++){
-    const t2 = text.replace(/^[\s—–-]*(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?|from \/next|\(.{1,24}\))\s*[—–-]*\s*/, '');
-    if (t2 === text) break; text = t2;
-  }
-  return text;
-}
 function openCardsOf(deck){
-  const t0 = new Date().toISOString().slice(0, 10);
   const out = [];
   planeCards(deck).forEach(c => {
-    const w = (c.raw.split(/\s+/)[0] || '').toUpperCase();
-    if (w === 'DONE' || w === 'DROP') return;
-    let held = '', text = c.raw;
-    if (w === 'DOING'){ held = 'doing now'; text = c.raw.slice(5).replace(/^[\s—–-]+/, ''); }
-    else if (w === 'TOMORROW'){
-      const dm = c.raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
-      if (dm && dm[1] > t0) return;
-      held = 'held over'; text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
-    }
-    out.push({ addr: c.addr, held, text: cleanCard(text) });
+    const n = c.node, obj = typeof n === 'object';
+    const text = obj ? String(n._ || '').trim() : String(n).trim();
+    if (!text) return;
+    const state = obj ? (n['4'] || null) : null;
+    if (state === 'done' || state === 'drop') return;
+    out.push({ addr: c.addr, text,
+               held: state === 'doing' ? 'doing now' : (state === 'held' ? 'in hand' : ''),
+               toward: obj ? (n['2'] || null) : null });
   });
   return out;
 }
 function doneCount(deck, sinceMs){
   let n = 0;
   planeCards(deck).forEach(c => {
-    const m = c.raw.match(/^DONE\s+(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?)/i);
-    if (m){ const t = Date.parse(m[1].replace(' ', 'T')); if (Number.isFinite(t) && t > sinceMs) n++; }
+    const node = c.node;
+    if (!node || typeof node !== 'object' || node['4'] !== 'done' || !node['3']) return;
+    const t = Date.parse(String(node['3']).replace(' ', 'T'));
+    if (Number.isFinite(t) && t > sinceMs) n++;
   });
   return n;
 }
@@ -640,69 +640,20 @@ async function writeMirrorAt(addr, content){
   if (!ok) return { ok: false };
   return writeWithLatch({ block: VENTURE + ':' + HANDLE, spindle: wireAddr(addr), content }, VENTURE + ':' + HANDLE);
 }
-async function appendCard(text){
-  /* A CAPTURED CARD LANDS IN THE HAND — ahead:<handle>, the piles /next flicks
-   * and /hands sorts — never in the retired today-beach-deck store. Your own
-   * words carry no mark; an aim in the words lands the DONE home. */
-  const name = 'ahead:' + HANDLE;
-  const existing = await readBlock(name).catch(() => null);
-  if (!existing){
-    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
-    /* BORN LATCHED, as the now mirror already is. An open block is anyone's to
-     * rewrite — cards spammed in, a person's own intents changed under them — so
-     * the founding asks for a key once and locks in the same write (rule R1:
-     * creating with new_lock needs no prior secret). Declining declines the
-     * founding: an unprotected one is not the fallback. */
-    let latch = localStorage.getItem('next-latch:' + name);
-    if (!latch){
-      const v = prompt('This founds your hand — the cards you hold, locked to you.\nInvent a key that is yours alone (kept on this device):');
-      if (v === null || !v.trim()) return { ok: false };
-      latch = v.trim();
-    }
-    const born = await writeBlock({ block: name, content: { '_': root }, new_lock: latch });
-    if (!born.ok) return { ok: false };
-    localStorage.setItem('next-latch:' + name, latch);
-  }
-  const cur = await readBlock(name).catch(() => null);
-  const node = cur && cur['1'];
-  if (!node) return writeWithLatch({ block: name, spindle: '1', content: { '1': text } }, name);
-  if (typeof node === 'string')
-    return writeWithLatch({ block: name, spindle: '1', content: { '_': node, '1': text } }, name);
-  /* a digit position holds nine and does not grow — room appends; a full pile
-   * reuses its lowest RETIRED slot (empty or DONE/DROP strings only); nine live
-   * cards refuses plainly — never overwrite a pile wholesale */
-  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
-  if (digs.length < 9)
-    return writeWithLatch({ block: name, spindle: '1', append: true, content: text }, name);
-  const retired = digs.filter(d => typeof node[d] === 'string' &&
-    (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim()))).sort();
-  if (!retired.length) return { full: true };
-  return writeWithLatch({ block: name, spindle: '1' + retired[0], content: text }, name);
-}
-
 /* families and their colours — one steady hue per family, its name always written beside it */
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
-const famOf = text => { const m = String(text).match(/toward\s+([a-z0-9-]{3,})/i);
-  return m && FIELDS.has(m[1].toLowerCase()) ? m[1].toLowerCase() : null; };
-/* a time-shaped aim (this week, August, 2027) belongs to the venture the card was born on */
-const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
-const aimOf = text => famOf(text) || (TIME_AIM.test(String(text)) ? 'beach-venture' : null);
-/* every card still in hand, deferred ones included — the holdings view */
+/* every card still in hand — the holdings view, read from positions alone */
 function holdingsOf(deck){
-  const t0 = new Date().toISOString().slice(0, 10);
   const out = [];
   planeCards(deck || {}).forEach(c => {
-    const w = (c.raw.split(/\s+/)[0] || '').toUpperCase();
-    if (w === 'DONE' || w === 'DROP') return;
-    let state = 'today', until = '', text = c.raw;
-    if (w === 'DOING'){ state = 'doing'; text = c.raw.slice(5).replace(/^[\s—–-]+/, ''); }
-    else if (w === 'TOMORROW'){
-      const dm = c.raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
-      text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
-      if (dm && dm[1] > t0){ state = 'held'; until = dm[1]; }
-    }
-    out.push({ addr: c.addr, state, until, text: cleanCard(text) });
+    const n = c.node, obj = typeof n === 'object';
+    const text = obj ? String(n._ || '').trim() : String(n).trim();
+    if (!text) return;
+    const st = obj ? (n['4'] || null) : null;
+    if (st === 'done' || st === 'drop') return;
+    out.push({ addr: c.addr, state: st === 'doing' ? 'doing' : (st === 'held' ? 'held' : 'today'), until: '',
+               text, toward: obj ? (n['2'] || null) : null });
   });
   return out;
 }
@@ -919,19 +870,11 @@ function locVoicesAt(addr){
   POOL_VOICES.forEach(v => { if (v.at && v.at === pad10(addr)) out.push({ who: v.who, t: v.t, ts: v.ts, room: true }); });
   return out;
 }
-function homeFor(text){
-  const m = String(text).match(TIME_AIM);
-  if (m){
-    const w = m[1].toLowerCase();
-    if (w === 'this week') return weekAddr(TODAY.y, TODAY.m0, TODAY.band);
-    if (/^20\d\d$/.test(w)) return yearAddr(+w);
-    const mi = MN.findIndex(n => n.toLowerCase() === w);
-    if (mi >= 0) return monthAddr(TODAY.y, mi);
-  }
-  return TODAY_ADDR;
-}
+/* a card is indexical — it stands at today; the pile says its grain, and a
+ * commitment to a date is a mirror voicing, never a card (function:ahead:3) */
 function myAimedAt(addr){
-  return holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).filter(c => homeFor(c.text) === addr);
+  if (addr !== TODAY_ADDR) return [];
+  return holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
 }
 /* generic slot collector — pools, marks: attributed, stamped, any depth */
 function collectSlots(block){
@@ -1054,7 +997,7 @@ function renderCollage(){
 function renderProjects(){
   let fams = EXTRA.dashboard;
   if (!fams || !fams.length){
-    fams = [...new Set(holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).map(c => aimOf(c.text)).filter(Boolean))];
+    fams = [...new Set(holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).map(c => c.toward).filter(Boolean))];
     if (!fams.includes(VENTURE)) fams.unshift(VENTURE);
   }
   $('pstrip').innerHTML = fams.map(f => {
@@ -1102,9 +1045,9 @@ function paintSheet(){
     $('sh-where').textContent = 'your card-deck — the venture';
     const all = holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
     $('sh-body').innerHTML = (all.map(c => {
-      const fam = aimOf(c.text);
+      const fam = c.toward;
       return '<div class="chip' + (fam ? ' fam' : '') + '"' + (fam ? ' style="--fam-h:' + famHue(fam) + '"' : '') + '>' +
-        '<span class="tag">' + esc(c.state === 'held' ? 'resting until ' + c.until : c.state === 'doing' ? 'doing now' : 'in hand') + '</span>' +
+        '<span class="tag">' + esc(c.state === 'held' ? 'in hand' : c.state === 'doing' ? 'doing now' : 'standing') + '</span>' +
         '<span class="txt">' + esc(short(c.text, 160)) + '</span></div>';
     }).join('') || '<span class="silent">no cards held — they are born on the walk, standing at a point</span>') +
     '<span class="silent">every card you hold, by how far out it is: <a href="/hands/' + encodeURIComponent(HANDLE) + '">your hands</a></span>';

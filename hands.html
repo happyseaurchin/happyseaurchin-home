@@ -234,27 +234,19 @@ function ladder(block, addr){
 
 /* ── THE HAND — the leaves under the piles of ahead:<handle>, exactly as /next
  * reads them, so the two surfaces cannot disagree about what a card is. ── */
-/* HELD is the compile mark and it is not new — ways:deck branch 3 already listed
- * 'held <t>, released <ts>' as an honest claim and its release. It is what puts a
- * card in the top hand and takes it out again, and nothing else changes: the card
- * stays exactly where it lives, in the pile it was written to, under the deck it
- * was dealt from. Compiling is a SELECTION, never a move. */
-const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED','HELD'];
-/* A CARD'S WORDS ARE WHAT IS LEFT AFTER THE WHOLE MARK — the verb AND the stamps
- * it carries — so a dealt card reads as the sentence someone wrote rather than as
- * a timestamp with a sentence after it. Kept identical to /next's reading, because
- * the two surfaces share one block and must agree about where a card begins. */
-function bodyText(raw){
-  const verb = leadingVerb(raw);
-  let t = verb ? String(raw).trim().slice(verb.length) : String(raw).trim();
-  for (let i = 0; i < 4; i++){
-    const n = t.replace(/^[\s—–-]*(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?|\(.{1,24}\))\s*[—–-]*\s*/, '');
-    if (n === t) break; t = n;
-  }
-  return t.trim() || String(raw).trim();
+/* A STORED ENTRY IS A SENTENCE WITH ITS CONDITIONS BENEATH (function:ahead:2):
+ * a bare string is a standing personal card; an object carries _ the sentence,
+ * 2 what it is toward, 3 the stamp, 4 the state (standing when absent; held /
+ * doing / done / drop), 5 where it was dealt from. NOTHING PARSES THE SENTENCE
+ * — the prose aim-grammar and the verb prefixes retired 2026-08-26 with the
+ * collision class they carried; a renderer that wants a condition reads the
+ * position. Kept identical to /next's reading, because the two surfaces share
+ * one block and must agree about what a card is. */
+function isEntryNode(n){
+  if (!n || typeof n !== 'object' || typeof n._ !== 'string') return false;
+  for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
+  return true;
 }
-function leadingVerb(text){ const w = (String(text).trim().split(/\s+/)[0] || '').toUpperCase();
-  return MARK_VERBS.includes(w) ? w : null; }
 function readHand(mine){
   const out = [];
   if (!mine) return out;
@@ -263,12 +255,17 @@ function readHand(mine){
       if (typeof node === 'string'){
         if (digits.slice(1).every(d => d === '0')) return;
         const raw = node.trim(); if (!raw) return;
-        const verb = leadingVerb(raw);
-        const body = verb ? bodyText(raw) : raw;
-        out.push({ addr: digits.join(''), raw, verb, text: body, pile: pile });
+        out.push({ addr: digits.join(''), text: raw, toward: null, ts: null, state: null, from: null, pile: pile });
         return;
       }
       if (!node || typeof node !== 'object') return;
+      if (isEntryNode(node)){
+        const text = String(node._ || '').trim(); if (!text) return;
+        out.push({ addr: digits.join(''), text,
+          toward: node['2'] || null, ts: node['3'] || null,
+          state: node['4'] || null, from: node['5'] || null, pile: pile });
+        return;
+      }
       if (node['_'] !== undefined) leaves(node['_'], digits.concat('0'));
       for (const d of childDigits(node)) leaves(node[d], digits.concat(d));
     })(mine[pile], [pile]);
@@ -276,36 +273,25 @@ function readHand(mine){
   out.sort((a, b) => Number(a.pile) - Number(b.pile) || Number(a.addr) - Number(b.addr));
   return out;
 }
-/* a card is in play unless its own leading word retired it; a card that has only
- * been DEALT is not yet in play — it is being offered, and stays offered until its
- * holder keeps it or lets it go */
-/* A DEALT CARD IS A CARD, and the keep step is gone with the wall it existed for.
- * A deal of seven arriving at once needed sorting; a deal of ONE, into the row of
- * the deck it came from, is simply a card that has appeared — bin it or leave it.
- * PROPOSED is still read, so anything an older surface or a mind wrote as an
- * offer still shows and still behaves, but nothing produces one here. */
-const inPlay = c => c.verb !== 'DONE' && c.verb !== 'DROP';
-const inHand = c => c.verb === 'HELD';
-
-/* ── THE AIM, read off the card's words (ways:deck branch 3): family first, the
- * stretch after a comma. This is the same reading /next does to decide where a
- * done card lands, so what a row shows and where a card goes cannot drift. ── */
-const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
-const FAMILY_AIM = /toward\s+([a-z0-9-]+)/i;
-/* the aim clause, whole: family plus the optional stretch after the comma —
- * FAMILY FIRST, STRETCH AFTER A COMMA (ways:deck 3.2). Trailing by grammar. */
-const AIM_CLAUSE = /\s*[—-]?\s*toward\s+([a-z0-9-]+)(?:\s*,\s*([^—]+?))?\s*$/i;
-function aimParts(raw){
-  const s = String(raw || '');
-  if (TIME_AIM.test(s)) return null;
-  const m = s.match(AIM_CLAUSE);
-  return m ? { fam: m[1].toLowerCase(), stretch: (m[2] || '').trim() } : null;
+/* the whole entry a card's slot should hold after a change — object when any
+ * condition stands, the bare sentence when none does */
+function entryOf(card, patch){
+  patch = patch || {};
+  const text   = 'text'   in patch ? patch.text   : card.text;
+  const toward = 'toward' in patch ? patch.toward : card.toward;
+  const ts     = 'ts'     in patch ? patch.ts     : card.ts;
+  const state  = 'state'  in patch ? patch.state  : card.state;
+  const from   = 'from'   in patch ? patch.from   : card.from;
+  if (!toward && !ts && !state && !from) return text;
+  const e = { '_': text };
+  if (toward) e['2'] = toward;
+  if (ts) e['3'] = ts;
+  if (state) e['4'] = state;
+  if (from) e['5'] = from;
+  return e;
 }
-const sansAim = t => String(t || '').replace(AIM_CLAUSE, '').trim() || String(t || '').trim();
-function aimOf(raw){
-  const s = String(raw || ''); const m = s.match(FAMILY_AIM);
-  return (m && !TIME_AIM.test(s)) ? m[1].toLowerCase() : null;
-}
+const inPlay = c => c.state !== 'done' && c.state !== 'drop';
+const inHand = c => c.state === 'held';
 
 /* ── SPLITTING A RUNG'S VOICING INTO CANDIDATES. A person writes a cell as prose
  * and routinely puts several intentions in one line, separated by a semicolon or
@@ -321,7 +307,7 @@ function candidates(text){
     .filter(t => t.length >= 12);
 }
 /* the same words in your hand already, however they were punctuated */
-const norm = t => String(t || '').toLowerCase().replace(/toward\s+[a-z0-9-]+/gi, '').replace(/[^a-z0-9]+/g, ' ').trim();
+const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 /* ── load ── */
 async function load(){
@@ -355,7 +341,7 @@ async function load(){
   /* the now leads the decks — grounded in the subject's own intention, with the
    * spine-defined projects beside it; the unattached "mine" pile renders last */
   for (const f of ['now'].concat(FIELDS)) if (named.indexOf(f) < 0) named.push(f);
-  for (const c of CARDS){ const a = aimOf(c.raw); if (a && named.indexOf(a) < 0) named.push(a); }
+  for (const c of CARDS){ if (c.toward && named.indexOf(c.toward) < 0) named.push(c.toward); }
   DECKS = named;
 
   const addr = dayRung();
@@ -396,13 +382,11 @@ async function deal(deck){
   found.sort((a, b) => a.pscale - b.pscale);
   const pick = found.find(f => { const k = norm(f.text); return k && !known.has(k); });
   if (!pick) return { none: true };
-  /* EVERY dealt card carries its deck as its aim — the now included, so a card
-   * dealt from your now stands in the my-now row, not among the unaimed; the
-   * routing is unchanged ('toward now' lands its DONE in now:<handle>, exactly
-   * where an unaimed card lands it) */
-  const text = aimOf(pick.text) ? pick.text
-    : pick.text + ' toward ' + deck + (pick.pscale === 3 ? ', this week' : '');
-  const w = await addCard(pileForPscale(pick.pscale), text);
+  /* EVERY dealt card carries its deck at field 2 — the now included, so a card
+   * dealt from your now stands in the my-now row; the door stamps 2, 3 and 5
+   * as the card lands (function:ahead:4), and the sentence stays clean words. */
+  const w = await addCard(pileForPscale(pick.pscale),
+    { '_': pick.text, '2': deck, '3': stamp(), '5': '/hands' });
   return w.ok ? { ok: true, pile: pileForPscale(pick.pscale) } : w;
 }
 
@@ -413,35 +397,35 @@ const stamp = () => new Date().toISOString().slice(0,16) + 'Z';
  * lives and how far out it is; it is NOT how the page is cut, and no row is drawn
  * from it — that was the arrangement this design replaced. A card written by hand
  * lands in the nearest pile, because a thing you sit down and write is for now. */
-async function addCard(pile, text){
+async function addCard(pile, entry){
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
   if (!mine){
     const w0 = await foundLatched('ahead:' + HANDLE, { '_':
-      'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." });
+      'AHEAD — ' + HANDLE + "'s piles of the indexical future: intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." });
     if (!w0.ok) return w0;
   }
   const now = await readBlock('ahead:' + HANDLE).catch(() => null);
   const node = now && now[pile];
-  if (!node) return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': text } });
+  if (!node) return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': entry } });
   if (typeof node === 'string')
-    return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '_': node, '1': text } });
+    return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '_': node, '1': entry } });
   /* A DIGIT POSITION HOLDS NINE AND DOES NOT GROW — the beach refuses an append
    * into a full node — and nine LIVE cards is a pile's honest bound anyway. So:
-   * room appends; a full pile REUSES ITS LOWEST RETIRED SLOT (a string entry
-   * that is empty or DONE/DROP — the sweep's free real estate; an object slot
-   * is never eaten); nine live cards refuses plainly, because a hand that
-   * cannot say enough is a feed. */
+   * room appends; a full pile REUSES ITS LOWEST RETIRED SLOT (an empty string,
+   * or an entry whose state at 4 is done or drop — the sweep's free real
+   * estate); nine live cards refuses plainly, because a hand that cannot say
+   * enough is a feed. */
   const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
   if (digs.length < 9)
-    return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, append: true, content: text });
-  const retired = digs.filter(d => typeof node[d] === 'string' &&
-    (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim()))).sort();
+    return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, append: true, content: entry });
+  const retired = digs.filter(d =>
+    (typeof node[d] === 'string' && !node[d].trim())
+    || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
   if (!retired.length) return { full: true, pile };
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile + retired[0], content: text });
+  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile + retired[0], content: entry });
 }
 async function editCard(c, text){
-  const lead = c.verb ? c.verb + ' ' + stamp() + ' — ' : '';
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: lead + text });
+  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: entryOf(c, { text }) });
 }
 
 /* the latch key follows the BLOCK and is named exactly as /next names it, so a
@@ -502,7 +486,7 @@ async function withLatch(block, body){
  * hand, retired by their leading word exactly as /next retires them. */
 async function letGo(card){
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: card.addr,
-    content: 'DROP ' + stamp() + ' — ' + card.text });
+    content: entryOf(card, { state: 'drop', ts: stamp() }) });
 }
 
 /* ── THE WITNESS.
@@ -603,20 +587,17 @@ function toast(msg, err){
  * row are one card at one address, shown twice because both facts are true. */
 function cardEl(c, opts){
   const held = inHand(c);
-  const deck = aimOf(c.raw);
-  /* TWO CHIPS, TWO MEANINGS: the pile is how far out YOU hold it; the aim is
-   * where it POINTS — family and, when the deal knew it, the stretch (the
-   * pointed rung, read by proxy from the words, never stored). The aim clause
-   * leaves the display text and stands as its own chip. */
-  const ap = aimParts(c.raw);
-  const stretch = ap && ap.stretch ? ap.stretch : '';
+  const deck = c.toward;
+  /* TWO CHIPS, TWO MEANINGS: the pile is how far out YOU hold it; the aim —
+   * field 2 beneath the card, never parsed from its words — is where it
+   * POINTS. The sentence renders whole, because it is only a sentence. */
   return '<div class="dcard' + (held ? ' fam' : '') + '"'
     + (deck ? ' style="--fam-h:' + famHue(deck) + '"' : '') + ' data-addr="' + esc(c.addr) + '">'
     + '<span class="aim">' + (opts && opts.showDeck && deck
-        ? esc(deckLabel(deck) + (stretch ? ', ' + stretch : ''))
-        : '<span class="pile">' + esc(pileLabel(c.pile)) + '</span>' + (stretch ? '<span class="rung">→ ' + esc(stretch) + '</span>' : ''))
+        ? esc(deckLabel(deck))
+        : '<span class="pile">' + esc(pileLabel(c.pile)) + '</span>')
     + (held ? '<span class="rung">in hand</span>' : '') + '</span>'
-    + '<div class="txt">' + esc(deck ? sansAim(c.text) : c.text) + '</div>'
+    + '<div class="txt">' + esc(c.text) + '</div>'
     + '<div class="acts">'
     + (held ? '<button data-act="release">− hand</button>' : '<button data-act="hold">＋ hand</button>')
     + '<button data-act="edit">✎</button>'
@@ -677,7 +658,7 @@ function render(){
    * (the subject's own intention; the spine-defined objectives). The unattached
    * MINE pile renders at the bottom, held lightly, out of the way. ── */
   for (const d of DECKS){
-    const cards = CARDS.filter(c => aimOf(c.raw) === d);
+    const cards = CARDS.filter(c => c.toward === d);
     out.push(rowHead(deckLabel(d), cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty', {
       hue: famHue(d),
       links: '<a href="' + deckHref(d) + '">the deck →</a>'
@@ -695,7 +676,7 @@ function render(){
   }
 
   /* ── MINE — written, not dealt; the bottom on purpose. ── */
-  const mine = CARDS.filter(c => !aimOf(c.raw));
+  const mine = CARDS.filter(c => !c.toward);
   out.push(rowHead('mine', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
     links: (mine.length ? flick('?aim=mine') + ' ' : '') + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">the deck →</a>',
     sub: 'Held lightly — written by hand, on no clock and toward no spine. The grounded work lives above: your now, and the projects. Click the blank card and type; Enter lands it, Escape leaves.' }));
@@ -742,10 +723,10 @@ document.addEventListener('click', async e => {
     } else if (act === 'hold' || act === 'release'){
       /* COMPILING IS A SELECTION, NEVER A MOVE. The card stays at its own address,
        * in the pile it was written to, under the deck it came from; all that
-       * changes is whether its own leading word says it is in the hand. */
+       * changes is its state at field 4 — held in, standing out. */
       const c = find(); if (!c) return;
       const w = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
-        content: act === 'hold' ? 'HELD ' + stamp() + ' — ' + c.text : c.text });
+        content: entryOf(c, act === 'hold' ? { state: 'held', ts: stamp() } : { state: null, ts: stamp() }) });
       if (w.ok){ toast(act === 'hold' ? '✓ in your hand' : '✓ set down'); await reload(); }
       else if (!w.quiet) toast('it did not land', true);
     } else if (act === 'edit'){

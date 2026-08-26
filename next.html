@@ -329,23 +329,16 @@ const AIM = ((new URLSearchParams(location.search).get('aim') || '').replace(/[^
 /* cards dealt but not yet kept — counted so an empty flick can say WHY it is
  * empty rather than sending a person to add a card they have already been dealt */
 let OFFERED = 0;
-const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
-const FAMILY_AIM_TEST = /toward\s+[a-z0-9-]+/i;
-/* the aim clause whole — family, optional stretch — so the face can wear it as
- * a chip instead of trailing prose that reads as part of the task */
-const AIM_CLAUSE = /\s*[—-]?\s*toward\s+([a-z0-9-]+)(?:\s*,\s*([^—]+?))?\s*$/i;
-function aimParts(raw){
-  const s = String(raw || '');
-  if (TIME_AIM.test(s)) return null;
-  const m = s.match(AIM_CLAUSE);
-  return m ? { fam: m[1].toLowerCase(), stretch: (m[2] || '').trim() } : null;
-}
-const sansAim = t => String(t || '').replace(AIM_CLAUSE, '').trim() || String(t || '').trim();
-const aimMatch = text => !AIM ? true
+/* THE AIM IS A POSITION, NEVER A PARSE (function:ahead:2) — field 2 beneath a
+ * card names the family it serves; the sentence is never read for conditions.
+ * The prose aim-grammar and the collision class it carried (an incidental
+ * 'toward' anywhere in a card's body hijacking the aim — twice, live) retired
+ * 2026-08-26; its record stands at archive:ways:deck:2026-08-26. */
+const aimMatch = c => !AIM ? true
   /* ?aim=mine flicks the UNAIMED — the hand's held-lightly slice, conformal
    * with every named deck's flick */
-  : AIM === 'mine' ? !(FAMILY_AIM_TEST.test(text) && !TIME_AIM.test(text))
-  : (new RegExp('toward\\s+' + AIM, 'i').test(text) || (AIM === ((OP && OP.venture) || 'beach-venture') && TIME_AIM.test(text)));
+  : AIM === 'mine' ? !c.toward
+  : c.toward === AIM;
 
 /* ── handle from /next/<handle> or ?h= ── */
 function handleFromUrl(){
@@ -529,38 +522,48 @@ function deepText(n, out){
  * it is the card being put back down, so the bare words are what land. That is
  * why the old release string, 'held …, released …', is now harmless rather than
  * fixed: it leads with no verb, so the choke point returns the card. */
-const MARK_VERBS = ['DONE','DOING','TOMORROW','DROP','RATED','UP','DOWN','REPLIED','PROPOSED','HELD'];
-function leadingVerb(text){
-  /* exact case on purpose: every surface writes marks UPPERCASE, so prose that
-   * happens to open "Done with the rent" stays a card's words, never a mark */
-  const w = String(text).trim().split(/\s+/)[0] || '';
-  return MARK_VERBS.includes(w) ? w : null;
+/* A STORED ENTRY IS A SENTENCE WITH ITS CONDITIONS BENEATH (function:ahead:2):
+ * a bare string is a standing personal card; an object carries _ the sentence,
+ * 2 what it is toward, 3 the stamp, 4 the state (standing when absent; held /
+ * doing / done / drop), 5 where it was dealt from. Nothing parses the sentence
+ * — the reader takes positions, and the writer below preserves them. */
+function isEntryNode(n){
+  if (!n || typeof n !== 'object' || typeof n._ !== 'string') return false;
+  for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
+  return true;
 }
-function personalContent(addr, content){
-  if (!PERSONAL) return content;
-  const card = CARDS.find(c => c.addr === addr);
-  if (!card) return content;
-  if (!leadingVerb(content)) return card.text;
-  return String(content).includes(card.text) ? content : content + ' — ' + card.text;
-}
-/* A STORED ENTRY IS A CARD AND ITS MARK IN ONE POSITION — the leading word is the
- * mark, the rest is the card. Both the hand and a personal deck read it this way,
- * which is why they can share a write path and a choke point. */
 function cardFromEntry(f){
-  const verb = leadingVerb(f.raw);
-  /* A CARD'S WORDS ARE WHAT IS LEFT AFTER THE WHOLE MARK, not just after the verb.
-   * A mark is verb + stamps + words, so slicing only the verb left the timestamp
-   * standing at the front of the card — invisible while every marked card was a
-   * retired one nobody rendered, and glaring the moment a dealt card had to be
-   * read and kept. bodyText already knew how to do this for the landing line. */
-  const body = verb ? bodyText(f.raw) : f.raw;
-  const card = makeCard(f.digits, body, 0, Number(f.digits.join('')), '', false, HANDLE);
+  const n = f.node;
+  const obj = typeof n === 'object';
+  const text = obj ? String(n._ || '').trim() : String(n).trim();
+  const card = makeCard(f.digits, text, 0, Number(f.digits.join('')), '', false, HANDLE);
   card.addr = f.digits.join('');
-  card.raw = f.raw;
-  if (verb === 'DONE' || verb === 'DROP') card.done = { who: HANDLE, text: f.raw };
-  else if (verb === 'DOING') card.doing.push(HANDLE);
-  else if (verb === 'TOMORROW') card.myDefer = deferUntil(f.raw);
+  card.raw = text;
+  card.toward = obj ? (n['2'] || null) : null;
+  card.ts     = obj ? (n['3'] || null) : null;
+  card.state  = obj ? (n['4'] || null) : null;
+  card.from   = obj ? (n['5'] || null) : null;
+  if (card.state === 'done' || card.state === 'drop')
+    card.done = { who: HANDLE, text: card.state.toUpperCase() + (card.ts ? ' ' + card.ts : '') };
+  else if (card.state === 'doing') card.doing.push(HANDLE);
   return card;
+}
+/* the whole entry a card's slot should hold after a change — object when any
+ * condition stands, the bare sentence when none does */
+function entryOf(card, patch){
+  patch = patch || {};
+  const text   = 'text'   in patch ? patch.text   : card.text;
+  const toward = 'toward' in patch ? patch.toward : card.toward;
+  const ts     = 'ts'     in patch ? patch.ts     : card.ts;
+  const state  = 'state'  in patch ? patch.state  : card.state;
+  const from   = 'from'   in patch ? patch.from   : card.from;
+  if (!toward && !ts && !state && !from) return text;
+  const e = { '_': text };
+  if (toward) e['2'] = toward;
+  if (ts) e['3'] = ts;
+  if (state) e['4'] = state;
+  if (from) e['5'] = from;
+  return e;
 }
 
 async function loadField(){
@@ -640,25 +643,20 @@ async function loadField(){
         (function leaves(node, digits){
           if (typeof node === 'string'){
             if (digits.slice(1).every(d => d === '0')) return;
-            const raw = node.trim();
-            if (raw) found.push({ digits: digits.slice(), raw, pile: Number(pile) });
+            if (node.trim()) found.push({ digits: digits.slice(), node: node.trim(), pile: Number(pile) });
             return;
           }
           if (!node || typeof node !== 'object') return;
+          if (isEntryNode(node)){ found.push({ digits: digits.slice(), node, pile: Number(pile) }); return; }
           if (node['_'] !== undefined) leaves(node['_'], digits.concat('0'));
           for (const d of childDigits(node)) leaves(node[d], digits.concat(d));
         })(mine[pile], [pile]);
       }
       found.sort((a, b) => a.pile - b.pile || Number(a.digits.join('')) - Number(b.digits.join('')));
       for (const f of found){ const c = cardFromEntry(f); c.pile = f.pile; CARDS.push(c); }
-      /* A CARD ONLY DEALT IS NOT YET IN THE HAND. It was offered into the
-       * holder's own pile and stays offered until they keep it or let it go at
-       * /hands — so it must not arrive in the flick as though it were theirs. */
-      OFFERED = CARDS.filter(c => leadingVerb(c.raw || '') === 'PROPOSED').length;
-      CARDS = CARDS.filter(c => leadingVerb(c.raw || '') !== 'PROPOSED');
       /* a named deck flicks that deck; the bare flick is the compiled hand */
-      if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));
-      else CARDS = CARDS.filter(c => leadingVerb(c.raw || '') === 'HELD');
+      if (AIM) CARDS = CARDS.filter(c => aimMatch(c));
+      else CARDS = CARDS.filter(c => c.state === 'held');
       rebuildDeck(false);
       return;
     }
@@ -806,10 +804,9 @@ function cardEl(card, layer){
      * is toward). Above the card it read as preamble to be got past. */
     (tally ? '<p class="card__stem">' + tally + '</p>' : '') +
     doingBadge + propBadge +
-    /* the aim rides as a CHIP, never as trailing prose — the task reads clean */
-    (function(){ const ap = aimParts(card.text);
-      return (ap ? '<p class="card__aim">→ ' + esc(ap.fam + (ap.stretch ? ' · ' + ap.stretch : '')) + '</p>' : '') +
-        '<div class="card__text">' + esc(ap ? sansAim(card.text) : card.text) + '</div>'; })() + notes + act +
+    /* the aim rides as a CHIP, read from the card's own field 2, never parsed */
+    (card.toward ? '<p class="card__aim">→ ' + esc(card.toward) + '</p>' : '') +
+    '<div class="card__text">' + esc(card.text) + '</div>' + notes + act +
     (layer === 'top' && OP.mode === 'doing' && !card.proposed ? '<button class="cog" title="card options">⚙</button>' : '') +
     '<div class="stamp">DONE</div>';
   return el;
@@ -1008,19 +1005,30 @@ function wireSwipe(el){
   el.addEventListener('pointercancel', release);
 }
 
-/* up = personal tomorrow (both modes) */
+/* up = throw to the tomorrow pile — the pile IS the defer (function:ahead:1):
+ * moving an intent between piles is the holder rewriting their own block. The
+ * old slot falls silent; the card lands whole under pile 2, conditions intact. */
 function gestureTomorrow(el){
   const card = currentCard(); if (!card) return;
-  const date = tomorrowDate();
-  const prev = card.myDefer;
-  card.myDefer = date;
   const go = () => { rebuildDeck(false); renderDeck(); };
   if (el) flyVert(el, true, go); else go();
   undoable('↑ thrown into tomorrow',
-    async () => { const w = await writeMark(card.addr, 'TOMORROW ' + date + ' — ' + iso()); if (!w.ok && !w.quiet) toast('the defer did not land', true); },
-    () => { card.myDefer = prev; rebuildDeck(false); renderDeck(); });
+    async () => {
+      const entry = entryOf(card, { ts: iso() });
+      const w1 = await writeMark(card.addr, '');
+      if (!w1.ok){ if (!w1.quiet) toast('the move did not land', true); return; }
+      const mine = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
+      const has = mine && mine['2'] && typeof mine['2'] === 'object';
+      const secret = localStorage.getItem(latchKey());
+      const body = has
+        ? { block: FIELD + ':' + HANDLE, spindle: '2', append: true, content: entry }
+        : { block: FIELD + ':' + HANDLE, spindle: '2', content: { '1': entry } };
+      const w2 = await writeBlock(Object.assign(body, secret ? { secret } : {}));
+      if (!w2.ok) toast('the move did not land in tomorrow', true);
+    },
+    () => { rebuildDeck(false); renderDeck(); });
 }
-/* down = drop (doing mode; field-level) */
+/* down = drop — state at 4, the words untouched */
 function gestureDrop(el){
   if (OP.mode !== 'doing' || !OP.member){ if (el){ el.classList.add('snap'); el.style.transform=''; } return; }
   const card = currentCard(); if (!card) return;
@@ -1029,7 +1037,7 @@ function gestureDrop(el){
   const go = () => { rebuildDeck(false); renderDeck(); };
   if (el) flyVert(el, false, go); else go();
   undoable('✕ dropped from the field',
-    async () => { const w = await writeMark(card.addr, 'DROP ' + iso() + ' — from /next'); if (!w.ok && !w.quiet) toast('the drop did not land', true); },
+    async () => { const w = await writeMark(card.addr, entryOf(card, { state: 'drop', ts: iso(), from: card.from || '/next' })); if (!w.ok && !w.quiet) toast('the drop did not land', true); },
     () => { card.done = prev; rebuildDeck(false); renderDeck(); });
 }
 
@@ -1042,7 +1050,7 @@ async function ensureMirror(){
   const existing = await readBlock(name).catch(() => null);
   if (existing) return true;
   let root = HAND
-    ? 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence."
+    ? 'AHEAD — ' + HANDLE + "'s piles of the indexical future: intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence."
     : 'MIRROR — ' + HANDLE + "'s readings on the " + FIELD + ' field (' + SPINE + '), at the spine’s own addresses. Sovereign; silence at an address is honest absence. First entry written from /next.';
   for (let i = 0; i < FLOOR; i++) root = { '_': root };
   /* homestead at birth: a latch on this device locks the newborn mirror to its holder */
@@ -1056,11 +1064,11 @@ async function ensureMirror(){
 async function writeMark(addr, content){
   await ensureMirror();
   /* addr === null is an APPEND: the beach picks the slot and supernests when the
-   * ladder fills. There is no card at the address yet, so the personal transform
-   * has nothing to protect and stands aside — the content IS the new card. */
+   * ladder fills. Otherwise the caller hands the WHOLE entry — object or bare
+   * sentence — and it lands as given: conditions are positions, never prose. */
   const body = addr === null
     ? { block: FIELD + ':' + HANDLE, append: true, content }
-    : { block: FIELD + ':' + HANDLE, spindle: addr, content: personalContent(addr, content) };
+    : { block: FIELD + ':' + HANDLE, spindle: addr, content };
   const latch = localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
@@ -1187,36 +1195,18 @@ function pastTense(text){
   if (w[0] === w[0].toUpperCase()) past = past[0].toUpperCase() + past.slice(1);
   return past + rest;
 }
-/* the aim rides in the card's words, so it is stripped from the record: WHERE the
- * line lands is what now says which family it served */
-function withoutAim(text){
-  return String(text || '').replace(/\s*[—–-]?\s*toward\s+[^—–\n]*$/i, '').trim() || String(text || '').trim();
-}
-
-/* ── WHERE A DONE LANDS — the card's own aim, never a hardwired family.
- * ways:deck branch 3 puts the aim in the card's words, family first and the
- * stretch after a comma, so the family a closed card feeds is READ OFF THE CARD
- * rather than off a dial: 'toward onen-rpg, this week' lands in onen-rpg:<handle>.
- * A card naming no family lands in the holder's own now. That is the whole of the
- * difference between a project record and a personal one, and it is a read rather
- * than a setting — which is why nothing here encodes now-versus-project.
- * A named deck keeps its venture dial as the fallback, so every standing deck
- * lands exactly where it landed before. ── */
-const FAMILY_AIM = /toward\s+([a-z0-9-]+)/i;
-function familyFor(raw){
-  const s = String(raw || '');
-  const m = s.match(FAMILY_AIM);
-  const named = (m && !TIME_AIM.test(s)) ? m[1].toLowerCase() : null;
-  return named || (HAND ? 'now' : OP.venture) || null;
-}
-async function landRecord(recordText, aimSource, elapsed){
+/* ── WHERE A DONE LANDS — the card's own field 2, never a hardwired family and
+ * never a parse of its words (function:ahead:4). A card with no 2 lands in the
+ * holder's own now — the whole of the difference between a project record and
+ * a personal one, a read rather than a setting. ── */
+async function landRecord(recordText, card, elapsed){
   if (!PERSONAL) return { skipped: true };
-  const fam = familyFor(aimSource);
+  const fam = (card && card.toward) || (HAND ? 'now' : null);
   if (!fam) return { skipped: true };
   const name = fam + ':' + HANDLE;
   const block = await readBlock(name).catch(() => null);
   if (!block) return { skipped: true, name };   // no reading there yet — the card stands alone
-  const line = '· ' + pastTense(withoutAim(recordText)) + (elapsed ? ' (' + elapsed + ')' : '');
+  const line = '· ' + pastTense(recordText) + (elapsed ? ' (' + elapsed + ')' : '');
   /* THE LANDING'S KEY FOLLOWS THE TARGET, never the hand. Each surface has
    * historically named its latch its own way, so read every home that block's
    * key may live in, newest convention first; a success re-stores it under the
@@ -1264,17 +1254,6 @@ async function landRecord(recordText, aimSource, elapsed){
   }
   return { refused: true, name, fam, why: (w.data && (w.data.error || w.data.code)) || w.status };
 }
-function bodyText(raw){
-  const verb = leadingVerb(raw);
-  let s = verb ? String(raw).trim().slice(verb.length) : String(raw).trim();
-  /* strip the stamps the mark carries — a card re-armed from TOMORROW wears more
-   * than one — the venture line is the words, dated by the rung it lands at */
-  for (let i = 0; i < 4; i++){
-    const t = s.replace(/^[\s—–-]*(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?|\(.{1,24}\))\s*[—–-]*\s*/, '');
-    if (t === s) break; s = t;
-  }
-  return s.trim() || String(raw).trim();
-}
 
 /* ── NO LADDER STRIP ABOVE THE DECK. The venture's today, this-week and this-month
  * voicings used to ride here, on the reasoning that showing the objectives while
@@ -1295,12 +1274,9 @@ function bodyText(raw){
 function sweepable(){
   if (!PERSONAL) return [];
   const t = today();
-  return CARDS.filter(c => {
-    const verb = leadingVerb(c.raw || '');
-    if (verb !== 'DONE' && verb !== 'DROP') return false;
-    const m = (c.raw || '').match(/\b(\d{4}-\d{2}-\d{2})/);
-    return !!m && m[1] < t;
-  });
+  return CARDS.filter(c =>
+    (c.state === 'done' || c.state === 'drop')
+    && !!c.ts && String(c.ts).slice(0, 10) < t);
 }
 function renderSweep(){
   const el = $('sweepbar');
@@ -1359,17 +1335,20 @@ async function commitSheet(){
     $('sheet-hint').classList.add('err'); $('sheet-hint').textContent = 'an answer needs words';
     BUSY = false; $('sheet-go').disabled = false; return;
   }
-  let stamp;
-  if (kind === 'respond') stamp = mark + ' ' + iso() + (note ? ' — ' + note : '');
-  else stamp = 'DONE ' + iso() + (note ? ' — ' + note : '') + (kind === 'finish' ? ' (' + fmtElapsed(elapsedMs()) + ')' : '');
+  /* THE FLIP LIVES ON THE CARD ITSELF (function:ahead:4): the sentence turns to
+   * past tense at 0 — the sign-off line landing instead when typed — and the
+   * state and stamp land at 4 and 3. The elapsed rides the mirror record only. */
+  const stamp = kind === 'respond' ? mark + ' ' + iso() + (note ? ' — ' + note : '') : null;
   try {
-    const w = await writeMark(addr, stamp);
+    const w = kind === 'respond'
+      ? await writeMark(addr, stamp)
+      : await writeMark(addr, entryOf(card, { text: pastTense(note || card.text), state: 'done', ts: iso() }));
     if (!w.ok){
       if (!w.quiet){ $('sheet-hint').classList.add('err'); $('sheet-hint').textContent = (w.data && (w.data.error || w.data.code)) || ('write failed ' + w.status); }
       BUSY = false; $('sheet-go').disabled = false; return;
     }
     if (kind === 'respond'){ card.myResponse = stamp; card.responses.push({ who: HANDLE, text: stamp }); }
-    else if (card.addr) card.done = { who: HANDLE, text: stamp, kind: 'done' };
+    else if (card.addr) card.done = { who: HANDLE, text: 'DONE ' + iso(), kind: 'done' };
     /* the bond fires on DONE alone — a DROP retires without landing anywhere.
      * personalContent is what the mirror actually stores (the choke point adds the
      * card's words), so the venture receives the same words the deck keeps. */
@@ -1381,7 +1360,7 @@ async function commitSheet(){
      * by whether anything was typed. A DROP retires and lands nowhere. */
     let landed = null;
     if (kind !== 'respond' && PERSONAL)
-      landed = await landRecord(note || card.text, card.raw || card.text,
+      landed = await landRecord(note || card.text, card,
                                 kind === 'finish' ? fmtElapsed(elapsedMs()) : null);
     closeSheet();
     if (kind === 'finish'){ TIMER = null; saveTimer(); hideDoing(); }
@@ -1528,8 +1507,8 @@ function startDoing(){
   if (!TIMER){
     TIMER = { addr: card.addr, text: card.text, stemNo: card.stemNo, cardNo: card.cardNo, started: Date.now(), acc: 0, paused: false };
     saveTimer();
-    writeMark(card.addr, 'DOING ' + iso() + ' — from /next').then(w => {
-      if (w.ok) toast('claimed — DOING written to ' + FIELD + ':' + HANDLE);
+    writeMark(card.addr, entryOf(card, { state: 'doing', ts: iso() })).then(w => {
+      if (w.ok) toast('claimed — doing, at the card itself');
     });
   }
   showDoing();
@@ -1546,13 +1525,11 @@ async function releaseClaim(){
   const addr = TIMER.addr;
   const text = TIMER.text;
   TIMER = null; saveTimer(); hideDoing();
-  /* ON A PERSONAL DECK THE CARD AND ITS MARK ARE ONE POSITION, so a release note
-   * written alone DESTROYS the card — observed live 2026-08-11, a card replaced by
-   * 'held under a minute, released …' and its words gone from the mirror. Putting a
-   * card down there means exactly what the mirror's own underscore says: it returns
-   * to being held, unmarked. The elapsed time is not worth a card's words, so it is
-   * simply not recorded on this kind of deck. */
-  const w = await writeMark(addr, 'held ' + held + ', released ' + iso());
+  /* Putting a card down returns it to standing: the doing state lifts, the
+   * words stay exactly as the holder wrote them. The elapsed is not worth a
+   * card's words, so it is simply not recorded here. */
+  const card = CARDS.find(c => c.addr === addr) || { text, toward: null, ts: null, state: null, from: null };
+  const w = await writeMark(addr, entryOf(card, { state: null, ts: iso() }));
   toast(w.ok
     ? (PERSONAL ? 'put down — the card is yours again, unmarked' : 'released — the card re-arms for everyone')
     : 'released here; the write did not land', !w.ok);
@@ -1647,6 +1624,16 @@ if (window.siteDoors) siteDoors(Object.assign({ handle: HANDLE, here: 'next' }, 
   await reload();
 }
 async function reload(){
+  /* DECKS FOLDED INTO THE HAND (function:ahead, 2026-08-26): cards live in one
+   * place — each holder's own hand. A ?field= deck was the deck-as-store era,
+   * retired with the sweep; the families themselves read on the walk. */
+  if (!HAND){
+    $('app').classList.add('hidden');
+    showState('Decks folded into the hand.',
+      'Cards live in one place now — your own hand. Flick it at <a href="/next">/next</a>, '
+      + 'sort it at <a href="/hands">/hands</a>; read any family on <a href="/walk">the walk</a>.');
+    return;
+  }
   try { await loadField(); renderDeck(); }
   catch (e){
     $('app').classList.add('hidden');
