@@ -42,7 +42,6 @@
   .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);
     font-size:12px;padding:6px 10px;cursor:pointer}
   .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
-  body.workings .bar #btn-work{color:var(--solid);border-color:rgba(var(--solid-rgb),0.4)}
   body.minelens .bar #btn-lens{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}
   body.minelens .rcard .say{font-style:italic}
 
@@ -303,9 +302,7 @@
   <button id="btn-lens" title="flick the cards between the spine’s words and your own">show my voice</button>
   <button id="btn-latch" title="your keeper key for this spine — lets you edit what’s written">add my latch-key</button>
   <button id="btn-mirror" title="show links to the mirror — the live shared surface">mirror buttons</button>
-  <button id="btn-cast" title="whose voices count at a point — everyone’s, or only the registered cast’s; a view, never a gate">everyone’s voices</button>
-  <button id="btn-display" title="choose which rows and counts this page shows — your dashboard, kept on this device">display settings</button>
-  <button id="btn-work" title="show the address each card stands at">show address</button>
+  <button id="btn-display" title="rows, counts, addresses, whose voices count — your reading posture, kept on this device">display settings</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
 </div>
@@ -321,6 +318,10 @@
   <span class="sub">counts on the cards</span>
   <label><input type="checkbox" data-badge="voices"> voices</label>
   <label><input type="checkbox" data-badge="cards"> cards</label>
+  <span class="sub">the workings</span>
+  <label><input type="checkbox" id="disp-work"> show the address each card stands at</label>
+  <span class="sub">whose voices count</span>
+  <label><input type="checkbox" id="disp-cast"> only the cast’s — a view, never a gate</label>
   <span class="note">kept on this device — your reading posture, never written to the beach</span>
 </div>
 
@@ -496,12 +497,15 @@ const PREF_KEY = 'walk-display';
 const DEFAULT_PREFS = {
   rows: { ce:false, de:true, y:true, m:true, w:true, d:true },
   badges: { voices:true, cards:true },
+  workings: false,
+  cast: false,
 };
 let PREFS = DEFAULT_PREFS;
 try {
   const stored = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
   if (stored) PREFS = { rows: Object.assign({}, DEFAULT_PREFS.rows, stored.rows),
-                        badges: Object.assign({}, DEFAULT_PREFS.badges, stored.badges) };
+                        badges: Object.assign({}, DEFAULT_PREFS.badges, stored.badges),
+                        workings: !!stored.workings, cast: !!stored.cast };
   /* ONE-TIME MIGRATION (2026-08-25): the count chips default ON — a stored
    * preference from before this ruling had them silently off, and a hidden-by-
    * dial chip reads as breakage days later. Force them on once and mark it;
@@ -521,6 +525,10 @@ function applyDisplay(){
   }
   document.body.classList.toggle('hidebv', !PREFS.badges.voices);
   document.body.classList.toggle('hidebc', !PREFS.badges.cards);
+  document.body.classList.toggle('workings', !!PREFS.workings);
+  /* the cast lens rides the same dial sheet now — a lens over nobody is a blank
+   * stare, so it holds at everyone until a cast is actually registered */
+  CASTLENS = (PREFS.cast && CAST) ? 'formal' : 'all';
 }
 /* human names are ORDINAL — the period being filled — while the digits stay the
  * year's own; the digit is exact, the label is human (pscale://sundial 2.3) */
@@ -874,6 +882,8 @@ async function load(){
   SINCE = Math.max(own, Date.now() - 48 * 3600 * 1000);
   if (!own) SINCE = Date.now() - 24 * 3600 * 1000;
 
+  /* CAST arrives with this load — the cast-lens dial can only take effect now */
+  applyDisplay();
   render();
 }
 
@@ -1395,8 +1405,20 @@ $('disp').querySelectorAll('input[data-badge]').forEach(cb => {
   cb.checked = !!PREFS.badges[cb.dataset.badge];
   cb.addEventListener('change', () => { PREFS.badges[cb.dataset.badge] = cb.checked; savePrefs(); applyDisplay(); });
 });
+/* the workings and the cast lens live here now — display concerns among the
+ * display dials, leaving options for acts */
+(function(){
+  const dw = document.getElementById('disp-work');
+  dw.checked = !!PREFS.workings;
+  dw.addEventListener('change', () => { PREFS.workings = dw.checked; savePrefs(); applyDisplay(); });
+  const dc = document.getElementById('disp-cast');
+  dc.checked = !!PREFS.cast;
+  dc.addEventListener('change', () => {
+    if (dc.checked && !CAST){ toast('no cast registered for ' + VENTURE + ' yet — every voice is a member voice'); dc.checked = false; return; }
+    PREFS.cast = dc.checked; savePrefs(); applyDisplay(); renderRack(); if (SHEET) paintSheet();
+  });
+})();
 applyDisplay();
-document.getElementById('btn-work').addEventListener('click', () => document.body.classList.toggle('workings'));
 document.getElementById('btn-lens').addEventListener('click', () => {
   LENS = LENS === 'spine' ? 'mine' : 'spine';
   document.body.classList.toggle('minelens', LENS === 'mine');
@@ -1404,16 +1426,6 @@ document.getElementById('btn-lens').addEventListener('click', () => {
   renderRack();
 });
 document.getElementById('btn-mirror').addEventListener('click', () => document.body.classList.toggle('mirrorlinks'));
-/* the lens dial — 'everyone' is the default because open is this beach's resting
- * state; the cast setting narrows the view and is offered only where a cast has
- * actually been registered, since a lens over nobody is a blank stare */
-document.getElementById('btn-cast').addEventListener('click', () => {
-  if (!CAST){ toast('no cast registered for ' + VENTURE + ' yet — every voice is a member voice'); return; }
-  CASTLENS = CASTLENS === 'formal' ? 'all' : 'formal';
-  $('btn-cast').textContent = CASTLENS === 'formal' ? 'the cast’s voices' : 'everyone’s voices';
-  $('btn-cast').classList.toggle('on', CASTLENS === 'formal');
-  renderRack(); if (SHEET) paintSheet();
-});
 document.getElementById('btn-latch').addEventListener('click', () => {
   const v = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; blank clears):');
   if (v === null) return;
