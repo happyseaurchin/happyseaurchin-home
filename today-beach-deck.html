@@ -1,187 +1,19 @@
 <!DOCTYPE html>
-<html lang="en" class="no-js">
+<html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Today's deck</title>
-<meta name="description" content="A personal deck of cards, flicked one at a time. The deck is whatever you are holding — add one, put one down, close one, and the day's work writes itself.">
-<meta property="og:title" content="Today's deck">
-<meta property="og:description" content="A personal deck of cards, flicked one at a time. The deck is whatever you are holding.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>folded into the hand</title>
+<meta name="robots" content="noindex">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
-<style>
-  *{box-sizing:border-box} html,body{margin:0;height:100%}
-  body{
-    font-family:var(--body); color:var(--foam); font-size:18px; line-height:1.55;
-    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--liquid-rgb),0.10), transparent 60%),
-      linear-gradient(180deg,var(--ground-top) 0%, var(--deep) 30%, var(--abyss) 100%);
-    background-attachment:fixed; -webkit-font-smoothing:antialiased;
-    display:flex; flex-direction:column; min-height:100dvh;
-  }
-  ::selection{background:rgba(var(--liquid-rgb),0.30);color:var(--foam)}
-  a{color:var(--liquid);text-decoration:none;border-bottom:1px solid rgba(var(--liquid-rgb),0.35)}
-  a:hover{color:var(--foam);border-color:var(--foam)}
-
-  .bar{display:flex;align-items:center;gap:10px;padding:14px 18px 10px;font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
-  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
-
-  .wrap{flex:1;display:flex;flex-direction:column;padding:10px 22px 40px;max-width:720px;margin:0 auto;width:100%}
-  h1{font-family:var(--display);font-size:clamp(26px,5vw,38px);line-height:1.12;margin:18px 0 6px;font-weight:800}
-  .lede{color:var(--vapour);margin:0 0 26px}
-  .roster{margin:0;padding:0;list-style:none}
-  .roster li{padding:12px 0;border-top:1px solid var(--line)}
-  .roster .n{font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
-  .note{color:var(--vapour-dim);font-size:15px}
-  .quiet{color:var(--vapour-dim)}
-  input[type=text]{
-    padding:11px 12px;border-radius:6px;background:rgba(0,0,0,0.22);border:1px solid var(--line);
-    color:var(--foam);font-family:var(--mono);font-size:15px;width:100%;max-width:320px;
-  }
-  button.flick{font-family:var(--mono);font-size:13px;padding:10px 16px;border-radius:5px;background:none;border:1px solid rgba(var(--liquid-rgb),0.5);color:var(--liquid);cursor:pointer}
-  button.flick:hover{color:var(--foam);border-color:var(--foam)}
-</style>
+<style>body{font-family:var(--body,serif);color:var(--foam,#333);background:var(--deep,#fafafa);display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:30em;padding:0 20px;text-align:center;line-height:1.6}a{color:inherit}</style>
 </head>
 <body>
-
-<div class="bar">
-  <span class="dot"></span>
-  <span id="bar-field">today-beach-deck</span>
-</div>
-
-<div class="wrap">
-  <!-- The field's front door: the template, and the decks being held. THE DECK
-       ITSELF IS ONE PAGE — /today-beach-deck/<handle> routes to /next, which
-       deals a personal deck from the holder's own mirror and carries the venture
-       bond. This page once carried a second deck UI of its own; two renderings of
-       one mirror drifted (the routed page had no bond, this one never re-armed a
-       TOMORROW card), which is exactly the split the operator block exists to
-       prevent — so this page now only opens the door. -->
-  <section id="view-open">
-    <h1 id="open-title">Today's deck</h1>
-    <p class="lede" id="open-lede"></p>
-    <div id="open-template"></div>
-    <h1 style="font-size:22px;margin-top:34px">What landed today</h1>
-    <ul class="roster" id="open-landed"><li class="quiet">reading the beach…</li></ul>
-    <h1 style="font-size:22px;margin-top:34px">Decks being held</h1>
-    <ul class="roster" id="open-roster"><li class="quiet">reading the beach…</li></ul>
-    <p class="note" style="margin-top:26px">
-      To keep your own: put your name in and it opens empty — the first card you add makes it.
-    </p>
-    <p><input id="open-handle" type="text" placeholder="your name" autocapitalize="none" autocomplete="off" spellcheck="false"></p>
-    <p><button class="flick" id="open-go">open my deck</button></p>
-  </section>
-</div>
-
-<script>
-(function(){
-'use strict';
-
-const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
-const FIELD = (new URLSearchParams(location.search).get('field') || 'today-beach-deck').replace(/[^a-z0-9-]/gi,'');
-const SPINE = 'spine:' + FIELD;
-const VENTURE = (new URLSearchParams(location.search).get('venture') || 'beach-venture').replace(/[^a-z0-9-]/gi,'');
-
-const $ = id => document.getElementById(id);
-const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-/* a handle in the URL belongs to the deck page — hand it over whole */
-(function(){
-  const qs = new URLSearchParams(location.search);
-  const q = qs.get('h');
-  const f = qs.get('field');
-  const m = location.pathname.match(/\/today-beach-deck\/([^\/]+)\/?$/);
-  const h = q ? q.trim() : (m ? decodeURIComponent(m[1]).trim() : null);
-  /* carry the field through the handover — dropping it landed a named deck back
-   * on the default */
-  if (h) location.replace('/today-beach-deck/' + encodeURIComponent(h) + (f ? '?field=' + encodeURIComponent(f) : ''));
-})();
-
-async function readBlock(name){
-  const r = await fetch(BEACH + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
-  if (r.status === 404) return null;
-  if (!r.ok) throw new Error('beach read failed: ' + r.status);
-  return r.json();
-}
-async function readIndex(){
-  const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' });
-  if (!r.ok) throw new Error('beach index failed: ' + r.status);
-  return r.json();
-}
-function voiceOf(node){
-  if (typeof node === 'string') return node.trim() === '' ? null : node;
-  if (node && typeof node === 'object' && typeof node['_'] === 'string' && node['_'].trim() !== '') return node['_'];
-  return null;
-}
-
-/* WHAT LANDED TODAY — every venture reading at the day's rung, attributed.
- * The bond writes a closed card's words into the holder's venture mirror at the
- * rung of the day it was done (function:today-beach-deck branch 3); this section
- * is the same address read across every mirror, so the front door shows the
- * day's work with nothing stored and nobody reporting. */
-function dayRung(){
-  const d = new Date(), y = d.getUTCFullYear(), mo = d.getUTCMonth(), dom = d.getUTCDate();
-  return [Math.floor(y/1000)%10, Math.floor(y/100)%10, Math.floor(y/10)%10, y%10,
-          Math.floor(mo/3)+1, (mo%3)+1, Math.floor((dom-1)/7)+1, ((dom-1)%7)+1].join('');
-}
-function walkZeroAware(block, addr){
-  let n = block;
-  for (const ch of String(addr).replace(/0+$/, '')){
-    if (!n || typeof n !== 'object') return undefined;
-    n = (ch === '0') ? n['_'] : n[ch];
-  }
-  return n;
-}
-async function loadLanded(index){
-  const names = ((index && index.blocks) || []).filter(b => b.startsWith(VENTURE + ':')
-    && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(b.slice(VENTURE.length + 1)));
-  const addr = dayRung();
-  const rows = [];
-  await Promise.all(names.map(async n => {
-    const who = n.slice(VENTURE.length + 1);
-    const b = await readBlock(n).catch(() => null);
-    if (!b) return;
-    const node = walkZeroAware(b, addr);
-    const t = typeof node === 'string' ? node : voiceOf(node);
-    if (t && t.trim()) rows.push({ who, t: t.trim() });
-  }));
-  rows.sort((a, b) => a.who.localeCompare(b.who));
-  $('open-landed').innerHTML = rows.length
-    ? rows.map(r => '<li><span class="n">' + esc(r.who) + '</span><br>'
-        + esc(r.t).replace(/\n/g, '<br>') + '</li>').join('')
-    : '<li class="quiet">Nothing has landed yet today — close a card DONE and it appears here.</li>';
-}
-
-async function loadOpen(){
-  const [spine, index] = await Promise.all([readBlock(SPINE).catch(()=>null), readIndex().catch(()=>null)]);
-  loadLanded(index);   /* fire-and-forget: the landed section fills as reads land */
-  $('open-title').textContent = FIELD;
-  $('open-lede').textContent = spine ? (voiceOf(spine) || '') : (FIELD + ' has no template at this beach yet.');
-  const parts = [];
-  if (spine) Object.keys(spine).filter(k => /^[1-9]$/.test(k)).sort().forEach(k => {
-    const t = voiceOf(spine[k]); if (t) parts.push('<p class="note">' + esc(t) + '</p>');
-  });
-  $('open-template').innerHTML = parts.join('');
-  const names = ((index && index.blocks) || []).filter(b => b.startsWith(FIELD + ':'));
-  $('open-roster').innerHTML = names.length
-    ? names.map(n => { const h = n.slice(FIELD.length + 1);
-        return '<li><a href="/today-beach-deck/' + encodeURIComponent(h) + '">' + esc(h) + '</a> <span class="n">' + esc(n) + '</span></li>'; }).join('')
-    : '<li class="quiet">Nobody is holding one yet.</li>';
-}
-
-$('bar-field').textContent = FIELD;
-/* the page hands over what only it knows; the catalogue is shared in theme.js */
-if (window.siteDoors) siteDoors({ handle: (location.pathname.match(/\/today-beach-deck\/([^\/]+)\/?$/) || [])[1] || null, family: VENTURE });
-$('open-go').addEventListener('click', () => {
-  const h = $('open-handle').value.trim();
-  if (h) location.href = '/today-beach-deck/' + encodeURIComponent(h);
-});
-$('open-handle').addEventListener('keydown', e => { if (e.key === 'Enter') $('open-go').click(); });
-
-loadOpen();
-})();
-</script>
+<main>
+<h1 style="font-family:var(--display,inherit);font-size:22px">folded into the hand</h1>
+<p>Cards live in one place now — your own hand (<code>ahead:&lt;you&gt;</code>, function:ahead). This page's work moved to the flick at /next.</p>
+<p><a href="/next">/next</a> · <a href="/walk">the walk</a> · <a href="/now">the now</a></p>
+</main>
 </body>
 </html>

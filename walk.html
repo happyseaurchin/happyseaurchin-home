@@ -563,52 +563,48 @@ function planeCards(deck){
       if (digits.length < mfloor) return;
       if (digits.every(d => d === '0')) return;
       if (digits.length > mfloor && digits.slice(mfloor).every(d => d === '0')) return;
-      const raw = node.trim();
-      if (raw) found.push({ addr: digits.join(''), raw });
+      if (node.trim()) found.push({ addr: digits.join(''), node: node.trim() });
       return;
     }
     if (!node || typeof node !== 'object') return;
+    if (isEntryNode(node)){
+      if (digits.length >= mfloor) found.push({ addr: digits.join(''), node });
+      return;
+    }
     if ('_' in node) plane(node['_'], digits.concat('0'));
     for (const d of childDigits(node)) plane(node[d], digits.concat(d));
   })(deck, []);
   return found;
 }
-function cleanCard(raw){
-  let text = raw;
-  for (let k = 0; k < 4; k++){
-    const t2 = text.replace(/^[\s—–-]*(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?|from \/next|\(.{1,24}\))\s*[—–-]*\s*/, '');
-    if (t2 === text) break; text = t2;
-  }
-  return text;
+/* A STORED ENTRY IS A SENTENCE WITH ITS CONDITIONS BENEATH (function:ahead:2):
+ * _ the words; 2 toward; 3 the stamp; 4 the state; 5 dealt-from. A bare string
+ * is a standing personal card. Nothing parses the sentence. */
+function isEntryNode(n){
+  if (!n || typeof n !== 'object' || typeof n._ !== 'string') return false;
+  for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
+  return true;
 }
 function openCardsOf(deck){
-  const t0 = new Date().toISOString().slice(0, 10);
   const out = [];
   planeCards(deck).forEach(c => {
-    const w = (c.raw.split(/\s+/)[0] || '').toUpperCase();
-    if (w === 'DONE' || w === 'DROP') return;
-    let held = '', until = '', text = c.raw;
-    if (w === 'DOING'){ held = 'doing now'; text = c.raw.slice(5).replace(/^[\s—–-]+/, ''); }
-    else if (w === 'TOMORROW'){
-      const dm = c.raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
-      /* A CARD HELD FOR A LATER DAY STANDS AT THAT DAY, rather than vanishing.
-       * Dropping it here left it nowhere on the walk at all: not in today, and
-       * not on the day it was made for — which is why writing one for a future
-       * day looked like writing into nothing. The defer still holds (it is out
-       * of the hand until its date); the walk simply shows where it is waiting. */
-      if (dm && dm[1] > t0){ until = dm[1]; held = 'held until ' + dm[1]; }
-      else held = 'held over';
-      text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
-    }
-    out.push({ addr: c.addr, held, until, text: cleanCard(text) });
+    const n = c.node, obj = typeof n === 'object';
+    const text = obj ? String(n._ || '').trim() : String(n).trim();
+    if (!text) return;
+    const state = obj ? (n['4'] || null) : null;
+    if (state === 'done' || state === 'drop') return;
+    out.push({ addr: c.addr, text,
+               held: state === 'doing' ? 'doing now' : (state === 'held' ? 'in hand' : ''),
+               toward: obj ? (n['2'] || null) : null });
   });
   return out;
 }
 function doneCount(deck, sinceMs){
   let n = 0;
   planeCards(deck).forEach(c => {
-    const m = c.raw.match(/^DONE\s+(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?)/i);
-    if (m){ const t = Date.parse(m[1].replace(' ', 'T')); if (Number.isFinite(t) && t > sinceMs) n++; }
+    const node = c.node;
+    if (!node || typeof node !== 'object' || node['4'] !== 'done' || !node['3']) return;
+    const t = Date.parse(String(node['3']).replace(' ', 'T'));
+    if (Number.isFinite(t) && t > sinceMs) n++;
   });
   return n;
 }
@@ -660,32 +656,18 @@ function voicesAt(addr){
 function cardHomes(){
   const out = [];
   DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
-    /* A CARD STANDS ON THE WALK OF THE FAMILY IT NAMES (ways:deck 3.2): aimed
-     * here it homes here; a time-only aim belongs to the deck's venture; a card
-     * naming NEITHER is unattached and stands on no family's walk — it lives at
-     * /hands and /ahead, held lightly, and floods nobody's project. */
-    if (aimOf(c.text) !== VENTURE) return;
-    const m = c.text.match(/toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i);
-    let home = TODAY_ADDR;
-    /* a day it is held for outranks any coarser aim: that day IS where it stands */
-    if (c.until){
-      const [uy, um, ud] = c.until.split('-').map(Number);
-      out.push({ who, home: dayAddr(uy, um - 1, ud), ...c });
-      return;
-    }
-    if (m){
-      const s = m[1].toLowerCase();
-      home = s === 'this week' ? weekAddr(TODAY.y, TODAY.m0, TODAY.band)
-           : /^20\d\d$/.test(s) ? yearAddr(+s)
-           : monthAddr(TODAY.y, MN.findIndex(n => n.toLowerCase() === s));
-    }
-    out.push({ who, home, ...c });
+    /* A CARD STANDS ON THE WALK OF THE FAMILY ITS FIELD 2 NAMES — read from the
+     * position, never parsed from its words (function:ahead:2). A card naming
+     * no family is unattached and stands on no family's walk — it lives at
+     * /hands, held lightly, and floods nobody's project. */
+    if (c.toward !== VENTURE) return;
+    out.push({ who, home: TODAY_ADDR, ...c });
   }));
   return out;
 }
 const cardsAt = addr => MODE === 'tree' ? [] : cardHomes().filter(c => c.home === addr);
-/* in a tree walk, a card aims at the FAMILY in its own words; the sheet lists them at any branch */
-const famCards = () => cardHomes().filter(c => famOf(c.text) === VENTURE);
+/* in a tree walk, a card aims at the family in its own field 2; the sheet lists them at any branch */
+const famCards = () => cardHomes();
 const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) === addr).length;
 
 /* ── writes — the deck page's write path, held to exactly ── */
@@ -757,14 +739,14 @@ async function writeSpine(addr, content){
   } else if (w.ok) localStorage.setItem(keeperKey(), latch);
   return w;
 }
-async function appendCard(text, pile){
+async function appendCard(entry, pile){
   /* A CAPTURED CARD LANDS IN THE HAND — ahead:<handle>, the piles /next flicks
-   * and /hands sorts — never in the retired today-beach-deck store. Your own
-   * words carry no mark; the aim rides in the words so a DONE lands home. */
+   * and /hands sorts. The entry arrives whole: _ the sentence, conditions at
+   * the positions beneath (function:ahead:2), nothing riding in the words. */
   const name = 'ahead:' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
   if (!existing){
-    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future: intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
     /* BORN LATCHED, as the now mirror already is. An open block is anyone's to
      * rewrite — cards spammed in, a person's own intents changed under them — so
      * the founding asks for a key once and locks in the same write (rule R1:
@@ -783,20 +765,21 @@ async function appendCard(text, pile){
   const cur = await readBlock(name).catch(() => null);
   const p = pile || '1';
   const node = cur && cur[p];
-  if (!node) return writeWithLatch({ block: name, spindle: p, content: { '1': text } }, name);
+  if (!node) return writeWithLatch({ block: name, spindle: p, content: { '1': entry } }, name);
   if (typeof node === 'string')
-    return writeWithLatch({ block: name, spindle: p, content: { '_': node, '1': text } }, name);
+    return writeWithLatch({ block: name, spindle: p, content: { '_': node, '1': entry } }, name);
   /* A DIGIT POSITION HOLDS NINE AND DOES NOT GROW — the beach refuses an append
    * into a full node. Room appends; a full pile reuses its lowest RETIRED slot
-   * (a string entry that is empty or DONE/DROP; an object slot is never eaten);
-   * nine live cards refuses plainly — never overwrite a pile wholesale. */
+   * (an empty string, or an entry whose state at 4 is done or drop); nine live
+   * cards refuses plainly — never overwrite a pile wholesale. */
   const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
   if (digs.length < 9)
-    return writeWithLatch({ block: name, spindle: p, append: true, content: text }, name);
-  const retired = digs.filter(d => typeof node[d] === 'string' &&
-    (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim()))).sort();
+    return writeWithLatch({ block: name, spindle: p, append: true, content: entry }, name);
+  const retired = digs.filter(d =>
+    (typeof node[d] === 'string' && !node[d].trim())
+    || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
   if (!retired.length) return { full: true, pile: p };
-  return writeWithLatch({ block: name, spindle: p + retired[0], content: text }, name);
+  return writeWithLatch({ block: name, spindle: p + retired[0], content: entry }, name);
 }
 
 /* families and their colours — one steady hue per family, its name always written beside it */
@@ -809,26 +792,16 @@ const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(
  * address is optional: a deck is entered whole, having no time in it. */
 const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
   encodeURIComponent(block || ('spine:' + VENTURE)) + (addr ? '&at=' + wireAddr(addr) : '');
-const famOf = text => { const m = String(text).match(/toward\s+([a-z0-9-]{3,})/i);
-  return m && FIELDS.has(m[1].toLowerCase()) ? m[1].toLowerCase() : null; };
-/* a time-shaped aim (this week, August, 2027) belongs to the venture the card was born on */
-const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
-const aimOf = text => famOf(text) || (TIME_AIM.test(String(text)) ? 'beach-venture' : null);
-/* every card still in hand, deferred ones included — the holdings view */
+/* every card still in hand — the holdings view, read from positions alone */
 function holdingsOf(deck){
-  const t0 = new Date().toISOString().slice(0, 10);
   const out = [];
   planeCards(deck || {}).forEach(c => {
-    const w = (c.raw.split(/\s+/)[0] || '').toUpperCase();
-    if (w === 'DONE' || w === 'DROP') return;
-    let state = 'today', until = '', text = c.raw;
-    if (w === 'DOING'){ state = 'doing'; text = c.raw.slice(5).replace(/^[\s—–-]+/, ''); }
-    else if (w === 'TOMORROW'){
-      const dm = c.raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
-      text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
-      if (dm && dm[1] > t0){ state = 'held'; until = dm[1]; }
-    }
-    out.push({ addr: c.addr, state, until, text: cleanCard(text) });
+    const n = c.node, obj = typeof n === 'object';
+    const text = obj ? String(n._ || '').trim() : String(n).trim();
+    if (!text) return;
+    const st = obj ? (n['4'] || null) : null;
+    if (st === 'done' || st === 'drop') return;
+    out.push({ addr: c.addr, state: st === 'doing' ? 'doing' : (st === 'held' ? 'held' : 'today'), until: '', text });
   });
   return out;
 }
@@ -1159,15 +1132,11 @@ function openSheet(pane){
   }
   SHEET = { pane }; paintSheet(); $('sheet-veil').classList.remove('hidden');
 }
-/* FAMILY FIRST, STRETCH AFTER A COMMA (ways:deck 3.2) — where a card born at
- * this point aims, and which pile of the hand it lives in, from the rung alone. */
+/* THE DOOR STAMPS THE AIM (function:ahead:4): a card born at a point of this
+ * family carries the family at field 2, and the pile follows the rung it was
+ * born at. The sentence stays clean words — nothing rides in it. */
 function aimAndPile(){
-  const stretch = SEL.level === 'w' ? (SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.band === TODAY.band ? 'this week' : selLabel())
-    : SEL.level === 'm' ? MN[SEL.m0]
-    : SEL.level === 'y' ? String(SEL.y)
-    : '';
-  return { suffix: ' — toward ' + VENTURE + (stretch ? ', ' + stretch : ''),
-           pile: SEL.level === 'w' ? '3' : SEL.level === 'm' ? '4' : SEL.level === 'y' ? '6'
+  return { pile: SEL.level === 'w' ? '3' : SEL.level === 'm' ? '4' : SEL.level === 'y' ? '6'
              : (SEL.level === 'de' || SEL.level === 'ce' || SEL.level === 't') ? '7' : '1' };
 }
 /* the /now keys, here too: Enter commits, Shift+Enter breaks a line, Esc leaves */
@@ -1270,10 +1239,9 @@ function paintSheet(){
         '<div class="mnote">sharper cards are minted by a mind — ask any LLM that reaches this beach, or ' +
         '<a class="hlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">at the mirror ↗</a>' +
         ' · <a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a></div></div>' +
-        /* a card written at a later day WAITS there — the tick brings it into
-         * the hand you are actually holding today instead */
-        (futureDay() ? '<label class="keepnow"><input type="checkbox" id="addto-now">' +
-          '<span>keep it in today’s hand — otherwise it waits at ' + esc(selLabel()) + ' and stays out of your way until then</span></label>' : '') +
+        /* a commitment to a DATE is not a card — it is a booking: voice the
+         * mirror at that day (function:ahead:3), which is this page's own act */
+        (futureDay() ? '<p class="mnote">for ' + esc(selLabel()) + ' itself, voice your reading at that day — a card is indexical, and lands in today’s hand</p>' : '') +
         '</div>');
     else
       b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
@@ -1330,9 +1298,9 @@ function paintSheet(){
      * paragraph back as one impossible card. */
     const candSplit = t => String(t || '').split(/[;\n]+|(?<=[.!?])\s+(?=[A-Z“"])/)
       .map(s => s.trim().replace(/^[-–—·*]\s*/, '')).filter(s => s.length >= 12);
-    const normTxt = t => String(t || '').toLowerCase().replace(/toward\s+[a-z0-9-]+.*$/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    const normTxt = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
     const ownDeck = (DECKS.find(d => d[0] === HANDLE) || [])[1];
-    const known = new Set(ownDeck ? planeCards(ownDeck).map(c => normTxt(cleanCard(c.raw))) : []);
+    const known = new Set(ownDeck ? openCardsOf(ownDeck).map(c => normTxt(c.text)) : []);
     let cands = null, ci = 0;
     $('addto-deal').addEventListener('click', () => {
       if (!cands){
@@ -1382,19 +1350,15 @@ function paintSheet(){
       if (BUSY) return;
       const t = $('addto-text').value.trim();
       if (!t){ toast('a card needs words', true); return; }
-      /* born at a point of this family means attached to this family — FAMILY
-       * FIRST, STRETCH AFTER A COMMA (ways:deck 3.2), and the pile follows the
-       * rung the card was born at */
-      const { suffix, pile } = aimAndPile();
-      /* a card written at a day still ahead is DEFERRED to it by the deck's own
-       * grammar (ways:deck 3), so it waits there and stays out of the hand until
-       * the day comes — unless the tick says to hold it today after all */
-      const keepNow = !!(document.getElementById('addto-now') || {}).checked;
-      const defer = futureDay() && !keepNow ? 'TOMORROW ' + selDate() + ' — ' : '';
+      /* born at a point of this family means attached to this family — the door
+       * stamps field 2, and the pile follows the rung the card was born at. A
+       * commitment to a DATE is not a card at all: voice the mirror at that day
+       * (function:ahead:3 — the bookings seam). */
+      const { pile } = aimAndPile();
       BUSY = true; $('addto-go').disabled = true;
       try {
-        const w = await appendCard(defer + t + suffix, pile);
-        if (w.ok){ toast(defer ? '✓ waiting at ' + selLabel() : '✓ in your hand'); await load(); paintSheet(); }
+        const w = await appendCard({ '_': t, '2': VENTURE, '3': new Date().toISOString().slice(0,16) + 'Z', '5': '/walk' }, pile);
+        if (w.ok){ toast('✓ in your hand'); await load(); paintSheet(); }
         else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
       } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
       finally { BUSY = false; const g = document.getElementById('addto-go'); if (g) g.disabled = false; }
