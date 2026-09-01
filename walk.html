@@ -315,6 +315,7 @@
   <label><input type="checkbox" data-row="m"> month</label>
   <label><input type="checkbox" data-row="w"> week</label>
   <label><input type="checkbox" data-row="d"> day</label>
+  <label><input type="checkbox" data-row="g"> gathering — the nine parts of a day</label>
   <span class="sub">counts on the cards</span>
   <label><input type="checkbox" data-badge="voices"> voices</label>
   <label><input type="checkbox" data-badge="cards"> cards</label>
@@ -360,6 +361,7 @@
       <div class="rw" id="rw-m"><div class="rowlab">month</div><div class="carousel" id="row-m"></div></div>
       <div class="rw" id="rw-w"><div class="rowlab">week</div><div class="carousel" id="row-w"></div></div>
       <div class="rw" id="rw-d"><div class="rowlab">day</div><div class="carousel" id="row-d"></div></div>
+      <div class="rw" id="rw-g"><div class="rowlab">gathering</div><div class="carousel" id="row-g"></div></div>
     </div>
   </section>
 
@@ -466,6 +468,11 @@ function yearAddr(y){ return String(y); }
 function monthAddr(y, m0){ return String(y) + (Math.floor(m0 / 3) + 1) + (m0 % 3 + 1); }
 function weekAddr(y, m0, band){ return monthAddr(y, m0) + band; }
 function dayAddr(y, m0, d){ return weekAddr(y, m0, Math.floor((d - 1) / 7) + 1) + ((d - 1) % 7 + 1); }
+/* the nine parts of a day — 2h40m each, pscale 1, named as humans name them
+ * (the sundial canon, bsp-mcp src/temporal.ts DAY_PARTS) */
+const GATHERINGS = ['deep night', 'dawn', 'early morning', 'morning', 'midday',
+  'afternoon', 'late afternoon', 'evening', 'night'];
+function gatherAddr(y, m0, d, g){ return dayAddr(y, m0, d) + g; }
 const daysInMonth = (y, m0) => new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
 const bandsIn = (y, m0) => Math.ceil(daysInMonth(y, m0) / 7);
 const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
@@ -495,7 +502,7 @@ const $ = id => document.getElementById(id);
  * instead of everyone getting one fixed page ── */
 const PREF_KEY = 'walk-display';
 const DEFAULT_PREFS = {
-  rows: { ce:false, de:true, y:true, m:true, w:true, d:true },
+  rows: { ce:false, de:true, y:true, m:true, w:true, d:true, g:false },
   badges: { voices:true, cards:true },
   workings: false,
   cast: false,
@@ -826,8 +833,9 @@ async function load(){
   const d = new Date();
   TODAY = { y: d.getUTCFullYear(), m0: d.getUTCMonth(), d: d.getUTCDate() };
   TODAY.band = Math.floor((TODAY.d - 1) / 7) + 1;
+  TODAY.g = Math.floor((d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds()) / 9600) + 1;
   TODAY_ADDR = dayAddr(TODAY.y, TODAY.m0, TODAY.d);
-  if (first) Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, level: 'd' });
+  if (first) Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, g: TODAY.g, level: 'd' });
 
   const [spine, index] = await Promise.all([readBlock('spine:' + VENTURE), readIndex()]);
   if (!spine) throw new Error('spine:' + VENTURE + ' is not on the beach');
@@ -906,6 +914,7 @@ function clampSel(){
   SEL.band = Math.min(SEL.band, bandsIn(SEL.y, SEL.m0));
   const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
   SEL.d = Math.min(Math.max(SEL.d, d1), d2);
+  SEL.g = Math.min(Math.max(SEL.g || 5, 1), 9);
 }
 let LENS = 'spine';                  /* 'spine' — the family's words; 'mine' — your own mirror at each point */
 function lensText(addr){
@@ -922,7 +931,7 @@ function lensText(addr){
  * everyone else proposes in voices. Rungs away from now keep the plain line —
  * an address that merely waits is not asking anybody for anything. */
 function inviteAt(lv, isNow){
-  const what = lv === 'ce' ? 'this century' : lv === 'de' ? 'this decade' : lv === 'y' ? 'this year' : lv === 'm' ? 'this month' : lv === 'w' ? 'this week' : lv === 'd' ? 'today' : null;
+  const what = lv === 'ce' ? 'this century' : lv === 'de' ? 'this decade' : lv === 'y' ? 'this year' : lv === 'm' ? 'this month' : lv === 'w' ? 'this week' : lv === 'd' ? 'today' : lv === 'g' ? 'this gathering' : null;
   if (LENS === 'mine'){
     if (!isNow || !what) return 'you have not voiced here';
     return 'you have not voiced ' + what + ' — tap twice and say what it is toward';
@@ -944,7 +953,7 @@ function rcard(label, addr, isSel, isNow, data){
 /* ── the rows. Each shows its FULL sibling set — every month of the year, every
  * year of the decade — so nothing vanishes as you click. A click highlights in
  * place and re-renders only the rows BENEATH; a row never scrolls itself. ── */
-const LEVELS = ['ce', 'de', 'y', 'm', 'w', 'd'];
+const LEVELS = ['ce', 'de', 'y', 'm', 'w', 'd', 'g'];
 function buildRow(lv){
   const cards = [];
   if (lv === 'ce'){
@@ -978,11 +987,18 @@ function buildRow(lv){
       cards.push(rcard(d1 + '–' + d2 + ' ' + MN[SEL.m0].slice(0, 3), weekAddr(SEL.y, SEL.m0, b),
         b === SEL.band, SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && b === TODAY.band, 'data-lv="w" data-band="' + b + '"'));
     }
-  } else {
+  } else if (lv === 'd'){
     const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
     for (let d = d1; d <= d2; d++)
       cards.push(rcard(wd(SEL.y, SEL.m0, d) + ' ' + d, dayAddr(SEL.y, SEL.m0, d),
         d === SEL.d, SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && d === TODAY.d, 'data-lv="d" data-d="' + d + '"'));
+  } else {
+    /* the gathering — the nine parts of the selected day, the meeting grain:
+     * 'tomorrow midday' is a card on this row, not an address anyone types */
+    const isToday = SEL.y === TODAY.y && SEL.m0 === TODAY.m0 && SEL.d === TODAY.d;
+    for (let g = 1; g <= 9; g++)
+      cards.push(rcard(GATHERINGS[g - 1], gatherAddr(SEL.y, SEL.m0, SEL.d, g),
+        g === SEL.g, isToday && g === TODAY.g, 'data-lv="g" data-g="' + g + '"'));
   }
   return cards.join('');
 }
@@ -997,7 +1013,8 @@ function selMatches(lv, el){
   if (lv === 'y') return +el.dataset.y === SEL.y;
   if (lv === 'm') return +el.dataset.m0 === SEL.m0;
   if (lv === 'w') return +el.dataset.band === SEL.band;
-  return +el.dataset.d === SEL.d;
+  if (lv === 'd') return +el.dataset.d === SEL.d;
+  return +el.dataset.g === SEL.g;
 }
 function paintSel(lv){
   $('row-' + lv).querySelectorAll('.rcard').forEach(el => el.classList.toggle('sel', selMatches(lv, el)));
@@ -1084,9 +1101,12 @@ $('rack').addEventListener('click', e => {
   } else if (lv === 'w'){
     SEL.band = +card.dataset.band; SEL.level = 'w';
     paintSel('w'); renderRowsFrom('d');
-  } else {
+  } else if (lv === 'd'){
     SEL.d = +card.dataset.d; SEL.level = 'd';
-    paintSel('d');
+    paintSel('d'); renderRowsFrom('g');
+  } else {
+    SEL.g = +card.dataset.g; SEL.level = 'g';
+    paintSel('g');
   }
   /* first tap stands there; a count or a second tap opens the detail on the aimed pane */
   if (badge) openSheet(badge.classList.contains('bv') ? 'voices' : 'cards');
@@ -1099,7 +1119,7 @@ $('rack').addEventListener('keydown', e => {
 });
 /* the day being stood at, as a date — and whether it is still ahead */
 function selDate(){
-  if (MODE !== 'clock' || SEL.level !== 'd') return '';
+  if (MODE !== 'clock' || (SEL.level !== 'd' && SEL.level !== 'g')) return '';
   return new Date(Date.UTC(SEL.y, SEL.m0, SEL.d)).toISOString().slice(0, 10);
 }
 function futureDay(){
@@ -1114,6 +1134,7 @@ function selAddr(){
   if (SEL.level === 'y') return yearAddr(SEL.y);
   if (SEL.level === 'm') return monthAddr(SEL.y, SEL.m0);
   if (SEL.level === 'w') return weekAddr(SEL.y, SEL.m0, SEL.band);
+  if (SEL.level === 'g') return gatherAddr(SEL.y, SEL.m0, SEL.d, SEL.g);
   return dayAddr(SEL.y, SEL.m0, SEL.d);
 }
 function selLabel(){
@@ -1129,6 +1150,8 @@ function selLabel(){
     const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
     return d1 + '–' + d2 + ' ' + MN[SEL.m0] + ' ' + SEL.y;
   }
+  if (SEL.level === 'g')
+    return GATHERINGS[SEL.g - 1] + ', ' + wd(SEL.y, SEL.m0, SEL.d) + ' ' + SEL.d + ' ' + MN[SEL.m0].slice(0, 3);
   return wd(SEL.y, SEL.m0, SEL.d) + ' ' + SEL.d + ' ' + MN[SEL.m0] + ' ' + SEL.y;
 }
 /* ── the sheet — one popup over the rack, three panes; where you tapped chooses the pane ── */
