@@ -566,6 +566,31 @@ function entryOf(card, patch){
   return e;
 }
 
+/* THE PILE LAW (function:ahead 1, ratified 2026-09-01): a pile is BOUNDED and
+ * written AT ITS SLOTS, never appended — a free digit first, then the lowest
+ * RETIRED slot (empty, a legacy DONE/DROP string, or state done/drop at −1);
+ * nine live cards refuses plainly. Returns the slot digit, or null when full. */
+function pileSlotFor(node){
+  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
+  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))) return String(d);
+  const retired = digs.filter(d => {
+    const v = node[d];
+    if (typeof v === 'string') return !v.trim() || /^(DONE|DROP)\b/.test(v.trim());
+    return v && typeof v === 'object' && (v['4'] === 'done' || v['4'] === 'drop');
+  }).sort();
+  return retired.length ? retired[0] : null;
+}
+/* the one body shape for landing an entry in a pile, whatever the pile holds:
+ * absent → founded at slot 1; a bare string (the pile's own voice) → preserved
+ * at its underscore; an object → the law's slot. Returns null when full. */
+function pileLanding(name, mine, pile, entry){
+  const node = mine ? mine[pile] : null;
+  if (!node) return { block: name, spindle: pile, content: { '1': entry } };
+  if (typeof node === 'string') return { block: name, spindle: pile, content: { '_': node, '1': entry } };
+  const slot = pileSlotFor(node);
+  return slot ? { block: name, spindle: pile + slot, content: entry } : null;
+}
+
 async function loadField(){
   const [spine, index] = await Promise.all([readBlock(SPINE), readIndex()]);
   /* the hand reads no content from its template spine, so its absence must not
@@ -656,7 +681,9 @@ async function loadField(){
       for (const f of found){ const c = cardFromEntry(f); c.pile = f.pile; CARDS.push(c); }
       /* a named deck flicks that deck; the bare flick is the compiled hand */
       if (AIM) CARDS = CARDS.filter(c => aimMatch(c));
-      else CARDS = CARDS.filter(c => c.state === 'held');
+      /* the compiled hand is what you took up AND what you are on — a card
+       * being done must not vanish from the flick the moment you claim it */
+      else CARDS = CARDS.filter(c => c.state === 'held' || c.state === 'doing');
       rebuildDeck(false);
       return;
     }
@@ -676,7 +703,7 @@ async function loadField(){
       })(mine, []);
       found.sort((a, b) => Number(a.digits.join('')) - Number(b.digits.join('')));
       for (const f of found) CARDS.push(cardFromEntry(f));
-      if (AIM) CARDS = CARDS.filter(c => aimMatch(c.raw || ''));   /* flick one hand: only the cards aiming there */
+      if (AIM) CARDS = CARDS.filter(c => aimMatch(c));   /* flick one hand: only the cards aiming there */
     }
     rebuildDeck(true);
     return;
@@ -856,8 +883,8 @@ function renderDeck(){
     else if (!CARDS.length && !OP.declared)
       showState('Not a deck.',
         esc(FIELD) + ' is a field on this beach, but no operator block (function:' + esc(FIELD) + ') says how its '
-        + 'cards behave, so nothing deals. Found one per ways:deck, or read the field whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
-        + encodeURIComponent(FIELD) + '">spine:' + esc(FIELD) + '</a>, or <a href="/decks">see the decks that do deal</a>.');
+        + 'cards behave, so nothing deals here. Cards live in your own hand — the law is function:ahead — or read the field whole at <a href="/render?beach=beach.happyseaurchin.com&block=spine:'
+        + encodeURIComponent(FIELD) + '">spine:' + esc(FIELD) + '</a>, or <a href="/hands">go to your hands</a>.');
     else if (!CARDS.length)
       showState('No cards yet.',
         'The ' + esc(FIELD) + ' spine carries its content, but none of it sits where a card sits — a card is a leaf '
@@ -1014,17 +1041,19 @@ function gestureTomorrow(el){
   if (el) flyVert(el, true, go); else go();
   undoable('↑ thrown into tomorrow',
     async () => {
+      /* LAND FIRST, BLANK AFTER — the old order blanked the source and could
+       * then fail the landing, leaving the card nowhere. The landing itself is
+       * slot-addressed per the pile law, and a full tomorrow refuses whole. */
       const entry = entryOf(card, { ts: iso() });
-      const w1 = await writeMark(card.addr, '');
-      if (!w1.ok){ if (!w1.quiet) toast('the move did not land', true); return; }
-      const mine = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
-      const has = mine && mine['2'] && typeof mine['2'] === 'object';
+      const name = FIELD + ':' + HANDLE;
+      const mine = await readBlock(name).catch(() => null);
+      const body = pileLanding(name, mine, '2', entry);
+      if (!body){ toast('tomorrow holds nine live cards — finish or let go before deferring more', true); return; }
       const secret = localStorage.getItem(latchKey());
-      const body = has
-        ? { block: FIELD + ':' + HANDLE, spindle: '2', append: true, content: entry }
-        : { block: FIELD + ':' + HANDLE, spindle: '2', content: { '1': entry } };
       const w2 = await writeBlock(Object.assign(body, secret ? { secret } : {}));
-      if (!w2.ok) toast('the move did not land in tomorrow', true);
+      if (!w2.ok){ toast('the move did not land in tomorrow — the card stays put', true); return; }
+      const w1 = await writeMark(card.addr, '');
+      if (!w1.ok && !w1.quiet) toast('landed in tomorrow, but the old slot would not clear — it stands twice until you tidy', true);
     },
     () => { rebuildDeck(false); renderDeck(); });
 }
@@ -1430,21 +1459,17 @@ async function commitCapture(){
    * two-level address under a stem that does not exist, marked PROPOSED, waiting
    * on a keeper who is the person who wrote it. */
   if (HAND){
-    /* THE PILE IS THE ADDRESS AND THE BEACH ALLOCATES WITHIN IT. Written exactly
-     * as /ahead writes it: an existing pile takes an append (the beach picks the
-     * next free slot and supernests when the ladder fills, atomically); an empty
-     * pile is founded with its first intent at slot 1. Two surfaces, one write
-     * pattern — which is the only reason a card typed at /ahead and a card added
-     * here are the same card. */
+    /* THE PILE LAW: bounded, slot-addressed, never appended (function:ahead 1).
+     * A minted card is a bare sentence — self-written, unattached — landed at
+     * the pile's next free or retired slot; nine live cards refuses plainly. */
     const sEl = document.querySelector('input[name="cap-stem"]:checked');
     const pile = sEl ? sEl.value : '1';
     await ensureMirror();
-    const mine = await readBlock(FIELD + ':' + HANDLE).catch(() => null);
-    const has = mine && mine[pile] && typeof mine[pile] === 'object';
+    const name = FIELD + ':' + HANDLE;
+    const mine = await readBlock(name).catch(() => null);
+    const body = pileLanding(name, mine, pile, text);
+    if (!body){ toast('that pile holds nine live cards — finish or let go before adding more', true); return; }
     const secret = localStorage.getItem(latchKey());
-    const body = has
-      ? { block: FIELD + ':' + HANDLE, spindle: pile, append: true, content: text }
-      : { block: FIELD + ':' + HANDLE, spindle: pile, content: { '1': text } };
     const w = await writeBlock(Object.assign(body, secret ? { secret } : {}));
     if (!w.ok){ toast('the card did not land' + (lockRequired(w) ? ' — set your edit-latch ⚿' : ''), true); return; }
     toast('✓ added — ' + ((PILES.find(x => x.d === pile) || {}).label || 'your hand'));

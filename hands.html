@@ -291,7 +291,9 @@ function entryOf(card, patch){
   return e;
 }
 const inPlay = c => c.state !== 'done' && c.state !== 'drop';
-const inHand = c => c.state === 'held';
+/* the hand is what you took up AND what you are on — a claim must not eject
+ * a card from the my-hand row while it is being done */
+const inHand = c => c.state === 'held' || c.state === 'doing';
 
 /* ── SPLITTING A RUNG'S VOICING INTO CANDIDATES. A person writes a cell as prose
  * and routinely puts several intentions in one line, separated by a semicolon or
@@ -409,20 +411,22 @@ async function addCard(pile, entry){
   if (!node) return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': entry } });
   if (typeof node === 'string')
     return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '_': node, '1': entry } });
-  /* A DIGIT POSITION HOLDS NINE AND DOES NOT GROW — the beach refuses an append
-   * into a full node — and nine LIVE cards is a pile's honest bound anyway. So:
-   * room appends; a full pile REUSES ITS LOWEST RETIRED SLOT (an empty string,
-   * or an entry whose state at 4 is done or drop — the sweep's free real
-   * estate); nine live cards refuses plainly, because a hand that cannot say
+  /* THE PILE LAW (function:ahead 1, ratified 2026-09-01): a pile is BOUNDED and
+   * WRITTEN AT ITS SLOTS, NEVER APPENDED — a free digit first, then the lowest
+   * RETIRED slot (an empty or legacy DONE/DROP string, or state done/drop at
+   * −1); nine live cards refuses plainly, because a hand that cannot say
    * enough is a feed. */
   const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
-  if (digs.length < 9)
-    return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, append: true, content: entry });
-  const retired = digs.filter(d =>
-    (typeof node[d] === 'string' && !node[d].trim())
-    || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
-  if (!retired.length) return { full: true, pile };
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile + retired[0], content: entry });
+  let slot = null;
+  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))){ slot = String(d); break; }
+  if (!slot){
+    const retired = digs.filter(d =>
+      (typeof node[d] === 'string' && (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim())))
+      || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
+    slot = retired[0] || null;
+  }
+  if (!slot) return { full: true, pile };
+  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile + slot, content: entry });
 }
 async function editCard(c, text){
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: entryOf(c, { text }) });
@@ -678,7 +682,7 @@ function render(){
   /* ── MINE — written, not dealt; the bottom on purpose. ── */
   const mine = CARDS.filter(c => !c.toward);
   out.push(rowHead('mine', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
-    links: (mine.length ? flick('?aim=mine') + ' ' : '') + '<a href="/ahead/' + encodeURIComponent(HANDLE) + '">the deck →</a>',
+    links: mine.length ? flick('?aim=mine') : '',
     sub: 'Held lightly — written by hand, on no clock and toward no spine. The grounded work lives above: your now, and the projects. Click the blank card and type; Enter lands it, Escape leaves.' }));
   out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
 
@@ -725,6 +729,9 @@ document.addEventListener('click', async e => {
        * in the pile it was written to, under the deck it came from; all that
        * changes is its state at field 4 — held in, standing out. */
       const c = find(); if (!c) return;
+      /* a doing claim outranks a hold — ＋hand on a card being done is already
+       * true and must not downgrade the claim */
+      if (act === 'hold' && c.state === 'doing'){ toast('already in your hand — being done right now'); return; }
       const w = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
         content: entryOf(c, act === 'hold' ? { state: 'held', ts: stamp() } : { state: null, ts: stamp() }) });
       if (w.ok){ toast(act === 'hold' ? '✓ in your hand' : '✓ set down'); await reload(); }

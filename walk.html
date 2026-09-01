@@ -768,18 +768,21 @@ async function appendCard(entry, pile){
   if (!node) return writeWithLatch({ block: name, spindle: p, content: { '1': entry } }, name);
   if (typeof node === 'string')
     return writeWithLatch({ block: name, spindle: p, content: { '_': node, '1': entry } }, name);
-  /* A DIGIT POSITION HOLDS NINE AND DOES NOT GROW — the beach refuses an append
-   * into a full node. Room appends; a full pile reuses its lowest RETIRED slot
-   * (an empty string, or an entry whose state at 4 is done or drop); nine live
-   * cards refuses plainly — never overwrite a pile wholesale. */
+  /* THE PILE LAW (function:ahead 1, ratified 2026-09-01): a pile is BOUNDED and
+   * WRITTEN AT ITS SLOTS, NEVER APPENDED — a free digit first, then the lowest
+   * RETIRED slot (empty or legacy DONE/DROP string, or state done/drop at −1);
+   * nine live cards refuses plainly — never overwrite a pile wholesale. */
   const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
-  if (digs.length < 9)
-    return writeWithLatch({ block: name, spindle: p, append: true, content: entry }, name);
-  const retired = digs.filter(d =>
-    (typeof node[d] === 'string' && !node[d].trim())
-    || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
-  if (!retired.length) return { full: true, pile: p };
-  return writeWithLatch({ block: name, spindle: p + retired[0], content: entry }, name);
+  let slot = null;
+  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))){ slot = String(d); break; }
+  if (!slot){
+    const retired = digs.filter(d =>
+      (typeof node[d] === 'string' && (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim())))
+      || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
+    slot = retired[0] || null;
+  }
+  if (!slot) return { full: true, pile: p };
+  return writeWithLatch({ block: name, spindle: p + slot, content: entry }, name);
 }
 
 /* families and their colours — one steady hue per family, its name always written beside it */
