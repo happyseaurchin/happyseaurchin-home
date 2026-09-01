@@ -401,6 +401,11 @@ const stamp = () => new Date().toISOString().slice(0,16) + 'Z';
  * from it — that was the arrangement this design replaced. A card written by hand
  * lands in the nearest pile, because a thing you sit down and write is for now. */
 async function addCard(pile, entry){
+  /* A BARE SENTENCE IS WRAPPED AS {_: sentence} BEFORE ANY SLOT WRITE — a
+   * string MERGES into an occupied node's underscore on the wire, inheriting
+   * the old conditions, so a mint reusing a retired slot was born already-done
+   * and invisible. An object replaces wholesale; {_: text} is born clean. */
+  if (typeof entry === 'string') entry = { '_': entry };
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
   if (!mine){
     const w0 = await foundLatched('ahead:' + HANDLE, { '_':
@@ -710,9 +715,12 @@ function render(){
     out.push(rowHead('done today', doneToday.length + (doneToday.length === 1 ? ' card' : ' cards'), {
       sub: 'Finished or put down since midnight — the trace, not the work: a done card’s record has already landed where it aimed. The sweep clears these tomorrow.' }));
     out.push('<div class="carousel">' + doneToday.map(c =>
-      '<div class="dcard" style="opacity:0.55"><span class="aim"><span class="pile">' + (c.state === 'done' ? 'done' : 'put down') + '</span>'
+      '<div class="dcard" style="opacity:0.55" data-addr="' + esc(c.addr) + '"><span class="aim"><span class="pile">' + (c.state === 'done' ? 'done' : 'put down') + '</span>'
       + (c.toward ? '<span class="st">' + esc(deckLabel(c.toward)) + '</span>' : '') + '</span>'
-      + '<div class="txt">' + esc(c.text) + '</div></div>').join('') + '</div>');
+      + '<div class="txt">' + esc(c.text) + '</div>'
+      /* the undo the day deserves — done by mistake (or by the old merge bug)
+       * walks back to standing with its words intact */
+      + '<div class="acts"><button data-act="revive">↩ not done</button></div></div>').join('') + '</div>');
   }
 
   out.push('<div class="foot" style="border:none;margin:0;padding-top:18px">'
@@ -753,6 +761,13 @@ document.addEventListener('click', async e => {
       const w = await confirm(ask);
       if (w.ok){ ACTED.add(askKey(ask)); toast('✓ confirmed — one line in your ' + ask.family + ' reading'); await reload(); }
       else if (!w.quiet) toast('the confirmation did not land', true);
+    } else if (act === 'revive'){
+      /* back to standing — the words stay, the state clears, a fresh stamp */
+      const c = ALLCARDS.find(x => x.addr === card.dataset.addr); if (!c) return;
+      const w = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
+        content: entryOf(c, { state: null, ts: stamp() }) });
+      if (w.ok){ toast('↩ standing again'); await reload(); }
+      else if (!w.quiet) toast('it did not land', true);
     } else if (act === 'hold' || act === 'release'){
       /* COMPILING IS A SELECTION, NEVER A MOVE. The card stays at its own address,
        * in the pile it was written to, under the deck it came from; all that
