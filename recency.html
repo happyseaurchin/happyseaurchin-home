@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Recency</title>
+<meta name="description" content="The d3 lens on the social glance — the same field, the same one reading, drawn as d3's zoomable sunburst for comparison with /where.">
+<meta property="og:title" content="Recency">
+<meta property="og:description" content="The d3 lens on the social glance — one field, one reading, the zoomable sunburst.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<script src="/vendor/d3.v7.min.js"></script>
+<style>
+  *{box-sizing:border-box} html,body{margin:0}
+  body{
+    font-family:var(--body); color:var(--foam); font-size:17.5px; line-height:1.58;
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--liquid-rgb),0.10), transparent 60%),
+      linear-gradient(180deg,var(--ground-top) 0%, var(--deep) 30%, var(--abyss) 100%);
+    background-attachment:fixed; -webkit-font-smoothing:antialiased;
+    min-height:100dvh;
+  }
+  ::selection{background:rgba(var(--liquid-rgb),0.30);color:var(--foam)}
+  a{color:var(--liquid);text-decoration:none;border-bottom:1px solid rgba(var(--liquid-rgb),0.35)}
+  a:hover{color:var(--foam);border-color:var(--foam)}
+  .hidden{display:none !important}
+  .wrap{max-width:680px;margin:0 auto;padding:0 18px}
+
+  /* the house bar — walk.html's own shape, full width, so the sticky header
+   * (bar + projects row, wrapped as one by theme.js) reads as ONE chrome
+   * across pages: a centred 680px pill over a full-width row was the
+   * oddness the keeper saw */
+  .bar{display:flex;align-items:center;gap:10px;padding:12px 18px;font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim);
+    position:sticky;top:0;z-index:10;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line)}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar a{border-bottom:none;color:var(--vapour-dim)} .bar a:hover{color:var(--liquid)}
+  .bar .spacer{flex:1}
+
+  .head{padding:8px 0 0}
+  .head h1{font-family:var(--display);font-weight:800;font-size:clamp(1.35rem,5vw,1.9rem);line-height:1.12;margin:0 0 8px}
+  .head h1 .cool{color:var(--liquid)}
+  .meta{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:var(--vapour-dim);margin:0 0 4px}
+  .meta b{color:var(--liquid);font-weight:700}
+
+  /* the live strip — people first, colour second */
+  .eve{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0 4px;min-height:30px}
+  .eve .lab{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim)}
+  .pchip{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:999px;
+    padding:4px 12px 4px 6px;font-family:var(--mono);font-size:12px;color:var(--foam);cursor:pointer;background:rgba(var(--card-rgb),0.5)}
+  .pchip:hover{border-color:var(--liquid)}
+  .pchip .pdot{width:18px;height:18px;border-radius:50%;background:var(--solid);color:var(--abyss);
+    display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:10.5px;text-transform:uppercase}
+  .pchip .at{color:var(--vapour-dim)}
+  .pchip.dim{opacity:0.62}
+  .eve .quiet{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);font-style:normal}
+
+  /* the dial — on its own card, so the face reads in both themes */
+  #dialbox{position:relative;margin:10px auto 0;max-width:600px;
+    background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.55) 0%,rgba(var(--card-rgb),0.55) 100%);
+    border:1px solid var(--line);border-radius:16px;padding:10px}
+  #dial{display:block;width:100%;height:auto;background:transparent}
+  .dlab{font-family:var(--mono);font-size:10px;fill:var(--vapour);pointer-events:none}
+  .cbig{font-family:var(--display);font-weight:700;font-size:19px;fill:var(--foam);pointer-events:none}
+  .csmall{font-family:var(--mono);font-size:10px;fill:var(--vapour-dim);pointer-events:none}
+  .ccount{font-family:var(--mono);font-size:9.5px;fill:var(--liquid);pointer-events:none}
+  .hand{stroke:var(--foam);stroke-width:1.2;opacity:0.55;pointer-events:none}
+  .handdot{fill:var(--foam);opacity:0.8;pointer-events:none}
+  .handlab{font-family:var(--mono);font-size:10px;fill:var(--foam);opacity:0.8;pointer-events:none}
+  .chip circle{fill:var(--solid);stroke:var(--abyss);stroke-width:1}
+  .chip text{font-family:var(--mono);font-size:9.5px;font-weight:700;fill:var(--abyss);text-transform:uppercase}
+  .actspark{stroke:var(--solid);stroke-width:3;fill:none;opacity:0.9;pointer-events:none}
+
+  /* the focused part */
+  .panel{background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.55) 0%,rgba(var(--card-rgb),0.55) 100%);
+    border:1px solid var(--line);border-radius:14px;padding:18px 20px 16px;margin:14px 0}
+  .panel .paddr{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin:0 0 8px}
+  .panel .paddr b{color:var(--solid);font-weight:700;font-size:13px}
+  .panel .paddr .work{margin-left:auto}
+  .panel .ptext{font-size:1.08rem;line-height:1.5;margin:0 0 4px}
+  .panel .ptext.absent{color:var(--vapour-dim);font-style:italic}
+  .vline{display:flex;gap:10px;align-items:baseline;padding:8px 2px;border-top:1px solid var(--line)}
+  .vline:first-of-type{border-top:none}
+  .vline .who{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:72px}
+  .vline .whereat{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:none}
+  .vline p{margin:0;font-size:0.98rem;line-height:1.45}
+  .vline .ago{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:none;margin-left:auto}
+  .subhead{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--liquid);margin:14px 0 4px}
+  .plinks{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;font-family:var(--mono);font-size:12px}
+  .plinks a{border:1px solid var(--line);border-radius:6px;padding:7px 12px;color:var(--vapour);border-bottom-width:1px}
+  .plinks a:hover{border-color:var(--liquid);color:var(--foam)}
+  .plinks button{background:none;border:1px solid var(--line);border-radius:6px;padding:7px 12px;color:var(--vapour);font-family:var(--mono);font-size:12px;cursor:pointer}
+  .plinks button:hover:not(:disabled){border-color:var(--liquid);color:var(--foam)}
+
+  .whisper{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:10px 0 0;line-height:1.6}
+  .whisper a{color:var(--vapour-dim)} .whisper a:hover{color:var(--liquid)}
+  .whisper b{color:var(--vapour);font-weight:700}
+  #err{font-family:var(--mono);font-size:12px;color:var(--solid);margin:12px 0}
+  .lbtn,.tbtn{background:none;border:1px solid var(--line);border-radius:999px;color:var(--vapour-dim);
+    font-family:var(--mono);font-size:11px;letter-spacing:0.05em;padding:3px 10px;margin:0 3px;cursor:pointer}
+  .lbtn:hover,.tbtn:hover{border-color:var(--liquid);color:var(--foam)}
+  .lbtn.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.6)}
+  .tbtn.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.6)}
+  .lbtn.on[data-lens="mine"]{color:var(--solid);border-color:rgba(var(--solid-rgb),0.6)}
+  .saybox{display:flex;gap:8px;align-items:flex-start;margin-top:12px}
+  .saybox textarea{flex:1;background:rgba(var(--well-rgb),0.5);border:1px solid var(--line);border-radius:8px;
+    color:var(--foam);font-family:var(--body);font-size:0.98rem;line-height:1.45;padding:9px 12px;resize:vertical;min-height:44px}
+  .saybox textarea:focus{outline:none;border-color:var(--liquid)}
+  .saybox button{border:1px solid var(--line);border-radius:6px;padding:8px 14px;background:none;color:var(--vapour);
+    font-family:var(--mono);font-size:12px;cursor:pointer}
+  .saybox button:hover{border-color:var(--liquid);color:var(--foam)}
+  .sayhint{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);margin:6px 0 0}
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="dot"></span>
+  <span>recency · <b id="b-fam">—</b></span>
+  <span class="spacer"></span>
+  <a id="b-reread" role="button" tabindex="0" title="read the beach again — this page never polls">↻ re-read</a>
+  <a id="b-mirror" target="_blank" rel="noopener">mirror ↗</a>
+</div>
+<div class="wrap">
+  <div class="head">
+    <h1>The <span class="cool">recency</span></h1>
+    <p class="meta"><span id="m-fam">—</span> · <span id="m-mode">—</span> · <b id="m-live">—</b></p>
+    <p class="meta hidden" id="controls">
+      <span id="lensrow" class="hidden">show · <button class="lbtn on" data-lens="all">everyone</button><button class="lbtn" data-lens="mine">mine</button></span>
+      <span id="actrow" class="hidden">heat · <button class="tbtn on" data-tf="all">voices</button><button class="tbtn" data-tf="week">active 7 days</button><button class="tbtn" data-tf="today">active today</button></span>
+    </p>
+  </div>
+
+  <div class="eve" id="eve"><span class="lab">here lately</span><span class="quiet">looking…</span></div>
+
+  <div id="dialbox"><svg id="dial" role="img" aria-label="the field as a heatmap dial — click a part to zoom into it, the centre to zoom out"></svg></div>
+  <p class="whisper" id="key" style="margin-top:6px">the key · <b>glow</b> — people who voiced beneath, deeper = more (a count is people, never lines; the heat chips flip it to who ACTED lately) · <b>spark</b> on a rim — an act in the last two days · <b>●</b> — someone here lately · <b>line</b> — now</p>
+
+  <div class="panel hidden" id="panel"></div>
+  <p id="err" class="hidden"></p>
+  <p class="whisper" id="wh"></p>
+</div>
+
+<noscript><p style="text-align:center;font-family:monospace;padding:30px">This glance is drawn live from the beach and needs JavaScript. The same field can be read plainly at <a href="/walk">/walk</a>.</p></noscript>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   /heatmap — where a shared field is hot with voices, on d3's zoomable
+   sunburst (d3 v7 vendored at /vendor/d3.v7.min.js — no CDN at runtime).
+
+   THE ARITHMETIC (the keeper's ruling, 2026-08-20): a count is PEOPLE,
+   never lines. One hand voicing its whole ladder — year, month, week, day,
+   beat — is ONE voice everywhere it rolls up. The panel reads one part:
+   the spine's own words and each hand's line exactly there.
+
+   THE ECONOMICS: one reading of spine + mirrors + presence per visit, then
+   stillness — no polling ever. The one write this page can make is the
+   visitor's own deliberate SAY into their own mirror at the focused part,
+   when the URL carries their handle (/heatmap/<family>/<handle>) — the
+   same act /now and /walk offer, latched the same way.
+
+   LENSES: everyone / mine (with a handle) — sea-glow for the field, sand
+   for your own trail. WHEN: all time / 7 days / today on clock families —
+   a day-or-finer voicing counts for a time window; a week- or year-level
+   line is a standing declaration and shows under 'all time'.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+
+/* ── the same tiny beach client every o-page speaks ── */
+async function readBlock(name){
+  const r = await fetch(BEACH + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('beach read failed: ' + r.status);
+  return r.json();
+}
+async function readIndex(){
+  const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (!r.ok) throw new Error('beach index failed: ' + r.status);
+  return r.json();
+}
+
+/* ── pscale walking (walk.html's dialect, verbatim) ── */
+function floorOf(block){
+  let n = 0, node = block;
+  while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
+  return n;
+}
+function voice(node){
+  let n = node;
+  while (n && typeof n === 'object') { if (!('_' in n)) return null; n = n['_']; }
+  return typeof n === 'string' ? n : null;
+}
+function childDigits(node){
+  if (!node || typeof node !== 'object') return [];
+  return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort();
+}
+function walkZeroAware(block, addr){
+  let n = block;
+  for (const ch of String(addr).replace(/0+$/, '')){
+    if (!n || typeof n !== 'object') return undefined;
+    n = (ch === '0') ? n['_'] : n[ch];
+  }
+  return n;
+}
+function textAt(block, addr){
+  const n = walkZeroAware(block, addr);
+  if (n === undefined || n === null) return null;
+  if (typeof n === 'string') return n.trim() || null;
+  return voice(n);
+}
+const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : s; return d.innerHTML; };
+const short = (s, n) => { s = s || ''; return s.length > n ? s.slice(0, n).replace(/\s+\S*$/, '') + ' …' : s; };
+const strip0 = a => String(a).replace(/0+$/, '');
+const pad10 = a => String(a).padEnd(10, '0');
+function ago(ts){ const t = Date.parse(ts); if (!Number.isFinite(t)) return '';
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return 'now';
+  if (s < 5400) return Math.round(s / 60) + 'm ago';
+  if (s < 129600) return Math.round(s / 3600) + 'h ago';
+  return Math.round(s / 86400) + 'd ago'; }
+
+/* ── the sundial arithmetic (walk.html's, verbatim) ── */
+function yearAddr(y){ return String(y); }
+function monthAddr(y, m0){ return String(y) + (Math.floor(m0 / 3) + 1) + (m0 % 3 + 1); }
+function weekAddr(y, m0, band){ return monthAddr(y, m0) + band; }
+function dayAddr(y, m0, d){ return weekAddr(y, m0, Math.floor((d - 1) / 7) + 1) + ((d - 1) % 7 + 1); }
+const daysInMonth = (y, m0) => new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
+const bandsIn = (y, m0) => Math.ceil(daysInMonth(y, m0) / 7);
+const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const wd = (y, m0, d) => new Date(Date.UTC(y, m0, d)).toUTCString().slice(0, 3);
+const DAY_PARTS = ['deep night','dawn','early morning','morning','midday','afternoon','late afternoon','evening','night'];
+
+function nowAddr(){
+  const t = new Date();
+  const y = t.getUTCFullYear(), m0 = t.getUTCMonth(), d = t.getUTCDate();
+  const secs = t.getUTCHours() * 3600 + t.getUTCMinutes() * 60 + t.getUTCSeconds();
+  const gath = Math.min(9, Math.floor(secs / (86400 / 9)) + 1);
+  const beat = Math.min(9, Math.floor((secs - (gath - 1) * (86400 / 9)) / (86400 / 81)) + 1);
+  return dayAddr(y, m0, d) + gath + beat;
+}
+
+/* ── state ── */
+const _q = new URLSearchParams(location.search);
+const _m = location.pathname.match(/\/(?:recency|heatmap)\/([^\/]+)(?:\/([^\/]+))?\/?$/);
+const FAMILY = (((_m && decodeURIComponent(_m[1])) || _q.get('f') || 'now').replace(/[^a-z0-9-]/gi, '')) || 'now';
+const HANDLE = (((_m && _m[2] && decodeURIComponent(_m[2])) || _q.get('h') || '').replace(/[^a-z0-9 _-]/gi, '').trim()) || null;
+/* the page hands over what only it knows; the catalogue is shared in theme.js */
+if (window.siteDoors) siteDoors({ handle: HANDLE, family: FAMILY, here: 'recency' });
+if (window.siteProjects) siteProjects({ handle: HANDLE, family: FAMILY, page: 'recency' });
+
+let SPINE = null, MODE = 'tree';
+let MIRRORS = [];                 /* [handle, block] */
+let OCC = [];                     /* {who, addr} — every standing voicing, addr stripped */
+let PRESENT = [];                 /* {who, place, ts, fresh, at} — the last quarter hour */
+let FOCUS = null;                 /* the part the panel reads */
+let NOW10 = nowAddr();
+let LENS = 'all';                 /* 'all' — everyone's voices · 'mine' — where you have voiced */
+let ACTFILTER = 'all';            /* 'all' — standing voices · 'week'|'today' — who ACTED lately */
+let ACTS = [];                    /* {who, at, ts} — acts read from the beach's marks */
+let TOUCHED = null;               /* the beach's block→last-write map, when it serves one */
+
+const $ = id => document.getElementById(id);
+const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
+  encodeURIComponent(block || ('spine:' + FAMILY)) + (addr ? '&at=' + (MODE === 'clock' ? pad10(addr) : String(addr)) : '');
+
+/* ── parts and labels (identical to /where) ── */
+function clockLabel(addr){
+  const a = String(addr), L = a.length;
+  if (L <= 1) return 'the ' + a + '000s';
+  if (L === 2){ const n = +a + 1; const suf = n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th';
+    return 'the ' + n + suf + ' century'; }
+  if (L === 3) return 'the ' + a + '0s';
+  if (L === 4) return a;
+  if (L === 5) return ['','first quarter','second quarter','third quarter','last quarter'][+a[4]] + ' ' + a.slice(0,4);
+  if (L === 6){ const m0 = (+a[4] - 1) * 3 + (+a[5] - 1); return MN[m0] + ' ' + a.slice(0,4); }
+  if (L === 7){ const m0 = (+a[4] - 1) * 3 + (+a[5] - 1), b = +a[6], y = +a.slice(0,4);
+    const d1 = (b - 1) * 7 + 1, d2 = Math.min(b * 7, daysInMonth(y, m0));
+    return d1 + '–' + d2 + ' ' + MN[m0].slice(0,3); }
+  if (L === 8){ const m0 = (+a[4] - 1) * 3 + (+a[5] - 1), b = +a[6], y = +a.slice(0,4);
+    const d = (b - 1) * 7 + (+a[7]); return wd(y, m0, d) + ' ' + d + ' ' + MN[m0].slice(0,3); }
+  if (L === 9) return DAY_PARTS[+a[8] - 1];
+  return 'beat ' + a[9];
+}
+function clockKids(addr){
+  const a = String(addr), L = a.length;
+  if (L === 0) return [];
+  if (L <= 3) return '0123456789'.split('').map(d => a + d);
+  if (L === 4){ const out = []; for (let m0 = 0; m0 < 12; m0++) out.push(monthAddr(+a, m0)); return out; }
+  if (L === 5) return [];
+  if (L === 6){ const y = +a.slice(0,4), m0 = (+a[4] - 1) * 3 + (+a[5] - 1);
+    const out = []; for (let b = 1; b <= bandsIn(y, m0); b++) out.push(a + b); return out; }
+  if (L === 7){ const y = +a.slice(0,4), m0 = (+a[4] - 1) * 3 + (+a[5] - 1), b = +a[6];
+    const n = Math.min(b * 7, daysInMonth(y, m0)) - (b - 1) * 7;
+    const out = []; for (let d = 1; d <= n; d++) out.push(a + d); return out; }
+  if (L <= 9) return '123456789'.split('').map(d => a + d);
+  return [];
+}
+function treeKids(addr){
+  const set = new Set(childDigits(walkZeroAware(SPINE, addr) || null).map(d => addr + d));
+  OCC.forEach(o => { if (o.addr.length > addr.length && o.addr.startsWith(addr)) set.add(o.addr.slice(0, addr.length + 1)); });
+  return [...set].filter(k => /[1-9]$/.test(k)).sort();
+}
+const kidsOf = addr => MODE === 'clock' ? clockKids(addr) : treeKids(addr);
+function labelFor(addr){
+  if (MODE === 'clock') return clockLabel(addr);
+  if (!addr) return FAMILY;
+  const t = textAt(SPINE, addr);
+  return t ? short(t, 30) : '· ' + addr.slice(-1);
+}
+function shortClockLab(addr){
+  const a = String(addr), L = a.length;
+  if (L === 1) return a + '000s';
+  if (L === 2) return a + '00s';
+  if (L === 3) return a + '0s';
+  if (L === 4) return a;
+  if (L === 6) return MN[(+a[4] - 1) * 3 + (+a[5] - 1)].slice(0, 3);
+  if (L === 7) return clockLabel(addr).replace(/ .*/, '');
+  if (L === 8){ const m0 = (+a[4] - 1) * 3 + (+a[5] - 1), b = +a[6]; return String((b - 1) * 7 + (+a[7])); }
+  if (L === 9) return DAY_PARTS[+a[8] - 1].split(' ').pop();
+  if (L === 10) return 'b' + a[9];
+  return a.slice(-1);
+}
+const nodeLabel = addr => MODE === 'clock' ? shortClockLab(addr) : short(labelFor(addr), 11);
+
+/* ── warmth — THE COUNT IS PEOPLE, NEVER LINES (the keeper's ruling,
+   2026-08-20). One person voicing their whole ladder — year, month, week,
+   day, beat — is one voice everywhere it rolls up, not five. ── */
+const presentUnder = addr => PRESENT.filter(p => { const at = strip0(p.at || '');
+  return !addr || (at && at.startsWith(addr)); });
+/* the voicings the current lens admits */
+function occView(){
+  let v = OCC;
+  if (LENS === 'mine' && HANDLE) v = v.filter(o => o.who === HANDLE);
+  return v;
+}
+/* THE KEEPER'S DISTINCTION (2026-08-20): a voicing's ADDRESS is where the
+ * intention AIMS on the shared clock — and the dial's geometry already
+ * shows that (a line at the week sits at the week; zooming IS the aimed-at
+ * filter). WHEN the hand actually moved is a different time entirely, and
+ * it lives in the beach's marks: each say from this page leaves one
+ * ({_, 1 who, 2 'block addr', 3 ts, 4 face} — the standing shape at
+ * block-conventions 9.1). The heat chips flip the glow between the two:
+ * standing voices, or acts in a window. */
+function actsView(){
+  let v = ACTS;
+  if (LENS === 'mine' && HANDLE) v = v.filter(a => a.who === HANDLE);
+  if (ACTFILTER !== 'all'){
+    const win = (ACTFILTER === 'today' ? 1 : 7) * 86400e3;
+    v = v.filter(a => Date.now() - Date.parse(a.ts) < win);
+  }
+  return v;
+}
+const actHeat = () => ACTFILTER !== 'all';
+const handsUnder = addr => actHeat()
+  ? new Set(actsView().filter(a => !addr || (a.at && a.at.startsWith(addr))).map(a => a.who))
+  : new Set(occView().filter(o => !addr || o.addr.startsWith(addr)).map(o => o.who));
+const mineUnder  = addr => actHeat()
+  ? actsView().filter(a => (!addr || (a.at && a.at.startsWith(addr))))
+  : occView().filter(o => (!addr || o.addr.startsWith(addr)));
+/* structure is judged on the FULL record so the dial never changes shape
+ * when a lens or filter flicks — only its colour does */
+const warm = addr => OCC.some(o => o.addr.startsWith(addr)) || presentUnder(addr).length > 0;
+const onNowPath = addr => MODE === 'clock' && NOW10.startsWith(addr);
+const cellFill = addr => {
+  const n = LENS === 'mine' ? mineUnder(addr).length : handsUnder(addr).size;
+  if (!n) return 'rgba(var(--card-rgb),0.25)';
+  const a = Math.min(0.15 + 0.14 * n, 0.62).toFixed(2);
+  return 'rgba(var(--' + (LENS === 'mine' ? 'solid' : 'liquid') + '-rgb),' + a + ')';
+};
+const cellTip = addr => {
+  const span = ACTFILTER === 'today' ? 'today' : 'the last 7 days';
+  if (LENS === 'mine'){ const k = mineUnder(addr).length;
+    if (actHeat()) return labelFor(addr) + (k ? ' — ' + k + (k === 1 ? ' act' : ' acts') + ' of yours ' + span : ' — no act of yours ' + span);
+    return labelFor(addr) + (k ? ' — yours at ' + k + (k === 1 ? ' part' : ' parts') : ' — nothing of yours here'); }
+  const n = handsUnder(addr).size;
+  if (actHeat()) return labelFor(addr) + (n ? ' — ' + n + ' active ' + span : ' — quiet ' + span);
+  return labelFor(addr) + (n ? ' — ' + n + (n === 1 ? ' voice' : ' voices') : ' — quiet');
+};
+
+/* ── the hierarchy d3 partitions ─────────────────────────────────────────────
+   Clock families build the calendar down to days everywhere, and below days
+   only where something stands or now runs — leaf values are TRUE SPANS in
+   days, so a month's arc is its own length. Tree families are the union of
+   spine and mirrors, one node per branch. ── */
+function leafSpan(addr){
+  const L = addr.length;
+  if (L === 1) return 365000;
+  if (L === 2) return 36500;
+  if (L === 3) return 3650;
+  if (L === 4) return 365;
+  if (L === 6){ const y = +addr.slice(0,4), m0 = (+addr[4]-1)*3 + (+addr[5]-1); return daysInMonth(y, m0); }
+  if (L === 7){ const y = +addr.slice(0,4), m0 = (+addr[4]-1)*3 + (+addr[5]-1), b = +addr[6];
+    return Math.min(b*7, daysInMonth(y, m0)) - (b-1)*7; }
+  if (L === 8) return 1;
+  if (L === 9) return 1/9;
+  return 1/81;
+}
+function buildTree(){
+  if (MODE === 'clock'){
+    /* the millennium is the root, so stepping out from the year keeps going —
+     * decade, century, the whole thousand years. Above the year a rung only
+     * grows children where the clock actually runs or a record stands
+     * (a fully-grown millennium would be four hundred thousand parts);
+     * below the year the calendar grows whole, and below the day only where
+     * something social stands. */
+    const hasRecord = addr => OCC.some(o => o.addr.startsWith(addr)) ||
+      ACTS.some(a => a.at && a.at.startsWith(addr)) ||
+      PRESENT.some(p => strip0(p.at || '').startsWith(addr));
+    const nodeC = addr => {
+      let ks = clockKids(addr);
+      const L = addr.length;
+      if (L <= 4 && L > 1 && !(onNowPath(addr) || hasRecord(addr))) ks = [];
+      if (L >= 8 && !(warm(addr) || onNowPath(addr))) ks = [];
+      if (L >= 10) ks = [];
+      const n = { addr };
+      if (ks.length) n.children = ks.map(nodeC);
+      else n.value = leafSpan(addr);
+      return n;
+    };
+    return nodeC('2');
+  }
+  const nodeT = addr => {
+    const ks = treeKids(addr);
+    const n = { addr };
+    if (ks.length) n.children = ks.map(nodeT);
+    else n.value = 1;
+    return n;
+  };
+  return nodeT('');
+}
+
+/* ── the zoomable sunburst — the canonical d3 pattern, socialised ── */
+const D3W = 640, D3R = D3W / 6;
+let D3ROOT = null, D3PATH = null, D3LABEL = null, D3PARENT = null, D3DECOR = null, D3CTEXT = null, ARCGEN = null, CURRENTP = null;
+const arcVisible   = d => d.y1 <= 3 && d.y0 >= 1 && d.x1 > d.x0;
+const labelVisible = d => d.y1 <= 3 && d.y0 >= 1 && (d.y1 - d.y0) * (d.x1 - d.x0) > 0.035;
+function labelTransform(d){
+  const x = (d.x0 + d.x1) / 2 * 180 / Math.PI;
+  const y = (d.y0 + d.y1) / 2 * D3R;
+  return 'rotate(' + (x - 90) + ') translate(' + y + ',0) rotate(' + (x < 180 ? 0 : 180) + ')';
+}
+function drawD3(){
+  NOW10 = nowAddr();
+  const host = d3.select($('dial'));
+  host.selectAll('*').remove();
+  host.attr('viewBox', [-D3W / 2, -D3W / 2, D3W, D3W]);
+  D3ROOT = d3.hierarchy(buildTree()).sum(d => d.value || 0);
+  d3.partition().size([2 * Math.PI, D3ROOT.height + 1])(D3ROOT);
+  D3ROOT.each(d => d.current = d);
+  ARCGEN = d3.arc()
+    .startAngle(d => d.x0).endAngle(d => d.x1)
+    .padAngle(d => Math.min((d.x1 - d.x0) / 2, 0.005))
+    .padRadius(D3R * 1.5)
+    .innerRadius(d => d.y0 * D3R)
+    .outerRadius(d => Math.max(d.y0 * D3R, d.y1 * D3R - 1));
+  D3PATH = host.append('g').selectAll('path')
+    .data(D3ROOT.descendants().slice(1)).join('path')
+      .attr('fill', d => cellFill(d.data.addr))
+      .attr('stroke', 'var(--line)').attr('stroke-width', 0.7)
+      .attr('fill-opacity', d => arcVisible(d.current) ? 1 : 0)
+      .attr('stroke-opacity', d => arcVisible(d.current) ? 1 : 0)
+      .attr('pointer-events', d => arcVisible(d.current) ? 'auto' : 'none')
+      .attr('d', d => ARCGEN(d.current))
+      .style('cursor', 'pointer')
+      .on('click', clicked);
+  D3PATH.append('title').text(d => cellTip(d.data.addr));
+  D3LABEL = host.append('g').attr('pointer-events', 'none').attr('text-anchor', 'middle')
+    .selectAll('text').data(D3ROOT.descendants().slice(1)).join('text')
+      .attr('class', 'dlab').attr('dy', '0.35em')
+      .attr('fill-opacity', d => +labelVisible(d.current))
+      .attr('transform', d => labelTransform(d.current))
+      .text(d => nodeLabel(d.data.addr));
+  D3PARENT = host.append('circle').datum(D3ROOT)
+      .attr('r', D3R)
+      .attr('fill', 'rgba(var(--card-hi-rgb),0.55)').attr('stroke', 'var(--line-strong)')
+      .attr('pointer-events', 'all').style('cursor', 'pointer')
+      .on('click', clicked);
+  D3CTEXT = host.append('g').attr('pointer-events', 'none');
+  D3DECOR = host.append('g').attr('pointer-events', 'none');
+  const keep = CURRENTP && CURRENTP.data ? CURRENTP.data.addr : null;
+  CURRENTP = D3ROOT;
+  const stand = (keep != null && D3ROOT.descendants().find(d => d.data.addr === keep && d.children))
+    || (MODE === 'clock' && D3ROOT.descendants().find(d => d.data.addr === NOW10.slice(0, 4) && d.children))
+    || D3ROOT;
+  jumpTo(stand);
+}
+function retarget(p){
+  CURRENTP = p;
+  D3PARENT.datum(p.parent || D3ROOT);
+  D3ROOT.each(d => d.target = {
+    x0: Math.max(0, Math.min(1, (d.x0 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+    x1: Math.max(0, Math.min(1, (d.x1 - p.x0) / (p.x1 - p.x0))) * 2 * Math.PI,
+    y0: Math.max(0, d.y0 - p.depth),
+    y1: Math.max(0, d.y1 - p.depth),
+  });
+}
+/* land on a part with no animation — the opening view, and hidden tabs */
+function jumpTo(p){
+  retarget(p);
+  FOCUS = p.data.addr;
+  D3ROOT.each(d => d.current = d.target);
+  D3PATH.attr('fill-opacity', d => arcVisible(d.current) ? 1 : 0)
+    .attr('stroke-opacity', d => arcVisible(d.current) ? 1 : 0)
+    .attr('pointer-events', d => arcVisible(d.current) ? 'auto' : 'none')
+    .attr('d', d => ARCGEN(d.current));
+  D3LABEL.attr('fill-opacity', d => +labelVisible(d.current))
+    .attr('transform', d => labelTransform(d.current));
+  updateCentre(p); updateDecor(); drawPanel();
+}
+function clicked(event, p){
+  if (!p) return;
+  /* a leaf is read, not entered; a parent (or the centre) is entered */
+  if (!p.children){ FOCUS = p.data.addr; drawPanel(); return; }
+  if (p === CURRENTP && !p.parent){ FOCUS = p.data.addr; drawPanel(); return; }
+  /* frames are not guaranteed in a hidden tab — jump straight to the target */
+  if (document.hidden){ jumpTo(p); return; }
+  retarget(p);
+  FOCUS = p.data.addr;
+  D3DECOR.attr('opacity', 0);
+  const t = d3.select($('dial')).transition().duration(event && event.altKey ? 7500 : 750);
+  D3PATH.transition(t)
+    .tween('data', d => { const i = d3.interpolate(d.current, d.target); return tt => d.current = i(tt); })
+    .filter(function(d){ return +this.getAttribute('fill-opacity') || arcVisible(d.target); })
+      .attr('fill-opacity', d => arcVisible(d.target) ? 1 : 0)
+      .attr('stroke-opacity', d => arcVisible(d.target) ? 1 : 0)
+      .attr('pointer-events', d => arcVisible(d.target) ? 'auto' : 'none')
+      .attrTween('d', d => () => ARCGEN(d.current));
+  D3LABEL.filter(function(d){ return +this.getAttribute('fill-opacity') || labelVisible(d.target); })
+    .transition(t)
+      .attr('fill-opacity', d => +labelVisible(d.target))
+      .attrTween('transform', d => () => labelTransform(d.current));
+  t.end().then(() => { updateDecor(); }).catch(() => { updateDecor(); });
+  updateCentre(p);
+  drawPanel();
+}
+function updateCentre(p){
+  D3CTEXT.selectAll('*').remove();
+  const addr = p.data.addr;
+  const cword = addr ? textAt(SPINE, addr) : voice(SPINE);
+  let line;
+  const span = ACTFILTER === 'today' ? 'today' : '7 days';
+  if (LENS === 'mine'){ const k = mineUnder(addr).length;
+    line = actHeat() ? (k ? k + ' of your acts within · ' + span : 'no act of yours within · ' + span)
+      : (k ? 'yours at ' + k + (k === 1 ? ' part within' : ' parts within') : 'nothing of yours within'); }
+  else { const n = handsUnder(addr).size;
+    line = actHeat() ? (n ? n + ' active within · ' + span : 'nobody active within · ' + span)
+      : (n ? n + (n === 1 ? ' voice within' : ' voices within') : (cword ? 'spoken, quiet within' : 'quiet')); }
+  D3CTEXT.append('text').attr('class', 'cbig').attr('x', 0).attr('y', -8).attr('text-anchor', 'middle')
+    .text(short(addr ? labelFor(addr) : FAMILY, 16));
+  D3CTEXT.append('text').attr('class', 'csmall').attr('x', 0).attr('y', 12).attr('text-anchor', 'middle').text(line);
+  if (p.parent) D3CTEXT.append('text').attr('class', 'csmall').attr('x', 0).attr('y', 30).attr('text-anchor', 'middle')
+    .text('tap to step out');
+}
+/* a lens or time flick recolours the standing dial — no rebuild, no lost zoom */
+function restyleD3(){
+  if (!D3ROOT) return;
+  D3PATH.attr('fill', d => cellFill(d.data.addr));
+  D3PATH.select('title').text(d => cellTip(d.data.addr));
+  updateCentre(CURRENTP);
+  drawPanel();
+}
+function deepestVisibleContaining(addr){
+  if (!addr) return null;
+  let best = null;
+  D3ROOT.descendants().slice(1).forEach(d => {
+    if (arcVisible(d.current) && addr.startsWith(d.data.addr) && (!best || d.data.addr.length > best.data.addr.length)) best = d;
+  });
+  return best;
+}
+function updateDecor(){
+  D3DECOR.attr('opacity', 1).selectAll('*').remove();
+  if (MODE === 'clock'){
+    NOW10 = nowAddr();
+    const n = deepestVisibleContaining(NOW10);
+    if (n){
+      const a = (n.current.x0 + n.current.x1) / 2 - Math.PI / 2, r = 3 * D3R + 10;
+      D3DECOR.append('line').attr('class', 'hand').attr('x1', 0).attr('y1', 0)
+        .attr('x2', r * Math.cos(a)).attr('y2', r * Math.sin(a));
+      D3DECOR.append('circle').attr('class', 'handdot').attr('r', 3.2)
+        .attr('cx', r * Math.cos(a)).attr('cy', r * Math.sin(a));
+      D3DECOR.append('text').attr('class', 'handlab').attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('x', (r + 12) * Math.cos(a)).attr('y', (r + 12) * Math.sin(a)).text('now');
+    }
+  }
+  /* the sparks — an act in the last two days, shown on the rim of every
+   * visible part that contains one, whichever heat is on */
+  const acts48 = ACTS.filter(a => Date.now() - Date.parse(a.ts) < 48 * 3600e3);
+  acts48.length && D3ROOT.descendants().slice(1).forEach(d => {
+    if (!arcVisible(d.current)) return;
+    if (!acts48.some(a => a.at && a.at.startsWith(d.data.addr))) return;
+    const mid = (d.current.x0 + d.current.x1) / 2 - Math.PI / 2;
+    const half = Math.min((d.current.x1 - d.current.x0) * 0.35, 0.10);
+    const r = d.current.y1 * D3R + 2;
+    const p = a => (r * Math.cos(a)).toFixed(2) + ' ' + (r * Math.sin(a)).toFixed(2);
+    D3DECOR.append('path').attr('class', 'actspark')
+      .attr('d', 'M' + p(mid - half) + 'A' + r + ' ' + r + ' 0 0 1 ' + p(mid + half));
+  });
+  const byNode = new Map();
+  PRESENT.forEach(pr => {
+    const n = deepestVisibleContaining(strip0(pr.at || '')) || 'centre';
+    if (!byNode.has(n)) byNode.set(n, []);
+    byNode.get(n).push(pr);
+  });
+  byNode.forEach((ps, n) => {
+    let cx = 0, cy = -D3R * 0.55;
+    if (n !== 'centre'){
+      const a = (n.current.x0 + n.current.x1) / 2 - Math.PI / 2;
+      const r = (n.current.y0 + n.current.y1) / 2 * D3R;
+      cx = r * Math.cos(a); cy = r * Math.sin(a);
+    }
+    ps.slice(0, 4).forEach((pr, i) => {
+      const x = cx + (i - (Math.min(ps.length, 4) - 1) / 2) * 17;
+      const g = D3DECOR.append('g').attr('class', 'chip').attr('opacity', pr.fresh ? 1 : 0.5);
+      g.append('circle').attr('r', 9.5).attr('cx', x).attr('cy', cy);
+      g.append('text').attr('x', x).attr('y', cy + 0.5).attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle').text(pr.who.slice(0, 2));
+      g.append('title').text(pr.who + (pr.fresh ? ' — here right now' : ' — here ' + ago(pr.ts)));
+    });
+    if (ps.length > 4) D3DECOR.append('text').attr('class', 'ccount').attr('x', cx).attr('y', cy + 16)
+      .attr('text-anchor', 'middle').text('+' + (ps.length - 4));
+  });
+}
+/* jump to wherever a person stands — zoom to the deepest parent that holds
+ * their coordinate, then read it */
+function goToAddr(addr){
+  if (!addr || !D3ROOT) return;
+  let best = null;
+  D3ROOT.descendants().forEach(d => {
+    if (d.children && addr.startsWith(d.data.addr) && (!best || d.data.addr.length > best.data.addr.length)) best = d;
+  });
+  if (best && best !== CURRENTP) clicked(null, best);
+  FOCUS = addr;
+  drawPanel();
+}
+
+/* ── the focused part — the spine's words and each hand's line EXACTLY here
+ * (the keeper's shape, 2026-08-20: everything else lives elsewhere), plus
+ * your own pen when the URL carries your name ── */
+function drawPanel(){
+  const el = $('panel');
+  if (FOCUS === null || FOCUS === undefined){ el.classList.add('hidden'); return; }
+  const addr = FOCUS;
+  $('b-mirror').href = mirrorUrl(addr);          /* the bar's mirror door follows the focus */
+  const word = addr ? textAt(SPINE, addr) : voice(SPINE);
+  const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text);
+  const rows = [];
+  rows.push('<p class="paddr"><b>' + esc(addr ? labelFor(addr) : FAMILY) + '</b><span class="work">' + esc(addr ? (MODE === 'clock' ? pad10(addr) : addr) : '·') + '</span></p>');
+  rows.push(word ? '<p class="ptext">' + esc(word) + '</p>' : '<p class="ptext absent">the spine has no words at this part</p>');
+  rows.push('<div class="subhead">voices at this part</div>' + (exact.length ? exact.map(x =>
+    '<div class="vline"><span class="who">' + esc(x.who) + '</span><p>' + esc(short(x.text, 400)) + '</p></div>').join('')
+    : '<div class="vline"><span class="who"></span><p class="ptext absent" style="margin:0">none exactly here — the glow is voices deeper in; zoom to find them</p></div>'));
+  if (HANDLE && addr && strip0(addr) !== addr){
+    rows.push('<p class="sayhint">this rung shares its wire address with the rung above (the zero-digit cost, sundial 3.4) — a say here would land there instead. Voice this stretch at <a href="/now/' + esc(HANDLE) + '">/now</a>, which holds the coarse rungs the safe way.</p>');
+  } else if (HANDLE){
+    const mine = exact.find(x => x.who === HANDLE);
+    rows.push('<div class="saybox"><textarea id="say-t" rows="2" placeholder="your voice at ' + esc(addr ? labelFor(addr) : FAMILY) + ' …">' + esc(mine ? mine.text : '') + '</textarea><button id="say-b">say</button></div>' +
+      '<p class="sayhint">lands in ' + esc(FAMILY + ':' + HANDLE) + ' at this very part, revisable forever — Enter says, Shift+Enter breaks a line</p>');
+  }
+  rows.push('<div class="plinks">' +
+    '<a target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">this part in the mirror ↗</a>' +
+    '<a target="_blank" rel="noopener" href="/walk/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">walk this field ↗</a>' +
+    (HANDLE && word ? '<button id="p-deal" title="one card in your hand, aimed here — pile by rung">deal this as a card</button>' : '') +
+    '</div>');
+  el.innerHTML = rows.join('');
+  el.classList.remove('hidden');
+  const pd = document.getElementById('p-deal');
+  if (pd) pd.addEventListener('click', async () => {
+    pd.disabled = true; pd.textContent = 'dealing…';
+    const r = await dealToHand(word, addr);
+    pd.textContent = r === true ? '✓ in your hand — flick it at /next'
+      : r === 'full' ? 'that pile holds nine — finish or let go first'
+      : 'the deal did not land';
+  });
+  const t = $('say-t');
+  if (t){
+    t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); void sayAt(addr, t.value.trim()); } });
+    $('say-b').addEventListener('click', () => { void sayAt(addr, $('say-t').value.trim()); });
+  }
+}
+
+/* THE DEAL, FROM THE FOCUSED PART — its words become one card in the holder's
+ * hand (ahead:<handle>), aimed at this family, the pile following the part's
+ * rung. A digit position holds nine and does not grow: room appends; a full
+ * pile reuses its lowest RETIRED slot (empty or DONE/DROP strings only); nine
+ * live cards refuses. The page is the mechanical dealer — a mind deals better. */
+async function dealToHand(text, addr){
+  if (!HANDLE || !text) return false;
+  const name = 'ahead:' + HANDLE;
+  const home = 'next-latch:' + name;
+  let latch = localStorage.getItem(home);
+  const fl = MODE === 'clock' ? 10 : (floorOf(SPINE) || 1);
+  const p = fl - String(addr || '').length;
+  const pile = p <= 2 ? '1' : p === 3 ? '3' : p === 4 ? '4' : p === 5 ? '5' : p === 6 ? '6' : '7';
+  /* every dealt card carries its deck as its aim — the now included — and the
+   * STRETCH when the part's rung names one (FAMILY FIRST, STRETCH AFTER A
+   * COMMA): the card then points exactly where it was dealt from, and the walk
+   * homes it there by proxy */
+  let stretch = '';
+  if (MODE === 'clock' && addr){
+    const a = String(addr);
+    if (p === 3) stretch = 'this week';
+    else if (p === 4 && a.length >= 6) stretch = MN[((+a[4] - 1) * 3 + (+a[5] - 1))] || '';
+    else if (p === 6) stretch = a.slice(0, 4);
+  }
+  const aimed = /toward\s+[a-z0-9-]/i.test(text) ? text
+    : text + ' — toward ' + FAMILY + (stretch ? ', ' + stretch : '');
+  async function put(body){
+    if (latch) body.secret = latch;
+    let w = await writeBlock(body);
+    if (lockRequired(w)){
+      const v = prompt(name + ' is latched — its key (kept on this device):');
+      if (v === null || !v.trim()) return { ok: false };
+      latch = v.trim(); body.secret = latch;
+      w = await writeBlock(body);
+      if (w.ok) localStorage.setItem(home, latch);
+    }
+    return w;
+  }
+  const cur = await readBlock(name).catch(() => null);
+  if (!cur){
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (spine:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    const body = { block: name, content: { '_': root, [pile]: { '1': aimed } } };
+    if (latch) body.new_lock = latch;
+    return (await writeBlock(body)).ok === true;
+  }
+  const node = cur[pile];
+  if (!node) return (await put({ block: name, spindle: pile, content: { '1': aimed } })).ok === true;
+  if (typeof node === 'string')
+    return (await put({ block: name, spindle: pile, content: { '_': node, '1': aimed } })).ok === true;
+  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
+  if (digs.length < 9)
+    return (await put({ block: name, spindle: pile, append: true, content: aimed })).ok === true;
+  const retired = digs.filter(d => typeof node[d] === 'string' &&
+    (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim()))).sort();
+  if (!retired.length) return 'full';
+  return (await put({ block: name, spindle: pile + retired[0], content: aimed })).ok === true;
+}
+
+/* ── the say — the one write this page can make: your own line, your own
+ * mirror, the focused part. The same act /now and /walk offer, latched the
+ * same way; a key entered once is kept on this device. ── */
+async function writeBlock(body){
+  const r = await fetch(BEACH, { method:'POST', cache:'no-store',
+    headers:{'Content-Type':'application/json', Accept:'application/json'},
+    body: JSON.stringify(body) });
+  let d = null; try { d = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, data: d };
+}
+const lockRequired = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+const latchKey = () => 'mirror-latch:' + FAMILY + ':' + HANDLE;
+const storedLatch = () => localStorage.getItem(latchKey()) || (FAMILY === 'now' ? localStorage.getItem('now-latch:' + HANDLE) : null);
+async function writeWithLatch(body, what){
+  const latch = storedLatch();
+  if (latch) body.secret = latch;
+  let w = await writeBlock(body);
+  if (lockRequired(w)){
+    const v = prompt(what + ' is latched — enter your key (kept on this device):');
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    body.secret = v.trim();
+    w = await writeBlock(body);
+    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+  }
+  return w;
+}
+async function ensureMirror(){
+  const name = FAMILY + ':' + HANDLE;
+  const existing = await readBlock(name).catch(() => null);
+  if (existing) return existing;
+  const fl = floorOf(SPINE) || 1;
+  let root = 'MIRROR — ' + HANDLE + "'s readings on the " + FAMILY + " field (spine:" + FAMILY + "), at the spine's own addresses. Sovereign; silence at an address is honest absence.";
+  for (let i = 0; i < fl; i++) root = { '_': root };
+  const body = { block: name, content: root };
+  const latch = storedLatch() || (prompt('your mirror ' + name + ' will be born now — choose a key for it (kept on this device; blank leaves it open):') || '').trim();
+  if (latch){ body.new_lock = latch; localStorage.setItem(latchKey(), latch); }
+  const w = await writeBlock(body);
+  return w.ok ? readBlock(name).catch(() => null) : null;
+}
+async function sayAt(addr, text){
+  if (!HANDLE || !addr || !text) return;
+  const name = FAMILY + ':' + HANDLE;
+  let blk = (MIRRORS.find(m => m[0] === HANDLE) || [])[1] || await ensureMirror();
+  if (!blk){ sayNote('the mirror could not be set up'); return; }
+  /* fresh read so a node's children are never clobbered (the scalar-over-object trap) */
+  const fresh = await readBlock(name).catch(() => null) || blk;
+  const node = walkZeroAware(fresh, addr);
+  const content = (node && typeof node === 'object') ? { ...node, _: text } : text;
+  const w = await writeWithLatch({ block: name, spindle: (MODE === 'clock' ? pad10(addr) : String(addr)), content }, name);
+  if (w.quiet) return;
+  if (!w.ok){ sayNote(name + ' refused it: ' + ((w.data && (w.data.error || w.data.code)) || w.status)); return; }
+  sayNote('✓ yours at ' + (addr ? labelFor(addr) : FAMILY) + ' — say again here and the new words replace it');
+  /* the act leaves a mark on the beach — WHEN a hand moved, distinct from
+   * where its words aim; the tide may clear old ones, which is what
+   * recency does anyway */
+  const actTs = new Date().toISOString();
+  try {
+    await writeBlock({ block: 'marks', append: true, content: {
+      _: HANDLE + ' voiced ' + (addr ? labelFor(addr) : FAMILY) + ' on the ' + FAMILY + ' field',
+      '1': HANDLE, '2': name + ' ' + (MODE === 'clock' ? pad10(addr) : String(addr)),
+      '3': actTs, '4': 'character' } });
+    ACTS.push({ who: HANDLE, at: addr, ts: actTs });
+    $('actrow').classList.remove('hidden');
+    $('controls').classList.remove('hidden');
+  } catch (e) { /* a missed trace is only a missed trace */ }
+  const nb = await readBlock(name).catch(() => null);
+  if (nb){
+    const i = MIRRORS.findIndex(m => m[0] === HANDLE);
+    if (i >= 0) MIRRORS[i] = [HANDLE, nb]; else MIRRORS.push([HANDLE, nb]);
+    OCC = MIRRORS.flatMap(([who, b]) => collectVoicings(who, b));
+    restyleD3();
+  }
+}
+function sayNote(t){ const el = $('err'); el.textContent = t; el.classList.remove('hidden'); setTimeout(() => el.classList.add('hidden'), 6000); }
+
+/* ── the live strip (identical to /where) ── */
+function drawEve(){
+  const el = $('eve');
+  const chips = PRESENT.map(p => {
+    const at = strip0(p.at || '');
+    return '<button class="pchip' + (p.fresh ? '' : ' dim') + '" data-go="' + esc(at) + '"><span class="pdot">' + esc(p.who.slice(0, 2)) + '</span>' +
+      esc(p.who) + '<span class="at">' + (at ? '· ' + esc(labelFor(at)) + ' ' : '') + (p.fresh ? '· now' : '· ' + esc(ago(p.ts))) + '</span></button>';
+  });
+  el.innerHTML = '<span class="lab">here lately</span>' + (chips.length ? chips.join('') :
+    '<span class="quiet">nobody has stood at ' + esc(FAMILY) + ' in the last while — the glow below is where voices stand</span>');
+  const live = PRESENT.filter(p => p.fresh).length;
+  $('m-live').textContent = live ? live + ' live' : (PRESENT.length ? PRESENT.length + ' lately' : 'quiet');
+}
+
+/* ── data sweeps (identical to /where) ── */
+function collectVoicings(who, block){
+  const out = [];
+  const seen = new Set();
+  (function rec(node, path){
+    if (typeof node === 'string'){ if (node.trim()){ const a = strip0(path); if (a && !seen.has(a)){ seen.add(a); out.push({ who, addr: a }); } } return; }
+    if (!node || typeof node !== 'object') return;
+    if (typeof node['_'] === 'string' && node['_'].trim()){ const a = strip0(path); if (a && !seen.has(a)){ seen.add(a); out.push({ who, addr: a }); } }
+    else if (node['_'] && typeof node['_'] === 'object') rec(node['_'], path + '0');
+    for (const k of childDigits(node)) rec(node[k], path + k);
+  })(block, '');
+  return out;
+}
+function parseSlots(block, take){
+  const out = [];
+  (function rec(node){
+    if (!node || typeof node !== 'object') return;
+    for (const k of childDigits(node)){
+      const s = node[k];
+      if (s && typeof s === 'object' && typeof s['1'] === 'string') { const v = take(s); if (v) out.push(v); }
+      else if (s && typeof s === 'object') rec(s);
+    }
+    if (node['_'] && typeof node['_'] === 'object') rec(node['_']);
+  })(block);
+  return out;
+}
+const placeIsHere = place => place === FAMILY || place === 'spine:' + FAMILY ||
+  place === 'pool:' + FAMILY || (typeof place === 'string' && place.startsWith(FAMILY + ':'));
+
+async function sweepSlow(){
+  const [spine, index] = await Promise.all([readBlock('spine:' + FAMILY), readIndex()]);
+  if (!spine) throw new Error('spine:' + FAMILY + ' is not on the beach');
+  SPINE = spine;
+  MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
+  const blocks = (index && index.blocks) || [];
+  TOUCHED = (index && index.touched && typeof index.touched === 'object') ? index.touched : null;
+  const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
+  const mNames = blocks.filter(b => b.startsWith(FAMILY + ':') && nameOk(b.slice(FAMILY.length + 1)));
+  const got = await Promise.all(mNames.map(n => readBlock(n).catch(() => null)));
+  MIRRORS = mNames.map((n, i) => [n.slice(FAMILY.length + 1), got[i]]).filter(x => x[1]);
+  OCC = MIRRORS.flatMap(([who, blk]) => collectVoicings(who, blk));
+  ACTS = [];
+  if (blocks.includes('marks')){
+    const marks = await readBlock('marks').catch(() => null);
+    ACTS = parseSlots(marks, s => {
+      const two = typeof s['2'] === 'string' ? s['2'] : '';
+      if (!two.startsWith(FAMILY + ':')) return null;
+      const ts = typeof s['3'] === 'string' ? s['3'] : '';
+      if (!ts || !Number.isFinite(Date.parse(ts))) return null;
+      const sp = two.split(' ');
+      return { who: s['1'], at: strip0(sp[1] || ''), ts };
+    });
+  }
+  $('m-fam').textContent = 'the ' + FAMILY + ' field · ' + MIRRORS.length + (MIRRORS.length === 1 ? ' hand' : ' hands');
+  $('m-mode').textContent = MODE === 'clock' ? 'the shared clock' : 'its own branches';
+}
+async function sweepPresence(){
+  const p = await readBlock('presence').catch(() => null);
+  const WINDOW = 15 * 60e3, FRESH = 60e3;
+  PRESENT = parseSlots(p, s => {
+    const ts = typeof s['3'] === 'string' ? s['3'] : '';
+    if (!ts || !Number.isFinite(Date.parse(ts)) || Date.now() - Date.parse(ts) > WINDOW) return null;
+    const place = typeof s['2'] === 'string' ? s['2'] : '';
+    if (!placeIsHere(place)) return null;
+    let at = typeof s['7'] === 'string' ? s['7'] : '';
+    if (!at){
+      /* a mirror tab parked at a family block rides the wire as
+       * '<block>:<coordinate>' (xstream-bsp #263) — the coordinate is the
+       * digit tail after the last colon */
+      const cut = place.lastIndexOf(':');
+      if (cut > 0 && /^[0-9]+$/.test(place.slice(cut + 1))) at = place.slice(cut + 1);
+    }
+    return { who: s['1'], place, ts, fresh: Date.now() - Date.parse(ts) < FRESH, at };
+  }).sort((a, b) => (b.fresh ? 1 : 0) - (a.fresh ? 1 : 0) || (b.ts || '').localeCompare(a.ts || ''));
+}
+
+/* THIS PAGE NEVER WRITES. One reading, then stillness — same law as /where. */
+
+/* ── wiring ── */
+document.addEventListener('click', e => {
+  const lb = e.target.closest('.lbtn');
+  if (lb){ LENS = lb.dataset.lens;
+    document.querySelectorAll('.lbtn').forEach(b => b.classList.toggle('on', b === lb));
+    restyleD3(); return; }
+  const tb = e.target.closest('.tbtn');
+  if (tb){ ACTFILTER = tb.dataset.tf;
+    document.querySelectorAll('.tbtn').forEach(b => b.classList.toggle('on', b === tb));
+    restyleD3(); return; }
+  const go = e.target.closest('[data-go]');
+  if (go) goToAddr(go.dataset.go);
+});
+
+async function reread(){
+  const b = $('b-reread');
+  b.textContent = '↻ reading…';
+  try {
+    await sweepSlow();
+    await sweepPresence();
+    drawD3(); drawEve();
+    $('lensrow').classList.toggle('hidden', !HANDLE);
+    $('actrow').classList.toggle('hidden', !ACTS.length);
+    $('controls').classList.toggle('hidden', !HANDLE && !ACTS.length);
+    $('err').classList.add('hidden');
+  } catch (e) {
+    $('err').textContent = String(e.message || e);
+    $('err').classList.remove('hidden');
+  }
+  b.textContent = '↻ re-read';
+}
+/* ── the live tick — rides the beach's `touched` map (bsp-mcp#294,
+ * pscale-beach#63) when the surface serves one; without it the page stays
+ * read-once exactly as before. One index GET a minute while visible; a
+ * change to this family's blocks triggers one real re-read; presence
+ * moving alone refreshes just the chips. ~6-60 GETs an hour, not hundreds. */
+const relevantName = n => n === 'spine:' + FAMILY || n === 'marks' || n === 'presence' ||
+  (n.startsWith(FAMILY + ':') && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(n.slice(FAMILY.length + 1)));
+let TICKING = false;
+async function tick(){
+  if (document.hidden || TICKING || !TOUCHED) return;
+  TICKING = true;
+  try {
+    const idx = await readIndex().catch(() => null);
+    const t = idx && idx.touched;
+    if (t && typeof t === 'object'){
+      const moved = Object.keys(t).filter(n => relevantName(n) && t[n] !== TOUCHED[n]);
+      if (moved.length){
+        if (moved.every(n => n === 'presence')){
+          await sweepPresence().catch(() => {});
+          drawEve(); updateDecor();
+          TOUCHED = { ...TOUCHED, presence: t.presence };
+        } else {
+          await sweepSlow();
+          await sweepPresence().catch(() => {});
+          drawD3(); drawEve();
+        }
+      } else {
+        TOUCHED = t;
+      }
+    }
+  } catch (e) { /* a missed tick is only a missed tick */ }
+  TICKING = false;
+}
+async function start(){
+  $('b-fam').textContent = FAMILY;
+  $('b-mirror').href = mirrorUrl('');
+  $('b-reread').addEventListener('click', () => { void reread(); });
+  $('wh').innerHTML = 'One reading then stillness — <span style="font-family:var(--mono)">↻ re-read</span> fetches the beach again; the page never polls. ' +
+    'Click a part and its arc unrolls to become the whole face; the centre steps back out; a part with nothing deeper is read, not entered. ' +
+    (HANDLE
+      ? 'You are <b>' + esc(HANDLE) + '</b> here: the say box under any part writes your own mirror — and leaves an act-mark on the beach, which is what the recency heat reads. The <b>mine</b> lens shows your own trail in sand.'
+      : 'Arrive as yourself — <span style="font-family:var(--mono)">/heatmap/' + esc(FAMILY) + '/&lt;your-name&gt;</span> — to write your voice at any part and to flick between everyone’s heat and your own trail.');
+  await reread();
+  if (TOUCHED){
+    setInterval(() => { void tick(); }, 60e3);
+    $('m-mode').textContent += ' · live';
+    $('wh').innerHTML = 'This beach carries <span style="font-family:var(--mono)">touched</span> stamps, so the page stays current by itself — one light look a minute, fetching only what moved. ' +
+      $('wh').innerHTML.replace('One reading then stillness — <span style="font-family:var(--mono)">↻ re-read</span> fetches the beach again; the page never polls. ', '');
+  }
+}
+start();
+</script>
+</body>
+</html>

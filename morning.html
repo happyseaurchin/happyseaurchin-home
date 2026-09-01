@@ -64,6 +64,12 @@
   .stamp{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;color:var(--vapour-dim);margin-top:8px}
 
   section{padding:24px 0 6px}
+  .newsrung{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--vapour-dim);margin:14px 0 8px;display:flex;gap:10px;align-items:baseline}
+  .newsline{margin:0 0 14px;padding:0 0 0 12px;border-left:2px solid rgba(var(--liquid-rgb),.35)}
+  .newsline .who{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--liquid);display:block;margin:0 0 3px}
+  .newsline p{margin:0;white-space:pre-wrap}
+  .newsquiet,.newsmore{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:10px 0 0}
   .band-head{max-width:720px;margin:0 auto;padding:0 18px 12px}
   .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--liquid);margin:0 0 6px}
   .eyebrow .n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;
@@ -276,9 +282,6 @@
   <span class="dot"></span>
   <span>the morning · <b id="bar-who">—</b><span id="bar-fam"></span></span>
   <span class="spacer"></span>
-  <a id="bar-ledger" href="/ledger">the ledger</a>
-  <a id="bar-decks" href="/my-decks">my decks</a>
-  <a id="bar-walk" href="/walk/beach-venture">walk the venture</a>
   <button id="btn-work" title="show the address each card stands at">address</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
@@ -311,9 +314,18 @@
     <div class="stats" id="stats"></div>
   </section>
 
+  <section id="news">
+    <div class="band-head">
+      <p class="eyebrow"><span class="n">2</span>news</p>
+      <h2>What others have declared.</h2>
+      <p>Outward declarations from every hand on the beach — only what has landed since you last read each channel, newest first.</p>
+    </div>
+    <div id="news-body"></div>
+  </section>
+
   <section id="temporal">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">2</span>this morning</p>
+      <p class="eyebrow"><span class="n">3</span>this morning</p>
       <h2>Today, under its ladder.</h2>
       <p>The stretches of time standing over this morning — tap one for what stands there: the objective, the voices, your cards aiming at it.</p>
     </div>
@@ -322,7 +334,7 @@
 
   <section id="review2">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">3</span>review</p>
+      <p class="eyebrow"><span class="n">4</span>review</p>
       <h2>Your areas.</h2>
       <p>The places you're working, steady in position, each sized by how much has moved there — like currents dilated by what they carry. Tap for the detail.</p>
     </div>
@@ -341,7 +353,7 @@
   </style>
   <section id="nowproj">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">4</span>now by project</p>
+      <p class="eyebrow"><span class="n">5</span>now by project</p>
       <h2>One clock, every mirror of yours.</h2>
       <p>Your now-mirror beside your project mirrors, rung by rung down the ladder — the same
          moment read across everything you are doing. A quiet cell is honest silence.</p>
@@ -358,7 +370,7 @@
 
   <section id="projects">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">5</span>projects</p>
+      <p class="eyebrow"><span class="n">6</span>projects</p>
       <h2>Your projects.</h2>
       <p>The projects you have deliberately chosen — each with its pulse, its walk one tap away. Your list lives in your own block; the page just reads it.</p>
     </div>
@@ -367,7 +379,7 @@
 
   <section id="intend">
     <div class="band-head">
-      <p class="eyebrow"><span class="n">6</span>intend</p>
+      <p class="eyebrow"><span class="n">7</span>intend</p>
       <h2>Set the day.</h2>
       <p>Your intention for the day, in your own words — drafted from the week standing above; rewrite it until it is yours. Setting it lands it as your voice at today, and tomorrow measures “since” from it. Cards live elsewhere: born at the rack’s detail, held at my decks.</p>
     </div>
@@ -393,7 +405,7 @@
   <div class="foot">
     Everything on this page is read live from the venture itself — nothing lives here. Your words land on the beach signed by your own key, and nowhere else.
     <span class="work" id="foot-work"></span>
-    <br><a id="foot-next" href="/next">your deck →</a> · <a id="foot-tree" href="/tree/beach-venture">the family, node by node →</a>
+    <br><a id="foot-next" href="/next">your hand →</a> · <a id="foot-tree" href="/tree/beach-venture">the family, node by node →</a>
   </div>
 </div>
 
@@ -503,6 +515,7 @@ if (_vq !== 'beach-venture'){
 }
 const VENTURE = 'beach-venture';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
+let NEWS = [], NEWS_SPINE = null;   /* every news:<handle> mirror, and the spine that names the channels */
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
 const SEL = {};
@@ -528,60 +541,67 @@ function showState(title, body){
 }
 
 /* ── deck reading (the deck page's grammar, held to exactly) ── */
+/* A STORED ENTRY IS A SENTENCE WITH ITS CONDITIONS BENEATH (function:ahead:2):
+ * _ the words; 2 toward; 3 the stamp; 4 the state; 5 dealt-from. A bare string
+ * is a standing personal card. Nothing parses the sentence. */
+function isEntryNode(n){
+  if (!n || typeof n !== 'object' || typeof n._ !== 'string') return false;
+  for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
+  return true;
+}
 function planeCards(deck){
   if (!deck) return [];
-  const mfloor = floorOf(deck) || 1;
   const found = [];
-  (function plane(node, digits){
-    if (digits.length === mfloor){
-      if (digits.every(d => d === '0')) return;
-      const raw = (typeof node === 'string' ? node : (voice(node) || '')).trim();
-      if (raw) found.push({ addr: digits.join(''), raw });
-      return;
-    }
-    if (!node || typeof node !== 'object') return;
-    if ('_' in node) plane(node['_'], digits.concat('0'));
-    for (const d of childDigits(node)) plane(node[d], digits.concat(d));
-  })(deck, []);
+  for (const pile of childDigits(deck)){
+    (function leaves(node, digits){
+      if (typeof node === 'string'){
+        if (digits.slice(1).every(d => d === '0')) return;
+        if (node.trim()) found.push({ addr: digits.join(''), node: node.trim() });
+        return;
+      }
+      if (!node || typeof node !== 'object') return;
+      if (isEntryNode(node)){ found.push({ addr: digits.join(''), node }); return; }
+      if (node['_'] !== undefined) leaves(node['_'], digits.concat('0'));
+      for (const d of childDigits(node)) leaves(node[d], digits.concat(d));
+    })(deck[pile], [pile]);
+  }
   return found;
 }
-function cleanCard(raw){
-  let text = raw;
-  for (let k = 0; k < 4; k++){
-    const t2 = text.replace(/^[\s—–-]*(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?|from \/next|\(.{1,24}\))\s*[—–-]*\s*/, '');
-    if (t2 === text) break; text = t2;
-  }
-  return text;
-}
 function openCardsOf(deck){
-  const t0 = new Date().toISOString().slice(0, 10);
   const out = [];
   planeCards(deck).forEach(c => {
-    const w = (c.raw.split(/\s+/)[0] || '').toUpperCase();
-    if (w === 'DONE' || w === 'DROP') return;
-    let held = '', text = c.raw;
-    if (w === 'DOING'){ held = 'doing now'; text = c.raw.slice(5).replace(/^[\s—–-]+/, ''); }
-    else if (w === 'TOMORROW'){
-      const dm = c.raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
-      if (dm && dm[1] > t0) return;
-      held = 'held over'; text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
-    }
-    out.push({ addr: c.addr, held, text: cleanCard(text) });
+    const n = c.node, obj = typeof n === 'object';
+    const text = obj ? String(n._ || '').trim() : String(n).trim();
+    if (!text) return;
+    const state = obj ? (n['4'] || null) : null;
+    if (state === 'done' || state === 'drop') return;
+    out.push({ addr: c.addr, text,
+               held: state === 'doing' ? 'doing now' : (state === 'held' ? 'in hand' : ''),
+               toward: obj ? (n['2'] || null) : null });
   });
   return out;
 }
 function doneCount(deck, sinceMs){
   let n = 0;
   planeCards(deck).forEach(c => {
-    const m = c.raw.match(/^DONE\s+(\d{4}-\d{2}-\d{2}[T ]?[\d:]*Z?)/i);
-    if (m){ const t = Date.parse(m[1].replace(' ', 'T')); if (Number.isFinite(t) && t > sinceMs) n++; }
+    const node = c.node;
+    if (!node || typeof node !== 'object' || node['4'] !== 'done' || !node['3']) return;
+    const t = Date.parse(String(node['3']).replace(' ', 'T'));
+    if (Number.isFinite(t) && t > sinceMs) n++;
   });
   return n;
 }
 
 /* ── writes — the deck page's write path, held to exactly ── */
 async function writeWithLatch(body, what){
-  const latch = localStorage.getItem(latchKey());
+  /* THE KEY FOLLOWS THE BLOCK BEING WRITTEN — one name per block, shared with
+   * /next and /hands — with the older per-page keys as read-fallbacks so nobody
+   * re-types a key they set elsewhere. A success re-homes it. */
+  const home = 'next-latch:' + body.block;
+  const latch = localStorage.getItem(home)
+    || localStorage.getItem('mirror-latch:' + body.block)
+    || (body.block === 'now:' + HANDLE ? localStorage.getItem('now-latch:' + HANDLE) : null)
+    || localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -589,8 +609,8 @@ async function writeWithLatch(body, what){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
-  }
+    if (w.ok) localStorage.setItem(home, v.trim());
+  } else if (w.ok && latch) localStorage.setItem(home, latch);
   return w;
 }
 async function ensureVentureMirror(){
@@ -600,11 +620,19 @@ async function ensureVentureMirror(){
   const fl = floorOf(SPINE) || 10;
   let root = 'MIRROR — ' + HANDLE + "'s readings on the " + VENTURE + ' temporal spine (spine:' + VENTURE + '), at the spine’s own addresses: own doings at each horizon, in own words, revisable forever. Sovereign; silence at an address is honest absence. First entry written from /morning.';
   for (let i = 0; i < fl; i++) root = { '_': root };
-  const body = { block: name, content: root };
-  const latch = localStorage.getItem(latchKey());
-  if (latch) body.new_lock = latch;
-  const w = await writeBlock(body);
-  if (w.ok && latch) toast('mirror born latched to ' + HANDLE);
+  /* BORN LATCHED, as the now mirror already is. An open block is anyone's to
+   * rewrite — cards spammed in, a person's own intents changed under them — so
+   * the founding asks for a key once and locks in the same write (rule R1:
+   * creating with new_lock needs no prior secret). Declining declines the
+   * founding: an unprotected one is not the fallback. */
+  let latch = localStorage.getItem(latchKey());
+  if (!latch){
+    const v = prompt('This founds your mirror, locked to you.\nInvent a key that is yours alone (kept on this device):');
+    if (v === null || !v.trim()) return false;
+    latch = v.trim();
+  }
+  const w = await writeBlock({ block: name, content: root, new_lock: latch });
+  if (w.ok){ localStorage.setItem(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
   return w.ok;
 }
 async function writeMirrorAt(addr, content){
@@ -612,46 +640,20 @@ async function writeMirrorAt(addr, content){
   if (!ok) return { ok: false };
   return writeWithLatch({ block: VENTURE + ':' + HANDLE, spindle: wireAddr(addr), content }, VENTURE + ':' + HANDLE);
 }
-async function ensureDeck(){
-  const name = FIELD + ':' + HANDLE;
-  const existing = await readBlock(name).catch(() => null);
-  if (existing) return true;
-  let root = 'MIRROR — ' + HANDLE + "'s own deck on the " + FIELD + ' template (spine:' + FIELD + '). Sovereign: these are the cards being held right now, nobody else writes here, and silence at an address means the card was put down rather than lost.';
-  const body = { block: name, content: { '_': root } };
-  const latch = localStorage.getItem(latchKey());
-  if (latch) body.new_lock = latch;
-  const w = await writeBlock(body);
-  return w.ok;
-}
-async function appendCard(text){
-  const ok = await ensureDeck();
-  if (!ok) return { ok: false };
-  return writeWithLatch({ block: FIELD + ':' + HANDLE, append: true, content: text }, FIELD + ':' + HANDLE);
-}
-
 /* families and their colours — one steady hue per family, its name always written beside it */
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
-const famOf = text => { const m = String(text).match(/toward\s+([a-z0-9-]{3,})/i);
-  return m && FIELDS.has(m[1].toLowerCase()) ? m[1].toLowerCase() : null; };
-/* a time-shaped aim (this week, August, 2027) belongs to the venture the card was born on */
-const TIME_AIM = /toward\s+(this\s+week|20\d\d|january|february|march|april|may|june|july|august|september|october|november|december)/i;
-const aimOf = text => famOf(text) || (TIME_AIM.test(String(text)) ? 'beach-venture' : null);
-/* every card still in hand, deferred ones included — the holdings view */
+/* every card still in hand — the holdings view, read from positions alone */
 function holdingsOf(deck){
-  const t0 = new Date().toISOString().slice(0, 10);
   const out = [];
   planeCards(deck || {}).forEach(c => {
-    const w = (c.raw.split(/\s+/)[0] || '').toUpperCase();
-    if (w === 'DONE' || w === 'DROP') return;
-    let state = 'today', until = '', text = c.raw;
-    if (w === 'DOING'){ state = 'doing'; text = c.raw.slice(5).replace(/^[\s—–-]+/, ''); }
-    else if (w === 'TOMORROW'){
-      const dm = c.raw.match(/^tomorrow\s+(\d{4}-\d{2}-\d{2})/i);
-      text = c.raw.slice(dm ? dm[0].length : 8).replace(/^[\s—–-]+/, '');
-      if (dm && dm[1] > t0){ state = 'held'; until = dm[1]; }
-    }
-    out.push({ addr: c.addr, state, until, text: cleanCard(text) });
+    const n = c.node, obj = typeof n === 'object';
+    const text = obj ? String(n._ || '').trim() : String(n).trim();
+    if (!text) return;
+    const st = obj ? (n['4'] || null) : null;
+    if (st === 'done' || st === 'drop') return;
+    out.push({ addr: c.addr, state: st === 'doing' ? 'doing' : (st === 'held' ? 'held' : 'today'), until: '',
+               text, toward: obj ? (n['2'] || null) : null });
   });
   return out;
 }
@@ -715,6 +717,15 @@ async function load(){
   MIRRORS = mNames.map((n, i) => [n.slice(VENTURE.length + 1), got[i]]).filter(x => x[1]);
   DECKS = dNames.map((n, i) => [n.slice(FIELD.length + 1), got[mNames.length + i]]).filter(x => x[1]);
 
+  /* the news field — everyone's outward declarations, read for the morning at the
+   * two day rungs a morning actually spans. Failure here is quiet on purpose: the
+   * morning is a dashboard, and a family that is not on this beach should leave a
+   * section empty rather than take the page down with it. */
+  const nNames = blocks.filter(b => b.startsWith('news:') && nameOk(b.slice(5)));
+  const nGot = await Promise.all(nNames.concat(['spine:news']).map(n => readBlock(n).catch(() => null)));
+  NEWS = nNames.map((n, i) => [n.slice(5), nGot[i]]).filter(x => x[1]);
+  NEWS_SPINE = nGot[nNames.length] || null;
+
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
   /* the beach in numbers: totals, what's new to this hand (a local cursor), the marks tide */
@@ -765,6 +776,19 @@ async function load(){
     readBlock('dashboard:' + HANDLE).catch(() => null),
   ]);
   EXTRA.dashboard = dashB ? childDigits(dashB).map(d => (typeof dashB[d] === 'string' ? dashB[d] : voice(dashB[d]) || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '')).filter(Boolean) : null;
+  /* lists:<handle> branch 1 (rank is depth) is the chosen list where it stands;
+   * dashboard:<handle> remains the fallback while the two coexist */
+  try {
+    const lists = await readBlock('lists:' + HANDLE);
+    const ls = [];
+    let ln = lists && lists['1'] && lists['1']['1'];
+    while (ln && typeof ln === 'object'){
+      const v = typeof ln['_'] === 'string' ? ln['_'].trim().toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
+      if (v) ls.push(v);
+      ln = ln['1'];
+    }
+    if (ls.length) EXTRA.dashboard = ls.filter(f => !['now', 'ahead', 'today-beach-deck'].includes(f));
+  } catch(e){}
   renderNowProj();
   const markSlots = marksB ? collectSlots(marksB).filter(m => m.ts && Number.isFinite(Date.parse(m.ts))) : [];
   markSlots.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
@@ -798,12 +822,12 @@ async function load(){
       pulse: vdLeaves.length + ' cards \u00b7 ' + vdHeld.length + ' in your hand',
       latest: vdLeaves[0] ? vdLeaves[0].t : '',
       items: vdLeaves.map(c => ({ who: '', t: c.t, ts: '' })),
-      links: [{ href: '/next/' + encodeURIComponent(HANDLE) + '?field=beach-venture-deck', label: 'flick' }, { href: '/fold?field=beach-venture-deck', label: 'the fold' }] },
+      links: [{ href: '/next/' + encodeURIComponent(HANDLE) + '?field=beach-venture-deck', label: 'flick' }, { href: '/fold?field=beach-venture-deck' + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : ''), label: 'the fold' }] },
     { name: 'doing', fam: 'doing', events: doHeld.length * 2 + Math.floor(doLeaves.length / 5),
       pulse: doLeaves.length + ' cards \u00b7 ' + doHeld.length + ' in your hand',
       latest: doLeaves[0] ? doLeaves[0].t : '',
       items: doLeaves.map(c => ({ who: '', t: c.t, ts: '' })),
-      links: [{ href: '/next/' + encodeURIComponent(HANDLE) + '?field=doing', label: 'flick' }, { href: '/fold?field=doing', label: 'the fold' }] },
+      links: [{ href: '/next/' + encodeURIComponent(HANDLE) + '?field=doing', label: 'flick' }, { href: '/fold?field=doing' + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : ''), label: 'the fold' }] },
     { name: 'the gathering', fam: null, events: POOL_VOICES.filter(v => now - Date.parse(v.ts) < H24).length,
       pulse: POOL_VOICES.length + ' voices',
       latest: unVoices[0] ? whoName(unVoices[0].who) + ': ' + unVoices[0].t : '',
@@ -822,16 +846,16 @@ async function load(){
 /* ── render ── */
 function render(){
   $('bar-who').textContent = HANDLE;
+/* the page hands over what only it knows; the catalogue is shared in theme.js */
+if (window.siteDoors) siteDoors({ handle: HANDLE, family: VENTURE, here: 'morning' });
   $('bar-fam').textContent = '';
-  $('bar-ledger').href = '/ledger/' + encodeURIComponent(HANDLE);
-  $('bar-decks').href = '/my-decks/' + encodeURIComponent(HANDLE);
-  $('bar-walk').href = '/walk/beach-venture/' + encodeURIComponent(HANDLE);
-  $('foot-tree').href = '/tree/' + encodeURIComponent(VENTURE);
+  $('foot-tree').href = '/tree/' + encodeURIComponent(VENTURE) + (HANDLE ? '?h=' + encodeURIComponent(HANDLE) : '');
   const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
   const dn = new Date();
   $('mast-title').innerHTML = esc(DAYS[dn.getUTCDay()] + ' ' + dn.getUTCDate() + ' ' + MN[dn.getUTCMonth()]) + ', <span class="cool">before the day</span>.';
   $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
   renderStats();
+  renderNews();
   renderTemporal();
   renderCollage();
   renderProjects();
@@ -846,19 +870,11 @@ function locVoicesAt(addr){
   POOL_VOICES.forEach(v => { if (v.at && v.at === pad10(addr)) out.push({ who: v.who, t: v.t, ts: v.ts, room: true }); });
   return out;
 }
-function homeFor(text){
-  const m = String(text).match(TIME_AIM);
-  if (m){
-    const w = m[1].toLowerCase();
-    if (w === 'this week') return weekAddr(TODAY.y, TODAY.m0, TODAY.band);
-    if (/^20\d\d$/.test(w)) return yearAddr(+w);
-    const mi = MN.findIndex(n => n.toLowerCase() === w);
-    if (mi >= 0) return monthAddr(TODAY.y, mi);
-  }
-  return TODAY_ADDR;
-}
+/* a card is indexical — it stands at today; the pile says its grain, and a
+ * commitment to a date is a mirror voicing, never a card (function:ahead:3) */
 function myAimedAt(addr){
-  return holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).filter(c => homeFor(c.text) === addr);
+  if (addr !== TODAY_ADDR) return [];
+  return holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
 }
 /* generic slot collector — pools, marks: attributed, stamped, any depth */
 function collectSlots(block){
@@ -899,6 +915,44 @@ function renderStats(){
 }
 
 /* ── 2 · this morning: today under its ladder ── */
+/* THE MORNING SHOWS WHAT IS NEW SINCE THIS HAND LAST READ. The news family runs
+ * on channels rather than a clock: a position on spine:news names a channel, a
+ * hand's standing declaration sits at that position in its own mirror, when it
+ * was said sits at .91 beneath it, and when THIS hand last read the channel sits
+ * at .92 in its OWN mirror. So "new to me" is a comparison between two numbers
+ * this page already holds, and nothing central is consulted to make it. Falling
+ * back to a day when a hand has no marker yet keeps a first visit useful. */
+function renderNews(){
+  const chanNode = (blk, pos) => (blk && typeof blk[pos] === 'object' && blk[pos]) || null;
+  const declOf = (blk, pos) => { const n = chanNode(blk, pos); return n && typeof n._ === 'string' ? n._ : null; };
+  const metaOf = (blk, pos, k) => { const n = chanNode(blk, pos);
+    const m = n && typeof n['9'] === 'object' ? n['9'] : null; return (m && m[k]) || null; };
+
+  const chans = NEWS_SPINE
+    ? Object.keys(NEWS_SPINE).filter(k => /^[1-9]$/.test(k)).sort()
+    : ['1'];
+  const mine = NEWS.find(m => m[0] === HANDLE);
+  const out = [];
+
+  for (const pos of chans){
+    const since = (mine && metaOf(mine[1], pos, '2')) || new Date(Date.now() - H24).toISOString();
+    const voices = NEWS
+      .map(([who, blk]) => ({ who, t: declOf(blk, pos), when: metaOf(blk, pos, '1') }))
+      .filter(v => v.t && (!v.when || Date.parse(v.when) > Date.parse(since)))
+      .sort((a, b) => (Date.parse(b.when || 0) || 0) - (Date.parse(a.when || 0) || 0));
+    if (!voices.length) continue;
+    const what = NEWS_SPINE && typeof NEWS_SPINE[pos] === 'string' ? NEWS_SPINE[pos].split('—')[0].trim() : 'channel ' + pos;
+    out.push('<p class="newsrung">' + esc(what) + '<span class="addr work">' + esc(pos) + '</span></p>');
+    for (const v of voices)
+      out.push('<div class="newsline"><span class="who">' + esc(v.who) +
+        (v.when ? ' · ' + esc(ago(v.when) || '') : '') + '</span><p>' + esc(short(v.t, 420)) + '</p></div>');
+  }
+
+  $('news-body').innerHTML = out.length
+    ? out.join('') + '<p class="newsmore"><a href="/news">every channel, and add your own →</a></p>'
+    : '<p class="newsquiet">Nothing new since you last read. <a href="/news">Say yours →</a></p>';
+}
+
 function renderTemporal(){
   const rungs = [
     { word: 'today',      addr: TODAY_ADDR,                              label: 'today' },
@@ -943,14 +997,14 @@ function renderCollage(){
 function renderProjects(){
   let fams = EXTRA.dashboard;
   if (!fams || !fams.length){
-    fams = [...new Set(holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).map(c => aimOf(c.text)).filter(Boolean))];
+    fams = [...new Set(holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).map(c => c.toward).filter(Boolean))];
     if (!fams.includes(VENTURE)) fams.unshift(VENTURE);
   }
   $('pstrip').innerHTML = fams.map(f => {
     const moved = f === VENTURE ? MIRRORS.filter(([w, b]) => stampsUnder(b).some(t => Date.now() - t < H48)).length : null;
     return '<a class="fam" style="--fam-h:' + famHue(f) + '" href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">' +
       esc(f) + (moved !== null ? ' · ' + moved + ' moved' : '') + ' →</a>';
-  }).join('') + '<a href="/my-decks/' + encodeURIComponent(HANDLE) + '">every deck →</a>';
+  }).join('') + '<a href="/hands/' + encodeURIComponent(HANDLE) + '">my hands →</a>';
 }
 /* ── the sheet — one popup over the rack, three panes; where you tapped chooses the pane ── */
 let SHEET = null;                    /* {pane:'text'|'voices'|'cards'} at the standing address, or {gather:true} */
@@ -991,12 +1045,12 @@ function paintSheet(){
     $('sh-where').textContent = 'your card-deck — the venture';
     const all = holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
     $('sh-body').innerHTML = (all.map(c => {
-      const fam = aimOf(c.text);
+      const fam = c.toward;
       return '<div class="chip' + (fam ? ' fam' : '') + '"' + (fam ? ' style="--fam-h:' + famHue(fam) + '"' : '') + '>' +
-        '<span class="tag">' + esc(c.state === 'held' ? 'resting until ' + c.until : c.state === 'doing' ? 'doing now' : 'in hand') + '</span>' +
+        '<span class="tag">' + esc(c.state === 'held' ? 'in hand' : c.state === 'doing' ? 'doing now' : 'standing') + '</span>' +
         '<span class="txt">' + esc(short(c.text, 160)) + '</span></div>';
     }).join('') || '<span class="silent">no cards held — they are born on the walk, standing at a point</span>') +
-    '<span class="silent">all your decks, by project: <a href="/my-decks/' + encodeURIComponent(HANDLE) + '">/my-decks</a></span>';
+    '<span class="silent">every card you hold, by how far out it is: <a href="/hands/' + encodeURIComponent(HANDLE) + '">your hands</a></span>';
     return;
   }
   if (SHEET.gather){
@@ -1045,9 +1099,9 @@ function renderIntend(){
     'setting the day performs one write, with your key, in your own block:<br>' +
     '<b>write · ' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(TODAY_ADDR) + '</b> — the words above, dated — the marker tomorrow\u2019s sweep measures from.';
   $('foot-work').innerHTML = '<br><br><b>the blocks</b> — spine:' + esc(VENTURE) + ' · ' + esc(VENTURE) + ':&lt;handle&gt; · ' +
-    esc(FIELD) + ':&lt;handle&gt; · pool:' + esc(VENTURE) +
+    'ahead:&lt;handle&gt; · pool:' + esc(VENTURE) +
     '<br><b>the address</b> — one number on the sundial clock, its digits walking coarse to fine (millennium · century · decade · year · season · month-in-season · week band · day-in-band · gathering · beat), so 2026322600 reads Thursday 13 August 2026, to the day.';
-  $('foot-next').href = '/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD;
+  $('foot-next').href = '/next/' + encodeURIComponent(HANDLE);
 }
 document.getElementById('btn-set').addEventListener('click', async () => {
   if (BUSY) return; BUSY = true;
@@ -1062,7 +1116,7 @@ document.getElementById('btn-set').addEventListener('click', async () => {
       const w = await writeMirrorAt(TODAY_ADDR, content);
       if (w.ok){
         toast('\u2713 the day is set');
-        $('set-why').innerHTML = '\u2713 set — your words stand at today · <a href="/my-decks/' + encodeURIComponent(HANDLE) + '">my decks →</a> · <a href="/next/' + encodeURIComponent(HANDLE) + '?field=' + FIELD + '">flick →</a>';
+        $('set-why').innerHTML = '\u2713 set — your words stand at today · <a href="/hands/' + encodeURIComponent(HANDLE) + '">my hands →</a> · <a href="/next/' + encodeURIComponent(HANDLE) + '">flick →</a>';
         await load();
       } else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
     }

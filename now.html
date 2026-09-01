@@ -16,7 +16,13 @@
   *{box-sizing:border-box} html,body{margin:0}
   body{
     font-family:var(--body); color:var(--foam); font-size:17px; line-height:1.55;
-    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--liquid-rgb),0.10), transparent 60%),
+    /* YOUR OWN GROUND IS WARM. Every project page carries the teal wash; this one
+     * carries the amber, because /now is not a project and was reading as one —
+     * same page furniture, same layout, identical background. The two accents were
+     * already in the palette; this only spends the second one where it says
+     * something. Nothing else on the page changes: the difference is meant to be
+     * felt on arrival rather than read. */
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--solid-rgb),0.11), transparent 60%),
       linear-gradient(180deg,var(--ground-top) 0%, var(--deep) 30%, var(--abyss) 100%);
     -webkit-font-smoothing:antialiased; min-height:100dvh;
   }
@@ -192,9 +198,6 @@
   <span class="dot"></span>
   <span><b>now</b> · <span id="bar-handle">—</span></span>
   <span class="spacer"></span>
-  <a id="bar-ledger" href="/ledger">the ledger</a>
-  <a id="bar-morning" href="/morning">the morning</a>
-  <a id="bar-next" href="/next">your deck</a>
   <button id="btn-display" title="choose the rungs and panes this page shows">display</button>
 </div>
 
@@ -251,6 +254,7 @@
   <div class="row">
     <span class="why" id="s-why">written to your own mirror · revisable forever · silence is honest</span>
     <button class="ghost" id="s-cancel">leave it</button>
+    <button class="ghost" id="s-deal" title="one card in your hand, in the my-now row — its done lands back in your now">→ my hand</button>
     <button class="save" id="s-save">voice it</button>
   </div>
 </div>
@@ -405,13 +409,15 @@ const DEFAULT_PREFS = {
   rungs: { millennium:false, century:false, decade:false, year:true, season:false, month:true, week:false, day:true, gathering:false, beat:false },
   panes: { projects:true, hand:true },
   workings: false,
+  deal: true,
 };
 let PREFS = DEFAULT_PREFS;
 try {
   const stored = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
   if (stored) PREFS = { rungs: Object.assign({}, DEFAULT_PREFS.rungs, stored.rungs),
                         panes: Object.assign({}, DEFAULT_PREFS.panes, stored.panes),
-                        workings: !!stored.workings };
+                        workings: !!stored.workings,
+                        deal: stored.deal !== false };
 } catch(e){}
 if (localStorage.getItem('now-workings')) { PREFS.workings = true; localStorage.removeItem('now-workings'); }
 const savePrefs = () => localStorage.setItem(PREF_KEY, JSON.stringify(PREFS));
@@ -575,14 +581,28 @@ function nearestVoiced(block, c){
 async function renderProjects(){
   const box = $('projects');
   box.innerHTML = '<p class="hand-quiet">reading the beach…</p>';
+  /* ONE SOURCE FOR THE CHOSEN PROJECTS: lists:<handle> branch 1 (rank is depth),
+   * the block the project row edits; dashboard:<handle> stays as the fallback
+   * while the two coexist. Own-page families never count as projects here. */
+  const OWN = { now: 1, ahead: 1, 'today-beach-deck': 1 };
   let names = [];
   try {
+    const lists = await readBlock('lists:' + HANDLE);
+    let node = lists && lists['1'] && lists['1']['1'];
+    while (node && typeof node === 'object'){
+      const v = typeof node['_'] === 'string' ? node['_'].trim() : '';
+      if (v) names.push(v);
+      node = node['1'];
+    }
+  } catch(e){}
+  if (!names.length) try {
     const dash = await readBlock('dashboard:' + HANDLE);
     if (dash) names = Object.keys(dash).filter(k => /^[1-9]$/.test(k)).sort()
       .map(k => typeof dash[k] === 'string' ? dash[k].trim() : null).filter(Boolean);
   } catch(e){}
+  names = names.filter(n => !OWN[n.toLowerCase()]);
   if (!names.length){
-    box.innerHTML = '<p class="hand-quiet">no chosen projects yet — a hand-edited list names them, in the order they should be met<span class="work"> (dashboard:' + esc(HANDLE) + ')</span>.</p>';
+    box.innerHTML = '<p class="hand-quiet">no chosen projects yet — pick them from the project row on the walk or recency page<span class="work"> (lists:' + esc(HANDLE) + ' branch 1)</span>.</p>';
     return;
   }
   const reads = await Promise.all(names.map(async f => {
@@ -625,16 +645,22 @@ function leaves(node, addr, out){
 }
 async function renderHand(){
   const box = $('hand');
-  const deckNames = ['beach-venture-deck', 'today-beach-deck'];
-  const decks = await Promise.all(deckNames.map(n => readBlock(n + ':' + HANDLE).catch(() => null)));
+  /* THE HAND IS ahead:<handle> — the piles /next flicks and /hands sorts. The two
+   * retired deck blocks are history, not the hand; reading them here meant a
+   * do-now claim never showed on this page. A DOING entry is verb + stamp + the
+   * card's own words; strip the mark, keep the words. */
+  const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
   const doing = [];
-  decks.forEach((d, i) => { if (d) leaves(d, '', []).forEach(c => {
-    if (/^DOING\b/i.test(c.text)) doing.push({ deck: deckNames[i], text: c.text.replace(/^DOING\s*/i, '') });
-  }); });
+  if (mine) leaves(mine, '', []).forEach(c => {
+    if (/^DOING\b/.test(c.text)){
+      const words = c.text.replace(/^DOING\s+\S+(\s*—\s*from \/next)?\s*(—\s*)?/, '').trim();
+      doing.push({ deck: 'my hand', text: words || c.text.replace(/^DOING\s*/, '') });
+    }
+  });
   box.innerHTML = '';
   if (!doing.length){
     box.innerHTML = '<p class="hand-quiet">nothing claimed right now — <a id="hand-next" href="/next/' +
-      encodeURIComponent(HANDLE) + '">flick the deck</a> to take one up.</p>';
+      encodeURIComponent(HANDLE) + '">flick your hand</a> to take one up.</p>';
     return;
   }
   doing.slice(0, 3).forEach(c => {
@@ -769,6 +795,7 @@ function openSheet(rung, addr, existing, opts){
   $('s-eve').classList.remove('on');
   $('s-fold').classList.add('hidden');
   $('s-addr').textContent = opts.root ? 'the root' : pad10(addr);
+  $('s-deal').classList.toggle('hidden', !!opts.root || !PREFS.deal);
   /* the walk's invite-link law, carried here: a place, never a person — and on
    * the clock always the FULL-WIDTH spelling (the wire anchors dot-free
    * numbers at the floor; short forms land in the supernest headroom). The
@@ -806,6 +833,79 @@ $('s-eve').addEventListener('click', () => {
 $('s-text').addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); $('s-save').click(); }
   else if (e.key === 'Escape'){ e.preventDefault(); closeSheet(); }
+});
+/* THE DEAL, FROM RIGHT HERE — this rung's words become one card in your hand
+ * (ahead:<handle>, the piles /next flicks and /hands sorts), the pile following
+ * the rung. Unaimed on purpose: a card born of your now lands its DONE back in
+ * your now. The page is the mechanical dealer; a mind deals better, from more
+ * places — this button is the floor, never the ceiling. */
+const PILE_BY_RUNG = { beat: '1', gathering: '1', day: '1', week: '3', month: '4', season: '5', year: '6' };
+async function writeCardToHand(entry, pile){
+  const name = 'ahead:' + HANDLE;
+  const home = 'next-latch:' + name;
+  let latch = localStorage.getItem(home);
+  const existing = await readBlock(name).catch(() => null);
+  if (!existing){
+    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future: intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
+    /* BORN LATCHED, as the now mirror already is. An open block is anyone's to
+     * rewrite — cards spammed in, a person's own intents changed under them — so
+     * the founding asks for a key once and locks in the same write (rule R1:
+     * creating with new_lock needs no prior secret). Declining declines the
+     * founding: an unprotected one is not the fallback. */
+    if (!latch){
+      const v = prompt('This founds your hand — the cards you hold, locked to you.\nInvent a key that is yours alone (kept on this device):');
+      if (v === null || !v.trim()) return false;
+      latch = v.trim();
+    }
+    const born = await writeBlock({ block: name, content: { '_': root }, new_lock: latch });
+    if (!born.ok) return false;
+    localStorage.setItem(home, latch);
+  }
+  async function put(body){
+    if (latch) body.secret = latch;
+    let w = await writeBlock(body);
+    if (!w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required')){
+      const v = prompt(name + ' is latched — its key (kept on this device):');
+      if (v === null || !v.trim()) return { ok: false, quiet: true };
+      latch = v.trim();
+      body.secret = latch;
+      w = await writeBlock(body);
+      if (w.ok) localStorage.setItem(home, latch);
+    }
+    return w;
+  }
+  const cur = await readBlock(name).catch(() => null);
+  const node = cur && cur[pile];
+  if (!node) return !!(await put({ block: name, spindle: pile, content: { '1': entry } })).ok;
+  if (typeof node === 'string')
+    return !!(await put({ block: name, spindle: pile, content: { '_': node, '1': entry } })).ok;
+  /* a digit position holds nine and does not grow — room appends; a full pile
+   * reuses its lowest RETIRED slot (an empty string, or an entry whose state at
+   * 4 is done or drop); nine live cards refuses — never overwrite a pile */
+  const isEntry = n => n && typeof n === 'object' && typeof n._ === 'string'
+    && Object.keys(n).every(d => d === '_' || typeof n[d] !== 'object');
+  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
+  if (digs.length < 9)
+    return !!(await put({ block: name, spindle: pile, append: true, content: entry })).ok;
+  const retired = digs.filter(d =>
+    (typeof node[d] === 'string' && !node[d].trim())
+    || (isEntry(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
+  if (!retired.length) return false;
+  return !!(await put({ block: name, spindle: pile + retired[0], content: entry })).ok;
+}
+$('s-deal').addEventListener('click', async () => {
+  if (!SHEET || SHEET.root) return;
+  const text = $('s-text').value.trim();
+  if (!text){ refuseInSheet('a card needs words — write them first, then deal'); return; }
+  $('s-deal').disabled = true;
+  /* the door stamps the aim at field 2 (function:ahead:4) — 'now', so the card
+   * stands in the hand's my-now row and its DONE lands back in this mirror */
+  const ok = await writeCardToHand(
+    { '_': text, '2': 'now', '3': new Date().toISOString().slice(0,16) + 'Z', '5': '/now' },
+    PILE_BY_RUNG[SHEET.rung.key] || '7');
+  $('s-deal').disabled = false;
+  if (ok) toast('✓ in your hand — flick it at /next, sort it at /hands');
+  else refuseInSheet('the deal did not land');
 });
 $('s-save').addEventListener('click', async () => {
   if (!SHEET) return;
@@ -850,6 +950,11 @@ function buildPop(){
     });
     pbox.appendChild(l);
   });
+  /* the deal button on the voicing sheet — a toggle here, like the mirror links */
+  const dl = document.createElement('label');
+  dl.innerHTML = '<input type="checkbox"' + (PREFS.deal ? ' checked' : '') + '> deal — “→ my hand” on the voicing sheet';
+  dl.querySelector('input').addEventListener('change', e => { PREFS.deal = e.target.checked; savePrefs(); });
+  pbox.appendChild(dl);
   $('pop-work').checked = !!PREFS.workings;
 }
 $('pop-work').addEventListener('change', e => { PREFS.workings = e.target.checked; savePrefs(); applyPrefs(); });
@@ -871,9 +976,9 @@ async function boot(){
   }
   $('page').classList.remove('hidden');
   $('bar-handle').textContent = HANDLE;
-  $('bar-ledger').href = '/ledger/' + encodeURIComponent(HANDLE);
-  $('bar-morning').href = '/morning/' + encodeURIComponent(HANDLE);
-  $('bar-next').href = '/next/' + encodeURIComponent(HANDLE);
+  /* one line, and the catalogue is the shared one in theme.js — this page supplies
+   * only what it alone knows: who is standing here. */
+  if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'now' });
   $('f-morning').href = '/morning/' + encodeURIComponent(HANDLE);
   $('f-next').href = '/next/' + encodeURIComponent(HANDLE);
   applyPrefs();

@@ -175,8 +175,6 @@
   <span class="dot"></span>
   <span>across · <b id="bar-who">—</b></span>
   <span class="spacer"></span>
-  <a id="bar-morning" href="/morning">the morning</a>
-  <a id="bar-now" href="/now">now</a>
   <button id="btn-work" title="show the address each card stands at">address</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
@@ -366,16 +364,27 @@ function showState(title, body){
   $('state').classList.remove('hidden');
 }
 
-/* ── load: the chosen projects from dashboard:<handle>, plus device-kept extras ── */
+/* ── load: the chosen projects — lists:<handle> branch 1 first (rank is depth),
+ * dashboard:<handle> as the fallback while the two coexist — plus device extras ── */
 async function load(){
   CLOCK = clockNow();
-  const [index, dash] = await Promise.all([readIndex(), readBlock('dashboard:' + HANDLE).catch(() => null)]);
+  const [index, dash, lists] = await Promise.all([readIndex(),
+    readBlock('dashboard:' + HANDLE).catch(() => null),
+    readBlock('lists:' + HANDLE).catch(() => null)]);
   const blocks = (index && index.blocks) || [];
   SPINES = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)).sort();
 
-  const chosen = dash ? Object.keys(dash).filter(k => /^[1-9]$/.test(k)).sort()
+  let chosen = [];
+  let ln = lists && lists['1'] && lists['1']['1'];
+  while (ln && typeof ln === 'object'){
+    const v = typeof ln['_'] === 'string' ? ln['_'].trim().toLowerCase().replace(/[^a-z0-9-]/g, '') : '';
+    if (v) chosen.push(v);
+    ln = ln['1'];
+  }
+  if (!chosen.length) chosen = dash ? Object.keys(dash).filter(k => /^[1-9]$/.test(k)).sort()
     .map(k => (typeof dash[k] === 'string' ? dash[k] : shallowVoice(dash[k]) || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, ''))
     .filter(Boolean) : [];
+  chosen = chosen.filter(f => !['now', 'ahead', 'today-beach-deck'].includes(f));
   const extras = readExtras().filter(f => !chosen.includes(f));
 
   const names = [{ name: 'now', kind: 'now' }]
@@ -389,8 +398,8 @@ async function load(){
 /* ── render: the column heads, then the ten locked rows ── */
 function render(){
   $('bar-who').textContent = HANDLE;
-  $('bar-morning').href = '/morning/' + encodeURIComponent(HANDLE);
-  $('bar-now').href = '/now/' + encodeURIComponent(HANDLE);
+/* the page hands over what only it knows; the catalogue is shared in theme.js */
+if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'across' });
   $('foot-morning').href = '/morning/' + encodeURIComponent(HANDLE);
   $('foot-now').href = '/now/' + encodeURIComponent(HANDLE);
   $('hpan').style.setProperty('--ncols', COLS.length);   /* inherited by every grid-row, rows included */
