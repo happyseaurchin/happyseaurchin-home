@@ -591,6 +591,12 @@ function pileSlotFor(node){
  * absent → founded at slot 1; a bare string (the pile's own voice) → preserved
  * at its underscore; an object → the law's slot. Returns null when full. */
 function pileLanding(name, mine, pile, entry){
+  /* A BARE SENTENCE IS WRAPPED AS {_: sentence} BEFORE ANY SLOT WRITE. The
+   * beach MERGES a string into an occupied node's underscore — conditions
+   * inherited — so a mint reusing a retired slot was born already-done and
+   * invisible (the keeper's 'eat the chicken', wearing an Aug-24 stamp). An
+   * object replaces wholesale; {_: text} is the same card, born clean. */
+  if (typeof entry === 'string') entry = { '_': entry };
   const node = mine ? mine[pile] : null;
   if (!node) return { block: name, spindle: pile, content: { '1': entry } };
   if (typeof node === 'string') return { block: name, spindle: pile, content: { '_': node, '1': entry } };
@@ -1104,7 +1110,10 @@ async function writeMark(addr, content){
    * sentence — and it lands as given: conditions are positions, never prose. */
   const body = addr === null
     ? { block: FIELD + ':' + HANDLE, append: true, content }
-    : { block: FIELD + ':' + HANDLE, spindle: addr, content };
+    /* strings merge into an occupied node's underscore on the wire — wrap them
+     * so a hand write always replaces the slot wholesale, blanks included */
+    : { block: FIELD + ':' + HANDLE, spindle: addr,
+        content: HAND && typeof content === 'string' ? { '_': content } : content };
   const latch = localStorage.getItem(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
@@ -1335,10 +1344,10 @@ async function doSweep(){
   const secret = localStorage.getItem(latchKey());
   toast('sweeping…');
   for (const c of gone){
-    /* an empty write IS the put-down; it goes around the personal choke point on
-     * purpose — the choke restores a card's words to any verbless write, and
-     * silence is the one write that must not carry them */
-    const w = await writeBlock(Object.assign({ block: FIELD + ':' + HANDLE, spindle: c.addr, content: '' }, secret ? { secret } : {}));
+    /* an empty write IS the put-down — wrapped as {_: ''} because a bare string
+     * MERGES into an occupied node's underscore and would leave the old
+     * conditions standing in the "emptied" slot */
+    const w = await writeBlock(Object.assign({ block: FIELD + ':' + HANDLE, spindle: c.addr, content: { '_': '' } }, secret ? { secret } : {}));
     if (!w.ok){ toast('the sweep was refused at a card (latch ⚿?)', true); return; }
   }
   toast('✓ swept — ' + gone.length + ' slot' + (gone.length > 1 ? 's' : '') + ' free');
@@ -1378,13 +1387,17 @@ async function commitSheet(){
     BUSY = false; $('sheet-go').disabled = false; return;
   }
   /* THE FLIP LIVES ON THE CARD ITSELF (function:ahead:4): the sentence turns to
-   * past tense at 0 — the sign-off line landing instead when typed — and the
-   * state and stamp land at 4 and 3. The elapsed rides the mirror record only. */
+   * past tense at 0, the state and stamp land at 4 and 3. THE CARD'S WORDS
+   * SURVIVE THE DONE — a typed sign-off ANNOTATES after a dash rather than
+   * replacing them (the keeper's ruling: the record must carry the card's
+   * content, with the added text riding it). The elapsed rides the mirror
+   * record only. */
   const stamp = kind === 'respond' ? mark + ' ' + iso() + (note ? ' — ' + note : '') : null;
+  const doneText = pastTense(card.text) + (note ? ' — ' + note : '');
   try {
     const w = kind === 'respond'
       ? await writeMark(addr, stamp)
-      : await writeMark(addr, entryOf(card, { text: pastTense(note || card.text), state: 'done', ts: iso() }));
+      : await writeMark(addr, entryOf(card, { text: doneText, state: 'done', ts: iso() }));
     if (!w.ok){
       if (!w.quiet){ $('sheet-hint').classList.add('err'); $('sheet-hint').textContent = (w.data && (w.data.error || w.data.code)) || ('write failed ' + w.status); }
       BUSY = false; $('sheet-go').disabled = false; return;
@@ -1402,7 +1415,7 @@ async function commitSheet(){
      * by whether anything was typed. A DROP retires and lands nowhere. */
     let landed = null;
     if (kind !== 'respond' && PERSONAL)
-      landed = await landRecord(note || card.text, card,
+      landed = await landRecord(card.text + (note ? ' — ' + note : ''), card,
                                 kind === 'finish' ? fmtElapsed(elapsedMs()) : null);
     closeSheet();
     if (kind === 'finish'){ TIMER = null; saveTimer(); hideDoing(); }
