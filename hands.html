@@ -170,7 +170,7 @@ const RUNGS = { 2:'today', 3:'this week', 4:'this month', 5:'this season', 6:'th
  * up from today's asking is for now. */
 const pileForPscale = p => (p <= 2 ? '1' : String(Math.min(7, p)));
 
-let HANDLE = null, CARDS = [], DECKS = [], FIELDS = [], ASKS = [];
+let HANDLE = null, CARDS = [], ALLCARDS = [], DECKS = [], FIELDS = [], ASKS = [];
 /* WHAT THIS HAND HAS ALREADY CONFIRMED IN THIS SITTING. The beach is read again
  * the moment a confirmation lands, and that read can still be answered from
  * before the write — so without this the card stays on screen and the obvious
@@ -314,7 +314,8 @@ const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim
 /* ── load ── */
 async function load(){
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
-  CARDS = readHand(mine).filter(inPlay);
+  ALLCARDS = readHand(mine);
+  CARDS = ALLCARDS.filter(inPlay);
 
   /* ONE SOURCE FOR THE CHOSEN PROJECTS: lists:<handle> branch 1 (rank is depth),
    * the block the project row edits; dashboard:<handle> stays as the fallback
@@ -420,9 +421,13 @@ async function addCard(pile, entry){
   let slot = null;
   for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))){ slot = String(d); break; }
   if (!slot){
+    /* a fresh completion is not real estate — only yesterday's retirements
+     * (and legacy strings) are reusable; today's stand until the sweep */
+    const today = new Date().toISOString().slice(0, 10);
     const retired = digs.filter(d =>
       (typeof node[d] === 'string' && (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim())))
-      || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop'))).sort();
+      || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop')
+          && String(node[d]['3'] || '').slice(0, 10) !== today)).sort();
     slot = retired[0] || null;
   }
   if (!slot) return { full: true, pile };
@@ -685,6 +690,22 @@ function render(){
     links: mine.length ? flick('?aim=mine') : '',
     sub: 'Held lightly — written by hand, on no clock and toward no spine. The grounded work lives above: your now, and the projects. Click the blank card and type; Enter lands it, Escape leaves.' }));
   out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
+
+  /* ── DONE TODAY — the day's record, visible where the person looks. A finished
+   * card vanished from every row the moment it finished, which read as loss
+   * ('all gone, no trace') twice over; the day's completions stand here, dim and
+   * read-only, until the morning sweep clears them. ── */
+  const today = new Date().toISOString().slice(0, 10);
+  const doneToday = ALLCARDS.filter(c => (c.state === 'done' || c.state === 'drop')
+    && String(c.ts || '').slice(0, 10) === today);
+  if (doneToday.length){
+    out.push(rowHead('done today', doneToday.length + (doneToday.length === 1 ? ' card' : ' cards'), {
+      sub: 'Finished or put down since midnight — the trace, not the work: a done card’s record has already landed where it aimed. The sweep clears these tomorrow.' }));
+    out.push('<div class="carousel">' + doneToday.map(c =>
+      '<div class="dcard" style="opacity:0.55"><span class="aim"><span class="pile">' + (c.state === 'done' ? 'done' : 'put down') + '</span>'
+      + (c.toward ? '<span class="st">' + esc(deckLabel(c.toward)) + '</span>' : '') + '</span>'
+      + '<div class="txt">' + esc(c.text) + '</div></div>').join('') + '</div>');
+  }
 
   out.push('<div class="foot" style="border:none;margin:0;padding-top:18px">'
     + 'Each deck deals from what it is asking at today and this week. For a deal that reads more carefully — across '
