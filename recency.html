@@ -86,6 +86,9 @@
   .vline:first-of-type{border-top:none}
   .vline .who{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:72px}
   .vline .whereat{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:none}
+  .vline button.goat{background:none;border:1px solid var(--line);border-radius:5px;padding:1px 7px;margin:0 4px 2px 0;
+    color:var(--vapour-dim);font-family:var(--mono);font-size:10.5px;cursor:pointer}
+  .vline button.goat:hover{border-color:var(--liquid);color:var(--foam)}
   .vline p{margin:0;font-size:0.98rem;line-height:1.45}
   .vline .ago{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:none;margin-left:auto}
   .subhead{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--liquid);margin:14px 0 4px}
@@ -151,9 +154,12 @@
    sunburst (d3 v7 vendored at /vendor/d3.v7.min.js — no CDN at runtime).
 
    THE ARITHMETIC (the keeper's ruling, 2026-08-20): a count is PEOPLE,
-   never lines. One hand voicing its whole ladder — year, month, week, day,
-   beat — is ONE voice everywhere it rolls up. The panel reads one part:
-   the spine's own words and each hand's line exactly there.
+   never lines. One hand voicing its whole ladder — year, season, month,
+   week, day, beat — is ONE voice everywhere it rolls up. The panel reads
+   one part — the spine's own words and each hand's line exactly there —
+   and then accounts for the REST of its count: one row per hand standing
+   deeper, its parts clickable. A count the panel cannot account for is a
+   broken promise (the 2026-09-02 correction; 7cc7a7c had dropped this).
 
    THE ECONOMICS: one reading of spine + mirrors + presence per visit, then
    stillness — no polling ever. The one write this page can make is the
@@ -288,8 +294,11 @@ function clockKids(addr){
   const a = String(addr), L = a.length;
   if (L === 0) return [];
   if (L <= 3) return '0123456789'.split('').map(d => a + d);
-  if (L === 4){ const out = []; for (let m0 = 0; m0 < 12; m0++) out.push(monthAddr(+a, m0)); return out; }
-  if (L === 5) return [];
+  /* the season is a rung of the clock — /now writes at it, so the dial must
+   * hold it; skipping year→months here left season voicings counted in every
+   * ancestor's glow yet unreachable by any click */
+  if (L === 4) return ['1','2','3','4'].map(d => a + d);
+  if (L === 5) return ['1','2','3'].map(d => a + d);
   if (L === 6){ const y = +a.slice(0,4), m0 = (+a[4] - 1) * 3 + (+a[5] - 1);
     const out = []; for (let b = 1; b <= bandsIn(y, m0); b++) out.push(a + b); return out; }
   if (L === 7){ const y = +a.slice(0,4), m0 = (+a[4] - 1) * 3 + (+a[5] - 1), b = +a[6];
@@ -316,6 +325,7 @@ function shortClockLab(addr){
   if (L === 2) return a + '00s';
   if (L === 3) return a + '0s';
   if (L === 4) return a;
+  if (L === 5) return ['','Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'][+a[4]];
   if (L === 6) return MN[(+a[4] - 1) * 3 + (+a[5] - 1)].slice(0, 3);
   if (L === 7) return clockLabel(addr).replace(/ .*/, '');
   if (L === 8){ const m0 = (+a[4] - 1) * 3 + (+a[5] - 1), b = +a[6]; return String((b - 1) * 7 + (+a[7])); }
@@ -391,6 +401,8 @@ function leafSpan(addr){
   if (L === 2) return 36500;
   if (L === 3) return 3650;
   if (L === 4) return 365;
+  if (L === 5){ const y = +addr.slice(0,4), q = +addr[4]; let n = 0;
+    for (let m = 0; m < 3; m++) n += daysInMonth(y, (q - 1) * 3 + m); return n; }
   if (L === 6){ const y = +addr.slice(0,4), m0 = (+addr[4]-1)*3 + (+addr[5]-1); return daysInMonth(y, m0); }
   if (L === 7){ const y = +addr.slice(0,4), m0 = (+addr[4]-1)*3 + (+addr[5]-1), b = +addr[6];
     return Math.min(b*7, daysInMonth(y, m0)) - (b-1)*7; }
@@ -638,7 +650,9 @@ function goToAddr(addr){
 }
 
 /* ── the focused part — the spine's words and each hand's line EXACTLY here
- * (the keeper's shape, 2026-08-20: everything else lives elsewhere), plus
+ * (the keeper's shape, 2026-08-20), then one row per remaining counted hand
+ * saying where it stands (the keeper's correction, 2026-09-02: the centre
+ * says "3 voices within", so the panel must account for all three), plus
  * your own pen when the URL carries your name ── */
 function drawPanel(){
   const el = $('panel');
@@ -647,12 +661,38 @@ function drawPanel(){
   $('b-mirror').href = mirrorUrl(addr);          /* the bar's mirror door follows the focus */
   const word = addr ? textAt(SPINE, addr) : voice(SPINE);
   const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text);
+  /* the rest of the count, one row per hand — a count is people, so the panel
+   * names every person it counted: the exact lines above, and each remaining
+   * hand with where it stands, the parts clickable. (Restored 2026-09-02;
+   * 7cc7a7c had dropped the beneath-listing and counted voices went missing.) */
+  const exactWho = new Set(exact.map(x => x.who));
+  const mBlk = new Map(MIRRORS.map(([w, b]) => [w, b]));
+  const deeper = new Map();
+  OCC.forEach(o => {
+    if (exactWho.has(o.who) || o.addr === addr || !o.addr.startsWith(addr || '')) return;
+    if (!deeper.has(o.who)) deeper.set(o.who, []);
+    deeper.get(o.who).push(o.addr);
+  });
+  const partLab = a2 => MODE === 'clock' && a2.length === 10
+    ? DAY_PARTS[+a2[8] - 1] + ' b' + a2[9] : labelFor(a2);
   const rows = [];
   rows.push('<p class="paddr"><b>' + esc(addr ? labelFor(addr) : FAMILY) + '</b><span class="work">' + esc(addr ? (MODE === 'clock' ? pad10(addr) : addr) : '·') + '</span></p>');
   rows.push(word ? '<p class="ptext">' + esc(word) + '</p>' : '<p class="ptext absent">the spine has no words at this part</p>');
   rows.push('<div class="subhead">voices at this part</div>' + (exact.length ? exact.map(x =>
     '<div class="vline"><span class="who">' + esc(x.who) + '</span><p>' + esc(short(x.text, 400)) + '</p></div>').join('')
-    : '<div class="vline"><span class="who"></span><p class="ptext absent" style="margin:0">none exactly here — the glow is voices deeper in; zoom to find them</p></div>'));
+    : '<div class="vline"><span class="who"></span><p class="ptext absent" style="margin:0">' +
+      (deeper.size ? 'none exactly here — the count stands deeper:' : 'no voice stands at or beneath this part') + '</p></div>'));
+  if (deeper.size){
+    rows.push('<div class="subhead">voices deeper in</div>' + [...deeper.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0])).map(([who, addrs]) => {
+        addrs.sort();
+        const links = addrs.slice(-3).map(a2 =>
+          '<button class="goat" data-go="' + esc(a2) + '">' + esc(partLab(a2)) + '</button>').join('') +
+          (addrs.length > 3 ? '<span class="whereat">+' + (addrs.length - 3) + ' more</span>' : '');
+        return '<div class="vline"><span class="who">' + esc(who) + '</span><span class="whereat">' + links + '</span><p>' +
+          esc(short(textAt(mBlk.get(who), addrs[addrs.length - 1]) || '', 150)) + '</p></div>';
+      }).join(''));
+  }
   if (HANDLE && addr && strip0(addr) !== addr){
     rows.push('<p class="sayhint">this rung shares its wire address with the rung above (the zero-digit cost, sundial 3.4) — a say here would land there instead. Voice this stretch at <a href="/now/' + esc(HANDLE) + '">/now</a>, which holds the coarse rungs the safe way.</p>');
   } else if (HANDLE){
@@ -841,7 +881,10 @@ function collectVoicings(who, block){
     if (typeof node === 'string'){ if (node.trim()){ const a = strip0(path); if (a && !seen.has(a)){ seen.add(a); out.push({ who, addr: a }); } } return; }
     if (!node || typeof node !== 'object') return;
     if (typeof node['_'] === 'string' && node['_'].trim()){ const a = strip0(path); if (a && !seen.has(a)){ seen.add(a); out.push({ who, addr: a }); } }
-    else if (node['_'] && typeof node['_'] === 'object') rec(node['_'], path + '0');
+    /* on the clock the zero-steps ARE the walk; on a tree an underscore-object
+     * is a hidden directory — star territory, never descended by the dial —
+     * so counting beneath one would promise people no click can show */
+    else if (node['_'] && typeof node['_'] === 'object' && MODE === 'clock') rec(node['_'], path + '0');
     for (const k of childDigits(node)) rec(node[k], path + k);
   })(block, '');
   return out;
