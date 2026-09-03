@@ -267,6 +267,10 @@ let LENS = 'all';                 /* 'all' — everyone's voices · 'mine' — w
 let ACTFILTER = 'all';            /* 'all' — standing voices · 'week'|'today' — who ACTED lately */
 let ACTS = [];                    /* {who, at, ts} — acts read from the beach's marks */
 let TOUCHED = null;               /* the beach's block→last-write map, when it serves one */
+const OPENED = new Set();         /* quiet clock rungs unfolded by tap — session-only,
+                                   * folding on reload (/now's own OPEN pattern): the dial
+                                   * prunes descent into QUIET rungs, not future ones, so
+                                   * the tap is the toggle that reaches them */
 
 const $ = id => document.getElementById(id);
 const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
@@ -414,18 +418,18 @@ function buildTree(){
   if (MODE === 'clock'){
     /* the millennium is the root, so stepping out from the year keeps going —
      * decade, century, the whole thousand years. Above the year a rung only
-     * grows children where the clock actually runs or a record stands
-     * (a fully-grown millennium would be four hundred thousand parts);
-     * below the year the calendar grows whole, and below the day only where
-     * something social stands. */
+     * grows children where the clock actually runs, a record stands, or a
+     * tap has opened it (a fully-grown millennium would be four hundred
+     * thousand parts); below the year the calendar grows whole, and below
+     * the day only where something social stands or a tap reaches. */
     const hasRecord = addr => OCC.some(o => o.addr.startsWith(addr)) ||
       ACTS.some(a => a.at && a.at.startsWith(addr)) ||
       PRESENT.some(p => strip0(p.at || '').startsWith(addr));
     const nodeC = addr => {
       let ks = clockKids(addr);
       const L = addr.length;
-      if (L <= 4 && L > 1 && !(onNowPath(addr) || hasRecord(addr))) ks = [];
-      if (L >= 8 && !(warm(addr) || onNowPath(addr))) ks = [];
+      if (L <= 4 && L > 1 && !(onNowPath(addr) || hasRecord(addr) || OPENED.has(addr))) ks = [];
+      if (L >= 8 && !(warm(addr) || onNowPath(addr) || OPENED.has(addr))) ks = [];
       if (L >= 10) ks = [];
       const n = { addr };
       if (ks.length) n.children = ks.map(nodeC);
@@ -524,8 +528,19 @@ function jumpTo(p){
 }
 function clicked(event, p){
   if (!p) return;
-  /* a leaf is read, not entered; a parent (or the centre) is entered */
-  if (!p.children){ FOCUS = p.data.addr; drawPanel(); return; }
+  /* a leaf is read, not entered — unless the calendar says it could grow:
+   * then the tap OPENS it one rung (quiet children drawn, every part
+   * readable and sayable), so the quiet future and the quiet past can be
+   * walked into. Session-only; reload folds it back. */
+  if (!p.children){
+    if (MODE === 'clock' && clockKids(p.data.addr).length){
+      OPENED.add(p.data.addr);
+      CURRENTP = p;                /* drawD3's keep lands the rebuilt dial here */
+      drawD3();
+      return;
+    }
+    FOCUS = p.data.addr; drawPanel(); return;
+  }
   if (p === CURRENTP && !p.parent){ FOCUS = p.data.addr; drawPanel(); return; }
   /* frames are not guaranteed in a hidden tab — jump straight to the target */
   if (document.hidden){ jumpTo(p); return; }
@@ -1023,7 +1038,7 @@ async function start(){
   $('b-mirror').href = mirrorUrl('');
   $('b-reread').addEventListener('click', () => { void reread(); });
   $('wh').innerHTML = 'One reading then stillness — <span style="font-family:var(--mono)">↻ re-read</span> fetches the beach again; the page never polls. ' +
-    'Click a part and its arc unrolls to become the whole face; the centre steps back out; a part with nothing deeper is read, not entered. ' +
+    'Click a part and its arc unrolls to become the whole face; the centre steps back out. A part with nothing deeper is read — and on the shared clock it also opens a rung deeper, so a quiet year or a day to come can be walked into and voiced; reload folds opened rungs back. ' +
     (HANDLE
       ? 'You are <b>' + esc(HANDLE) + '</b> here: the say box under any part writes your own mirror — and leaves an act-mark on the beach, which is what the recency heat reads. The <b>mine</b> lens shows your own trail in sand.'
       : 'Arrive as yourself — <span style="font-family:var(--mono)">/heatmap/' + esc(FAMILY) + '/&lt;your-name&gt;</span> — to write your voice at any part and to flick between everyone’s heat and your own trail.');
