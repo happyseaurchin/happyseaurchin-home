@@ -91,6 +91,7 @@ If a session needs to read across repos, add the relevant ones as `additionalDir
 2. **Don't widen `beach-relay.js`** — no POST, no extra paths, no arbitrary hosts. It is a narrowly-scoped CORS shim, not an open proxy.
 3. **Don't add write methods to `pscale-walk.js` or let `SUPABASE_ANON_KEY` reach the browser** — permissive RLS makes the anon key a write credential.
 4. **Never rebuild a write box without keeping its draft** — call `keepDraft(textarea, key)` from `theme.js` on any box a tick or a re-render can replace (the clock ticks, the panel re-renders, the paragraph is gone mid-word); clear it when the write lands.
+5. **Never ship a write box without dictation** — every write box carries it (David, 2026-09-07): a static `<textarea>` takes the `data-dictate` attribute and `theme.js` wires it on DOMContentLoaded; a box a page builds in script calls `window.dictate(el)` right where it calls `keepDraft`. The helper is browser-native (Web Speech API), inserts one glyph over the box's corner, never submits, and is absent where the API is (Firefox). The two pages that do not load `theme.js` — `render.html`, `what-this-is.html`, each with a palette and theme of its own — have no dictation until they are brought onto `theme.css`/`theme.js`, which is a deliberate migration, not a script tag.
 ## The worktable — live project state (read this before trusting this file)
 
 This project's working state lives ON the beach, not here:

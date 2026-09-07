@@ -109,6 +109,304 @@
 })();
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * dictate — every write box takes the voice as well as the keys.
+ *
+ * David's ruling (2026-09-07): add dictation. Browser-native — the Web Speech
+ * API, SpeechRecognition or its webkit twin — so there is nothing to load and
+ * nothing to pay. Chrome and Edge stream the audio to Google for the words;
+ * Safari finds most of them on the device; Firefox has no API at all, so shows
+ * no glyph. The tooltip says which, because a person should know where their
+ * voice goes before they press.
+ *
+ *     window.dictate(textarea)   → the glyph, or null where there is no API
+ *
+ * A static box opts in with an attribute — <textarea data-dictate> — and is
+ * wired on DOMContentLoaded; a box a page builds in script calls dictate(el)
+ * right where it calls keepDraft. One glyph, laid over the box's own top-right
+ * corner and never in its flow, so no page's layout moves (the box's right
+ * padding is widened just enough that no word runs under it; the bottom-right
+ * is left to the resize grip). Tap to listen, tap to stop; it also stops when
+ * the box loses focus or the engine gives up for good.
+ *
+ * The words: what the engine has LOCKED is appended after whatever the box
+ * held, a space between; the one phrase it is still revising rides at the end
+ * with an ellipsis after it, and is replaced as it firms. Every change is an
+ * input event on the box, so keepDraft keeps it and the page's own handlers
+ * see it. Never a submit: Enter belongs to the page (recency and now say on
+ * Enter — the marker is taken off the instant Enter is pressed, so what the
+ * page reads is clean, and typing into the box mid-dictation simply re-bases
+ * the session on what the box then holds).
+ *
+ * Ported from the mirror's use-speech-recognition (xstream-bsp), core only —
+ * the interim is the LAST non-final entry, never their concatenation, and a
+ * run of cumulative revisions collapses to the phrase it settled on: both are
+ * phone faults, invisible on a desktop, paid for there (2026-08-09). Silence
+ * ends a continuous session (sooner on a phone); it is restarted so dictation
+ * survives the gap, with the locked phrases carried across the fold. A page
+ * that rebuilds its box mid-dictation (recency on its tick, a view's live
+ * section) hands the session to the successor the moment it wires it.
+ * ───────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  var MARK = '…';                      /* after the phrase still being revised */
+  var SIZE = 22, INSET = 5;                 /* the glyph, and its distance from the corner */
+  var TITLE = 'dictate — Chrome sends audio to Google for transcription; Safari transcribes mostly on device';
+  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4z"/>' +
+    '<path d="M18 10a1 1 0 0 1 1 1 7 7 0 0 1-6 6.93V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 0 1 1-1z"/></svg>';
+  var TERMINAL = { 'not-allowed':1, 'service-not-allowed':1, 'audio-capture':1, 'network':1, 'language-not-supported':1 };
+
+  function ctor(){ return window.SpeechRecognition || window.webkitSpeechRecognition || null; }
+
+  /* compare on words alone — a revision may add capitals or punctuation the
+   * draft did not have. Built, not written as a literal: a \p escape in the
+   * source would be a parse error for an old browser, and this file paints the
+   * register before anything else. */
+  var STRIP;
+  try { STRIP = new RegExp("[^\\p{L}\\p{N}\\s']", 'gu'); } catch(e){ STRIP = /[^\w\s']/g; }
+  function wordsOf(s){ return s.toLowerCase().replace(STRIP, '').trim().replace(/\s+/g, ' '); }
+
+  /* the phrases the engine has LOCKED, and the one hypothesis it is still
+   * revising — the LAST non-final entry, never all of them glued together */
+  function readResults(results){
+    var finals = [], interim = '';
+    for (var i = 0; i < results.length; i++){
+      var r = results[i], t = r[0] ? (r[0].transcript || '') : '';
+      if (r.isFinal) finals.push(t); else interim = t;
+    }
+    return { finals: finals, interim: interim };
+  }
+
+  /* an entry that merely EXTENDS the one before it is that entry rewritten,
+   * not a new phrase; keep the last of each run */
+  function collapse(parts){
+    var runs = [];
+    for (var i = 0; i < parts.length; i++){
+      var t = (parts[i] || '').trim();
+      if (!t) continue;
+      if (runs.length){
+        var a = wordsOf(t), b = wordsOf(runs[runs.length - 1]);
+        if (a === b || a.indexOf(b + ' ') === 0){ runs[runs.length - 1] = t; continue; }
+      }
+      runs.push(t);
+    }
+    return runs;
+  }
+
+  /* the spoken words after what the box already held: a space between, unless
+   * the box ended on a line break the writer put there */
+  function glue(base, runs){
+    var rest = runs.join(' ');
+    if (!base) return rest;
+    if (!rest) return base;
+    return /\s$/.test(base) ? base + rest : base + ' ' + rest;
+  }
+
+  function inputEvent(){
+    try { return new Event('input', { bubbles: true }); }
+    catch(e){ var ev = document.createEvent('Event'); ev.initEvent('input', true, false); return ev; }
+  }
+
+  var active = null;   /* one microphone; one session at a time */
+
+  window.dictate = function(box){
+    if (!box || !('value' in box) || !box.parentNode) return null;
+    if (!ctor()) return null;
+    if (box._dictate) return box._dictate.button;
+
+    var parent = box.parentNode;
+    /* a span with the button role, not a <button>: every page dresses ITS
+     * buttons for their row (.say button, .mirrorbox button …), and a glyph in
+     * the corner of the box is not one of them */
+    var btn = document.createElement('span');
+    btn.className = 'dictate';
+    btn.title = TITLE;
+    btn.tabIndex = 0;
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('aria-label', 'dictate');
+    btn.setAttribute('aria-pressed', 'false');
+    btn.innerHTML = ICON;
+    parent.insertBefore(btn, box.nextSibling);
+
+    var rec = null, want = false, base = '', prior = [], finals = [];
+    var written = null;       /* the last text this session put in the box */
+    var writing = false;      /* while it is being put there */
+    var startedAt = 0, heard = false, pending = null, anchored = false, seen = false;
+    var api = { box: box, button: btn };
+
+    /* ── the glyph over the corner ──────────────────────────────────────── */
+    function place(){
+      /* a box wired before it is attached (a part built and then appended) is
+       * placed when it lands; one the page has since discarded lets go */
+      if (!box.isConnected){ if (seen) window.removeEventListener('resize', place); return; }
+      seen = true;
+      var w = box.offsetWidth, h = box.offsetHeight;
+      if (!w && !h){ btn.hidden = true; return; }
+      btn.hidden = false;
+      if (!anchored){
+        anchored = true;
+        var cs = getComputedStyle(parent);
+        if (cs.position === 'static') parent.style.position = 'relative';
+        var pr = parseFloat(getComputedStyle(box).paddingRight) || 0;
+        if (pr < SIZE + INSET * 2) box.style.paddingRight = (SIZE + INSET * 2) + 'px';
+      }
+      btn.style.top = (box.offsetTop + INSET) + 'px';
+      btn.style.left = (box.offsetLeft + w - SIZE - INSET) + 'px';
+    }
+    if (window.ResizeObserver){ var ro = new ResizeObserver(place); ro.observe(box); ro.observe(parent); }
+    window.addEventListener('resize', place);
+    box.addEventListener('focus', place);
+    place();
+
+    /* ── the words into the box ─────────────────────────────────────────── */
+    function write(text){
+      writing = true;
+      box.value = text; written = text;
+      try { box.scrollTop = box.scrollHeight; } catch(e){}
+      box.dispatchEvent(inputEvent());
+      writing = false;
+    }
+    function touched(){ return written !== null && box.value !== written; }
+    /* the marker comes off where it was put; the phrase under it stays as last
+     * heard, and anything typed after it stays too */
+    function settle(){
+      if (written === null || written.slice(-MARK.length) !== MARK) return;
+      var stem = written.slice(0, -MARK.length), v = box.value;
+      if (v.indexOf(stem + MARK) !== 0) return;      /* the box no longer holds it where it was put */
+      write(stem + v.slice(stem.length + MARK.length));
+    }
+    function show(on){ btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    /* while listening, notice a box the page has discarded even if no blur and
+     * no result ever says so — the session must not outlive its box */
+    var watch = null;
+    function watching(on){
+      clearInterval(watch);
+      watch = on ? setInterval(function(){ if (!box.isConnected) orphan(); }, 500) : null;
+    }
+
+    function begin(){
+      var R = ctor(); if (!R) return;
+      if (active && active !== api) active.stop();
+      active = api;
+      var r = new R();
+      r.lang = document.documentElement.lang || navigator.language || 'en-US';
+      r.continuous = true;
+      r.interimResults = true;
+      r.maxAlternatives = 1;
+      base = box.value.replace(/[ \t]+$/, '');
+      prior = []; finals = []; written = null; heard = false;
+      r.onresult = function(e){
+        if (rec !== r) return;                       /* a superseded session's late words */
+        if (!box.isConnected){ orphan(); return; }
+        if (touched()){ if (!pending) rebase(); return; }
+        heard = true;
+        var got = readResults(e.results);
+        finals = got.finals;
+        var runs = collapse(prior.concat(finals, [got.interim]));
+        write(glue(base, runs) + (got.interim.trim() ? MARK : ''));
+      };
+      r.onerror = function(e){
+        if (rec === r && TERMINAL[e.error]){
+          want = false;
+          if (e.error === 'not-allowed' || e.error === 'service-not-allowed')
+            btn.title = 'the microphone was refused — allow it for this site to dictate';
+        }
+      };
+      r.onend = function(){
+        if (rec !== r) return;
+        /* silence ended the session and the writer did not: carry the locked
+         * phrases across the fold and go again — unless it died at once, which
+         * is a fault, not a pause, and would loop */
+        if (want && box.isConnected && (heard || Date.now() - startedAt > 1000)){
+          prior = collapse(prior.concat(finals)); finals = []; heard = false; startedAt = Date.now();
+          try { r.start(); return; } catch(e){}
+        }
+        rec = null; want = false; show(false); watching(false); settle();
+        if (active === api) active = null;
+      };
+      rec = r; want = true; startedAt = Date.now();
+      try { r.start(); show(true); watching(true); }
+      catch(e){ rec = null; want = false; show(false); watching(false); if (active === api) active = null; }
+    }
+    /* the box changed under the session — typed into, or filled or cleared by
+     * the page — so what it holds now is the base, and a fresh recogniser
+     * carries on from there (a used one re-reports its whole span) */
+    function rebase(){
+      var r = rec; rec = null;
+      if (r){ try { r.abort(); } catch(e){} }
+      settle();
+      begin();
+    }
+    function stop(){
+      want = false; show(false);
+      clearTimeout(pending); pending = null;
+      settle();                                     /* a click that follows reads clean text */
+      if (rec){ try { rec.stop(); } catch(e){} }    /* onend closes the session; late finals still firm the phrase */
+      else if (active === api) active = null;
+    }
+    /* let go without settling — the successor box has the words already */
+    function drop(){
+      want = false; show(false); watching(false);
+      var r = rec; rec = null;
+      if (r){ try { r.abort(); } catch(e){} }
+      if (active === api) active = null;
+    }
+    /* the page rebuilt its box; give the successor a moment to take the session over */
+    var orphanTimer = null;
+    function orphan(){
+      if (orphanTimer) return;
+      orphanTimer = setTimeout(function(){ orphanTimer = null; if (!box.isConnected) drop(); }, 1500);
+    }
+    api.stop = stop; api.drop = drop; api.begin = begin;
+    api.listening = function(){ return want; };
+
+    /* a fresh box standing where a live session's box stood is the same box rebuilt */
+    if (active && active.listening() && !active.box.isConnected && sameBox(active.box, box)){
+      active.drop();
+      if (box.value.slice(-MARK.length) === MARK) box.value = box.value.slice(0, -MARK.length);
+      begin();
+    }
+
+    btn.addEventListener('mousedown', function(e){ e.preventDefault(); });   /* the box keeps its focus */
+    btn.addEventListener('click', function(){
+      if (want){ stop(); return; }
+      begin();
+      if (want){ try { box.focus({ preventScroll: true }); } catch(e){ box.focus(); } }
+    });
+    btn.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); btn.click(); }
+    });
+    box.addEventListener('blur', function(){
+      if (!want) return;
+      settle();                                     /* whatever comes next reads clean text */
+      /* Chrome also fires blur for a box being REMOVED, before the removal
+       * lands — so decide a tick later: gone is the page rebuilding its box
+       * (hold the session for the successor); still here is the writer
+       * looking away */
+      setTimeout(function(){ if (!want) return; if (box.isConnected) stop(); else orphan(); }, 0);
+    });
+    box.addEventListener('input', function(){
+      if (want && !writing){ clearTimeout(pending); pending = setTimeout(function(){ pending = null; if (want) rebase(); }, 400); }
+    });
+    box.addEventListener('keydown', function(e){ if (e.key === 'Enter' && want) settle(); }, true);
+
+    box._dictate = api;
+    return btn;
+  };
+
+  function sameBox(a, b){
+    if (a.id) return a.id === b.id;
+    return a.placeholder === b.placeholder && a.className === b.className;
+  }
+
+  function wireAll(){
+    var all = document.querySelectorAll('textarea[data-dictate]');
+    for (var i = 0; i < all.length; i++) window.dictate(all[i]);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireAll); else wireAll();
+})();
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * siteDoors — the places menu, built by the page from what the page knows.
  *
  * A door has to carry the walker. Every page here takes its handle from the URL
