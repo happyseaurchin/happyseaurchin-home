@@ -56,6 +56,18 @@
   .byline{margin-top:6px;font-size:12.5px;color:var(--ink-soft);font-family:var(--sans)}
   .byline .who{color:var(--ink);font-weight:600}
   .face{display:inline-block;font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;padding:1px 7px;border-radius:99px;background:#22303A0d;color:var(--ink-soft);margin:0 4px}
+  /* the marks board, folded — one line per mark; a tap opens it */
+  .mark{border-top:1px solid var(--line)}
+  .mark:last-of-type{border-bottom:1px solid var(--line)}
+  .mark>summary{list-style:none;cursor:pointer;display:flex;gap:10px;align-items:baseline;padding:8px 4px;font-size:14.5px;line-height:1.45;min-width:0}
+  .mark>summary::-webkit-details-marker{display:none}
+  .mark>summary .who{color:var(--ink);font-weight:600;flex:none}
+  .mark>summary time{font-family:var(--mono);font-size:11px;color:var(--ink-soft);letter-spacing:.03em;flex:none}
+  .mark>summary .lead{color:var(--ink-soft);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mark>summary:hover .lead{color:var(--ink)}
+  .mark[open]>summary .lead{display:none}
+  .mark__body{margin:0 4px 12px;padding:6px 0 0 14px;border-left:2px solid var(--line2)}
+  .mark__aim{font-family:var(--mono);font-size:11px;color:var(--ink-soft);margin-top:4px;word-break:break-all}
 
   /* index */
   .idx-intro{font-family:var(--serif);font-size:17px;color:var(--ink-soft);margin-bottom:16px;line-height:1.6}
@@ -175,6 +187,45 @@ function pruneView(node, levels){
   return out;
 }
 
+// ── the marks board, folded: one line per mark, unfold on demand ──
+// The board accumulates forever (161 marks and rising, supernested at floor 3)
+// and drawn as blocks it was the longest page on the site — every mark a full
+// card, the front of the beach unreadable; and renderNode never descends an
+// object underscore, so the older marks under the supernest were not drawn at
+// all. The same collapse the mirror gives a pool's record (xstream-bsp #282,
+// #283), on the site's terms: a mark is attributed AND stamped — string fields 1
+// and 3, field 3 a real time — and everything else object-shaped is ground to
+// walk, the batch summaries included. Newest first by the carried stamp (slot
+// order is nearly chronology, not quite). The line is who · when · the opening
+// words; the full text, the face, where it aimed (field 2) and the beach address
+// open beneath on a tap. Native <details>: no state, no script, and the address
+// stays copyable. A spindle into the board still renders as blocks.
+function renderMarks(b){
+  const found = [];
+  (function dig(node, addr){
+    if (!node || typeof node !== 'object') return;
+    for (const k of digitKeys(node)){
+      const kid = node[k], a = addr ? addr + ',' + k : k;
+      if (isVoice(kid) && kid._.trim()) found.push({ addr: a, n: kid });
+      dig(kid, a);
+    }
+    if (node._ && typeof node._ === 'object') dig(node._, addr ? addr + ',0' : '0');
+  })(b, '');
+  found.sort((x, y) => (Date.parse(y.n['3']) || 0) - (Date.parse(x.n['3']) || 0));
+  const lead = (t) => { const one = t.replace(/\s+/g, ' ').trim(); return one.length > 110 ? one.slice(0, 110).replace(/\s+\S*$/, '') + '…' : one; };
+  const rows = found.map(m => {
+    const t = m.n._.trim(), who = m.n['1'] || '?';
+    const face = m.n['4'] ? `<span class="face">${esc(m.n['4'])}</span>` : '';
+    const aim = (typeof m.n['2'] === 'string' && m.n['2'].trim()) ? `<div class="mark__aim">aimed at ${esc(m.n['2'])}</div>` : '';
+    return `<details class="mark"><summary><span class="who">${esc(who)}</span><time>${rel(m.n['3'])}</time><span class="lead">${esc(lead(t))}</span></summary>
+      <div class="mark__body"><p class="prose">${esc(t)}</p><div class="byline">— <span class="who">${esc(who)}</span>${face} · <time>${esc(m.n['3'])}</time></div>${aim}<div class="addr" title="address on the beach">${esc(m.addr)}</div></div></details>`;
+  });
+  const voice = voiceOfB(b);
+  return (voice ? `<div class="idx-intro">${esc(voice)}</div>` : '') +
+    `<div class="count">${found.length} marks · newest first · tap a line to open it</div>` +
+    (rows.join('') || `<div class="msg">No marks on this board yet — the first is yours to leave.</div>`);
+}
+
 function renderIndex(j, beach){
   const blocks = (j.blocks||[]).slice().sort();
   const intro = typeof j._ === 'string' ? `<div class="idx-intro">${esc(j._)}</div>` : '';
@@ -230,7 +281,9 @@ async function load(){
       }
     }
     const appendable = !spindle && (block === 'marks' || block.startsWith('pool:'));
-    main.innerHTML = crumb2 + (appendable ? composeHTML(beachHost, block) : '') + `<div class="root">${renderNode(view, baseAddr, 0)}</div>`;
+    /* the whole board folds to a line per mark; a spindle into it still renders as blocks */
+    const drawn = (!spindle && block === 'marks') ? renderMarks(view) : `<div class="root">${renderNode(view, baseAddr, 0)}</div>`;
+    main.innerHTML = crumb2 + (appendable ? composeHTML(beachHost, block) : '') + drawn;
     if (appendable) wireCompose(beachHost, block);
   } else {
     main.innerHTML = crumb + `<div class="msg">Nothing at <b>${esc(block)}</b> on this beach yet — an empty position is honest absence, not an error.</div>`;

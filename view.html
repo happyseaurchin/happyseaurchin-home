@@ -776,6 +776,10 @@ function wireForm(sect, e){
   const post = sect.querySelector('[data-post]'), latch = sect.querySelector('[data-latch]');
   const pass = sect.querySelector('[data-pass]'), hint = sect.querySelector('[data-hint]');
   if (!post) return;
+  /* the box is rebuilt whenever its section is — load() on the depth switch and
+   * after a post, the 30s tick when the entry is live — so the draft rides on
+   * the device (keepDraft, theme.js), keyed by this view and this entry */
+  const clearDraft = window.keepDraft ? keepDraft(note, SPEC + ':' + sect.getAttribute('data-entry')) : () => {};
   post.addEventListener('click', async () => {
     const text = note.value.trim();
     if (!text){ note.focus(); return; }
@@ -793,7 +797,7 @@ function wireForm(sect, e){
     if (r.ok){
       if (who.value.trim()) localStorage.setItem('render:who', who.value.trim());
       hint.className = 'hint ok'; hint.textContent = 'posted ✓ — re-reading the board…';
-      note.value = '';
+      note.value = ''; clearDraft();
       setTimeout(load, 400);
       return;
     }
@@ -980,7 +984,12 @@ setInterval(async () => {
     try {
       const html = await MODES[r.e.mode](r.e);
       const sect = document.querySelector('.sect[data-entry="' + r.d + '"]');
-      if (sect) sect.innerHTML = html;
+      if (!sect) continue;
+      sect.innerHTML = html;
+      /* a rebuilt section is a bare one — its handlers went with the old nodes,
+       * and a write box in it takes its draft back through wireForm */
+      if (r.e.mode === 'form') wireForm(sect, r.e);
+      if (r.e.mode === 'copy') wireCopy(sect);
     } catch(err){ /* keep the last good render */ }
   }
 }, 30000);

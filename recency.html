@@ -675,7 +675,6 @@ function drawPanel(){
   const addr = FOCUS;
   const prior = document.getElementById('say-t');
   const wasTyping = !!prior && document.activeElement === prior;
-  if (prior && prior.value) draftSet(prior.value);   /* a rebuild mid-word keeps the words */
   $('b-mirror').href = mirrorUrl(addr);          /* the bar's mirror door follows the focus */
   const word = addr ? textAt(SPINE, addr) : voice(SPINE);
   const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text);
@@ -714,9 +713,7 @@ function drawPanel(){
   if (HANDLE && addr && strip0(addr) !== addr){
     rows.push('<p class="sayhint">this rung shares its wire address with the rung above (the zero-digit cost, sundial 3.4) — a say here would land there instead. Voice this stretch at <a href="/now/' + esc(HANDLE) + '">/now</a>, which holds the coarse rungs the safe way.</p>');
   } else if (HANDLE){
-    const mine = exact.find(x => x.who === HANDLE);
-    const draft = draftGet();
-    rows.push('<div class="saybox"><textarea id="say-t" rows="2" placeholder="your voice at ' + esc(addr ? labelFor(addr) : FAMILY) + ' …">' + esc(draft || (mine ? mine.text : '')) + '</textarea><button id="say-b">say</button></div>' +
+    rows.push('<div class="saybox"><textarea id="say-t" rows="2" placeholder="your voice at ' + esc(addr ? labelFor(addr) : FAMILY) + ' …"></textarea><button id="say-b">say</button></div>' +
       '<p class="sayhint">lands in ' + esc(FAMILY + ':' + HANDLE) + ' at this very part, revisable forever — Enter says, Shift+Enter breaks a line</p>');
   }
   rows.push('<div class="plinks">' +
@@ -736,7 +733,11 @@ function drawPanel(){
   });
   const t = $('say-t');
   if (t){
-    t.addEventListener('input', () => draftSet(t.value));
+    /* the draft rides on the device (keepDraft, theme.js): a box built empty is
+     * refilled with the words typed before the rebuild — else with the voice
+     * already standing here, revisable */
+    clearDraft = window.keepDraft ? keepDraft(t, FAMILY + ':' + HANDLE) : clearDraft;
+    if (!t.value){ const mine = exact.find(x => x.who === HANDLE); if (mine) t.value = mine.text; }
     if (wasTyping){ t.focus(); const n = t.value.length; try { t.setSelectionRange(n, n); } catch(e){} }
     t.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); void sayAt(addr, t.value.trim()); } });
     $('say-b').addEventListener('click', () => { void sayAt(addr, $('say-t').value.trim()); });
@@ -846,11 +847,10 @@ async function ensureMirror(){
 }
 /* the draft — what is being typed survives the tick (proposal:three-portals 3.2):
  * the clock advances, the panel is rebuilt, and the paragraph was gone mid-word.
- * Kept per family+hand on this device, restored into the box whichever part the
- * page has moved to, cleared the moment the say lands. */
-const draftKey = () => 'draft:' + FAMILY + ':' + HANDLE;
-function draftGet(){ try { return localStorage.getItem(draftKey()) || ''; } catch(e){ return ''; } }
-function draftSet(v){ try { if (v) localStorage.setItem(draftKey(), v); else localStorage.removeItem(draftKey()); } catch(e){} }
+ * The mechanism is the site's — keepDraft in theme.js — kept per family+hand on
+ * this device, restored into the box whichever part the page has moved to.
+ * drawPanel binds it to each rebuilt box; the say that lands clears it. */
+var clearDraft = function(){};
 async function sayAt(addr, text){
   if (!HANDLE || !addr || !text) return;
   const name = FAMILY + ':' + HANDLE;
@@ -863,7 +863,7 @@ async function sayAt(addr, text){
   const w = await writeWithLatch({ block: name, spindle: (MODE === 'clock' ? pad10(addr) : String(addr)), content }, name);
   if (w.quiet) return;
   if (!w.ok){ sayNote(name + ' refused it: ' + ((w.data && (w.data.error || w.data.code)) || w.status) + ' — key trouble? happyseaurchin.com/key'); return; }
-  draftSet('');
+  clearDraft();
   sayNote('✓ yours at ' + (addr ? labelFor(addr) : FAMILY) + ' — say again here and the new words replace it');
   /* the act leaves a mark on the beach — WHEN a hand moved, distinct from
    * where its words aim; the tide may clear old ones, which is what
