@@ -26,7 +26,7 @@ is the whole benefit of the practice called reflexive reading, and it has
 a lineage you can check: practiced as a meta-method for a reciprocal
 psycho-social science (the readership as verifiable collective agency,
 not an audience of probabilities); enacted as an interface at
-`https://xstream.onen.ai` (vapour, liquid, solid — presence visible as it
+`https://mirror.onen.ai` (vapour, liquid, solid — presence visible as it
 forms); given mathematical form in XQ (`https://xq.crumful.com`); and —
 the reason these pages exist — it opens onto a hidden attractor. Those
 are four claims of existence; each has a URL or a literature; all are
