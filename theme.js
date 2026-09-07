@@ -77,6 +77,38 @@
 })();
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * keepDraft — a write box that a tick or a re-render can replace keeps its
+ * draft on the device.
+ *
+ * That is the law, and the reason: the clock advances, the panel is rebuilt,
+ * a live section is re-read on its tick — and the paragraph was gone mid-word
+ * (recency, 2026-09-07; proposal:three-portals 3.2). So every keystroke lands
+ * in localStorage under 'draft:' + key, a box built empty is refilled from
+ * there, and the write that lands clears it:
+ *
+ *     var clear = keepDraft(textarea, FAMILY + ':' + HANDLE);
+ *     ... the write lands: clear();
+ *
+ * The key names WHERE the words are going (family + hand, view + entry), never
+ * the page, so the draft follows the box wherever the page rebuilds it. Storage
+ * can be refused (private mode, a full quota): every access is wrapped, and a
+ * refusal only means the draft is not kept — never a broken box.
+ * ───────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  function get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } }
+  function set(k, v){ try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch(e){} }
+  window.keepDraft = function(box, key){
+    var k = 'draft:' + key;
+    var clear = function(){ set(k, ''); };
+    if (!box) return clear;
+    if (!box.value){ var d = get(k); if (d) box.value = d; }
+    box.addEventListener('input', function(){ set(k, box.value); });
+    return clear;
+  };
+})();
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * siteDoors — the places menu, built by the page from what the page knows.
  *
  * A door has to carry the walker. Every page here takes its handle from the URL

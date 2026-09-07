@@ -90,6 +90,7 @@ If a session needs to read across repos, add the relevant ones as `additionalDir
 1. **Don't reinstate anything at `/.well-known/pscale-beach`** — no handler, no rewrite, no static file. The bare-domain 404 is load-bearing: bsp-mcp's federation fallback (`bare 404 → beach.<host>`) routes callers to the real beach through it.
 2. **Don't widen `beach-relay.js`** — no POST, no extra paths, no arbitrary hosts. It is a narrowly-scoped CORS shim, not an open proxy.
 3. **Don't add write methods to `pscale-walk.js` or let `SUPABASE_ANON_KEY` reach the browser** — permissive RLS makes the anon key a write credential.
+4. **Never rebuild a write box without keeping its draft** — call `keepDraft(textarea, key)` from `theme.js` on any box a tick or a re-render can replace (the clock ticks, the panel re-renders, the paragraph is gone mid-word); clear it when the write lands.
 ## The worktable — live project state (read this before trusting this file)
 
 This project's working state lives ON the beach, not here:
