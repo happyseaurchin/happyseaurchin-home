@@ -65,14 +65,14 @@
   .folk-m.disc .fd{border-radius:50%;background:rgba(var(--solid-rgb),0.13);
     border:1.4px solid rgba(var(--solid-rgb),0.6)}
 
-  /* a crowd — one rung, many people, drawn once and sized by how many */
-  .crowd-m{display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:opacity 200ms linear}
-  .crowd-m .cd{display:flex;align-items:center;justify-content:center;border-radius:50%;
-    background:rgba(var(--solid-rgb),0.16);border:1.5px solid rgba(var(--solid-rgb),0.75);
-    color:var(--solid);font-family:var(--mono);font-size:11px;font-weight:700;flex:none}
+  /* a crowd — one rung, many people, drawn once: a small disc and its count */
+  .crowd-m{display:flex;align-items:center;gap:5px;cursor:pointer;transition:opacity 200ms linear}
+  .crowd-m .cd{border-radius:50%;background:rgba(var(--solid-rgb),0.55);
+    border:1px solid rgba(var(--solid-rgb),0.9);flex:none}
   .crowd-m .cl{font-family:var(--mono);font-size:10.5px;color:var(--solid);white-space:nowrap;
-    text-shadow:0 1px 4px rgba(var(--well-rgb),0.95);margin-top:3px}
-  .crowd-m:hover .cd{background:rgba(var(--solid-rgb),0.30)}
+    text-shadow:0 1px 4px rgba(var(--well-rgb),0.95), 0 0 2px rgba(var(--well-rgb),0.9)}
+  .crowd-m:hover .cd{background:var(--solid)}
+  .crowd-m:hover .cl{color:var(--foam)}
 
   /* ── the solar strip — above the sphere, the top rung is not a map ── */
   #solar{position:fixed;inset:0;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;
@@ -511,11 +511,12 @@ function loadCensus(){
 }
 
 /* ── markers — DOM riders on the sphere ─────────────────────────────────── */
-let PLACEMS = [], FOLKMS = [];
+let PLACEMS = [], FOLKMS = [], CROWDMS = [];
 function buildMarkers(){
   for (const {m} of PLACEMS) m.remove();
   for (const {m} of FOLKMS) m.remove();
-  PLACEMS = []; FOLKMS = [];
+  for (const {m} of CROWDMS) m.remove();
+  PLACEMS = []; FOLKMS = []; CROWDMS = [];
   for (const p of PLACES){
     const el = document.createElement('div');
     el.className = 'place-m';
@@ -536,15 +537,19 @@ function buildMarkers(){
     const el = document.createElement('div');
     el.className = 'crowd-m';
     const cd = document.createElement('span'); cd.className = 'cd';
-    const r = Math.max(16, Math.min(64, 12 + 9 * Math.log10(Math.max(10, c.under))));
+    /* small, and only faintly sized by the count — the number itself says how many,
+       so the disc only has to say "people, here", and a disc big enough to hold its
+       own number ends up covering the ground it is about */
+    const r = Math.max(6, Math.min(18, 3 + 3.2 * Math.log10(Math.max(10, c.under))));
     cd.style.width = cd.style.height = r + 'px';
-    cd.textContent = c.under >= 1000 ? Math.round(c.under / 1000) + 'k' : c.under;
-    const cl = document.createElement('span'); cl.className = 'cl'; cl.textContent = c.name;
+    const cl = document.createElement('span'); cl.className = 'cl'; cl.textContent = fmt(c.under);
     el.appendChild(cd); el.appendChild(cl);
     el.addEventListener('click', ev => { ev.stopPropagation(); setAddress(c.path); });
-    const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+    /* the place marker already carries the name; this rides just beneath it so the
+       two read as one thing — Nigeria, and 763 people standing in it */
+    const m = new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, 7] })
       .setLngLat([c.near.geo.lon, c.near.geo.lat]).addTo(map);
-    FOLKMS.push({ f: { path: c.path, pin: true, near: c.near }, el, m });
+    CROWDMS.push({ c, el, m });
   }
   for (const f of FOLK.filter(f => f.near)){
     const el = document.createElement('div');
@@ -570,6 +575,27 @@ function updateOverlays(){
     const o = dz < -3.5 ? 0 : dz > 5 ? 0 : dz < 0 ? 1 + dz/3.5 : Math.max(0, 1 - dz/5);
     el.style.opacity = o;
     el.style.pointerEvents = o > 0.1 ? 'auto' : 'none';
+  }
+  /* A crowd belongs to its rung as much as a place-name does: the count for a whole
+     continent is noise once the reader has flown down into one country, and the
+     country's own counts are unreadable from orbit. Same relevance fade the place
+     names already use, so the two rise and fall together. */
+  for (const {c, el} of CROWDMS){
+    /* Show the crowds of the rung the reader is STANDING at, two grounds down and
+       no further — the same slice the card lists, so the sphere and the panel say
+       one thing. Zoom relevance alone was not enough: at continent zoom the whole
+       globe is in view, so every country on Earth put its number on the map at once.
+       An address is a place to stand, not just a magnification. */
+    const inScope = c.path.length > ADDR.length
+      && c.path.length <= ADDR.length + 2
+      && ADDR.every((d, i) => c.path[i] === d);
+    /* No zoom fade on top of the scope. A place-NAME earns its zoom rule — a city's
+       label is noise from orbit — but a crowd is the answer to "where are the people
+       under where I am standing", and standing at Nigeria at country zoom is exactly
+       when its cities' counts are wanted. The fade zeroed them and the rung went
+       silent; the address already decided what belongs. */
+    el.style.opacity = inScope ? 1 : 0;
+    el.style.pointerEvents = inScope ? 'auto' : 'none';
   }
   for (const {f, el} of FOLKMS){
     const fd = el.lastChild;
@@ -633,7 +659,7 @@ function setAddress(path, opts){
   if (node == null && path.length){ flashAddr(); return; }
   ADDR = path.slice();
   buildRungZooms();
-  renderPanel(); renderLadder(); renderAddr(); solarCaption();
+  renderPanel(); renderLadder(); renderAddr(); solarCaption(); updateOverlays();
   try{ history.replaceState(null, '', '#' + (ADDR.join(',') || '')); }catch(e){}
   if (o.fly !== false) flyToAddr();
 }
