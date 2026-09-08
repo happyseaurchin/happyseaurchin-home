@@ -476,8 +476,6 @@
       'padding:5px 8px;border-radius:5px;text-decoration:none;border-bottom:none;color:var(--vapour)}' +
     '.dd__menu a:hover{background:rgba(var(--wash-rgb),0.07);color:var(--liquid)}' +
     '.dd__menu .here{color:var(--foam)}' +
-    '.dd__menu a.rest{color:var(--vapour-dim);font-size:14px}' +
-    '.dd__menu a.rest:hover{color:var(--liquid)}' +
     '.dd__rule{height:1px;background:var(--line);margin:7px 4px}' +
     /* acts keep the bar\'s own register — a button still looks like a button */
     '.dd__menu button{width:100%;text-align:left}' +
@@ -571,20 +569,32 @@
     return -1;
   }
 
-  function arrange(){
+  /* THE LIST IS THE MENU. Naming places is choosing them, and what a reader has
+   * chosen is the whole of what they should meet — not the choice with the rest of
+   * the catalogue greyed out beneath a rule, which is a list arguing with itself.
+   * The catalogue is not lost by this: it stands whole, one tap away, under
+   * 'choose what shows' — which is where a change to the list belongs anyway, so
+   * the place that shows everything is now also the only place that can act on it.
+   * The sibling organ has always read this way (the projects row: "there is no
+   * hidden set either way — a family is in the list or it is not"), and the two
+   * agree from here. Reversed 2026-09-08 at David's word, from a rule that said a
+   * priority list orders the top and never hides the rest.
+   *
+   * The one thing a list cannot overrule is where the reader is STANDING. An
+   * unstated page still takes its place, marked as here, or the menu quietly
+   * disagrees with the page around it — the same exception the projects row makes
+   * for the family you are in. It is for the MENU only: `here` is deliberately not
+   * passed when the editor asks, because a page you merely landed on is not a page
+   * you chose, and saving must never smuggle it into your list. */
+  function arrange(here){
     var all = [].concat.apply([], GROUPS), by = {}, out = [], seen = {};
     all.forEach(function(x){ by[x[1]] = x; });
     if (STATED_DOORS && STATED_DOORS.length){
-      /* A PRIORITY LIST ORDERS THE TOP, IT DOES NOT HIDE THE REST. Naming four
-       * places is saying which four matter, never that the other nine stopped
-       * existing — and a menu that is the only way to reach a page must not be
-       * the thing that loses it. So the stated ones stand first, then a rule,
-       * then everything else the catalogue holds. */
       STATED_DOORS.forEach(function(n){ if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
-      var rest = all.filter(function(x){ return !seen[x[1]]; });
-      return { list: out, rest: rest, custom: true, hidden: {}, all: all };
+      if (here && by[here] && !seen[here]){ seen[here] = 1; out.push(by[here]); }
+      return { list: out, custom: true, all: all };
     }
-    return { list: all, rest: [], custom: false, hidden: {}, all: all };
+    return { list: all, custom: false, all: all };
   }
 
   /* ── the acts, gathered ───────────────────────────────────────────────────
@@ -714,7 +724,7 @@
       .catch(function(){ return null; });
   }
   var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
-  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and nothing else. Naming a place here is choosing it; leaving one out is not hiding it, since the catalogue a page offers is always larger than any one hand's list.";
+  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and nothing else. Naming a place here is choosing it, and a place left out simply does not appear: the menu is the choice, not the choice laid over a catalogue. Nothing is lost by leaving one out, because the catalogue every page offers stands whole behind 'choose what shows', which is where a list is changed.";
   var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
 
   function latchFor(handle){ return 'lists-latch:' + handle; }
@@ -1083,9 +1093,9 @@
 
     function paint(){
       menu.innerHTML = '';
-      var a = arrange(), lastGroup = null;
+      var a = arrange(cfg.here), lastGroup = null;
 
-      function place(p, dim){
+      function place(p){
         var u = href(p[1], p[2], cfg.handle, cfg.family);
         if (!u) return;                       /* nowhere to go yet — say so by omission */
         if (p[1] === cfg.here){
@@ -1097,7 +1107,6 @@
         }
         var link = document.createElement('a');
         link.href = u; link.textContent = p[0];
-        if (dim) link.className = 'rest';
         menu.appendChild(link);
       }
 
@@ -1109,15 +1118,9 @@
           var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
         }
         lastGroup = g;
-        place(p, false);
+        place(p);
       });
 
-      /* everything the catalogue holds that the stated list did not name — quieter,
-       * under a rule, and still one tap away */
-      if (a.rest && a.rest.length){
-        var r2 = document.createElement('div'); r2.className = 'dd__rule'; menu.appendChild(r2);
-        a.rest.forEach(function(p){ place(p, true); });
-      }
       var edit = document.createElement('button');
       edit.className = 'dd__edit'; edit.type = 'button'; edit.setAttribute('data-keep-open',''); edit.textContent = 'choose what shows';
       edit.addEventListener('click', function(e){
