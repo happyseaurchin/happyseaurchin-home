@@ -49,8 +49,18 @@
   .maplibregl-canvas{outline:none;cursor:grab}
   .maplibregl-canvas:active{cursor:grabbing}
 
-  /* place markers — a dot and a name that breathe around their own rung */
-  .place-m{display:flex;align-items:center;gap:6px;cursor:pointer;transition:opacity 200ms linear}
+  /* THE PLACE LAYER IS THE MAKER'S VIEW, and rides with the workings.
+     The basemap already names the world, with a real cartographer's collision
+     handling; printing our own names for the same countries and cities put two
+     naming systems over one geography and ours lost — Spain's dot landing on
+     Madrid's dot landing on the basemap's own Madrid, because a country's
+     centroid is usually near its capital. What remains on the sphere is the one
+     thing no basemap can show: where people are standing. Navigation was never
+     the map's job here anyway — the ladder zooms out, the finer-ground chips
+     zoom in. Under `workings` the layer returns, because which grounds the map
+     holds and which it does not is exactly a keeper's question. */
+  .place-m{display:none;align-items:center;gap:6px;cursor:pointer;transition:opacity 200ms linear}
+  body.workings .place-m{display:flex}
   .place-m .pd{width:7px;height:7px;border-radius:50%;background:var(--liquid);
     box-shadow:0 0 0 3px rgba(var(--liquid-rgb),0.22), 0 0 10px rgba(var(--liquid-rgb),0.5);flex:none}
   .place-m .pl{font-family:var(--mono);font-size:11px;color:var(--foam);white-space:nowrap;
@@ -542,19 +552,36 @@ function buildMarkers(){
        own number ends up covering the ground it is about */
     const r = Math.max(6, Math.min(18, 3 + 3.2 * Math.log10(Math.max(10, c.under))));
     cd.style.width = cd.style.height = r + 'px';
-    const cl = document.createElement('span'); cl.className = 'cl'; cl.textContent = fmt(c.under);
+    /* It carries the name as well now. It used to leave that to the place marker
+       and show a bare count, which was right while both were drawn; with the place
+       layer gone a floating number says nothing, and half of these are grounds the
+       basemap has never heard of — Western Africa, the Andes, the Southern Cone. */
+    const cl = document.createElement('span'); cl.className = 'cl';
+    cl.textContent = c.name + ' · ' + fmt(c.under);
     el.appendChild(cd); el.appendChild(cl);
     el.addEventListener('click', ev => { ev.stopPropagation(); setAddress(c.path); });
-    /* the place marker already carries the name; this rides just beneath it so the
-       two read as one thing — Nigeria, and 763 people standing in it */
-    const m = new maplibregl.Marker({ element: el, anchor: 'top', offset: [0, 7] })
+    const m = new maplibregl.Marker({ element: el, anchor: 'left', offset: [-3, 0] })
       .setLngLat([c.near.geo.lon, c.near.geo.lat]).addTo(map);
     CROWDMS.push({ c, el, m });
   }
+  /* One marker per ADDRESS, not per person. Everyone who discloses the same rung
+     shares one ground, so drawing them separately stacked identical discs into a
+     solid blob — six people in Westlands filled the view with one amber circle.
+     The census already caps a named rung at a couple of dozen, so the names fit
+     on one line and the ground is drawn once. */
+  const byRung = new Map();
   for (const f of FOLK.filter(f => f.near)){
+    const k = f.path.join(',');
+    (byRung.get(k) || byRung.set(k, []).get(k)).push(f);
+  }
+  for (const group of byRung.values()){
+    const f = group[0];
+    const names = group.map(g => g.handle);
     const el = document.createElement('div');
     el.className = 'folk-m ' + (f.pin ? 'pin' : 'disc');
-    const fl = document.createElement('span'); fl.className = 'fl'; fl.textContent = f.handle;
+    const fl = document.createElement('span'); fl.className = 'fl';
+    fl.textContent = names.length <= 3 ? names.join(', ') : names.slice(0, 2).join(', ') + ' +' + (names.length - 2);
+    el.title = names.join(', ');
     const fd = document.createElement('span'); fd.className = 'fd';
     el.appendChild(fl); el.appendChild(fd);
     el.addEventListener('click', ev => { ev.stopPropagation(); setAddress(f.path); });
@@ -598,6 +625,12 @@ function updateOverlays(){
     el.style.pointerEvents = inScope ? 'auto' : 'none';
   }
   for (const {f, el} of FOLKMS){
+    /* A person shows under the rung the reader is standing at, by the same rule the
+       crowds follow and the card already applies — otherwise the sphere names people
+       the panel beside it does not, and the two stop describing one place. */
+    const underHere = f.path.length >= ADDR.length && ADDR.every((d, i) => f.path[i] === d);
+    el.style.opacity = underHere ? 1 : 0;
+    el.style.pointerEvents = underHere ? 'auto' : 'none';
     const fd = el.lastChild;
     if (!f.pin && f.near.geo.bbox){
       const b = f.near.geo.bbox;
