@@ -69,6 +69,7 @@
   .moment .sub{font-family:var(--mono);font-size:12.5px;letter-spacing:0.1em;color:var(--vapour-dim);margin:10px 0 0;
     text-transform:uppercase}
   .moment .sub b{color:var(--solid);font-weight:700}
+  .moment .where a{color:var(--solid);text-decoration:none;border-bottom:1px dashed currentColor}
 
   /* ── the ladder ── */
   .pane{margin:26px 0 0}
@@ -217,6 +218,7 @@
   <header class="moment">
     <h1 id="m-day">—</h1>
     <p class="sub"><span id="m-part">—</span> · <b id="m-beat">—</b><span class="work"> · <span id="m-addr"></span> · now:<span id="m-block"></span></span></p>
+    <p class="sub where hidden" id="m-where"></p>
   </header>
 
   <section class="pane" id="pane-ladder">
@@ -292,6 +294,46 @@ async function writeBlock(body){
   return { ok: r.ok, status: r.status, data: d };
 }
 const lockRequired = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+
+/* ── WHERE — the standpoint on space, read from the person's own passport at the
+   real (earth.beach) and unfolded up the map's ladder for the place's words. The
+   now family holds only WHEN and WHO; the earth family holds the WHERE, and this
+   page borrows it (function:earth 5; sundial 8.1). Stored nowhere. ── */
+const EARTH = 'https://earth.beach.happyseaurchin.com/.well-known/pscale-beach';
+async function readEarth(name){
+  const r = await fetch(EARTH + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (!r.ok) return null;
+  return r.json();
+}
+async function renderWhere(){
+  const el = $('m-where'); if (!el || !HANDLE) return;
+  try {
+    const p = await readEarth('passport:' + HANDLE);
+    const m = p && JSON.stringify(p).match(/spatial:earth:(\d+)/);
+    if (!m) return;
+    const digits = m[1];
+    const sp = await readEarth('spatial:earth');
+    if (!sp) return;
+    /* walk the digits as the walker does — a 0 steps into the underscore; trailing
+       zeros are unresolved ground; each resolved rung gives the place its name */
+    let n = sp; const names = [];
+    for (const ch of digits.replace(/0+$/, '')){
+      if (!n || typeof n !== 'object') break;
+      n = (ch === '0') ? n['_'] : n[ch];
+      const t = typeof n === 'string' ? n : (n && typeof n['_'] === 'string' ? n['_'] : null);
+      if (t) names.push(t.split(' — ')[0]);
+    }
+    if (!names.length) return;
+    /* the second name must add something the first does not: skip ancestors whose
+       name the place already carries ('33 Firbarn Close' carries 'Firbarn Close') */
+    const here = names[names.length - 1];
+    const above = names.slice(0, -1).reverse().find(n => !here.includes(n) && !n.includes(here)) || null;
+    el.innerHTML = 'at <a href="/earth#' + esc(digits) + '" title="the map — this place, its ladder, who is here">' + esc(here) + '</a>'
+      + (above ? ' · ' + esc(above) : '')
+      + '<span class="work"> · here ' + esc(digits) + '</span>';
+    el.classList.remove('hidden');
+  } catch(e){ /* unplaced, or the real unreachable — the moment stands without a where */ }
+}
 
 /* ── pscale walking ── */
 function floorOf(block){
@@ -1002,6 +1044,7 @@ async function boot(){
   MIRROR = await readBlock('now:' + HANDLE).catch(() => null);
   if (MIRROR) MIRROR_OK = floorOf(MIRROR) === 10;
   renderLadder();
+  renderWhere();                /* beside the moment, from the real — never blocks the ladder */
   if (PREFS.panes.projects) renderProjects();
   if (PREFS.panes.hand) renderHand();
   /* the standing folds, read once per visit — passive here; synthesis lives at the LLM doors */

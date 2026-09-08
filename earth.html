@@ -112,6 +112,8 @@
   .folkrow{display:flex;align-items:baseline;gap:8px;margin:0 0 6px;flex-wrap:wrap}
   .folkrow .h{font-family:var(--mono);font-size:12.5px;color:var(--solid);cursor:pointer;border-bottom:1px dashed rgba(var(--solid-rgb),0.4)}
   .folkrow .at{color:var(--vapour-dim);font-size:13px}
+  .folkrow .today{display:block;width:100%;color:var(--vapour);font-size:13px;margin:1px 0 0}
+  .folkrow .today i{color:var(--vapour-dim);font-style:normal;font-family:var(--mono);font-size:11px;letter-spacing:0.06em;margin-right:6px}
   #status{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:10px 0 0}
   #panel-tuck{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--vapour-dim);
     font-size:14px;cursor:pointer;padding:4px 8px}
@@ -636,6 +638,14 @@ function renderPanel(){
     const fr = FLOOR - f.path.length;
     at.textContent = (ts ? nameOf(ts) : 'unresolved ground') + ' · rung ' + (fr === 0 ? '0' : '+' + fr);
     row.appendChild(h); row.appendChild(at); folk.appendChild(row);
+    /* here, now — their own line at today, arriving after the row is drawn */
+    todayLine(f.handle).then(v => {
+      if (!v || !row.isConnected) return;
+      const td = document.createElement('span'); td.className = 'today';
+      const lab = document.createElement('i'); lab.textContent = v.label;
+      td.appendChild(lab); td.appendChild(document.createTextNode(v.text.length > 180 ? v.text.slice(0, 177) + '…' : v.text));
+      row.appendChild(td);
+    });
   }
   if (!ADDR.length || (ADDR.length === 1 && ADDR[0] === 3)){
     for (const f of FOLK.filter(f => !f.path.length)){
@@ -749,6 +759,45 @@ function buildSolar(){
     b.addEventListener('click', () => setAddress([d]));
     row.appendChild(b);
   }
+}
+
+/* ── HERE, NOW — what each placed handle is at today, read from their now mirror
+   at the apex beach (now:<handle>, floor 10, the clock's own addresses). The
+   earth family holds the WHERE; the now family holds the WHEN; this panel lays
+   the one on the other, computed on read and stored nowhere (function:earth 5). */
+const APEX = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+function todayAddresses(){
+  const t = new Date();
+  const y = t.getUTCFullYear(), m0 = t.getUTCMonth(), d = t.getUTCDate();
+  const season = Math.floor(m0 / 3) + 1, mis = (m0 % 3) + 1;
+  const band = Math.floor((d - 1) / 7) + 1, dib = ((d - 1) % 7) + 1;
+  const month = String(y) + season + mis, week = month + band, day = week + dib;
+  return [ ['today', day], ['this week', week], ['this month', month] ];
+}
+function voiceAt(block, addr){
+  let n = block;
+  for (const ch of addr){ if (!n || typeof n !== 'object') return null; n = (ch === '0') ? n['_'] : n[ch]; }
+  if (n == null) return null;
+  if (typeof n === 'string') return n.trim() || null;
+  return typeof n['_'] === 'string' ? (n['_'].trim() || null) : null;
+}
+const NOWS = new Map();
+async function todayLine(handle){
+  if (NOWS.has(handle)) return NOWS.get(handle);
+  const p = (async () => {
+    try {
+      const r = await fetch(APEX + '?block=' + encodeURIComponent('now:' + handle), { headers:{Accept:'application/json'}, cache:'no-store' });
+      if (!r.ok) return null;
+      const b = await r.json();
+      for (const [label, addr] of todayAddresses()){
+        const v = voiceAt(b, addr);
+        if (v) return { label, text: v };
+      }
+      return null;
+    } catch(e){ return null; }
+  })();
+  NOWS.set(handle, p);
+  return p;
 }
 
 /* ── residents — the Location star-ref convention ────────────────────────── */
