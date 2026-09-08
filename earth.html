@@ -221,7 +221,15 @@
    ═══════════════════════════════════════════════════════════════════════ */
 'use strict';
 const $ = id => document.getElementById(id);
-const BEACH = 'https://earth.beach.happyseaurchin.com/.well-known/pscale-beach';
+/* the lens points at earth.beach by default and at any federated beach on request —
+   ?beach=<origin> — which is how another world gets drawn with this page, and how
+   this one gets exercised against a beach that has more than three people on it */
+const BEACH = (function(){
+  const q = new URLSearchParams(location.search).get('beach');
+  if (!q) return 'https://earth.beach.happyseaurchin.com/.well-known/pscale-beach';
+  const origin = /^https?:\/\//.test(q) ? q : 'https://' + q;
+  return origin.replace(/\/+$/, '') + '/.well-known/pscale-beach';
+})();
 const RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* /earth/<handle> — this page is handle-free by nature: it is a lens on a world,
@@ -416,7 +424,7 @@ function flyTo(t){
 }
 
 /* ── the data — read from the beach, held whole (both blocks are small) ── */
-let SPATIAL = null, IDENTITY = null, FLOOR = 11, FOLK = [], PLACES = [];
+let SPATIAL = null, IDENTITY = null, CENSUS = null, FLOOR = 11, FOLK = [], PLACES = [];
 async function readBlock(name){
   const r = await fetch(BEACH + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
   if (!r.ok) throw new Error(name + ' → ' + r.status);
@@ -490,6 +498,7 @@ function drawFolk(){
 /* ── the address — one state, everything follows it ─────────────────────── */
 let ADDR = [3];
 const padded = path => path.join('') + '0'.repeat(Math.max(0, FLOOR - path.length));
+const fmt = n => n.toLocaleString('en-GB');
 /* The ladder on the right is a LEGEND and keeps its kinds: a rung of 10⁸ is the
    size a great nation tends to be, and that is what teaches a newcomer the scale.
    The line under the place-name is not a legend — it describes THIS place, so it
@@ -638,8 +647,13 @@ function renderPanel(){
   $('sec-holds').classList.toggle('hidden', !holdRows.length && !idSem);
   /* who has placed themselves at-or-below here */
   const folk = $('folk'); folk.innerHTML = '';
-  const under = FOLK.filter(f => f.path.length >= ADDR.length && ADDR.every((d,i) => f.path[i] === d));
-  for (const f of under){
+  const cen = ADDR.length ? censusAt(ADDR) : null;
+  /* Names where the census carries them and nowhere else — carrying a roster IS the
+     statement "few enough here to name", so honour it rather than re-derive it. */
+  const named = (cen && cen.roster)
+    ? FOLK.filter(f => f.path.length >= ADDR.length && ADDR.every((d,i) => f.path[i] === d))
+    : [];
+  for (const f of named){
     const row = document.createElement('div'); row.className = 'folkrow';
     const h = document.createElement('span'); h.className = 'h'; h.textContent = f.handle;
     h.addEventListener('click', () => setAddress(f.path));
@@ -649,11 +663,30 @@ function renderPanel(){
     at.textContent = (ts ? nameOf(ts) : 'unresolved ground') + ' · rung ' + (fr === 0 ? '0' : '+' + fr);
     row.appendChild(h); row.appendChild(at); folk.appendChild(row);
   }
-  if (!ADDR.length || (ADDR.length === 1 && ADDR[0] === 3)){
-    for (const f of FOLK.filter(f => !f.path.length)){
+  if (cen && !cen.roster && cen.under){
+    const note = document.createElement('p'); note.className = 'hold-note';
+    folk.appendChild(note);
+    const kids = [];
+    const cnode = nodeAt(CENSUS, ADDR);
+    if (cnode && typeof cnode === 'object'){
+      for (const {d} of kidsOf(cnode)){
+        const c = censusAt(ADDR.concat(d)); if (!c) continue;
+        const sp = semOf(nodeAt(SPATIAL, ADDR.concat(d)));
+        kids.push({ d, under: c.under, name: sp ? nameOf(sp) : 'unresolved ground' });
+      }
+      if (groundBelow(cnode)){
+        const c = censusAt(ADDR.concat(0));
+        if (c) kids.push({ d: 0, under: c.under, name: 'unresolved ground' });
+      }
+    }
+    note.textContent = kids.length
+      ? fmt(cen.under) + ' placed here — too many to name; go down a ground'
+      : fmt(cen.under) + ' placed here — too many to name, and no finer ground is on the map yet';
+    for (const k of kids.sort((a,b) => b.under - a.under)){
       const row = document.createElement('div'); row.className = 'folkrow';
-      const h = document.createElement('span'); h.className = 'h'; h.textContent = f.handle;
-      const at = document.createElement('span'); at.className = 'at'; at.textContent = 'on the beach — place untold';
+      const h = document.createElement('span'); h.className = 'h'; h.textContent = k.name;
+      h.addEventListener('click', () => setAddress(ADDR.concat(k.d)));
+      const at = document.createElement('span'); at.className = 'at'; at.textContent = fmt(k.under);
       row.appendChild(h); row.appendChild(at); folk.appendChild(row);
     }
   }
@@ -764,22 +797,33 @@ function buildSolar(){
 }
 
 /* ── residents — the Location star-ref convention ────────────────────────── */
-async function loadFolk(indexBlocks){
-  const names = (indexBlocks || []).filter(n => n.startsWith('passport:'));
-  const out = [];
-  await Promise.all(names.map(async name => {
-    try {
-      const p = await readBlock(name);
-      const m = JSON.stringify(p).match(/spatial:earth:([0-9]+)/);
-      const handle = name.slice('passport:'.length);
-      if (!m){ out.push({ handle, path: [] }); return; }
-      const digits = m[1].replace(/0+$/, '');
-      const path = digits ? digits.split('').map(Number) : [];
-      const near = geoNearest(path);
-      out.push({ handle, path, near, pin: !!near && (near.inherited || !near.geo.bbox) && path.length >= FLOOR - 2 });
-    } catch(e){ /* a passport that cannot be read places nobody */ }
-  }));
-  FOLK = out.filter(f => f.path.length || true);
+/* ── the people — ONE read, not one per person ───────────────────────────
+   census:earth is the keeper's daily fold of every placed standpoint, at the map's
+   own addresses, so this page reads one block rather than one passport per person
+   and the count at any rung is a read rather than a scan. */
+function censusAt(path){
+  const n = nodeAt(CENSUS, path); const t = semOf(n);
+  if (!t) return null;
+  const [under, here, grounds, ...rest] = t.split('·').map(x => x.trim());
+  return { under: +under || 0, here: +here || 0, grounds: +grounds || 0,
+           roster: rest.length ? rest.join(', ').split(',').map(x => x.trim()).filter(Boolean) : null };
+}
+function loadCensus(){
+  FOLK = [];
+  if (!CENSUS) return;
+  const deepest = new Map();          /* handle -> their own rung, the finest one naming them */
+  (function walk(node, path){
+    const c = path.length ? censusAt(path) : null;
+    if (c && c.roster) for (const h of c.roster){
+      const prev = deepest.get(h);
+      if (!prev || path.length > prev.length) deepest.set(h, path.slice());
+    }
+    if (node && typeof node === 'object'){
+      for (const {d, node:ch} of kidsOf(node)) walk(ch, path.concat(d));
+      if (groundBelow(node)) walk(node._, path.concat(0));
+    }
+  })(CENSUS, []);
+  for (const [handle, path] of deepest) FOLK.push({ handle, path, near: geoNearest(path) });
 }
 
 /* ── boot ────────────────────────────────────────────────────────────────── */
@@ -822,6 +866,7 @@ async function loadFolk(indexBlocks){
     return;
   }
   try { GEOBLOCK = await readBlock('geo:earth'); } catch(e){ GEOBLOCK = null; }
+  try { CENSUS = await readBlock('census:earth'); } catch(e){ CENSUS = null; }
   $('status').textContent = GEOBLOCK
     ? 'ground: spatial:earth · anchors: geo:earth'
     : 'ground: spatial:earth · anchors: page gazetteer (geo:earth not yet on the beach)';
@@ -830,7 +875,7 @@ async function loadFolk(indexBlocks){
   FLOOR = floorOf(SPATIAL);
   buildSolar();
   collectPlaces();
-  await loadFolk(index && index.blocks);
+  loadCensus();
 
   /* arrive on the world, then honour a deep link */
   const hash = (location.hash || '').replace(/^#/, '').replace(/[\s.]/g, '').replace(/,/g, '');
