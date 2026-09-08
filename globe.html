@@ -320,10 +320,20 @@ const STYLES = {
 const themeNow = () => document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
 const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
+/* Earth's own ground, as geo:earth carries it (30000000000 → 23,12 · -55,72,-170,179).
+   Held here as well so the sphere can open at the world rung before any block is read. */
+const EARTH_CENTRE = [12, 23];
+const EARTH_BOUNDS = [[-170, -55], [179, 72]];
+const EARTH_PAD = 30;
+
 const map = new maplibregl.Map({
   container: 'map',
   style: STYLES[themeNow()],
-  center: [12, 23], zoom: 1.1,
+  /* the page opens AT Earth: fitted to the world's own bounds, whatever the
+     viewport. A guessed zoom used to land inside the solar band on wide
+     screens, so the reader met the strip instead of the planet. Outward is a
+     step the reader takes. */
+  bounds: EARTH_BOUNDS, fitBoundsOptions: { padding: EARTH_PAD },
   minZoom: 0, maxZoom: 19,
   attributionControl: false,
   hash: false, fadeDuration: 150
@@ -346,11 +356,26 @@ function applySky(){
   } catch(e){}
 }
 
+/* the world rung — the zoom at which the whole Earth stands in the viewport.
+   Worked out from the ground rather than asked of the map: cameraForBounds
+   answers for the flat plane, and with the globe projection on it came back
+   over a zoom level high (2.80 where the sphere actually opens at 1.63), which
+   put the whole-Earth view INSIDE the solar band and pinned the strip open
+   over the planet. This is the arithmetic the opening fit itself performs, so
+   the number and the camera agree by construction. */
+const mercY = lat => {
+  const phi = Math.max(-85.05, Math.min(85.05, lat)) * Math.PI / 180;
+  return 0.5 - Math.log(Math.tan(Math.PI / 4 + phi / 2)) / (2 * Math.PI);
+};
 let WORLDZ = 1.2;
 function computeWorldZ(){
   try {
-    const c = map.cameraForBounds([[-170, -55], [179, 72]], { padding: 30 });
-    if (c && isFinite(c.zoom)) WORLDZ = Math.max(0.4, Math.min(3, c.zoom));
+    const [[w, s], [e, n]] = EARTH_BOUNDS;
+    const cw = Math.max(80, map.getContainer().clientWidth  - 2 * EARTH_PAD);
+    const ch = Math.max(80, map.getContainer().clientHeight - 2 * EARTH_PAD);
+    const zx = Math.log2(cw / (512 * Math.abs(e - w) / 360));
+    const zy = Math.log2(ch / (512 * Math.abs(mercY(s) - mercY(n))));
+    WORLDZ = Math.max(0.2, Math.min(4, Math.min(zx, zy)));
   } catch(e){}
   try { map.setMinZoom(Math.max(0, WORLDZ - 1.3)); } catch(e){}
 }
@@ -384,7 +409,7 @@ function targetFor(path){
   if (near.inherited) z = Math.min(z + 0.9, 19);
   return { center: [near.geo.lon, near.geo.lat], zoom: z };
 }
-const SOLAR_TGT = () => ({ center: [12, 23], zoom: Math.max(0, WORLDZ - 1.1) });
+const SOLAR_TGT = () => ({ center: EARTH_CENTRE, zoom: Math.max(0, WORLDZ - 1.1) });
 let FLYGUARD = null;
 function flyToAddr(){
   const t = ADDR.length
@@ -819,15 +844,20 @@ function buildSolar(){
   setAddress([3], { fly: false });
   updateOverlays();
   if (start.length > 1 || start[0] !== 3) setTimeout(() => setAddress(start), RM ? 0 : 900);
-  map.once('load', () => {
+  /* the sphere may already have loaded while the blocks were being read — a
+     once('load') registered after that await never fires, and the settling
+     jump was lost with it, leaving the page stranded in the solar band. Run it
+     now if the map is ready, and on load if it is not. */
+  const settle = () => {
     computeWorldZ();
     refreshRungCaches();
     if (!USERMOVED && ADDR.length === 1 && ADDR[0] === 3 && start.length === 1 && start[0] === 3){
-      map.jumpTo({ center: [12, 23], zoom: WORLDZ });
+      map.jumpTo({ center: EARTH_CENTRE, zoom: WORLDZ });
     }
     updateOverlays();
     spinStep();
-  });
+  };
+  if (map.loaded()) settle(); else map.once('load', settle);
 })();
 </script>
 </body>
