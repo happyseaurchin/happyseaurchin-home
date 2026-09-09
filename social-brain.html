@@ -249,7 +249,7 @@ async function pairId(a, b){
 
 /* ── who the path says is standing here ── */
 const PARTS = location.pathname.split('/').filter(Boolean);
-const HANDLE = ((PARTS[0] === 'social-brain' && PARTS[1] ? decodeURIComponent(PARTS[1]) : new URLSearchParams(location.search).get('h')) || '').replace(/[^a-z0-9_-]/gi, '').trim() || null;
+let HANDLE = ((PARTS[0] === 'social-brain' && PARTS[1] ? decodeURIComponent(PARTS[1]) : new URLSearchParams(location.search).get('h')) || '').replace(/[^a-z0-9_-]/gi, '').trim() || null;
 $('bar-handle').textContent = HANDLE || 'everyone';
 if (window.siteDoors) siteDoors({ handle: HANDLE || undefined, here: 'social-brain' });
 
@@ -773,6 +773,26 @@ function meta(){
     (HANDLE ? `<br><span class="you">standing as ${esc(HANDLE)}</span>${G.byId.has(HANDLE) ? '' : ' — no presence here yet; tap a neuron to reach out'}` : '<br>every edge and every name is public substrate — a handle in the address only picks the vantage') ;
 }
 
+/* Handles are case-sensitive on the beach — ayush and Ayush derive different grain blocks (ways:grain 1) — so a
+   handle typed in the address that matches ONE spelling here is taken as that spelling, said aloud, and written
+   back into the address; the vantage then lands on the right neuron and a write goes to the right side. Two
+   spellings standing is the incident itself, and is left alone with a note. */
+function resolveSpelling(){
+  if (!HANDLE || !LIVE || LIVE.byId.has(HANDLE)) return;
+  const want = HANDLE.toLowerCase();
+  const spellings = [...LIVE.byId.keys()].filter(h => !LIVE.nodes[LIVE.byId.get(h)].phantom && h.toLowerCase() === want);
+  if (spellings.length === 1){
+    const was = HANDLE; HANDLE = spellings[0];
+    $('bar-handle').textContent = HANDLE;
+    try { history.replaceState(null, '', PARTS[0] === 'social-brain' ? '/social-brain/' + encodeURIComponent(HANDLE) : location.pathname + '?h=' + encodeURIComponent(HANDLE)); } catch(e){}
+    const doors = document.querySelector('details.dd[data-doors]'); if (doors) doors.remove();
+    if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'social-brain' });
+    toast('standing as ' + HANDLE + ' — the beach spells it so, not ' + was);
+  } else if (spellings.length > 1){
+    toast('several spellings stand here: ' + spellings.join(', ') + ' — the address must say which');
+  }
+}
+
 /* ── the reading ── */
 async function load(announce, keep){
   $('meta').textContent = 'reading the beach…';
@@ -783,6 +803,7 @@ async function load(announce, keep){
     const passportNames = blocks.filter(n => n.startsWith('passport:'));
     const got = await readMany(grainNames, (d, t) => { $('meta').textContent = 'reading the beach — ' + d + ' of ' + t + ' grains'; });
     LIVE = parseLive(idx, got, passportNames);
+    resolveSpelling();
     if (IMAGINE === 0) show(keep); else meta();
     if (announce) toast('re-read — ' + LIVE.edges.length + ' grains, ' + LIVE.pending.length + ' waiting');
   } catch(e){
