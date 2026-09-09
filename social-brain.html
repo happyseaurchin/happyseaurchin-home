@@ -31,11 +31,18 @@
   .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
   .bar b{color:var(--foam)}
   .bar .spacer{flex:1}
-  .bar>button{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);background:none;
-    border:1px solid transparent;border-radius:9px;padding:3px 9px;cursor:pointer;text-align:left}
-  .bar>button:hover{color:var(--foam)}
-  .bar>button[aria-pressed="true"]{color:var(--liquid);border-color:var(--line-strong);background:rgba(var(--liquid-rgb),0.07)}
-  .bar>button[aria-pressed="false"]{opacity:.7}
+  /* descendant, not child: theme.js gathers these buttons into options ▾, where a child selector loses them to the
+     browser's default grey button and a lit label turns white on white (the live fault of 2026-09-09) */
+  .bar button{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);background:none;
+    border:1px solid transparent;border-radius:9px;padding:5px 9px;cursor:pointer;text-align:left;line-height:1.3}
+  .dd__menu button:hover{background:rgba(var(--wash-rgb),0.07)}
+  .bar button:hover{color:var(--foam)}
+  /* state must survive the gather into options ▾ — attribute, never parent, and a glyph the eye reads before the word */
+  .bar button[aria-pressed]::before{content:'○  ';color:var(--vapour-dim)}
+  .bar button[aria-pressed="true"]{color:var(--foam)}
+  .bar button[aria-pressed="true"]::before{content:'●  ';color:var(--liquid)}
+  .bar button[data-scale][aria-pressed="true"]::before{color:var(--solid)}
+  .dd__menu .rule{height:1px;background:var(--line);margin:5px 4px}
 
   .head{position:relative;z-index:2;max-width:520px;padding:6px 18px 0;pointer-events:none}
   .head h1{font-family:var(--display);font-weight:800;font-size:clamp(1.3rem,4.5vw,1.9rem);line-height:1.1;margin:0 0 6px;letter-spacing:-0.01em;text-wrap:balance}
@@ -128,7 +135,10 @@
   <button id="tg-reaches" aria-pressed="true">reaches waiting</button>
   <button id="tg-riders"  aria-pressed="true">sand riders</button>
   <button id="tg-labels"  aria-pressed="true">names</button>
-  <button id="tg-imagine" title="the same figure at a scale the beach has not reached — generated, and said so">imagine at scale</button>
+  <button id="tg-turn"    aria-pressed="true" title="the figure turns on its own; off holds it still">turning</button>
+  <button data-scale="live" aria-pressed="true" title="the beach as it stands">live beach</button>
+  <button data-scale="s2k"  aria-pressed="false" title="the same figure at a scale the beach has not reached — generated, and said so">imagine 2,000</button>
+  <button data-scale="s20k" aria-pressed="false" title="the same figure at a scale the beach has not reached — generated, and said so">imagine 20,000</button>
   <button id="btn-refresh" title="read the beach again — this page never polls">re-read</button>
   <button id="btn-stand" title="put your handle in the address — the figure centres on you and your channels open for writing">stand as…</button>
   <button id="btn-theme" title="light or dark" aria-label="switch between the light and dark register">◐</button>
@@ -277,6 +287,7 @@ let IMAGINE = 0;         /* 0 live · 1 two thousand · 2 twenty thousand */
 const LAYER = { grains:true, reaches:true, riders:true, labels:true };
 let FOCUS = -1, HOVER = -1, HOP = null;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+let TURN = !REDUCED; try { if (localStorage.getItem('social-brain:turn') === 'still') TURN = false; } catch(e){}
 
 function parseLive(idx, got, passportNames){
   const nodes = [], byId = new Map();
@@ -286,13 +297,34 @@ function parseLive(idx, got, passportNames){
   for (const p of passportNames){ const h = p.slice(9); if (MACHINE(h)) continue; const i = node(h); nodes[i].passport = true; }
   const edges = [], pending = [], debris = [];
   for (const [name, blk] of Object.entries(got)){
-    if (!isObj(blk)) continue;
+    const g = parseGrain(name, blk);
+    if (!g) continue;
+    if (g.debris){ debris.push(g.pid); continue; }
+    const { a, b } = g;
+    if (a && b){
+      const ia = node(a), ib = node(b); nodes[ia].deg++; nodes[ib].deg++;
+      edges.push({ a: ia, b: ib, g, w: 1 + g.entries.length, riders: g.entries.filter(e => e.rider).length, real:true });
+    } else {
+      const who = a || b, ia = node(who);
+      const ph = { id: '· ' + (g.hint || 'someone'), hint: g.hint, deg:0, x:0, y:0, z:0, phantom:true, passport:false, blocks:0 };
+      const pi = nodes.push(ph) - 1;
+      pending.push({ a: ia, p: pi, g, since: g.since, reachSide: g.has1 ? '1' : '2' });
+    }
+  }
+  for (const n of nodes) if (!n.phantom) n.blocks = blocksOf[n.id] || 0;
+  layoutLive(nodes, edges, pending);
+  return { nodes, edges, pending, byId, debris, synthetic:false, readAt: new Date(), blockCount: blocks.length, grainCount: Object.keys(got).length };
+}
+
+/* one grain block, read: who holds which side, the openings, the dialogue beneath — null when it is not a grain worth drawing */
+function parseGrain(name, blk){
+    if (!isObj(blk)) return null;
     const pid = name.slice(6), p9 = isObj(blk['9']) ? blk['9'] : {};
     const a = typeof p9['1'] === 'string' ? p9['1'] : null, b = typeof p9['2'] === 'string' ? p9['2'] : null;
     const known = [a, b].filter(Boolean);
-    if (!known.length) continue;
+    if (!known.length) return null;
     const ticket = ['1','2'].some(s => voice(blk[s]).startsWith('[ticket'));
-    if (known.some(MACHINE) || ticket){ debris.push(pid); continue; }
+    if (known.some(MACHINE) || ticket) return { pid, debris:true };
     const entries = [];
     for (const side of ['1','2']){
       const s = blk[side]; if (!isObj(s)) continue;
@@ -306,22 +338,18 @@ function parseLive(idx, got, passportNames){
     }
     for (const k of Object.keys(blk).filter(k => /^[3-7]$/.test(k))){ const e = blk[k]; entries.push({ at: k, side: null, by: !isGray(e) && isObj(e) && typeof e['1'] === 'string' ? e['1'] : null, ts: isObj(e) ? e['3'] : null, gray: isGray(e), rider: riderOf(e), text: isGray(e) ? null : voice(e), stray: true }); }
     const g = { pid, a, b, root: voice(blk), side1: isGray(blk['1']) ? null : voice(blk['1']), side2: isGray(blk['2']) ? null : voice(blk['2']), gray1: isGray(blk['1']), gray2: isGray(blk['2']),
-                has1: blk['1'] !== undefined, has2: blk['2'] !== undefined, entries, lastTs: entries.reduce((m, e) => e.ts && e.ts > m ? e.ts : m, '') };
-    if (a && b){
-      const ia = node(a), ib = node(b); nodes[ia].deg++; nodes[ib].deg++;
-      edges.push({ a: ia, b: ib, g, w: 1 + entries.length, riders: entries.filter(e => e.rider).length, real:true });
-    } else {
+                has1: blk['1'] !== undefined, has2: blk['2'] !== undefined, entries, lastTs: entries.reduce((m, e) => e.ts && e.ts > m ? e.ts : m, ''), hint: null, since: '' };
+    if (!(a && b)){
       const who = a || b, p8 = isObj(blk['8']) ? blk['8'] : {};
       const m = g.root.match(/(?:↔|<->|\band\b|\bto\b|\bfor\b)\s+([A-Za-z][\w-]{2,})/);
-      const hint = (m && m[1] !== who) ? m[1] : null;
-      const ia = node(who);
-      const ph = { id: '· ' + (hint || 'someone'), hint, deg:0, x:0, y:0, z:0, phantom:true, passport:false, blocks:0 };
-      const pi = nodes.push(ph) - 1;
-      pending.push({ a: ia, p: pi, g, since: p8['6'] || '', reachSide: blk['1'] !== undefined ? '1' : '2' });
+      g.hint = (m && m[1] !== who) ? m[1] : null;
+      g.since = p8['6'] || '';
     }
-  }
-  for (const n of nodes) if (!n.phantom) n.blocks = blocksOf[n.id] || 0;
-  /* seed each neuron on a sphere from its own name, then relax — no clock in it */
+    return g;
+}
+
+/* seed each neuron on a sphere from its own name, then relax — no clock in it */
+function layoutLive(nodes, edges, pending){
   for (const n of nodes){
     const r = rng(fnv(n.id)), th = r() * Math.PI * 2, ph = Math.acos(2 * r() - 1), R = n.phantom ? 1.05 : (n.deg ? 0.9 : 1.15);
     n.x = R * Math.sin(ph) * Math.cos(th); n.y = R * Math.cos(ph) * 0.8; n.z = R * Math.sin(ph) * Math.sin(th);
@@ -340,7 +368,18 @@ function parseLive(idx, got, passportNames){
     for (const p of pending) spring(nodes[p.a], nodes[p.p], 0.32, 0.08);
     for (const n of nodes){ const g = n.deg ? 0.012 : 0.004; n.x *= 1 - g * k; n.y *= 1 - g * k; n.z *= 1 - g * k; }
   }
-  return { nodes, edges, pending, byId, debris, synthetic:false, readAt: new Date(), blockCount: blocks.length, grainCount: Object.keys(got).length };
+}
+
+/* after a message lands: re-read THAT grain only and patch it in place — the figure is untouched, nothing resets */
+async function refreshGrain(pid){
+  const blk = await readBlock('grain:' + pid).catch(() => null);
+  const g = blk ? parseGrain('grain:' + pid, blk) : null;
+  if (!g || g.debris) return false;
+  const ei = LIVE.edges.findIndex(e => e.g && e.g.pid === pid);
+  if (ei >= 0){ const e = LIVE.edges[ei]; e.g = g; e.w = 1 + g.entries.length; e.riders = g.entries.filter(x => x.rider).length; return 'edge'; }
+  const pi = LIVE.pending.findIndex(p => p.g.pid === pid);
+  if (pi >= 0){ if (g.a && g.b) return false; LIVE.pending[pi].g = g; return 'pending'; }
+  return false;
 }
 
 /* the look at scale — generated, and said so */
@@ -384,8 +423,10 @@ function buildSynthetic(targetE){
 /* ── camera ── */
 const canvas = $('stage'), ctx = canvas.getContext('2d', { alpha:false });
 const cam = { yaw: 0.6, pitch: 0.22, dist: 3.1, tx:0, ty:0, tz:0, gx:0, gy:0, gz:0 };
+const ZOOM_MIN = 0.12, ZOOM_MAX = 7;
+const zoomK = () => Math.min(4, Math.max(1, Math.sqrt(3.1 / cam.dist)));   /* neurons grow as the camera closes, so one can be picked among thousands */
 let W = 0, H = 0, DPR = 1;
-function resize(){ DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; }
+function resize(){ if (!innerWidth || !innerHeight) return; DPR = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight; canvas.width = Math.round(W * DPR); canvas.height = Math.round(H * DPR); canvas.style.width = W + 'px'; canvas.style.height = H + 'px'; }
 addEventListener('resize', resize); resize();
 let PX, PY, PZ, PS, ORDER;
 function project(){
@@ -415,11 +456,19 @@ function computeHops(){
 }
 
 /* ── draw ── */
-let breath = 0, dragging = false, lastT = 0;
+let breath = 0, dragging = false, lastT = 0, faulted = false;
 function frame(t){
-  if (!G){ requestAnimationFrame(frame); return; }
+  try { draw(t); }
+  catch(e){
+    if (!faulted){ faulted = true; console.error('social-brain: the figure hit an error and keeps going —', e); const m = $('meta'); if (m) m.innerHTML += '<br><span class="syn">the figure hit an error — re-read (options) to recover · ' + esc(String(e && e.message || e)) + '</span>'; }
+  }
+  requestAnimationFrame(frame);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) lastT = 0; });
+function draw(t){
+  if (!G) return;
   const dt = Math.min(50, t - lastT || 16); lastT = t;
-  if (!REDUCED && !dragging) cam.yaw += 0.00012 * dt;
+  if (TURN && !REDUCED && !dragging) cam.yaw += 0.00012 * dt;
   breath += dt * 0.0011;
   const ease = 1 - Math.pow(0.001, dt / 1000);
   cam.tx += (cam.gx - cam.tx) * ease; cam.ty += (cam.gy - cam.ty) * ease; cam.tz += (cam.gz - cam.tz) * ease;
@@ -462,7 +511,7 @@ function frame(t){
   for (const i of ORDER){
     const N = G.nodes[i]; if (N.phantom) continue;
     const d = depthA(i), p = PS[i];
-    let r = syn ? (1.1 + 0.75 * Math.sqrt(N.deg)) * p : (N.deg ? (5 + 2.6 * Math.sqrt(N.deg)) : 3.4) * p;
+    let r = (syn ? (1.1 + 0.75 * Math.sqrt(N.deg)) * p : (N.deg ? (5 + 2.6 * Math.sqrt(N.deg)) : 3.4) * p) * (syn ? zoomK() : Math.min(1.6, zoomK()));
     if (big) r *= 0.8;
     let spr = SPR.vapour, a = 0.55 + 0.45 * d;
     if (!N.deg && !syn) a *= 0.6;
@@ -499,9 +548,11 @@ function frame(t){
         if (N.phantom){ if (LAYER.reaches) label(i, `rgba(${PAL.vapour},0.6)`); continue; }
         const dim = HOP && HOP[i] < 2 && i !== FOCUS;
         label(i, (i === FOCUS || i === YOU) ? `rgb(${PAL.solid})` : (dim ? `rgba(${PAL.vapour},0.35)` : `rgba(${PAL.vapour},${(N.deg ? 0.55 : 0.4) + 0.45 * depthA(i)})`)); }
-    } else { if (FOCUS >= 0) label(FOCUS, `rgb(${PAL.solid})`); if (HOVER >= 0 && HOVER !== FOCUS) label(HOVER, `rgb(${PAL.liquid})`); }
+    } else {
+      if (FOCUS >= 0) label(FOCUS, `rgb(${PAL.solid})`); if (HOVER >= 0 && HOVER !== FOCUS) label(HOVER, `rgb(${PAL.liquid})`);
+      if (cam.dist < 0.6){ const col = `rgba(${PAL.vapour},0.55)`; for (let i = 0; i < n; i++) if (i !== FOCUS && i !== HOVER && PS[i] > 0.9 && PX[i] > -20 && PX[i] < W + 20 && PY[i] > -20 && PY[i] < H + 20) label(i, col); }
+    }
   }
-  requestAnimationFrame(frame);
 }
 
 /* ── interaction ── */
@@ -524,8 +575,14 @@ canvas.addEventListener('pointerup', e => {
   if (ei >= 0){ cardEdge(ei); return; }
   setFocus(-1); closeCard();
 });
-canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(1.4, Math.min(6, cam.dist * (1 + e.deltaY * 0.0012))); }, { passive:false });
-function hitNode(x, y){ let best = -1, bd = 1e9; for (let i = 0; i < G.nodes.length; i++){ const r = (G.synthetic ? 6 : 12) + 2 * Math.sqrt(G.nodes[i].deg); const d = Math.hypot(PX[i] - x, PY[i] - y); if (d < r && d < bd){ bd = d; best = i; } } return best; }
+canvas.addEventListener('wheel', e => { e.preventDefault(); cam.dist = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cam.dist * (1 + e.deltaY * 0.0012))); }, { passive:false });
+/* pinch — two pointers on a phone zoom, the one-finger drag turns */
+const touches = new Map(); let pinch0 = null;
+canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') touches.set(e.pointerId, [e.clientX, e.clientY]); if (touches.size === 2){ const [p, q] = [...touches.values()]; pinch0 = { d: Math.hypot(p[0] - q[0], p[1] - q[1]), dist: cam.dist }; down = null; } });
+canvas.addEventListener('pointermove', e => { if (!touches.has(e.pointerId)) return; touches.set(e.pointerId, [e.clientX, e.clientY]); if (touches.size === 2 && pinch0){ const [p, q] = [...touches.values()]; const d = Math.hypot(p[0] - q[0], p[1] - q[1]) || 1; cam.dist = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinch0.dist * pinch0.d / d)); } });
+const endTouch = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch0 = null; };
+canvas.addEventListener('pointerup', endTouch); canvas.addEventListener('pointercancel', endTouch);
+function hitNode(x, y){ let best = -1, bd = 1e9; const zk = G.synthetic ? zoomK() : 1; for (let i = 0; i < G.nodes.length; i++){ const r = ((G.synthetic ? 6 : 12) + 2 * Math.sqrt(G.nodes[i].deg)) * zk; const d = Math.hypot(PX[i] - x, PY[i] - y); if (d < r && d < bd){ bd = d; best = i; } } return best; }
 function hitEdge(x, y){ if (!LAYER.grains) return -1; let best = -1, bd = 7; for (let i = 0; i < G.edges.length; i++){ const e = G.edges[i]; const ax = PX[e.a], ay = PY[e.a], bx = PX[e.b], by = PY[e.b]; const L2 = (bx - ax) ** 2 + (by - ay) ** 2 || 1; let t = ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L2; t = Math.max(0, Math.min(1, t)); const d = Math.hypot(ax + (bx - ax) * t - x, ay + (by - ay) * t - y); if (d < bd){ bd = d; best = i; } } return best; }
 function setFocus(i){
   FOCUS = i; computeHops();
@@ -572,7 +629,7 @@ function wireWrite(kind, opts){
   const box = $('w-text'), btn = $('w-send'), refuse = $('w-refuse');
   if (!box) return;
   const draftKey = 'social-brain:' + kind + ':' + (opts.pid || opts.other);
-  if (window.keepDraft) keepDraft(box, draftKey);
+  const clearDraft = window.keepDraft ? keepDraft(box, draftKey) : () => {};
   if (window.dictate) dictate(box);
   btn.addEventListener('click', async () => {
     const text = box.value.trim(); if (!text){ box.focus(); return; }
@@ -588,10 +645,10 @@ function wireWrite(kind, opts){
       refuse.textContent = 'the beach refused it' + (w.status ? ' (' + w.status + ')' : '') + (w.data && w.data.error ? ' — ' + w.data.error : '') + (lockRequired(w) ? ' · key trouble? happyseaurchin.com/key' : '');
       refuse.classList.remove('hidden'); btn.disabled = false; btn.textContent = 'try again'; return;
     }
-    box.value = ''; if (window.keepDraft) keepDraft(box, draftKey);   /* clear the draft the landed text came from */
-    try { localStorage.removeItem('draft:' + draftKey); } catch(e){}
-    toast(kind === 'send' ? 'sent — it stands at ' + (w.data && w.data.slot != null ? 'slot ' + w.data.slot : 'your side') : kind === 'accept' ? 'accepted — the grain is complete' : 'reached — the channel stands open, one side written');
-    await load(false);
+    clearDraft(); box.value = '';   /* the write landed: the draft it came from goes with it */
+    toast(kind === 'send' ? 'sent — it stands at ' + (w.data && w.data.address ? esc(w.data.address) : 'your side') : kind === 'accept' ? 'accepted — the grain is complete' : 'reached — the channel stands open, one side written');
+    if (kind === 'send'){ const where = await refreshGrain(opts.pid); if (!where) await load(false, true); }
+    else await load(false, true);
     const ei = G.edges.findIndex(e => e.g && e.g.pid === opts.pid);
     if (ei >= 0) cardEdge(ei); else { const pi = G.pending.findIndex(p => p.g.pid === opts.pid); if (pi >= 0) cardPending(G.pending[pi]); else closeCard(); }
   });
@@ -684,7 +741,9 @@ function cardPending(p){
 /* ── the bar ── */
 const TG = { 'tg-grains':'grains', 'tg-reaches':'reaches', 'tg-riders':'riders', 'tg-labels':'labels' };
 for (const [id, k] of Object.entries(TG)) $(id).addEventListener('click', () => { LAYER[k] = !LAYER[k]; $(id).setAttribute('aria-pressed', String(LAYER[k])); });
-$('tg-imagine').addEventListener('click', () => { IMAGINE = (IMAGINE + 1) % 3; show(); });
+document.querySelectorAll('[data-scale]').forEach(b => b.addEventListener('click', () => { IMAGINE = { live:0, s2k:1, s20k:2 }[b.dataset.scale]; show(); }));
+$('tg-turn').addEventListener('click', () => { TURN = !TURN; $('tg-turn').setAttribute('aria-pressed', String(TURN)); try { localStorage.setItem('social-brain:turn', TURN ? 'turning' : 'still'); } catch(e){} });
+$('tg-turn').setAttribute('aria-pressed', String(TURN));
 $('btn-refresh').addEventListener('click', () => load(true));
 $('btn-stand').addEventListener('click', () => { $('pop-back').classList.remove('hidden'); $('pop').classList.remove('hidden'); $('ask-handle').value = HANDLE || ''; $('ask-handle').focus(); });
 $('pop-back').addEventListener('click', () => { $('pop-back').classList.add('hidden'); $('pop').classList.add('hidden'); });
@@ -692,13 +751,14 @@ $('ask-go').addEventListener('click', () => { const v = $('ask-handle').value.re
 $('ask-handle').addEventListener('keydown', e => { if (e.key === 'Enter') $('ask-go').click(); });
 addEventListener('keydown', e => { if (e.key === 'Escape'){ $('pop-back').classList.add('hidden'); $('pop').classList.add('hidden'); closeCard(); } });
 
-function show(){
-  pulses.length = 0; FOCUS = -1; HOVER = -1; HOP = null; closeCard(); cam.gx = cam.gy = cam.gz = 0; PX = null; flash = null;
+function show(keep){
+  const held = keep && G && FOCUS >= 0 && !G.synthetic ? G.nodes[FOCUS].id : null;
+  pulses.length = 0; FOCUS = -1; HOVER = -1; HOP = null; if (!keep) closeCard(); if (!keep) cam.gx = cam.gy = cam.gz = 0; PX = null; flash = null;
   G = IMAGINE === 0 ? LIVE : buildSynthetic(IMAGINE === 1 ? 2000 : 20000);
-  $('tg-imagine').textContent = IMAGINE === 0 ? 'imagine at scale' : IMAGINE === 1 ? 'imagined · 2,000' : 'imagined · 20,000';
-  $('tg-imagine').setAttribute('aria-pressed', String(IMAGINE !== 0));
+  document.querySelectorAll('[data-scale]').forEach(b => b.setAttribute('aria-pressed', String({ live:0, s2k:1, s20k:2 }[b.dataset.scale] === IMAGINE)));
   project();
-  if (!G.synthetic && HANDLE && G.byId.has(HANDLE)){ setFocus(G.byId.get(HANDLE)); }
+  if (held && G.byId.has(held)) setFocus(G.byId.get(held));
+  else if (!G.synthetic && HANDLE && G.byId.has(HANDLE)) setFocus(G.byId.get(HANDLE));
   meta();
 }
 function meta(){
@@ -714,7 +774,7 @@ function meta(){
 }
 
 /* ── the reading ── */
-async function load(announce){
+async function load(announce, keep){
   $('meta').textContent = 'reading the beach…';
   try {
     const idx = await readIndex();
@@ -723,7 +783,7 @@ async function load(announce){
     const passportNames = blocks.filter(n => n.startsWith('passport:'));
     const got = await readMany(grainNames, (d, t) => { $('meta').textContent = 'reading the beach — ' + d + ' of ' + t + ' grains'; });
     LIVE = parseLive(idx, got, passportNames);
-    if (IMAGINE === 0) show(); else meta();
+    if (IMAGINE === 0) show(keep); else meta();
     if (announce) toast('re-read — ' + LIVE.edges.length + ' grains, ' + LIVE.pending.length + ' waiting');
   } catch(e){
     $('meta').textContent = 'the beach did not answer — ' + (e && e.message || e);
