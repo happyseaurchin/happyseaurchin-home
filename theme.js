@@ -61,17 +61,46 @@
   });
 })();
 
-/* every page ends the same way: the door to a now of your own */
+/* every page ends the same way: one of your own, and everyone else's.
+ *
+ * THIS FOOTER IS THE ONLY UNCONDITIONAL SURFACE ON THE SITE, which is why the
+ * two doors nobody could find now stand here rather than in the places menu.
+ * That menu is opt-in and, since 2026-09-08, shows only what a reader has
+ * chosen — so it cannot carry discovery: a door you do not yet know exists
+ * cannot live behind a list you would already have had to curate. Everyone
+ * sees the footer, on every page, having chosen nothing. (David, 2026-09-09.)
+ */
 (function(){
+  'use strict';
+  /* WHICH DOOR "your own" MEANS IS DECIDED BY WHERE YOU STAND, and the path is
+     the page, so there is no second source of truth to drift. A page whose
+     subject is a FIELD — a walk, a recency or heatmap, a family's map, a fold —
+     is showing somebody's project, so the thing to make is a field of your own.
+     Anywhere else the offer stays the now, as it always was. The fault this
+     closes: the link was hardcoded to /now everywhere, so a project walk offered
+     to create a now — an answer to a question nobody standing there had asked. */
+  var FIELD = { walk:1, recency:1, heatmap:1, tree:1, fold:1 };
   document.addEventListener('DOMContentLoaded', function(){
     if (document.getElementById('create-your-own')) return;
+    var path = location.pathname.replace(/\/+$/, '');
+    var onField = !!FIELD[(path.split('/')[1] || '').toLowerCase()];
     var p = document.createElement('p');
     p.id = 'create-your-own';
-    p.style.cssText = 'text-align:center;font-family:var(--mono,monospace);font-size:12px;letter-spacing:0.08em;padding:28px 16px 34px;margin:0;';
-    var a = document.createElement('a');
-    a.href = 'https://happyseaurchin.com/now';
-    a.textContent = 'create your own \u2192';
-    p.appendChild(a);
+    p.style.cssText = 'display:flex;gap:22px;justify-content:center;flex-wrap:wrap;' +
+      'text-align:center;font-family:var(--mono,monospace);font-size:12px;' +
+      'letter-spacing:0.08em;padding:28px 16px 34px;margin:0;';
+    function door(href, text){
+      var a = document.createElement('a');
+      a.href = href; a.textContent = text;
+      p.appendChild(a);
+    }
+    door(onField ? 'https://happyseaurchin.com/found' : 'https://happyseaurchin.com/now',
+         onField ? 'found a field of your own \u2192' : 'create your own \u2192');
+    /* EVERY FIELD — the index of them all. Named for what it SHOWS, never for the
+       route that happens to serve it: '/tree' is the plumbing and a reader never
+       has to meet the word. Withheld on the index itself, where it would offer
+       the page already open — the same courtesy the places menu pays. */
+    if (path !== '/tree') door('https://happyseaurchin.com/tree', 'every field \u2192');
     document.body.appendChild(p);
   });
 })();
