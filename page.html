@@ -68,6 +68,12 @@
   .post{background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.55) 0%,rgba(var(--card-rgb),0.55) 100%);border:1px solid var(--line);border-radius:14px;padding:18px 20px 16px;margin:0 0 16px}
   .post .no{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:0 0 8px}
   .post .no b{color:var(--solid);font-weight:700}
+  .post .no a{color:var(--vapour-dim);border-bottom:1px dashed rgba(var(--solid-rgb),0.4)} .post .no a:hover{color:var(--liquid)}
+  .newpost{margin:6px 0 0;border:1px dashed var(--line-strong);border-radius:12px;padding:10px 14px}
+  .newpost summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;letter-spacing:0.08em;color:var(--vapour-dim);list-style:none}
+  .newpost summary::-webkit-details-marker{display:none}
+  .newpost summary::before{content:"▸ "} .newpost[open] summary::before{content:"▾ "}
+  .newpost .say{margin-top:10px}
   .post .lede{font-size:1.14rem;line-height:1.5;font-weight:500;margin:0 0 10px;white-space:pre-line}
   .post .lede.absent{color:var(--vapour-dim);font-style:italic;font-weight:400}
   .parts summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;letter-spacing:0.08em;color:var(--vapour-dim);list-style:none;padding:4px 0}
@@ -216,15 +222,30 @@ function fmtAddr(walk, floor){
   return walk.slice(0, floor) + '.' + walk.slice(floor);
 }
 /* the entries of an accumulator, oldest first — the supernest wrap holds the older ones under the underscore */
+/* an entry is mark-shaped — its 1 is the author — or a bare string; anything else with
+   digit children is a container (the accumulator wrapped when its nine filled), walked
+   into. Oldest first: the underscore before the digits at every level. */
+function isEntry(n){
+  if (typeof n === 'string') return true;
+  if (!n || typeof n !== 'object') return false;
+  if (typeof n['1'] === 'string') return true;
+  return !digitKeys(n).some(k => n[k] && typeof n[k] === 'object');
+}
 function entriesOf(block){
   const out = [];
   (function walk(node){
     if (!node || typeof node !== 'object') return;
     if (node['_'] && typeof node['_'] === 'object') walk(node['_']);
-    for (const d of digitKeys(node)) out.push(node[d]);
+    for (const d of digitKeys(node)){
+      const n = node[d];
+      if (isEntry(n)) out.push(n); else walk(n);
+    }
   })(block);
   return out;
 }
+const isIso = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v) && isFinite(Date.parse(v));
+const fmtDate = iso => { const t = new Date(iso); return t.getUTCDate() + ' ' + MN[t.getUTCMonth()].slice(0, 3) + ' ' + t.getUTCFullYear(); };
+const postHref = d => location.origin + '/page/' + encodeURIComponent(HANDLE) + '#post-' + d;
 function ago(iso){
   const ms = Date.now() - Date.parse(iso); if (!isFinite(ms)) return '';
   const m = Math.round(ms / 60000); if (m < 2) return 'just now'; if (m < 60) return m + ' min ago';
@@ -325,6 +346,12 @@ async function load(){
     if (!posts.length) out.push('<p class="vnone">The diary is open and empty — no post yet.</p>');
     for (const d of posts) out.push(renderPost(d));
   }
+  /* THE OWNER'S BOX — a post is the holder's own act under their own key; everyone else answers beneath */
+  out.push('<details class="newpost" id="newpost"><summary>write a post — only ' + esc(HANDLE) + ' can; it takes their key</summary>' +
+    '<div class="say">' +
+    '<textarea id="np-text" placeholder="the post — its first paragraph is what a visitor meets; parts beneath it can be added later, by your own hand or your assistant"></textarea>' +
+    '<div class="row"><span class="why">lands at the next position of your diary · yours under your key, kept on this device · the link to it appears beside it</span><button id="np-go" type="button">post it</button></div>' +
+    '<p class="hint" id="np-hint"></p></div></details>');
   out.push('</section>');
 
   /* PARLOUR — the pool: its card, its last voices, a keyless box */
@@ -350,6 +377,8 @@ async function load(){
   $('main').classList.remove('hidden'); $('state').classList.add('hidden');
   wirePosts();
   wireParlour(!!pool);
+  wireNewPost();
+  scrollToHash();
 
   const foot = [];
   foot.push('<a href="/walk/' + encodeURIComponent(HANDLE) + '">the raw walk →</a>');
@@ -380,10 +409,14 @@ function todayLine(now, c){
 function renderPost(d){
   const node = SPINE[d];
   const lede = shallowVoice(node);
-  const parts = (node && typeof node === 'object') ? digitKeys(node) : [];
+  /* position 3 is the post's date when the wire stamped it on append — a date, not a part */
+  const stamp = (node && typeof node === 'object' && isIso(node['3'])) ? node['3'] : null;
+  const parts = (node && typeof node === 'object') ? digitKeys(node).filter(p => !(p === '3' && stamp)) : [];
   const out = [];
   out.push('<article class="post" id="post-' + d + '" data-walk="' + d + '">');
-  out.push('<p class="no"><b>post ' + esc(fmtAddr(d, FLOOR)) + '</b>' + (parts.length ? ' · ' + parts.length + ' parts' : '') + '</p>');
+  out.push('<p class="no"><b>post ' + esc(fmtAddr(d, FLOOR)) + '</b>' + (stamp ? ' · ' + esc(fmtDate(stamp)) : '') + (parts.length ? ' · ' + parts.length + ' parts' : '') +
+    ' · <a class="plink" href="' + esc(postHref(d)) + '" title="this post\'s own address — tap to copy the link">link</a>' +
+    (navigator.share ? ' · <a class="pshare" href="' + esc(postHref(d)) + '" title="share this post">share</a>' : '') + '</p>');
   out.push(lede ? '<p class="lede">' + esc(lede) + '</p>' : '<p class="lede absent">Unvoiced at this position — the parts beneath carry it.</p>');
   if (parts.length){
     out.push('<details class="parts" open><summary>the ' + parts.length + ' parts</summary>');
@@ -525,7 +558,79 @@ function wirePosts(){
     }
     go.addEventListener('click', submit);
     text.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); });
+    /* the link: tap copies the post's own address; long-press or right-click keeps the href */
+    const link = post.querySelector('.plink');
+    if (link) link.addEventListener('click', async e => {
+      e.preventDefault();
+      const href = link.getAttribute('href');
+      try { await navigator.clipboard.writeText(href); link.textContent = 'copied'; }
+      catch(err){ history.replaceState(null, '', '#post-' + walk); link.textContent = 'in the address bar'; }
+      setTimeout(() => { link.textContent = 'link'; }, 1800);
+    });
+    const share = post.querySelector('.pshare');
+    if (share) share.addEventListener('click', async e => {
+      e.preventDefault();
+      try { await navigator.share({ title: HANDLE + ' — post ' + fmtAddr(walk, FLOOR), url: share.getAttribute('href') }); } catch(err){}
+    });
   });
+}
+
+/* a linked post scrolls into view once the page has drawn it */
+function scrollToHash(){
+  const m = (location.hash || '').match(/^#post-([1-9]\d*)$/);
+  if (!m) return;
+  const el = document.getElementById('post-' + m[1]);
+  if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
+}
+
+/* ── the owner's post — the /now latch pattern: the same key across their estate,
+   kept on this device; the diary is founded by its first post, born locked ── */
+const ownerLatchHome = () => 'now-latch:' + HANDLE;
+function ownerLatchGet(){ try { return localStorage.getItem(ownerLatchHome()) || null; } catch(e){ return null; } }
+function ownerLatchSet(v){ try { localStorage.setItem(ownerLatchHome(), v); } catch(e){} }
+function wireNewPost(){
+  const text = $('np-text'), go = $('np-go'), hint = $('np-hint');
+  if (!go) return;
+  const say = (msg, cls) => { hint.textContent = msg || ''; hint.className = 'hint' + (cls ? ' ' + cls : ''); };
+  const draftKey = 'draft:page:' + HANDLE + ':post';
+  if (window.keepDraft) keepDraft(text, draftKey);
+  if (window.dictate) dictate(text);
+  async function submit(){
+    const t = text.value.trim();
+    if (!t){ text.focus(); say('the post first'); return; }
+    go.disabled = true; say('posting…');
+    let key = ownerLatchGet(), w;
+    try {
+      if (!SPINE){
+        if (!key){
+          const v = prompt('Your first post founds your diary, locked to you.\nEnter the key you use for your now, or invent one (kept on this device — check the first letter: phones capitalise it):');
+          if (v === null || !v.trim()){ go.disabled = false; say('nothing posted'); return; }
+          key = v.trim();
+        }
+        const root = HANDLE + "'s open diary — the spine of the family named " + HANDLE + '. Each numbered position is one post in ' + HANDLE + "'s own voice, revisable; the depth beneath a post is its parts. A reader answers at the same address in their own mirror " + HANDLE + ':<their-name> — the box beneath each post does it; the fold at the bare name ' + HANDLE + ' lays every reading beside the post. Rendered at happyseaurchin.com/page/' + HANDLE + '. Anything not located at a post belongs in pool:' + HANDLE + ', the parlour.';
+        w = await writeBlock({ block: 'spine:' + HANDLE, content: { '_': root, '1': { '_': t, '3': new Date().toISOString() } }, new_lock: key });
+      } else {
+        const body = { block: 'spine:' + HANDLE, append: true, content: { '_': t } };
+        if (key) body.secret = key;
+        w = await writeBlock(body);
+        if (lockRequired(w)){
+          const v = prompt('spine:' + HANDLE + ' is latched — enter your key (kept on this device; check the first letter — phones capitalise it):');
+          if (v === null || !v.trim()){ go.disabled = false; say('nothing posted'); return; }
+          key = v.trim(); body.secret = key;
+          w = await writeBlock(body);
+        }
+      }
+    } catch(e){ go.disabled = false; say('could not reach the beach — ' + (e.message || e), 'err'); return; }
+    go.disabled = false;
+    if (!w.ok){ say(lockRequired(w) ? 'the diary refused that key — happyseaurchin.com/key' : 'the beach refused it (' + w.status + ')', 'err'); return; }
+    ownerLatchSet(key);
+    try { localStorage.removeItem(draftKey); } catch(e){}
+    text.value = '';
+    say('posted ✓ — redrawing', 'ok');
+    await load();
+  }
+  go.addEventListener('click', submit);
+  text.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); });
 }
 
 /* ── the parlour's keyless box — an append, signed, stamped, in the observer's voice ── */
