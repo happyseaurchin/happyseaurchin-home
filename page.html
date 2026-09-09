@@ -246,6 +246,13 @@ function entriesOf(block){
 const isIso = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v) && isFinite(Date.parse(v));
 const fmtDate = iso => { const t = new Date(iso); return t.getUTCDate() + ' ' + MN[t.getUTCMonth()].slice(0, 3) + ' ' + t.getUTCFullYear(); };
 const postHref = d => location.origin + '/page/' + encodeURIComponent(HANDLE) + '#post-' + d;
+/* this page's own address, on the site (/page/<handle>) or a static preview (page.html?handle=) */
+function pageHref(extra){
+  const onSite = !/\.html$/.test(location.pathname);
+  const base = onSite ? '/page/' + encodeURIComponent(HANDLE) : location.pathname + '?handle=' + encodeURIComponent(HANDLE);
+  if (!extra) return base;
+  return base + (onSite ? '?' : '&') + extra;
+}
 function ago(iso){
   const ms = Date.now() - Date.parse(iso); if (!isFinite(ms)) return '';
   const m = Math.round(ms / 60000); if (m < 2) return 'just now'; if (m < 60) return m + ' min ago';
@@ -338,13 +345,22 @@ async function load(){
   out.push('</div></section>');
 
   /* POSTS — the spine, each digit position a post; beneath each, the fold and the write box */
-  out.push('<section class="sect"><h2>posts' + (spine ? '<span class="r">' + Object.keys(MIRRORS).length + ' ' + (Object.keys(MIRRORS).length === 1 ? 'reader' : 'readers') + ' so far</span>' : '') + '</h2>');
+  /* which posts: the latest alone by default (a diary's face is its newest entry), the one a
+     link names (#post-N), or every post (?posts=all) — the header link goes the other way */
+  const allPosts = spine ? digitKeys(spine) : [];
+  const linked = (location.hash.match(/^#post-([1-9]\d*)$/) || [])[1];
+  const showAll = new URLSearchParams(location.search).get('posts') === 'all';
+  const shown = !allPosts.length ? [] : showAll ? allPosts : (linked && allPosts.includes(linked)) ? [linked] : [allPosts[allPosts.length - 1]];
+  const headLink = !allPosts.length ? '' : showAll
+    ? '<span class="r"><a href="' + esc(pageHref()) + '">the latest →</a></span>'
+    : (allPosts.length > 1 ? '<span class="r"><a href="' + esc(pageHref('posts=all')) + '">all ' + allPosts.length + ' posts →</a></span>' : '');
+  out.push('<section class="sect"><h2>posts' + headLink + '</h2>');
   if (!spine){
     out.push('<p class="vnone">No posts yet — ' + esc(HANDLE) + ' has not opened a diary here.</p>');
   } else {
-    const posts = digitKeys(spine);
-    if (!posts.length) out.push('<p class="vnone">The diary is open and empty — no post yet.</p>');
-    for (const d of posts) out.push(renderPost(d));
+    if (!allPosts.length) out.push('<p class="vnone">The diary is open and empty — no post yet.</p>');
+    for (const d of shown) out.push(renderPost(d));
+    if (!showAll && allPosts.length > 1) out.push('<p class="vnone">' + (shown[0] === allPosts[allPosts.length - 1] ? 'the latest of ' : 'one of ') + allPosts.length + ' — <a href="' + esc(pageHref('posts=all')) + '">all of them →</a></p>');
   }
   /* THE OWNER'S BOX — a post is the holder's own act under their own key; everyone else answers beneath */
   out.push('<details class="newpost" id="newpost"><summary>write a post — only ' + esc(HANDLE) + ' can; it takes their key</summary>' +
