@@ -1022,7 +1022,14 @@
          * so ticking a family on drops it at the end rather than nowhere */
         var order = visible.slice();
         mine.forEach(function(f){ if (order.indexOf(f) < 0) order.push(f); });
-        var inList = {}; visible.forEach(function(f){ inList[f] = 1; });
+        /* THE TICKS ARE WHAT WAS CHOSEN, NEVER WHAT IS MERELY UNDERFOOT. `visible`
+         * force-adds the family being stood in so the row cannot disagree with the
+         * page above it; ticking from that list would make a save silently adopt a
+         * family only visited once. Tick from the stated list where there is one,
+         * and from the computed default where there is not — the same law the
+         * places menu keeps, where `here` reaches the menu and never the editor. */
+        var inList = {};
+        (stated && stated.length ? stated : visible).forEach(function(f){ inList[f] = 1; });
 
         function draw(){
           panel.innerHTML = '';
@@ -1031,7 +1038,14 @@
             rowEl.className = 'projrow__item';
             var cb = document.createElement('input');
             cb.type = 'checkbox'; cb.checked = !!inList[f];
-            cb.disabled = (f === cfg.family);       /* you are standing in it */
+            /* THE ONE YOU ARE STANDING IN IS UNTICKABLE LIKE ANY OTHER. It used to
+             * be disabled here — "you are standing in it" — which made a family
+             * joined by accident permanent: the row shows it on every page that
+             * shows the row, and the only place offering to remove it was the one
+             * page that refused. Julie met this at /walk/fairy-tales and was stuck
+             * with it (David, 2026-09-10). Unticking now removes it from the saved
+             * list; it still SHOWS while she stands in it, which the note below
+             * says plainly so the save does not read as a failure. */
             cb.addEventListener('change', function(){
               if (cb.checked) inList[f] = 1; else delete inList[f];
               draw();
@@ -1055,6 +1069,15 @@
           });
 
           var foot = document.createElement('div'); foot.className = 'projrow__foot';
+          /* Unticking where you stand is honoured on save, but the row will still
+           * carry the family while you are in it — say so at the moment of the
+           * untick, or the reload reads as the save having been ignored. */
+          if (cfg.family && !inList[cfg.family]){
+            var stay = document.createElement('span');
+            stay.className = 'projrow__note';
+            stay.textContent = cfg.family + ' will still show while you stand in it \u2014 it leaves the row everywhere else';
+            foot.appendChild(stay);
+          }
           var save = document.createElement('button');
           save.type = 'button'; save.className = 'projrow__pick';
           save.textContent = 'save to the beach';
