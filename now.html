@@ -54,6 +54,8 @@
   .ask h1{font-family:var(--display);font-weight:800;font-size:clamp(2rem,7vw,3rem);line-height:1.06;margin:0 0 14px}
   .ask h1 .cool{color:var(--liquid)}
   .ask p{color:var(--vapour);margin:0 0 22px;max-width:44ch}
+  .ask .ask__note{margin:18px 0 0;color:var(--ink);max-width:48ch;line-height:1.5}
+  .ask .ask__note a{color:var(--liquid)}
   .ask__row{display:flex;gap:10px;max-width:420px}
   .ask__row input{flex:1;min-width:0;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);
     border-radius:4px;padding:13px 15px;color:var(--foam);font-family:var(--mono);font-size:14px}
@@ -210,6 +212,7 @@
     <input id="ask-handle" placeholder="your handle" autocomplete="off" spellcheck="false" autocapitalize="none">
     <button id="ask-go">open</button>
   </div>
+  <p id="ask-note" class="ask__note hidden"></p>
 </section>
 
 <main id="page" class="wrap hidden">
@@ -979,16 +982,60 @@ $('pop-close').addEventListener('click', closePop);
 $('pop-back').addEventListener('click', closePop);
 
 /* ── boot ── */
+/* ── THE PASSPORT GATE (the naming law, 2026-09-10): a now is named by a passport
+   handle, spelt exactly as the passport spells it, and never by typed text. A handle
+   with no passport at this beach founds nothing here — the ask returns with the
+   nearest spellings the beach holds. A mirror that already stands is shown as it is,
+   passport or not (the three strays of 2026-09-10 were ruled left alone). If the beach
+   does not answer, the page proceeds as before and founding fails on its own. ── */
+function editDistance(a, b){
+  const m = a.length, n = b.length, d = [];
+  for (let i = 0; i <= m; i++){ d[i] = [i]; }
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[m][n];
+}
+const escText = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function showAsk(){
+  $('ask').classList.remove('hidden');
+  if (showAsk.wired) return; showAsk.wired = true;
+  $('ask-go').addEventListener('click', () => {
+    const v = $('ask-handle').value.replace(/[^a-z0-9_-]/gi, '').trim();
+    if (v) location.href = '/now/' + encodeURIComponent(v);
+  });
+  $('ask-handle').addEventListener('keydown', e => { if (e.key === 'Enter') $('ask-go').click(); });
+}
+async function passportGate(){
+  const [pp, mirror] = await Promise.all([
+    readBlock('passport:' + HANDLE).catch(() => undefined),
+    readBlock('now:' + HANDLE).catch(() => undefined)
+  ]);
+  if (pp === undefined || mirror === undefined) return true;   /* beach silent: as before */
+  if (pp || mirror) return true;                                 /* named by a passport, or already standing */
+  let names = [];
+  try {
+    const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' });
+    const d = await r.json();
+    names = (d.blocks || []).filter(n => n.startsWith('passport:')).map(n => n.slice(9));
+  } catch(e){}
+  const lc = HANDLE.toLowerCase();
+  const near = names.filter(n => n !== HANDLE && (n.toLowerCase() === lc || editDistance(n.toLowerCase(), lc) <= 2)).slice(0, 3);
+  const note = $('ask-note');
+  note.innerHTML = 'No passport named <b>' + escText(HANDLE) + '</b> at this beach, so no now can be founded under that name — '
+    + 'a now is named by the passport handle, spelt exactly as the passport spells it. '
+    + (near.length
+        ? 'Did you mean ' + near.map(n => '<a href="/now/' + encodeURIComponent(n) + '">' + escText(n) + '</a>').join(' or ') + '?'
+        : 'Found your passport first at <a href="/found">/found</a>, or type the handle it uses.');
+  note.classList.remove('hidden');
+  $('ask-handle').value = HANDLE;
+  showAsk();
+  return false;
+}
+
 async function boot(){
-  if (!HANDLE){
-    $('ask').classList.remove('hidden');
-    $('ask-go').addEventListener('click', () => {
-      const v = $('ask-handle').value.replace(/[^a-z0-9_-]/gi, '').trim();
-      if (v) location.href = '/now/' + encodeURIComponent(v);
-    });
-    $('ask-handle').addEventListener('keydown', e => { if (e.key === 'Enter') $('ask-go').click(); });
-    return;
-  }
+  if (!HANDLE){ showAsk(); return; }
+  if (!(await passportGate())) return;
   $('page').classList.remove('hidden');
   $('bar-handle').textContent = HANDLE;
   /* one line, and the catalogue is the shared one in theme.js — this page supplies
