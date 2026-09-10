@@ -312,6 +312,7 @@
   <label><input type="checkbox" data-row="ce"> century</label>
   <label><input type="checkbox" data-row="de"> decade</label>
   <label><input type="checkbox" data-row="y"> year</label>
+  <label><input type="checkbox" data-row="s"> season</label>
   <label><input type="checkbox" data-row="m"> month</label>
   <label><input type="checkbox" data-row="w"> week</label>
   <label><input type="checkbox" data-row="d"> day</label>
@@ -358,6 +359,7 @@
       <div class="rw" id="rw-ce"><div class="rowlab">century</div><div class="carousel" id="row-ce"></div></div>
       <div class="rw" id="rw-de"><div class="rowlab">decade</div><div class="carousel" id="row-de"></div></div>
       <div class="rw" id="rw-y"><div class="rowlab">year</div><div class="carousel" id="row-y"></div></div>
+      <div class="rw" id="rw-s"><div class="rowlab">season</div><div class="carousel" id="row-s"></div></div>
       <div class="rw" id="rw-m"><div class="rowlab">month</div><div class="carousel" id="row-m"></div></div>
       <div class="rw" id="rw-w"><div class="rowlab">week</div><div class="carousel" id="row-w"></div></div>
       <div class="rw" id="rw-d"><div class="rowlab">day</div><div class="carousel" id="row-d"></div></div>
@@ -476,6 +478,13 @@ function gatherAddr(y, m0, d, g){ return dayAddr(y, m0, d) + g; }
 const daysInMonth = (y, m0) => new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate();
 const bandsIn = (y, m0) => Math.ceil(daysInMonth(y, m0) / 7);
 const MN = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+/* THE SEASON — the rung the months needed, since twelve will not fit nine digits (sundial +5).
+ * Named by its months, exactly as /now names it, so the label reads the same on every page and
+ * in every hemisphere. */
+const SEASONS = ['January–March','April–June','July–September','October–December'];
+const SEASONS_S = ['Jan–Mar','Apr–Jun','Jul–Sep','Oct–Dec'];
+const seasonOf = m0 => Math.floor(m0 / 3) + 1;
+function seasonAddr(y, s){ return String(y) + s; }
 const wd = (y, m0, d) => new Date(Date.UTC(y, m0, d)).toUTCString().slice(0, 3);
 const pad10 = a => String(a).padEnd(10, '0');
 
@@ -502,7 +511,7 @@ const $ = id => document.getElementById(id);
  * instead of everyone getting one fixed page ── */
 const PREF_KEY = 'walk-display';
 const DEFAULT_PREFS = {
-  rows: { ce:false, de:true, y:true, m:true, w:true, d:true, g:false },
+  rows: { ce:false, de:true, y:true, s:true, m:true, w:true, d:true, g:false },
   badges: { voices:true, cards:true },
   workings: false,
   cast: false,
@@ -930,11 +939,39 @@ function lensText(addr){
  * that already exists: tap twice for the words pane, where the keeper edits and
  * everyone else proposes in voices. Rungs away from now keep the plain line —
  * an address that merely waits is not asking anybody for anything. */
-function inviteAt(lv, isNow){
-  const what = lv === 'ce' ? 'this century' : lv === 'de' ? 'this decade' : lv === 'y' ? 'this year' : lv === 'm' ? 'this month' : lv === 'w' ? 'this week' : lv === 'd' ? 'today' : lv === 'g' ? 'this gathering' : null;
+/* THE QUESTION EACH RUNG ASKS, in the mine lens — David's own words where he gave them
+ * (2026-09-10). A question is true of every year, so it never goes stale and needs writing
+ * nowhere: it lives in the render, and a spine whose law keeps it content-free stays so. The
+ * live path only, as before — an address that merely waits is not asking anybody anything. */
+function askAt(lv, label){
+  const l = String(label || '').replace(/[‹›]/g, '').trim();
+  switch (lv){
+    case 'ce': return 'what this century is for';
+    case 'de': return 'your dream for ' + l;
+    case 'y':  return 'your objective for ' + l;
+    case 's':  return 'the season’s objective — the quarter’s worth of it';
+    case 'm':  return 'your plan for ' + l;
+    case 'w':  return 'your objectives for this week';
+    case 'd':  return 'today’s objectives';
+    case 'g':  return 'what is to be done this ' + l;
+  }
+  return null;
+}
+function inviteAt(lv, isNow, label){
+  const what = lv === 'ce' ? 'this century' : lv === 'de' ? 'this decade' : lv === 'y' ? 'this year' : lv === 's' ? 'this season' : lv === 'm' ? 'this month' : lv === 'w' ? 'this week' : lv === 'd' ? 'today' : lv === 'g' ? 'this gathering' : null;
+  /* THE NOW FAMILY'S SPINE IS CONTENT-FREE BY LAW (function:now 4; spine:now's own floor: "no
+   * date is ever voiced"), so its spine lens can never show a line — and the old invitation to
+   * give it one pointed at the one act the family forbids. Say why it is empty, and where the
+   * words actually are. */
+  if (LENS === 'spine' && VENTURE === 'now'){
+    if (!isNow) return 'no shared line here — by design';
+    return HANDLE
+      ? 'no shared line here by design — each person’s now is their own · options ▾ → show my voice'
+      : 'no shared line here by design — each person’s now is their own · add your handle to the address to see yours';
+  }
   if (LENS === 'mine'){
     if (!isNow || !what) return 'you have not voiced here';
-    return 'you have not voiced ' + what + ' — tap twice and say what it is toward';
+    return (askAt(lv, label) || 'say what ' + what + ' is toward') + ' — tap twice to say it';
   }
   if (!isNow || !what) return 'nothing written here yet';
   if (lv === 'w') return 'this week has no words yet, so the day hangs straight off the month — tap twice to give the week its line, or propose one in voices';
@@ -946,14 +983,14 @@ function rcard(label, addr, isSel, isNow, data){
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
-    '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow)) + '</span>' +
+    '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="open the detail below">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
 }
 /* ── the rows. Each shows its FULL sibling set — every month of the year, every
  * year of the decade — so nothing vanishes as you click. A click highlights in
  * place and re-renders only the rows BENEATH; a row never scrolls itself. ── */
-const LEVELS = ['ce', 'de', 'y', 'm', 'w', 'd', 'g'];
+const LEVELS = ['ce', 'de', 'y', 's', 'm', 'w', 'd', 'g'];
 function buildRow(lv){
   const cards = [];
   if (lv === 'ce'){
@@ -977,8 +1014,18 @@ function buildRow(lv){
     for (let y = d0; y < d0 + 10; y++)
       cards.push(rcard(String(y), yearAddr(y), y === SEL.y, y === TODAY.y, 'data-lv="y" data-y="' + y + '"'));
     cards.push(rcard((d0 + 10) + ' ›', yearAddr(d0 + 10), false, d0 + 10 === TODAY.y, 'data-lv="y" data-y="' + (d0 + 10) + '"'));
+  } else if (lv === 's'){
+    /* THE SEASON ROW WAS MISSING. The walk laid all twelve months in one row and so skipped
+     * the season rung entirely — though every address it wrote already carried the season
+     * digit, and /now, the sundial and the stream ladder all hold it. One clock; now one
+     * ladder on every page (David, 2026-09-10). */
+    for (let s = 1; s <= 4; s++)
+      cards.push(rcard(SEASONS_S[s - 1], seasonAddr(SEL.y, s), s === seasonOf(SEL.m0),
+        SEL.y === TODAY.y && s === seasonOf(TODAY.m0), 'data-lv="s" data-s="' + s + '"'));
   } else if (lv === 'm'){
-    for (let m0 = 0; m0 < 12; m0++)
+    /* the three months OF the chosen season — the month is a three-slot rung within it */
+    const m1 = (seasonOf(SEL.m0) - 1) * 3;
+    for (let m0 = m1; m0 < m1 + 3; m0++)
       cards.push(rcard(MN[m0], monthAddr(SEL.y, m0), m0 === SEL.m0,
         SEL.y === TODAY.y && m0 === TODAY.m0, 'data-lv="m" data-m0="' + m0 + '"'));
   } else if (lv === 'w'){
@@ -1011,6 +1058,7 @@ function selMatches(lv, el){
   if (lv === 'ce') return +el.dataset.c === Math.floor(SEL.y / 100) % 10;
   if (lv === 'de') return +el.dataset.d10 === Math.floor(SEL.y / 10) % 10;
   if (lv === 'y') return +el.dataset.y === SEL.y;
+  if (lv === 's') return +el.dataset.s === seasonOf(SEL.m0);
   if (lv === 'm') return +el.dataset.m0 === SEL.m0;
   if (lv === 'w') return +el.dataset.band === SEL.band;
   if (lv === 'd') return +el.dataset.d === SEL.d;
@@ -1036,10 +1084,14 @@ function renderRack(){
    * young family whose decade is unvoiced showed a bare label and read as
    * broken, when the honest answer is simply the next rung down that speaks */
   let tw = '';
-  for (const n of [3, 4, 5, 6]){ tw = textAt(SPINE, TODAY_ADDR.slice(0, n)); if (tw) break; }
+  const nowFam = VENTURE === 'now';
+  for (const n of [3, 4, 5, 6]){ tw = nowFam ? (lensText(TODAY_ADDR.slice(0, n)) || '') : textAt(SPINE, TODAY_ADDR.slice(0, n)); if (tw) break; }
   $('toward').innerHTML = tw
-    ? 'toward · <b>' + esc(short(tw, 150)) + '</b>'
-    : '<span class="silent">nothing written above today yet — stand at a year or a month and say what this is toward</span>';
+    ? 'toward \u00b7 <b>' + esc(short(tw, 150)) + '</b>'
+    : '<span class="silent">' + (nowFam
+        ? (LENS === 'mine' ? 'you have not voiced a year or a month yet — stand at one and say what it is toward'
+                           : 'each person’s now is their own — nothing is shared above today, by design')
+        : 'nothing written above today yet — stand at a year or a month and say what this is toward') + '</span>';
   renderRowsFrom('ce');
 }
 /* ── the tree rack — the same rows, grown from the spine's own branches: row one
@@ -1094,7 +1146,12 @@ $('rack').addEventListener('click', e => {
     const y = +card.dataset.y;
     const crossed = Math.floor(y / 10) !== Math.floor(SEL.y / 10);
     SEL.y = y; SEL.level = 'y';
-    if (crossed) renderRowsFrom('y'); else { paintSel('y'); renderRowsFrom('m'); }
+    if (crossed) renderRowsFrom('y'); else { paintSel('y'); renderRowsFrom('s'); }
+  } else if (lv === 's'){
+    /* keep the month's place within its season, as a year change keeps the month */
+    const s = +card.dataset.s;
+    SEL.m0 = (s - 1) * 3 + (SEL.m0 % 3); SEL.level = 's';
+    paintSel('s'); renderRowsFrom('m');
   } else if (lv === 'm'){
     SEL.m0 = +card.dataset.m0; SEL.level = 'm';
     paintSel('m'); renderRowsFrom('w');
@@ -1132,6 +1189,7 @@ function selAddr(){
   if (SEL.level === 'ce') return String(SEL.y).slice(0, 2);
   if (SEL.level === 'de') return String(SEL.y).slice(0, 3);
   if (SEL.level === 'y') return yearAddr(SEL.y);
+  if (SEL.level === 's') return seasonAddr(SEL.y, seasonOf(SEL.m0));
   if (SEL.level === 'm') return monthAddr(SEL.y, SEL.m0);
   if (SEL.level === 'w') return weekAddr(SEL.y, SEL.m0, SEL.band);
   if (SEL.level === 'g') return gatherAddr(SEL.y, SEL.m0, SEL.d, SEL.g);
@@ -1145,6 +1203,7 @@ function selLabel(){
   if (SEL.level === 'ce') return 'the ' + ORD(Math.floor(SEL.y / 100) + 1) + ' century';
   if (SEL.level === 'de') return 'the ' + Math.floor(SEL.y / 10) * 10 + 's';
   if (SEL.level === 'y') return String(SEL.y);
+  if (SEL.level === 's') return SEASONS[seasonOf(SEL.m0) - 1] + ' ' + SEL.y;
   if (SEL.level === 'm') return MN[SEL.m0] + ' ' + SEL.y;
   if (SEL.level === 'w'){
     const d1 = (SEL.band - 1) * 7 + 1, d2 = Math.min(SEL.band * 7, daysInMonth(SEL.y, SEL.m0));
@@ -1453,6 +1512,15 @@ document.getElementById('btn-refresh').addEventListener('click', () => load().th
 
 /* ── boot ── */
 HANDLE = handleFromUrl();
+/* A NOW OPENS ON ITS HOLDER'S OWN VOICE. The now family's spine is content-free by law, so the
+ * spine lens can only ever show an empty rack — for this family the only lens with anything in
+ * it is your own. Anyone without a handle stays on the spine lens, which now says why it is
+ * empty (David, 2026-09-10). */
+if (VENTURE === 'now' && HANDLE){
+  LENS = 'mine';
+  document.body.classList.add('minelens');
+  document.getElementById('btn-lens').textContent = 'show spine';
+}
 /* the places menu is built HERE because only this page knows its walker: the
  * handle from the path, and the family it is walking. The catalogue is shared. */
 if (window.siteDoors) siteDoors({ handle: HANDLE, family: VENTURE, here: 'walk' });
