@@ -463,6 +463,7 @@
    * bare = no path at all. Wrong shape here is a dead link there. */
   var WORK = [
     ['your now',    'now',      'handle'],
+    ['your here',   'here',     'handle'],
     ['the project', 'walk',     'family'],
     ['my hands',     'hands',    'handle'],
     ['one at a time','next',     'handle'],
