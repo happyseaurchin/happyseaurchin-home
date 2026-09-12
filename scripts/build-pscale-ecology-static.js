@@ -12,7 +12,11 @@
  * run the JS and overwrite #column instantly (progressive enhancement); anything
  * that does NOT run JS now gets the full article text.
  *
- * Re-run after editing OVERVIEW / BRANCHES / INFO_HTML:
+ * Both outputs are grouped by LEVELS — physics / chemistry / biology — because
+ * the levels ARE the page's structure, and a reader who runs no JS would
+ * otherwise get the cards and paths as one flat list.
+ *
+ * Re-run after editing LEVELS / SEMFLOW / OVERVIEW / BRANCHES / INFO_HTML:
  *   node scripts/build-pscale-ecology-static.js
  */
 const fs = require('fs');
@@ -53,23 +57,44 @@ function sliceTemplate(src, declRe) {
 const overviewLit = sliceBracketed(html, /const\s+OVERVIEW\s*=\s*/, '[', ']');
 const branchesLit = sliceBracketed(html, /const\s+BRANCHES\s*=\s*/, '[', ']');
 const railLit = sliceBracketed(html, /const\s+RAIL_ORDER\s*=\s*/, '[', ']');
+const levelsLit = sliceBracketed(html, /const\s+LEVELS\s*=\s*/, '[', ']');
+const aliasLit = sliceBracketed(html, /const\s+HASH_ALIAS\s*=\s*/, '{', '}');
 const infoLit = sliceTemplate(html, /const\s+INFO_HTML\s*=\s*/);
+const semflowLit = sliceTemplate(html, /const\s+SEMFLOW\s*=\s*/);
 
 // eval as pure data (BIOME_CFG/BSP_CFG referenced by connect frames → stub)
 const data = new Function(
   'const BIOME_CFG="";const BSP_CFG="";' +
   'return {OVERVIEW:' + overviewLit + ',BRANCHES:' + branchesLit +
-  ',RAIL_ORDER:' + railLit + ',INFO_HTML:' + infoLit + '};'
+  ',RAIL_ORDER:' + railLit + ',LEVELS:' + levelsLit + ',HASH_ALIAS:' + aliasLit +
+  ',INFO_HTML:' + infoLit + ',SEMFLOW:' + semflowLit + '};'
 )();
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const STANDFIRST = 'An LLM-native substrate, read as three levels: physics is how one pscale block operates, chemistry is the meaning that appears between blocks, and biology is the loops that close and start behaving like agents.';
 const stripSvg = s => String(s).replace(/<svg[\s\S]*?<\/svg>/g, '');
 const BY_ID = Object.fromEntries(data.BRANCHES.map(b => [b.id, b]));
+const BY_LEVEL = Object.fromEntries(data.LEVELS.map(l => [l.id, l]));
+// old fragment → current branch id, so an inbound /#xstream still lands on the
+// right section for a reader that runs no JS (the page itself has HASH_ALIAS)
+const ALIASES_OF = {};
+for (const [from, to] of Object.entries(data.HASH_ALIAS)) (ALIASES_OF[to] ||= []).push(from);
+// levels in RAIL_ORDER's order, each with the branches that declare it
+const LEVEL_RUNS = () => {
+  const runs = [];
+  for (const id of data.RAIL_ORDER) {
+    const b = BY_ID[id]; if (!b) continue;
+    const last = runs[runs.length - 1];
+    if (last && last.id === b.railGroup) last.branches.push(b);
+    else runs.push({ id: b.railGroup, level: BY_LEVEL[b.railGroup], branches: [b] });
+  }
+  return runs;
+};
 
 function renderFrame(f) {
   if (f.kind === 'fork') return '';
   let h = '';
-  if (f.title) h += `<h4>${esc(f.title)}</h4>\n`;
+  if (f.title) h += `<h5>${esc(f.title)}</h5>\n`;
   if (f.body) h += stripSvg(f.body).trim() + '\n';
   if (f.note) h += `<p class="ssr-note">${f.note}</p>\n`;
   if (f.kind === 'embed' && (f.open || f.src)) h += `<p>Live tool: <a href="${esc(f.open || f.src)}">${esc(f.open || f.src)}</a></p>\n`;
@@ -88,24 +113,33 @@ function renderFrame(f) {
 // only has the markup — without an id, /pscale-ecology/#rpg lands them at the
 // top of the whole article instead of the branch they were pointed at.
 function renderBranch(b) {
-  let h = `<section id="${esc(b.id)}" data-path="${esc(b.id)}">\n<h3>${esc(b.title)}</h3>\n<p>${esc(b.lede)}</p>\n`;
+  let h = (ALIASES_OF[b.id] || []).map(a => `<span id="${esc(a)}"></span>\n`).join('');
+  h += `<section id="${esc(b.id)}" data-path="${esc(b.id)}">\n<h4>${esc(b.title)}</h4>\n<p>${esc(b.lede)}</p>\n`;
   h += b.frames.map(renderFrame).join('');
   return h + '</section>\n';
 }
 
 let body = `<article id="ssr-fallback">\n`;
-body += `<h1>The pscale ecology</h1>\n<p>An LLM-native substrate. ${esc('The pscale block, the function that reads it, the beach it lives on — and the use-cases that grow from there.')}</p>\n`;
+body += `<h1>The pscale ecology</h1>\n<p>${esc(STANDFIRST)}</p>\n`;
 
-// overview cards (claim + systemic comparison)
-body += `<section id="ssr-overview">\n<h2>Overview</h2>\n`;
-for (const c of data.OVERVIEW) {
-  body += `<h3>${esc(c.label)} — ${esc(c.sub)}</h3>\n${c.front.trim()}\n<p><strong>What others do instead:</strong></p>\n${c.back.trim()}\n`;
+// overview cards (claim + systemic comparison), one stratum per level
+body += `<section id="ssr-overview">\n<h2>Overview</h2>\n${data.SEMFLOW.trim()}\n`;
+for (const l of data.LEVELS) {
+  const cards = data.OVERVIEW.filter(c => c.level === l.id);
+  if (!cards.length) continue;
+  body += `<h3>${esc(l.label)} — ${esc(l.tag)}</h3>\n${l.law.trim()}\n`;
+  for (const c of cards) {
+    body += `<h4>${esc(c.label)} — ${esc(c.sub)}</h4>\n${c.front.trim()}\n<p><strong>What others do instead:</strong></p>\n${c.back.trim()}\n`;
+  }
 }
 body += `<h3>Why this exists — two hidden attractors</h3>\n${data.INFO_HTML.trim()}\n</section>\n`;
 
-// full segmented paths, in rail order
+// full segmented paths, in rail order, under their level
 body += `<section id="ssr-paths">\n<h2>The paths</h2>\n`;
-for (const id of data.RAIL_ORDER) { if (BY_ID[id]) body += renderBranch(BY_ID[id]); }
+for (const run of LEVEL_RUNS()) {
+  if (run.level) body += `<h3>${esc(run.level.label)} — ${esc(run.level.tag)}</h3>\n${run.level.law.trim()}\n`;
+  for (const b of run.branches) body += renderBranch(b);
+}
 body += `</section>\n</article>`;
 
 const block = START + '\n' + body + '\n' + END;
@@ -128,30 +162,38 @@ function toMd(s) {
     .replace(/<svg[\s\S]*?<\/svg>/g, '')
     .replace(/<a\s+[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g, '[$2]($1)')
     .replace(/<\/(p|ul|ol)>/g, '\n\n').replace(/<li>/g, '- ').replace(/<\/li>/g, '\n')
+    .replace(/<h([2-5])>([\s\S]*?)<\/h\1>/g, (_, n, t) => `\n${'#'.repeat(+n + 1)} ${t}\n`)
     .replace(/<(b|strong)>([\s\S]*?)<\/\1>/g, '**$2**')
     .replace(/<(em|i)>([\s\S]*?)<\/\1>/g, '_$2_')
     .replace(/<code>([\s\S]*?)<\/code>/g, '`$1`')
     .replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    .replace(/[ \t]+\n/g, '\n').replace(/^[ \t]+/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 }
-let m = `# The pscale ecology\n\nAn LLM-native substrate: the pscale block, the function that reads it, the beach it lives on — and the use-cases that grow from there.\n\nSource page: https://happyseaurchin.com/pscale-ecology/\n\n---\n\n## Overview\n\n`;
-for (const c of data.OVERVIEW) m += `### ${c.label} — ${c.sub}\n\n${toMd(c.front)}\n\n*What others do instead:* ${toMd(c.back)}\n\n`;
+let m = `# The pscale ecology\n\n${STANDFIRST}\n\nSource page: https://happyseaurchin.com/pscale-ecology/\n\n---\n\n## Overview\n\n${toMd(data.SEMFLOW)}\n\n`;
+for (const l of data.LEVELS) {
+  const cards = data.OVERVIEW.filter(c => c.level === l.id);
+  if (!cards.length) continue;
+  m += `### ${l.label} — ${l.tag}\n\n${toMd(l.law)}\n\n`;
+  for (const c of cards) m += `#### ${c.label} — ${c.sub}\n\n${toMd(c.front)}\n\n*What others do instead:* ${toMd(c.back)}\n\n`;
+}
 m += `### Why this exists — two hidden attractors\n\n${toMd(data.INFO_HTML)}\n\n---\n\n## The paths\n\n`;
-for (const id of data.RAIL_ORDER) {
-  const b = BY_ID[id]; if (!b) continue;
-  m += `### ${b.title}\n\n${toMd(b.lede)}\n\n`;
+for (const run of LEVEL_RUNS()) {
+  if (run.level) m += `### ${run.level.label} — ${run.level.tag}\n\n${toMd(run.level.law)}\n\n`;
+  for (const b of run.branches) {
+  m += `#### ${b.title}\n\n${toMd(b.lede)}\n\n`;
   for (const f of b.frames) {
     if (f.kind === 'fork') continue;
-    if (f.title) m += `#### ${f.title}\n\n`;
+    if (f.title) m += `##### ${f.title}\n\n`;
     if (f.body) m += toMd(f.body) + '\n\n';
     if (f.note) m += `_${toMd(f.note)}_\n\n`;
     if (f.kind === 'embed' && (f.open || f.src)) m += `Live tool: ${f.open || f.src}\n\n`;
     if (f.kind === 'connect') m += `Connect via ${f.via || 'bsp-mcp'} at ${f.endpoint || 'https://bsp.hermitcrab.me/mcp/v1'}\n\n`;
     if (Array.isArray(f.cards) && f.cards.length) m += f.cards.map(c => `- [${c.title}](${c.href}) — ${c.desc}`).join('\n') + '\n\n';
   }
+  }
 }
 m = m.replace(/\n{3,}/g, '\n\n').trim() + '\n';
 fs.writeFileSync(path.join(__dirname, '..', 'pscale-ecology', 'llms.txt'), m);
 
-console.log(`OK — in-page fallback (~${chars} chars) + pscale-ecology/llms.txt (${m.length} chars): ${data.OVERVIEW.length} cards, ${data.RAIL_ORDER.length} paths.`);
+console.log(`OK — in-page fallback (~${chars} chars) + pscale-ecology/llms.txt (${m.length} chars): ${data.LEVELS.length} levels, ${data.OVERVIEW.length} cards, ${data.RAIL_ORDER.length} paths.`);
