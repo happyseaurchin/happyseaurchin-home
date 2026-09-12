@@ -16,6 +16,14 @@
  * the levels ARE the page's structure, and a reader who runs no JS would
  * otherwise get the cards and paths as one flat list.
  *
+ * ORDER DIVERGES FROM THE PAGE, DELIBERATELY. On screen the cards lead and
+ * every paragraph (the lede, the three level laws, the semantic-flow note)
+ * sits in one blurb below them, so the card block stays compact. Here each
+ * law stays with the level it describes and the semantic-flow note stays at
+ * the top, because this output is a linear DOCUMENT: there are no cards to
+ * keep compact, and a reader arriving cold wants the definition before the
+ * claims. Same data either way — only the reading order differs.
+ *
  * Re-run after editing LEVELS / SEMFLOW / OVERVIEW / BRANCHES / INFO_HTML:
  *   node scripts/build-pscale-ecology-static.js
  */
