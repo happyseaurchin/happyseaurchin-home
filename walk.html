@@ -435,6 +435,12 @@ function childDigits(node){
   if (!node || typeof node !== 'object') return [];
   return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort();
 }
+/* ONE ADDRESS, ONE READING — trailing zeros are floor padding, so 20263322 and
+ * 2026332200 are the same point. walkZeroAware already reads them that way;
+ * this is the same rule for COMPARING two written addresses, which located
+ * room talk needs, and it is the rule the mirror's family stream uses, so a
+ * point answers identically on both surfaces. */
+const sameAddr = (a, b) => String(a).replace(/0+$/, '') === String(b).replace(/0+$/, '');
 /* canonical walk: trailing zeros are floor padding, interior 0 steps into the underscore */
 function walkZeroAware(block, addr){
   let n = block;
@@ -660,12 +666,13 @@ function lensed(vs){
 /* what stands attached to an address: each hand's words there, plus placed gathering voices */
 function voicesAt(addr){
   const out = [];
-  /* a reading carries the block it stands in, so it can be opened where it lives */
-  MIRRORS.forEach(([who, blk]) => { const t = textAt(blk, addr); if (t) out.push({ who, t, ts: '', blk: VENTURE + ':' + who }); });
-  /* located room talk answers ONLY at its exact address — a brief at a day must
-   * never also speak for the week, the month and the year above it. It carries no
-   * block of its own: a room voice lives in the pool, not in anybody's mirror. */
-  POOL_VOICES.forEach(v => { if (v.at && v.at === wireAddr(addr)) out.push({ who: v.who, t: v.t, ts: v.ts, room: true, blk: null }); });
+  /* a reading no longer carries the block it stands in: every link from this
+   * page names the POINT, and the mirror renders each hand's reading there */
+  MIRRORS.forEach(([who, blk]) => { const t = textAt(blk, addr); if (t) out.push({ who, t, ts: '' }); });
+  /* located room talk answers ONLY at its own address — a brief at a day must
+   * never also speak for the week, the month and the year above it. `room`
+   * marks it: a room voice lives in the pool, not in anybody's mirror. */
+  POOL_VOICES.forEach(v => { if (v.at && sameAddr(v.at, addr)) out.push({ who: v.who, t: v.t, ts: v.ts, room: true }); });
   return out;
 }
 /* a card names the stretch it serves in its own words; today holds the rest */
@@ -812,12 +819,20 @@ async function appendCard(entry, pile){
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
 /* the mirror's own invite-link law: a place, never a person.
- * A LINK LANDS ON THE BLOCK BEING LOOKED AT, at the address being stood at —
- * one URL fixed at the spine served the spine's own line and misdirected
- * everything else, so a reading opened somewhere nobody had been reading. The
- * address is optional: a deck is entered whole, having no time in it. */
-const mirrorUrl = (addr, block) => 'https://mirror.onen.ai/?block=' +
-  encodeURIComponent(block || ('spine:' + VENTURE)) + (addr ? '&at=' + wireAddr(addr) : '');
+ * A LINK LANDS AT THE POINT BEING LOOKED AT — one URL fixed at the spine
+ * served the spine's own line and misdirected everything else, so a reading
+ * opened somewhere nobody had been reading. The address is optional: a deck is
+ * entered whole, having no time in it.
+ * ONE SPELLING, and the parameter that allowed others is gone. Naming a
+ * MEMBER of the family (a hand's own mirror, the bare fold) was meaningful
+ * while the mirror opened whichever block a link named and showed that block
+ * alone; it reads a family from any of its blocks now and renders the same
+ * point either way, so three spellings only ever gave one place three chips,
+ * labelled differently, and a person had to be told they were not three places
+ * (David, 2026-09-12). The mirror files them all under spine:<field>; this
+ * sends that spelling to begin with. */
+const mirrorUrl = addr => 'https://mirror.onen.ai/?block=' +
+  encodeURIComponent('spine:' + VENTURE) + (addr ? '&at=' + wireAddr(addr) : '');
 /* THE ROOM IS NOT A POINT, so it is not named like one. Every link above lands
  * at an ADDRESS in the family (?block=<a block in it>&at=<the address>), which
  * the mirror reads as a family focus: the spine's line, the fold, and every
@@ -1269,14 +1284,17 @@ function paintSheet(){
   tabs.classList.remove('hidden');
   const addr = selAddr(), lens = lensed(voicesAt(addr)), vs = lens.shown, cs = MODE === 'tree' ? famCards() : cardsAt(addr);
   $('sh-where').textContent = selLabel();
-  /* the head link follows the PANE: the spine's own line where the spine is
-   * read, your own mirror where readings stand, your own deck where cards do */
-  const mtarget = SHEET.pane === 'voices' ? (HANDLE ? VENTURE + ':' + HANDLE : VENTURE)
-                : SHEET.pane === 'cards'  ? (HANDLE ? FIELD + ':' + HANDLE : null)
-                : 'spine:' + VENTURE;
+  /* THE HEAD LINK NO LONGER FOLLOWS THE PANE, because the panes no longer lead
+   * anywhere different: the spine's line, the readings standing at this point
+   * and your own box are ONE view in the mirror, reached by one address. The
+   * cards pane keeps no link at all — its old target, today-beach-deck:<handle>,
+   * is archived (cards have lived in ahead:<holder> since 2026-08-24, as this
+   * page's own loader says), so it named a block that is not there; the pane
+   * already carries 'your hands →', which is where a deck is really read. */
+  const mlink = SHEET.pane !== 'cards';
   $('sh-mirror').textContent = 'mirror ↗';
-  $('sh-mirror').classList.toggle('hidden', !mtarget);
-  if (mtarget) $('sh-mirror').href = mirrorUrl(SHEET.pane === 'cards' ? '' : addr, mtarget);
+  $('sh-mirror').classList.toggle('hidden', !mlink);
+  if (mlink) $('sh-mirror').href = mirrorUrl(addr);
   tabs.querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.p === SHEET.pane);
     if (b.dataset.p === 'voices') b.textContent = 'your mirror · ' + (vs.length ? vs.length + (vs.length === 1 ? ' voice' : ' voices') : 'voices');
@@ -1299,10 +1317,13 @@ function paintSheet(){
   } else if (SHEET.pane === 'voices'){
     b.push(vs.length
       ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
-          /* each reading opens where it actually lives — its holder's own mirror
-           * at this point. YOUR OWN row carries no link: the sheet's header
-           * mirror ↗ already goes to that self-same place. */
-          (v.blk && v.who !== HANDLE ? '<a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr, v.blk)) + '">mirror ↗</a>' : '') + '</div>').join('')
+          /* a reading opens THE POINT, where it stands among the others. It
+           * used to name its holder's own block — true of where the words
+           * live, and the mirror shows the same view either way, so all the
+           * spelling bought was a second chip for one place. A room voice
+           * carries no link (the pool is its home, not a mirror), and YOUR OWN
+           * row carries none either: the header's mirror ↗ already goes there. */
+          (!v.room && v.who !== HANDLE ? '<a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a>' : '') + '</div>').join('')
       : '<span class="silent">' + (lens.aside.length ? 'no member has written here yet' : 'nobody has written here yet') + '</span>');
     /* SAYS SO, ALWAYS — the family's own law: a fold that drops a voice says so.
      * The names ride with the count, so what the lens set aside stays knowable
