@@ -5,71 +5,139 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Semantic flow — the window as it is compiled</title>
 <meta name="description" content="A live, Sankey-like view of actual semantic compilation: each vertical line is a context window at one moment (height = tokens), the ribbons carry its spans across the calls of one loop, coloured by which rung of the lodestone they answer to. The sibling of filmstrip-3d, which shows blocks; this shows compilation.">
+<script>
+  /* Theme, resolved before first paint. In priority order: an explicit
+     ?theme=, the page embedding us (same-origin, so the ecology page's toggle
+     governs the iframe), this site's own stored choice under 'view:theme',
+     then the system. The rung colours are unchanged in either theme — they
+     name the lodestone, not the decor. */
+  (function () {
+    var t = null;
+    try { t = new URLSearchParams(location.search).get('theme'); } catch (e) {}
+    if (t !== 'dark' && t !== 'light') t = null;
+    if (!t && window.parent !== window) {
+      try { t = window.parent.document.documentElement.getAttribute('data-theme'); } catch (e) {}
+    }
+    if (!t) { try { t = localStorage.getItem('view:theme'); } catch (e) {} }
+    if (t !== 'dark' && t !== 'light') {
+      t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+    }
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
-  html, body { margin: 0; padding: 0; background: #f5f5f0; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; color: #222; }
+  /* ── palette ──
+     Every page colour is a token so the two themes are one stylesheet. What is
+     NOT tokenised: the lodestone rung colours (they carry meaning, and read on
+     either ground) and the two span-label fills, which answer to the span they
+     sit on rather than to the page. */
+  :root {
+    --fl-bg: #f5f5f0;          --fl-panel: rgba(245,245,240,0.96);
+    --fl-card: #fbfbf8;        --fl-card-border: #d8d8d0;   --fl-card-line: #e6e6df;
+    --fl-text: #222;           --fl-text2: #556;            --fl-text3: #667;
+    --fl-axis: #445;           --fl-dim: #778;              --fl-dim2: #889;
+    --fl-dim3: #998;           --fl-ghost: #666;            --fl-link: #335;
+    --fl-border: #ccc;         --fl-btn-bg: #fff;           --fl-btn-border: #aaa;
+    --fl-btn-on-bg: #222;      --fl-btn-on-fg: #fff;        --fl-solid: #fff;
+    --fl-wash: #000;           --fl-warn: #a55;             --fl-label: #333;
+    --fl-tip-bg: rgba(20,20,20,0.93);  --fl-tip-border: transparent;
+    --fl-shadow: rgba(0,0,0,0.12);
+  }
+  /* dark unless the reader has explicitly chosen light */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --fl-bg: #101620;        --fl-panel: rgba(16,22,32,0.96);
+      --fl-card: #161d29;      --fl-card-border: #28313f;   --fl-card-line: #242d3a;
+      --fl-text: #e8e8e2;      --fl-text2: #a9b3c2;         --fl-text3: #9aa4b3;
+      --fl-axis: #bcc5d2;      --fl-dim: #8a93a3;           --fl-dim2: #7e8796;
+      --fl-dim3: #767f8d;      --fl-ghost: #8a93a3;         --fl-link: #8fb4e8;
+      --fl-border: #2b3546;    --fl-btn-bg: #1c2431;        --fl-btn-border: #3a4556;
+      --fl-btn-on-bg: #cfe0f5; --fl-btn-on-fg: #101620;     --fl-solid: #161d29;
+      --fl-wash: #fff;         --fl-warn: #e0908a;          --fl-label: #b9c2cf;
+      --fl-tip-bg: rgba(30,38,50,0.97);  --fl-tip-border: #3a4556;
+      --fl-shadow: rgba(0,0,0,0.45);
+    }
+  }
+  /* and dark whenever it is asked for outright — the toggle wins both ways */
+  :root[data-theme="dark"] {
+    --fl-bg: #101620;        --fl-panel: rgba(16,22,32,0.96);
+    --fl-card: #161d29;      --fl-card-border: #28313f;   --fl-card-line: #242d3a;
+    --fl-text: #e8e8e2;      --fl-text2: #a9b3c2;         --fl-text3: #9aa4b3;
+    --fl-axis: #bcc5d2;      --fl-dim: #8a93a3;           --fl-dim2: #7e8796;
+    --fl-dim3: #767f8d;      --fl-ghost: #8a93a3;         --fl-link: #8fb4e8;
+    --fl-border: #2b3546;    --fl-btn-bg: #1c2431;        --fl-btn-border: #3a4556;
+    --fl-btn-on-bg: #cfe0f5; --fl-btn-on-fg: #101620;     --fl-solid: #161d29;
+    --fl-wash: #fff;         --fl-warn: #e0908a;          --fl-label: #b9c2cf;
+    --fl-tip-bg: rgba(30,38,50,0.97);  --fl-tip-border: #3a4556;
+    --fl-shadow: rgba(0,0,0,0.45);
+  }
+
+  html, body { margin: 0; padding: 0; background: var(--fl-bg); font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; color: var(--fl-text); }
   body { padding: 0 16px 40px; }
-  a { color: #335; }
+  a { color: var(--fl-link); }
   #panel {
     position: sticky; top: 0; z-index: 30; margin: 0 -16px 10px; padding: 10px 16px 8px;
-    background: rgba(245,245,240,0.96); border-bottom: 1px solid #ccc; font-size: 11px; line-height: 1.5;
+    background: var(--fl-panel); border-bottom: 1px solid var(--fl-border); font-size: 11px; line-height: 1.5;
   }
   #panel h1 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
-  #panel .sub { color: #556; max-width: 980px; margin: 0 0 6px; }
+  #panel .sub { color: var(--fl-text2); max-width: 980px; margin: 0 0 6px; }
   #panel .row { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-top: 4px; }
-  #panel .row .k { color: #778; min-width: 56px; }
+  #panel .row .k { color: var(--fl-dim); min-width: 56px; }
   #panel button, #panel label.file {
     font-family: inherit; font-size: 10px; padding: 3px 8px; margin: 0;
-    background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer; color: #222;
+    background: var(--fl-btn-bg); border: 1px solid var(--fl-btn-border); border-radius: 3px; cursor: pointer; color: var(--fl-text);
   }
-  #panel button.active { background: #222; color: #fff; border-color: #222; }
+  #panel button.active { background: var(--fl-btn-on-bg); color: var(--fl-btn-on-fg); border-color: var(--fl-btn-on-bg); }
   #panel label.file input { display: none; }
   #rows { display: flex; flex-direction: column; gap: 22px; }
-  .run { border: 1px solid #d8d8d0; border-radius: 4px; background: #fbfbf8; }
-  .run header { padding: 8px 12px 4px; font-size: 11px; line-height: 1.45; border-bottom: 1px solid #e6e6df; }
+  .run { border: 1px solid var(--fl-card-border); border-radius: 4px; background: var(--fl-card); }
+  .run header { padding: 8px 12px 4px; font-size: 11px; line-height: 1.45; border-bottom: 1px solid var(--fl-card-line); }
   .run header .title { font-weight: 600; font-size: 12px; }
-  .run header .meta { color: #667; }
-  .run header .note { color: #667; font-size: 10px; margin-top: 2px; }
-  .run header button.expand { font-family: inherit; font-size: 10px; padding: 1px 7px; margin-left: 8px; background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer; color: #222; vertical-align: 1px; }
-  .run header button.expand:hover { border-color: #222; }
+  .run header .meta { color: var(--fl-text3); }
+  .run header .note { color: var(--fl-text3); font-size: 10px; margin-top: 2px; }
   .run .scroll { overflow-x: auto; overflow-y: hidden; }
   .run svg { display: block; }
-  .col-label { font-size: 10px; fill: #445; }
-  .col-kind { font-size: 9px; fill: #889; }
-  .col-total { font-size: 10px; fill: #445; font-variant-numeric: tabular-nums; }
-  .col-est { fill: #998; }
-  .span { stroke: #f5f5f0; stroke-width: 1; cursor: pointer; }
-  .span:hover { stroke: #222; stroke-width: 1.2; }
-  .span.ghost { stroke: #666; stroke-dasharray: 3 2; fill-opacity: 0.55; }
+  .col-label { font-size: 10px; fill: var(--fl-axis); }
+  .col-kind { font-size: 9px; fill: var(--fl-dim2); }
+  .col-total { font-size: 10px; fill: var(--fl-axis); font-variant-numeric: tabular-nums; }
+  .col-est { fill: var(--fl-dim3); }
+  /* the span's outline is the ground showing between stacked spans */
+  .span { stroke: var(--fl-card); stroke-width: 1; cursor: pointer; }
+  .span:hover { stroke: var(--fl-text); stroke-width: 1.2; }
+  .span.ghost { stroke: var(--fl-ghost); stroke-dasharray: 3 2; fill-opacity: 0.55; }
   .ribbon { stroke: none; }
-  .ribbon.changed { stroke: #777; stroke-width: 0.6; stroke-dasharray: 4 3; }
+  .ribbon.changed { stroke: var(--fl-ghost); stroke-width: 0.6; stroke-dasharray: 4 3; }
   .ribbon:hover { fill-opacity: 0.85 !important; }
-  .readall { fill: #000; fill-opacity: 0.05; stroke: none; }
+  .readall { fill: var(--fl-wash); fill-opacity: 0.05; stroke: none; }
   .stub { stroke: none; }
-  .stub-label { font-size: 8px; fill: #778; }
+  .stub-label { font-size: 8px; fill: var(--fl-dim); }
+  /* these two answer to the span beneath them, not to the page */
   .span-label { font-size: 8.5px; fill: #fff; pointer-events: none; }
-  .span-label.dark { fill: #222; }
+  /* ...except this one, which sits past the column on open ground */
+  .span-label.dark { fill: var(--fl-label); }
   #tip {
     position: fixed; pointer-events: none; display: none; z-index: 40; max-width: 360px;
-    padding: 7px 9px; background: rgba(20,20,20,0.93); color: #f0f0e8; font-size: 10px; line-height: 1.45; border-radius: 3px;
+    padding: 7px 9px; background: var(--fl-tip-bg); border: 1px solid var(--fl-tip-border);
+    color: #f0f0e8; font-size: 10px; line-height: 1.45; border-radius: 3px;
   }
   #tip .h { font-weight: 600; color: #fff; }
   #tip .rung { color: #cfd8ff; }
   #tip .dim { color: #aaa; }
   #peek {
     position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 92vw); z-index: 50; display: none;
-    background: #fff; border-left: 1px solid #bbb; box-shadow: -4px 0 18px rgba(0,0,0,0.12); flex-direction: column;
+    background: var(--fl-solid); border-left: 1px solid var(--fl-border); box-shadow: -4px 0 18px var(--fl-shadow); flex-direction: column;
   }
   #peek.open { display: flex; }
-  #peek header { padding: 8px 12px; border-bottom: 1px solid #ddd; font-size: 11px; display: flex; gap: 8px; align-items: baseline; }
+  #peek header { padding: 8px 12px; border-bottom: 1px solid var(--fl-card-line); font-size: 11px; display: flex; gap: 8px; align-items: baseline; }
   #peek header .t { font-weight: 600; }
-  #peek header .m { color: #778; margin-left: auto; font-size: 10px; }
-  #peek header button { font-family: inherit; font-size: 10px; padding: 2px 7px; background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer; }
+  #peek header .m { color: var(--fl-dim); margin-left: auto; font-size: 10px; }
+  #peek header button { font-family: inherit; font-size: 10px; padding: 2px 7px; background: var(--fl-btn-bg); border: 1px solid var(--fl-btn-border); border-radius: 3px; cursor: pointer; color: var(--fl-text); }
   #peek pre { margin: 0; padding: 12px; overflow: auto; font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; flex: 1; }
-  #legend { margin-top: 18px; font-size: 10px; color: #445; line-height: 1.55; max-width: 1100px; }
+  #legend { margin-top: 18px; font-size: 10px; color: var(--fl-axis); line-height: 1.55; max-width: 1100px; }
   #legend .sw { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 5px; border-radius: 2px; }
   #legend .dims { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2px 16px; margin: 4px 0 8px; }
-  #legend .marks { color: #667; }
-  #status { font-size: 10px; color: #a55; margin-top: 6px; white-space: pre-wrap; }
+  #legend .marks { color: var(--fl-text3); }
+  #status { font-size: 10px; color: var(--fl-warn); margin-top: 6px; white-space: pre-wrap; }
   @media (max-width: 640px) { #panel .sub { display: none; } }
 </style>
 </head>
@@ -419,9 +487,20 @@ function stackSpans(spans) {
   if (OPT.stack === 'stability') arr.sort((a, b) => (STACK_RANK[dimOf(a.s)] ?? 8) - (STACK_RANK[dimOf(b.s)] ?? 8) || a.i - b.i);
   return arr.map(x => x.s);
 }
+/* The rung colours carry meaning and are the same in both themes — with one
+   exception. 'composition' is a near-black neutral chosen to read on the paper
+   ground, and on the dark ground it disappears into it (it is 37 of the spans
+   in the weft session alone). Its dark value is the same neutral role, lifted
+   off the ground, and still clearly darker than the pale 'harness' band it
+   would otherwise be confused with. Add to this map only when a rung genuinely
+   vanishes; every other colour stays put. */
+const DARK_RUNG = { '7': '#9aa0a8' };
+const isDark = () => document.documentElement.getAttribute('data-theme') === 'dark';
+const rungColor = (key) => (isDark() && DARK_RUNG[key]) || (DIMS[key] || DIMS.tool).color;
+
 function spanColor(span, shadeIndex) {
-  const d = DIMS[dimOf(span)] || DIMS.tool;
-  const c = d3.color(d.color);
+  const key = dimOf(span);
+  const c = d3.color(rungColor(key));
   const k = shadeIndex % 3;
   return k === 0 ? c.formatHex() : k === 1 ? c.brighter(0.55).formatHex() : c.darker(0.45).formatHex();
 }
@@ -574,7 +653,7 @@ function renderAll() {
           const lab = (p.span.label || p.span.key).toString();
           const maxChars = Math.max(6, Math.floor(labelRoom / 5.2));
           const txt = lab.length > maxChars ? lab.slice(0, maxChars - 1) + '…' : lab;
-          g.append('text').attr('class', 'span-label dark').attr('x', c.x + c.w + 4).attr('y', p.y0 + Math.min(10, (p.y1 - p.y0) / 2 + 3)).attr('fill', '#333').text(txt);
+          g.append('text').attr('class', 'span-label dark').attr('x', c.x + c.w + 4).attr('y', p.y0 + Math.min(10, (p.y1 - p.y0) / 2 + 3)).text(txt);
         }
       }
       const total = c.m.tokens || 0;
@@ -591,7 +670,7 @@ function renderLegend() {
   const dims = L.append('div').attr('class', 'dims');
   for (const k of ['7', '1', '2', '3', '5', '4', '6', 'harness', 'tool', 'call', 'output', 'loop', 'thinking']) {
     const d = DIMS[k]; const row = dims.append('div');
-    row.append('span').attr('class', 'sw').style('background', d.color);
+    row.append('span').attr('class', 'sw').style('background', rungColor(k));
     row.append('b').text(d.name + (/^\d$/.test(k) ? ` (lodestone ${k})` : '') + ' — ');
     row.append('span').text(d.line);
   }
@@ -675,6 +754,24 @@ document.getElementById('file').addEventListener('change', async (ev) => {
   const known = Object.keys(SOURCES).find(k => list.length === 1 && list[0] === k);
   setActive('data-src', known || (list.join(',') === 'egg-one,mirror,session' ? 'all' : '—'));
   loadSources(list);
+})();
+
+// Embedded same-origin (the ecology page), follow its toggle live rather than
+// only at boot — otherwise the iframe keeps the theme it was born with.
+(function () {
+  if (window.parent === window) return;
+  var root;
+  try { root = window.parent.document.documentElement; } catch (e) { return; }
+  try {
+    new MutationObserver(function () {
+      var t = root.getAttribute('data-theme');
+      if (t !== 'dark' && t !== 'light') return;
+      if (t === document.documentElement.getAttribute('data-theme')) return;
+      document.documentElement.setAttribute('data-theme', t);
+      /* the spans are painted fills, not CSS — they need redrawing */
+      try { renderAll(); renderLegend(); } catch (e) {}
+    }).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
+  } catch (e) {}
 })();
 </script>
 </body>
