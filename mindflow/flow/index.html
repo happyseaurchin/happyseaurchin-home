@@ -29,6 +29,8 @@
   .run header .title { font-weight: 600; font-size: 12px; }
   .run header .meta { color: #667; }
   .run header .note { color: #667; font-size: 10px; margin-top: 2px; }
+  .run header button.expand { font-family: inherit; font-size: 10px; padding: 1px 7px; margin-left: 8px; background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer; color: #222; vertical-align: 1px; }
+  .run header button.expand:hover { border-color: #222; }
   .run .scroll { overflow-x: auto; overflow-y: hidden; }
   .run svg { display: block; }
   .col-label { font-size: 10px; fill: #445; }
@@ -491,7 +493,9 @@ function renderAll() {
   const maxTok = Math.max(...RUNS.map(r => Math.max(...r.moments.map(m => m.tokens || 1))));
   RUNS.forEach((run, ri) => {
     const runMax = Math.max(...run.moments.map(m => m.tokens || 1));
-    const tokensPerPx = (OPT.scale === 'shared' ? maxTok : runMax) / GEOM.H;
+    const expanded = OPT.scale === 'shared' && !!run.expanded;
+    const tokensPerPx = (OPT.scale === 'shared' && !expanded ? maxTok : runMax) / GEOM.H;
+    const magnify = expanded ? maxTok / runMax : 1;
     const cols = layoutRun(run, tokensPerPx);
     const windows = cols.filter(c => c.isWindow);
     const lastCol = cols[cols.length - 1];
@@ -502,7 +506,12 @@ function renderAll() {
     const head = box.append('header');
     head.append('div').attr('class', 'title').text(run.label || run.title || `run ${ri + 1}`);
     const totals = windows.map(c => c.m.tokens || 0);
-    head.append('div').attr('class', 'meta').text(`${windows.length} windows · ${fmt(Math.min(...totals))} → ${fmt(Math.max(...totals))} tokens${OPT.scale === 'shared' ? ' · shared scale' : ' · fitted'}`);
+    const meta = head.append('div').attr('class', 'meta');
+    meta.append('span').text(`${windows.length} windows · ${fmt(Math.min(...totals))} → ${fmt(Math.max(...totals))} tokens${OPT.scale === 'shared' ? (expanded ? ` · expanded ×${magnify.toFixed(1)} against the shared scale` : ' · shared scale') : ' · fitted'}`);
+    if (OPT.scale === 'shared' && RUNS.length > 1 && magnify !== 1 || (OPT.scale === 'shared' && !expanded && runMax < maxTok)) {
+      meta.append('button').attr('class', 'expand').text(expanded ? 'share the scale' : `expand ×${(maxTok / runMax).toFixed(1)}`)
+        .on('click', () => { run.expanded = !run.expanded; renderAll(); });
+    }
     for (const n of (run.notes || [])) head.append('div').attr('class', 'note').text(n);
     const svg = box.append('div').attr('class', 'scroll').append('svg').attr('width', width).attr('height', height);
     // ── flows ──
@@ -581,7 +590,7 @@ function renderLegend() {
     row.append('b').text(d.name + (/^\d$/.test(k) ? ` (lodestone ${k})` : '') + ' — ');
     row.append('span').text(d.line);
   }
-  L.append('div').attr('class', 'marks').html('ribbons — <b>solid</b>: carried unchanged · <b>dashed, paler</b>: carried, content changed · <b>wedge at the left</b>: entered here (a fetched result, a mark that moved) · <b>grey band</b>: the window read whole before the reply · <b>dashed column</b>: a projected next window, the recorded writes landed on it. Column totals: measured tokens, or ≈ estimated from characters at four a token. Stack "by stability" puts the slow rungs at the top so the unbroken band reads as one; "as the prompt reads" keeps the order the mind actually received.');
+  L.append('div').attr('class', 'marks').html('ribbons — <b>solid</b>: carried unchanged · <b>dashed, paler</b>: carried, content changed · <b>wedge at the left</b>: entered here (a fetched result, a mark that moved) · <b>grey band</b>: the window read whole before the reply · <b>dashed column</b>: a projected next window, the recorded writes landed on it. Column totals: measured tokens, or ≈ estimated from characters at four a token. Under a shared scale a small run stays small — that is the comparison; its header's expand button magnifies that one run and says by how much. Stack "by stability" puts the slow rungs at the top so the unbroken band reads as one; "as the prompt reads" keeps the order the mind actually received.');
 }
 
 // tooltip + peek
