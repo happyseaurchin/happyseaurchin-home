@@ -289,6 +289,14 @@
   .foot b{color:var(--vapour);font-weight:700}
 
   @media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
+  /* the ground */
+  .rcard .lab .you{font-family:var(--mono);font-size:9.5px;letter-spacing:0.1em;color:var(--solid);text-transform:uppercase}
+  .rcard.ground .lab{color:var(--vapour-dim);font-style:italic}
+  .held{max-width:720px;margin:0 auto;padding:2px 18px 12px;font-size:0.9rem;line-height:1.5;color:var(--vapour)}
+  .held .hlab{display:block;font-family:var(--mono);font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 4px}
+  .held ol,.heldbox ol{margin:4px 0 0;padding-left:22px} .held li,.heldbox li{margin:3px 0}
+  .heldbox{margin:12px 0 0;color:var(--vapour);font-size:0.95rem;line-height:1.5}
+  body.ground #btn-latch{display:none}
   @media (min-width:700px){ .tile{flex-basis:300px} .rcard{flex-basis:270px} }
 </style>
 </head>
@@ -332,7 +340,7 @@
   <h1>Walk <span class="cool">a family</span>.</h1>
   <p>Any spine, walked as rows — time for a clock family, branches for a tree. Name the family; add your handle if you want to write where you stand.</p>
   <div class="ask__row">
-    <input id="ask-family" type="text" placeholder="the family — e.g. beach-venture, doing" autocapitalize="none" autocomplete="off" spellcheck="false">
+    <input id="ask-family" type="text" placeholder="the family — e.g. beach-venture, doing — or here, the earth-map" autocapitalize="none" autocomplete="off" spellcheck="false">
   </div>
   <div class="ask__row" style="margin-top:10px">
     <input id="ask-handle" type="text" placeholder="your handle (optional)" autocapitalize="none" autocomplete="off" spellcheck="false">
@@ -391,7 +399,7 @@
 <script>
 (function(){
 'use strict';
-const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+let BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';   /* re-pointed at the real by the ground dialect, below */
 const FIELD = 'today-beach-deck';
 
 /* ── handle from /morning/<handle> or ?h= ── */
@@ -500,6 +508,20 @@ const _wq = new URLSearchParams(location.search);
 const _wm = location.pathname.match(/\/walk\/([^\/]+)(?:\/([^\/]+))?\/?$/);
 const VENTURE = (((_wm && decodeURIComponent(_wm[1])) || _wq.get('f') || '').replace(/[^a-z0-9-]/gi, ''));
 const HANDLE_FROM_PATH = ((_wm && _wm[2] && decodeURIComponent(_wm[2])) || _wq.get('h') || '').trim();
+/* ── THE GROUND DIALECT — /walk/here walks the earth-map (ruled 2026-09-14) ──
+ * A third way to walk, beside the clock and the branches: rows of sibling PLACES
+ * along a chosen path — the planets, the continents, the countries, down to the
+ * room — with the map's name and description as the spine, how each place is
+ * held beside it, and everyone's voice at each place. The family lives at the
+ * real, not the apex, and its blocks are named by register rather than by
+ * family (world-genome 2.5): spatial:earth the map, identity:earth how places
+ * are held, identity:<handle> a person's one voice, spatial:<handle> the places
+ * they have added for the keeper's pass to adopt. The address is one number,
+ * eleven digits wide; a zero is undecided ground the walk steps through.
+ * Record: bsp-mcp proposals/2026-09-10-here-the-persons-door.md. */
+const GROUND = VENTURE === 'here' ? { origin: 'https://earth.beach.happyseaurchin.com', world: 'earth', floor: 11 } : null;
+const APEX = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+if (GROUND) BEACH = GROUND.origin + '/.well-known/pscale-beach';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
 let SINCE = 0;                       /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '';
@@ -507,8 +529,8 @@ const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
 let CAST = null;                     /* sed:<family>-cast — member handles, or null while nobody has settled */
 let CASTLENS = 'all';                /* 'all' — every voice stands; 'formal' — members stand, the rest are named aside. Distinct from LENS below, which chooses whose WORDS the rack shows; this chooses whose voices COUNT at a point. */
-let MODE = 'clock';                  /* 'clock' — a floor-10 sundial spine walks as time; 'tree' — any other spine walks as branches */
-const wireAddr = a => MODE === 'clock' ? pad10(a) : String(a);   /* full width is the clock's convention; a tree writes its digits bare */
+let MODE = 'clock';                  /* 'clock' — a floor-10 sundial spine walks as time; 'tree' — any other spine walks as branches; 'ground' — the earth-map walks as places */
+const wireAddr = a => MODE === 'clock' ? pad10(a) : MODE === 'ground' ? gFull(String(a)) : String(a);   /* full width is the clock's and the map's convention; a tree writes its digits bare */
 let BUSY = false;
 const $ = id => document.getElementById(id);
 
@@ -521,13 +543,15 @@ const DEFAULT_PREFS = {
   badges: { voices:true, cards:true },
   workings: false,
   cast: false,
+  ground: { desc: true, held: true },   /* the ground's own dials: the map's description on each card; how the place stood in is held */
 };
 let PREFS = DEFAULT_PREFS;
 try {
   const stored = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
   if (stored) PREFS = { rows: Object.assign({}, DEFAULT_PREFS.rows, stored.rows),
                         badges: Object.assign({}, DEFAULT_PREFS.badges, stored.badges),
-                        workings: !!stored.workings, cast: !!stored.cast };
+                        workings: !!stored.workings, cast: !!stored.cast,
+                        ground: Object.assign({}, DEFAULT_PREFS.ground, stored.ground || {}) };
   /* ONE-TIME MIGRATION (2026-08-25): the count chips default ON — a stored
    * preference from before this ruling had them silently off, and a hidden-by-
    * dial chip reads as breakage days later. Force them on once and mark it;
@@ -688,7 +712,7 @@ function cardHomes(){
   }));
   return out;
 }
-const cardsAt = addr => MODE === 'tree' ? [] : cardHomes().filter(c => c.home === addr);
+const cardsAt = addr => (MODE === 'tree' || MODE === 'ground') ? [] : cardHomes().filter(c => c.home === addr);
 /* in a tree walk, a card aims at the family in its own field 2; the sheet lists them at any branch */
 const famCards = () => cardHomes();
 const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) === addr).length;
@@ -831,7 +855,7 @@ const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(
  * labelled differently, and a person had to be told they were not three places
  * (David, 2026-09-12). The mirror files them all under spine:<field>; this
  * sends that spelling to begin with. */
-const mirrorUrl = addr => 'https://mirror.onen.ai/?block=' +
+const mirrorUrl = addr => GROUND ? gMirrorUrl(addr) : 'https://mirror.onen.ai/?block=' +
   encodeURIComponent('spine:' + VENTURE) + (addr ? '&at=' + wireAddr(addr) : '');
 /* THE ROOM IS NOT A POINT, so it is not named like one. Every link above lands
  * at an ADDRESS in the family (?block=<a block in it>&at=<the address>), which
@@ -860,6 +884,7 @@ function holdingsOf(deck){
  * sheet standing over it, straight back to today's card. Today is the OPENING
  * position, not the position: it is set once, when there is nowhere to keep. */
 async function load(){
+  if (GROUND) return loadGround();
   const first = SEL.level === undefined;
   const d = new Date();
   TODAY = { y: d.getUTCFullYear(), m0: d.getUTCMonth(), d: d.getUTCDate() };
@@ -928,6 +953,7 @@ async function load(){
 
 /* ── render ── */
 function render(){
+  if (GROUND) return renderGround();
   $('bar-fam').textContent = VENTURE;
   $('bar-who').textContent = HANDLE || 'anyone';
   $('foot-tree').href = '/tree/' + encodeURIComponent(VENTURE) + (HANDLE ? '?h=' + encodeURIComponent(HANDLE) : '');
@@ -949,6 +975,7 @@ function clampSel(){
 }
 let LENS = 'spine';                  /* 'spine' — the family's words; 'mine' — your own mirror at each point */
 function lensText(addr){
+  if (GROUND) return gLensText(addr);
   if (LENS === 'mine'){
     const mine = HANDLE ? (MIRRORS.find(x => x[0] === HANDLE) || [])[1] : null;
     return mine ? textAt(mine, addr) : null;
@@ -1097,6 +1124,7 @@ function renderRowsFrom(lv){
   }
 }
 function renderRack(){
+  if (GROUND){ renderGroundRack(); return; }
   if (MODE === 'tree'){
     $('toward').innerHTML = 'the family\u2019s own line · <b>' + esc(short(voice(SPINE) || '', 170)) + '</b>';
     renderTreeRack();
@@ -1145,6 +1173,18 @@ $('rack').addEventListener('click', e => {
   const card = e.target.closest('.rcard'); if (!card) return;
   const badge = e.target.closest('.b');
   const lv = card.dataset.lv;
+  if (lv === 'p'){
+    /* a tap stands there — the rows beneath follow; the same card again, or a count, opens the popup */
+    const depth = +card.dataset.depth, d = card.dataset.d;
+    const was = SEL.gpath;
+    const next = gJump(SEL.gpath.slice(0, depth) + d);
+    const again = next === was;
+    SEL.gpath = next; SEL.level = 'p';
+    renderGroundRack();
+    if (badge) openSheet('voices');
+    else if (again) openSheet('text');
+    return;
+  }
   if (lv === 't'){
     const depth = +card.dataset.depth, d = card.dataset.d;
     const again = SEL.path[depth] === d && SEL.path.length === depth + 1;
@@ -1207,6 +1247,7 @@ function futureDay(){
 }
 /* where you stand follows the deepest card you touched — year, month, week or day */
 function selAddr(){
+  if (SEL.level === 'p') return SEL.gpath;
   if (SEL.level === 't') return SEL.path.join('');
   if (SEL.level === 'ce') return String(SEL.y).slice(0, 2);
   if (SEL.level === 'de') return String(SEL.y).slice(0, 3);
@@ -1218,6 +1259,7 @@ function selAddr(){
   return dayAddr(SEL.y, SEL.m0, SEL.d);
 }
 function selLabel(){
+  if (SEL.level === 'p') return gLabel(SEL.gpath);
   if (SEL.level === 't'){
     const t = textAt(SPINE, SEL.path.join(''));
     return '\u00b7' + SEL.path.join('\u00b7') + (t ? ' \u2014 ' + short(t, 60) : '');
@@ -1265,6 +1307,7 @@ function openGatherSheet(){ SHEET = { gather: true }; paintSheet(); $('sheet-vei
 function closeSheet(){ SHEET = null; $('sheet-veil').classList.add('hidden'); }
 function paintSheet(){
   if (!SHEET) return;
+  if (GROUND){ paintGroundSheet(); return; }
   const tabs = $('sh-tabs');
   if (SHEET.gather){
     tabs.classList.add('hidden');
@@ -1544,6 +1587,330 @@ document.getElementById('btn-latch').addEventListener('click', () => {
   else { localStorage.setItem(keeperKey(), v.trim()); toast('key kept on this device'); }
 });
 document.getElementById('btn-refresh').addEventListener('click', () => load().then(() => toast('re-read')));
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THE GROUND DIALECT — the functions the hooks above call when the family is
+   'here'. Nothing in here runs for a clock or a branch walk.
+   ═══════════════════════════════════════════════════════════════════════ */
+const G_RUNGS = ['the room', 'the household', 'the village', 'the small town', 'the town', 'the large town',
+  'the city', 'the region', 'the country', 'the continent', 'the planet', 'the solar system'];
+function gFull(w){ w = String(w); return w.length <= 11 ? w.padEnd(11, '0') : w.slice(0, 11) + '.' + w.slice(11); }
+function gRung(walk){ const p = 11 - walk.length; return (p >= 0 ? G_RUNGS[Math.min(p, 11)] : 'within the room') + ' ' + (p === 0 ? '0' : p > 0 ? '+' + p : String(p)); }
+const gName = t => (t || '').split(' — ')[0].trim();
+const gProse = t => { const i = (t || '').indexOf(' — '); return i < 0 ? '' : t.slice(i + 3).trim(); };
+/* a strict walk — every digit stepped, a 0 into the underscore, trailing zeros included:
+ * the page keeps zeros in its path to mean "through the undecided rung" */
+function gNode(block, walk){ let n = block; for (const ch of walk){ if (!n || typeof n !== 'object') return undefined; n = ch === '0' ? n['_'] : n[ch]; } return n; }
+function gSem(n){ if (n == null) return null; if (typeof n === 'string') return n.trim() || null; return typeof n['_'] === 'string' ? (n['_'].trim() || null) : null; }
+/* an address whose own node is unvoiced but whose underscore carries the name reads on
+ * through the zero to the name (function:earth 7.2 — the rung and its zero child share one key) */
+function gJump(walk){ if (!walk) return walk; let n = gNode(SPINE, walk), guard = 0; while (n && typeof n === 'object' && !gSem(n) && n['_'] && typeof n['_'] === 'object' && guard++ < 9){ walk += '0'; n = n['_']; } return walk; }
+function gPreview(node){ let n = node, steps = 0; while (n && typeof n === 'object' && !gSem(n) && n['_'] && typeof n['_'] === 'object' && steps < 9){ n = n['_']; steps++; } const t = gSem(n); return t ? { steps, name: gName(t) } : null; }
+/* how a place is held — the string digits one step below it on identity:earth; an underscore
+ * that is itself a named place keeps its own ring */
+function gRing(block, walk){
+  const n = gNode(block, walk); const out = [];
+  if (!n || typeof n !== 'object') return out;
+  for (const d of childDigits(n)) if (typeof n[d] === 'string') out.push({ d, text: n[d].trim() });
+  const u = n['_'];
+  if (u && typeof u === 'object' && typeof u['_'] !== 'string') for (const d of childDigits(u)) if (typeof u[d] === 'string') out.push({ d, text: u[d].trim() });
+  return out;
+}
+function gCensus(walk){
+  const t = gSem(gNode(GCENSUS, walk)); if (!t) return null;
+  const [under, here, grounds, ...rest] = t.split('·').map(x => x.trim());
+  if (!/^\d+$/.test(under || '')) return null;
+  return { under: +under, here: +here || 0, roster: rest.length ? rest.join(',').split(',').map(x => x.trim()).filter(Boolean) : null };
+}
+/* ?at= — one number, eleven digits wide, or a comma-walk; trailing zeros come off */
+function gParseAt(v){
+  v = String(v || '').replace(/\s/g, ''); if (!v) return '';
+  if (v.includes(',')) return /^[0-9]+(,[0-9]+)*$/.test(v) ? v.replace(/,/g, '').replace(/0+$/, '') : '';
+  const m = v.match(/^([0-9]{11})(?:\.([0-9]+))?$/); return m ? (m[1] + (m[2] || '')).replace(/0+$/, '') : '';
+}
+function gLabel(walk){ const t = gSem(gNode(SPINE, walk)); return (t ? gName(t) : 'undecided ground') + ' · ' + gRung(walk); }
+function gMirrorUrl(addr){ return 'https://mirror.onen.ai/?world=' + encodeURIComponent(GROUND.world) + '&block=' + encodeURIComponent('spatial:' + GROUND.world) + '&at=' + gFull(String(addr)); }
+function gLensText(addr){
+  if (LENS === 'mine'){ const mine = HANDLE ? (MIRRORS.find(x => x[0] === HANDLE) || [])[1] : null; return mine ? gSem(gNode(mine, String(addr))) : null; }
+  const t = gSem(gNode(SPINE, String(addr))); return t ? (gProse(t) || null) : null;
+}
+let RING = null, GCENSUS = null, MYADD = null, STAND = '';
+async function readAt(url, name){
+  const r = await fetch(url + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('beach read failed: ' + r.status);
+  return r.json();
+}
+/* the standpoint — the Location line at position 3 of the passport, read where the person
+ * keeps it (the apex) and at the real as the fallback, parsed as the router parses it */
+function gLocationRef(pp){
+  const p3 = pp && pp['3']; if (typeof p3 !== 'string') return null;
+  const m = p3.match(/\*:(https?:\/\/\S+?):spatial:([\w-]+):(\d+(?:\.\d+)?)/) || p3.match(/()spatial:([\w-]+):(\d+(?:\.\d+)?)/);
+  return m ? { world: m[2], addr: m[3] } : null;
+}
+async function gStandpoint(){
+  if (!HANDLE) return '';
+  const [pa, pr] = await Promise.all([readAt(APEX, 'passport:' + HANDLE).catch(() => null), readAt(BEACH, 'passport:' + HANDLE).catch(() => null)]);
+  const ref = gLocationRef(pa) || gLocationRef(pr);
+  return (ref && ref.world === GROUND.world) ? ref.addr.replace('.', '').replace(/0+$/, '') : '';
+}
+async function loadGround(){
+  const first = SEL.level === undefined;
+  const [spine, ring, census, index] = await Promise.all([
+    readBlock('spatial:' + GROUND.world),
+    readBlock('identity:' + GROUND.world).catch(() => null),
+    readBlock('census:' + GROUND.world).catch(() => null),
+    readIndex()
+  ]);
+  if (!spine) throw new Error('spatial:' + GROUND.world + ' is not at the real');
+  SPINE = spine; RING = ring; GCENSUS = census; MODE = 'ground';
+  const blocks = (index && index.blocks) || [];
+  const nameOk = t => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(t);
+  /* every hand's voice on the real: identity:<handle>, the register's own mirror name */
+  const vNames = blocks.filter(b => b.startsWith('identity:') && b !== 'identity:' + GROUND.world && nameOk(b.slice(9)));
+  const got = await Promise.all(vNames.map(n => readBlock(n).catch(() => null)));
+  MIRRORS = vNames.map((n, i) => [n.slice(9), got[i]]).filter(x => x[1]);
+  DECKS = []; POOL_VOICES = []; CAST = null;
+  MYADD = HANDLE ? await readBlock('spatial:' + HANDLE).catch(() => null) : null;
+  if (first){
+    STAND = gJump(await gStandpoint());
+    const at = gParseAt(_wq.get('at'));
+    SEL.gpath = gJump(at || STAND || '3'); SEL.level = 'p';
+  }
+  applyDisplay(); render();
+}
+function renderGround(){
+  $('bar-fam').textContent = 'here · the earth-map';
+  $('bar-who').textContent = HANDLE || 'anyone';
+  $('mast-title').innerHTML = 'The earth-map, <span class="cool">walked</span>.';
+  const mp = document.querySelector('.masthead p:not(.stamp)');
+  if (mp) mp.textContent = 'Slide sideways through the places; tap a card to stand there. Each row follows the one above it — the country you choose decides the regions you see, down to the room. A card says what the map holds for that place; the count says who has spoken there; the popup holds the map’s words, how the place is held, everyone’s voice and — with your handle in the URL — your own.';
+  $('band-title').textContent = 'Walk the earth-map.';
+  const bp = document.querySelector('#review .band-head p:not(.eyebrow)');
+  if (bp) bp.textContent = 'The map’s names and descriptions are the keeper’s. Your voice at a place is yours; a place the map lacks is yours to add, for the keeper’s pass to adopt.';
+  const standName = STAND ? gName(gSem(gNode(SPINE, STAND))) : '';
+  $('mast-since').textContent = HANDLE
+    ? (standName ? 'you stand at ' + standName + ' — the cards marked you are the ladder above it' : 'walking as ' + HANDLE + ' — not placed on the map yet; the door at the real places you')
+    : 'walking as anyone — add your handle to the address to speak where you stand';
+  document.querySelector('.foot').innerHTML =
+    'Everything on this page is read live from the real itself — nothing lives here. Your voice lands on the beach signed by your own key, and nowhere else.' +
+    '<span class="work" id="foot-work"><br><br><b>the blocks</b> — spatial:earth (the map) · identity:earth (how places are held) · identity:&lt;handle&gt; (your voice) · spatial:&lt;handle&gt; (places you add) · census:earth (the tally), all at earth.beach.happyseaurchin.com' +
+    '<br><b>the address</b> — one number, eleven digits wide: 31121111110 reads 33 Firbarn Close; a zero is undecided ground.</span>' +
+    '<br><a id="foot-here" href="/here">your here →</a> · <a id="foot-globe" href="/globe">on the globe →</a> · <a id="foot-gmirror" href="https://mirror.onen.ai/" target="_blank" rel="noopener">the mirror here ↗</a>';
+  renderGroundRack();
+}
+/* a card on the ground: the name, the description (or your voice, in the mine lens), the count */
+function gCard(label, walk, isSel, isYou, ground){
+  const t = gLensText(walk);
+  const vs = lensed(voicesAt(walk)).shown.length;
+  const showDesc = LENS === 'mine' || !!(PREFS.ground && PREFS.ground.desc);
+  const say = LENS === 'mine'
+    ? (t || (isSel ? 'you have not spoken here — tap again to say what this place is to you' : 'you have not spoken here'))
+    : (showDesc ? (t || (ground ? 'undecided ground — the address passes through' : 'no description yet')) : '');
+  return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + (ground ? ' ground' : '') + '" role="button" tabindex="0" data-lv="p" data-depth="' + (walk.length - 1) + '" data-d="' + walk.slice(-1) + '">' +
+    '<span class="lab">' + esc(label) + (isYou ? '<span class="you">you</span>' : '') + '<span class="addr work">' + esc(gFull(walk)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(gMirrorUrl(walk)) + '">mirror ↗</a></span>' +
+    (say ? '<span class="say">' + esc(short(say, 240)) + '</span>' : '') +
+    '<div class="badges">' + (vs ? '<span class="b bv" title="open the voices below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') + '</div></div>';
+}
+/* the rows: at each depth along the path, the siblings — the map's digit children, the
+ * undecided rung beneath as a ground card, and the places you have added that the map has
+ * not adopted yet; the last row is the finer ground beneath where you stand */
+function renderGroundRack(){
+  const g = SEL.gpath, rows = [];
+  for (let i = 0; i <= g.length; i++){
+    const base = g.slice(0, i), parent = i ? gNode(SPINE, base) : SPINE;
+    if (!parent || typeof parent !== 'object') break;
+    const digits = childDigits(parent);
+    const zeroBelow = i > 0 && parent['_'] && typeof parent['_'] === 'object' && (childDigits(parent['_']).length || typeof parent['_']['_'] === 'string');
+    const kids = digits.slice(); if (zeroBelow) kids.push('0');
+    const mineNode = (HANDLE && MYADD) ? gNode(MYADD, base) : null;
+    const add = (mineNode && typeof mineNode === 'object') ? childDigits(mineNode).filter(d => !digits.includes(d) && gSem(mineNode[d])) : [];
+    if (!kids.length && !add.length) break;
+    const cards = kids.map(d => {
+      const walk = base + d, node = d === '0' ? parent['_'] : parent[d], t = gSem(node);
+      const pv = t ? null : gPreview(node);
+      const label = t ? gName(t) : (pv ? '·'.repeat(Math.max(1, pv.steps)) + ' ' + pv.name : 'undecided ground');
+      return gCard(label, walk, g[i] === d, !!STAND && STAND.startsWith(walk), !t);
+    }).concat(add.map(d => gCard(gName(gSem(mineNode[d])) + ' · added by you', base + d, g[i] === d, false, false)));
+    const lab = gRung(base + (kids[0] || add[0])) + (i === g.length ? ' · beneath ' + esc(gName(gSem(gNode(SPINE, g))) || 'here') : '');
+    rows.push('<div class="rw"><div class="rowlab">' + lab + '</div><div class="carousel">' + cards.join('') + '</div></div>');
+    if (i === g.length - 1 && PREFS.ground && PREFS.ground.held){
+      const ring = gRing(RING, g);
+      if (ring.length) rows.push('<div class="held"><span class="hlab">how ' + esc(gName(gSem(gNode(SPINE, g))) || 'this place') + ' is held</span><ol>' + ring.map(r => '<li value="' + r.d + '">' + esc(r.text) + '</li>').join('') + '</ol></div>');
+    }
+  }
+  $('rack').innerHTML = rows.join('');
+  document.querySelectorAll('#rack .carousel').forEach(c => {
+    const el = c.querySelector('.rcard.sel');
+    if (el) c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.offsetWidth) / 2, behavior: 'auto' });
+  });
+  $('toward').innerHTML = 'standing at · <b>' + esc(gLabel(g)) + '</b>';
+  const h = HANDLE ? '/' + encodeURIComponent(HANDLE) : '';
+  const fh = $('foot-here'), fg = $('foot-globe'), fm = $('foot-gmirror');
+  if (fh) fh.href = '/here' + h + '?at=' + gFull(g);
+  if (fg) fg.href = '/globe' + h + '#' + gFull(g);
+  if (fm) fm.href = gMirrorUrl(g);
+}
+/* a place you add takes the lowest digit free in the map and in your additions */
+function gNextFree(walk){
+  const taken = new Set(childDigits(gNode(SPINE, walk) || {}).concat(childDigits(gNode(MYADD, walk) || {})));
+  for (const d of '123456789') if (!taken.has(d)) return d;
+  return null;
+}
+/* THE ONE WRITE, whole: found if absent (born locked, behind the passport gate), else fetch
+ * fresh, set the line at the walk, POST the block with confirm under the key you type. A point
+ * write replaces the node it names, and a bare string over a node carrying a zero chain wipes
+ * everything beneath (function:earth 7.2) — so this page never sends one. */
+async function gSave(kind, walk, text){
+  const name = (kind === 'voice' ? 'identity:' : 'spatial:') + HANDLE;
+  const latchKeyG = 'here-latch:' + name;   /* shared with /here — one key per block, kept on this device */
+  const known = localStorage.getItem(latchKeyG) || localStorage.getItem('now-latch:' + HANDLE) || null;
+  const reach = (obj, w) => { let n = obj; for (const ch of w){ const k = ch === '0' ? '_' : ch; if (n[k] == null) n[k] = {}; else if (typeof n[k] === 'string') n[k] = { '_': n[k] }; n = n[k]; } return n; };
+  const fresh = await readBlock(name).catch(() => undefined);
+  if (fresh === undefined) return 'the beach did not answer — nothing written';
+  if (fresh === null){
+    const [pa, pr] = await Promise.all([readAt(APEX, 'passport:' + HANDLE).catch(() => null), readAt(BEACH, 'passport:' + HANDLE).catch(() => null)]);
+    if (!pa && !pr) return 'no passport named ' + HANDLE + ' at the apex or at the real — a block is named by a passport handle, spelt as the passport spells it';
+    let latch = known;
+    if (!latch){
+      const v = prompt('First voicing founds ' + name + ' at the real, locked to you.\nYour key (kept on this device — check the first letter: phones capitalise it):');
+      if (v === null || !v.trim()) return 'nothing written';
+      latch = v.trim();
+    }
+    let root = kind === 'voice'
+      ? 'MIRROR — ' + HANDLE + "'s own voice on the real, at spatial:" + GROUND.world + "'s self-same addresses: what each place is to " + HANDLE + ', one line at the place\'s own address, in ' + HANDLE + "'s own words, revisable forever. Sovereign; the keeper reads it and compiles from it, never the other way; the self is never a mirror."
+      : 'MIRROR — ' + HANDLE + "'s own map of the real, at spatial:" + GROUND.world + "'s self-same addresses: the places " + HANDLE + ' has added — a house, a road, a room — only where voiced, revisable forever. Sovereign; the keeper\'s pass folds them into the map and replies.';
+    for (let i = 0; i < 11; i++) root = { '_': root };
+    reach(root, walk)['_'] = text;
+    const w = await writeBlock({ block: name, content: root, new_lock: latch });
+    if (!w.ok) return 'the block could not be born (' + w.status + ')';
+    localStorage.setItem(latchKeyG, latch);
+    toast(name + ' born, latched to ' + HANDLE);
+    return true;
+  }
+  const block = JSON.parse(JSON.stringify(fresh));
+  reach(block, walk)['_'] = text;
+  const body = { block: name, content: block, confirm: true };
+  if (known) body.secret = known;
+  let w = await writeBlock(body);
+  if (lockRequired(w)){
+    const v = prompt(name + ' is latched — enter your key (kept on this device; check the first letter — phones capitalise it):');
+    if (v === null || !v.trim()) return 'nothing written';
+    body.secret = v.trim();
+    w = await writeBlock(body);
+    if (w.ok) localStorage.setItem(latchKeyG, v.trim());
+  } else if (w.ok && known) localStorage.setItem(latchKeyG, known);
+  if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
+  return true;
+}
+function paintGroundSheet(){
+  const tabs = $('sh-tabs'); tabs.classList.remove('hidden');
+  const walk = SEL.gpath, node = gNode(SPINE, walk), t = gSem(node);
+  const vs = lensed(voicesAt(walk)).shown;
+  if (SHEET.pane === 'cards') SHEET.pane = 'text';
+  $('sh-where').textContent = gLabel(walk);
+  $('sh-mirror').textContent = 'mirror ↗'; $('sh-mirror').classList.remove('hidden'); $('sh-mirror').href = gMirrorUrl(walk);
+  tabs.querySelectorAll('button').forEach(b => {
+    b.classList.toggle('on', b.dataset.p === SHEET.pane);
+    if (b.dataset.p === 'text') b.textContent = 'the map';
+    if (b.dataset.p === 'voices') b.textContent = 'voices' + (vs.length ? ' · ' + vs.length : '') + (HANDLE ? ' · yours' : '');
+    if (b.dataset.p === 'cards') b.classList.add('hidden');
+  });
+  const b = [];
+  if (SHEET.pane === 'text'){
+    b.push('<div class="fulltext">' + esc(t || 'undecided ground — the address passes through; the world fills it in as it locates itself') + '</div>');
+    const c = gCensus(walk);
+    if (c) b.push('<span class="silent">' + c.under + ' placed at or under here' + (c.here ? ' · ' + c.here + ' exactly here' : '') + (c.roster ? ' · ' + esc(c.roster.join(', ')) : '') + '</span>');
+    const ring = gRing(RING, walk);
+    if (ring.length) b.push('<div class="heldbox"><span class="sub">how this place is held</span><ol>' + ring.map(r => '<li value="' + r.d + '">' + esc(r.text) + '</li>').join('') + '</ol></div>');
+    b.push('<span class="silent">the map’s words are the keeper’s — say what this place is to you in voices; a place the map lacks is yours to add below</span>');
+    if (HANDLE && t && walk.length < 11){
+      const d = gNextFree(walk);
+      b.push('<div class="mirrorbox"><div class="sub">add a place to the earth-map, beneath ' + esc(gName(t)) + '</div>' + (d
+        ? '<textarea id="gadd-text" placeholder="a house, a road, a room the map lacks — named as you would to a friend"></textarea>' +
+          '<div class="row"><span class="hint">lands in your own block, for the keeper’s pass to adopt<span class="work"> · spatial:' + esc(HANDLE) + ' · ' + esc(gFull(walk + d)) + '</span></span><button id="gadd-go">add it</button></div>'
+        : '<span class="hint">no free digit beneath this place</span>') + '</div>');
+    }
+    b.push('<span class="silent work">spatial:' + esc(GROUND.world) + ' · ' + esc(gFull(walk)) + '</span>');
+  } else {
+    b.push(vs.length
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span></div>').join('')
+      : '<span class="silent">nobody has spoken here yet</span>');
+    if (HANDLE && t)
+      b.push('<div class="mirrorbox"><div class="sub">your voice here</div>' +
+        '<textarea id="gv-text" placeholder="what this place is to you — who is here, what it is like"></textarea>' +
+        '<div class="row"><span class="hint">yours, at this place’s own address<span class="work"> · identity:' + esc(HANDLE) + ' · ' + esc(gFull(walk)) + '</span></span><button id="gv-go">voice it</button></div></div>');
+    else if (HANDLE)
+      b.push('<span class="silent">undecided ground has no voice — speak at the decided rung above or below</span>');
+    else
+      b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
+  }
+  $('sh-body').innerHTML = b.join('');
+  const mas = document.getElementById('mir-as');
+  if (mas) mas.addEventListener('click', () => {
+    const h = prompt('Your handle — the walk reloads with you in it:');
+    if (h && h.trim()) location.href = '/walk/here/' + encodeURIComponent(h.trim().replace(/[^a-zA-Z0-9 _-]/g, '')) + '?at=' + gFull(walk);
+  });
+  const gv = document.getElementById('gv-go');
+  if (gv){
+    const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
+    const own = mine ? (gSem(gNode(mine, walk)) || '') : '';
+    if (own) $('gv-text').value = own;
+    gv.addEventListener('click', async () => {
+      if (BUSY) return;
+      const text = $('gv-text').value.trim();
+      if (!text){ toast('nothing to write', true); return; }
+      BUSY = true; gv.disabled = true;
+      try {
+        const res = await gSave('voice', walk, text);
+        if (res === true){ toast('✓ yours, at ' + gName(t)); await loadGround(); paintSheet(); }
+        else toast(res, true);
+      } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
+      finally { BUSY = false; const g = document.getElementById('gv-go'); if (g) g.disabled = false; }
+    });
+    wireEnter($('gv-text'), () => gv.click());
+    if (window.dictate) dictate($('gv-text'));
+  }
+  const ga = document.getElementById('gadd-go');
+  if (ga){
+    ga.addEventListener('click', async () => {
+      if (BUSY) return;
+      const text = $('gadd-text').value.trim();
+      if (!text){ toast('a place needs words', true); return; }
+      const d = gNextFree(walk); if (!d){ toast('no free digit beneath this place', true); return; }
+      BUSY = true; ga.disabled = true;
+      try {
+        const res = await gSave('place', walk + d, text);
+        if (res === true){ toast('added — the pass will fold it into the earth-map'); await loadGround(); paintSheet(); }
+        else toast(res, true);
+      } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
+      finally { BUSY = false; const g = document.getElementById('gadd-go'); if (g) g.disabled = false; }
+    });
+    wireEnter($('gadd-text'), () => ga.click());
+    if (window.dictate) dictate($('gadd-text'));
+  }
+}
+/* the ground's display dials — the clock's rows and the cards have no meaning here */
+if (GROUND){
+  document.body.classList.add('ground');
+  const disp = $('disp');
+  disp.querySelectorAll('input[data-row]').forEach(i => i.closest('label').classList.add('hidden'));
+  const subs = disp.querySelectorAll('span.sub');
+  if (subs[0]) subs[0].classList.add('hidden');
+  if (subs[3]) subs[3].classList.add('hidden');
+  const cb = disp.querySelector('input[data-badge=cards]'); if (cb) cb.closest('label').classList.add('hidden');
+  const dc = document.getElementById('disp-cast'); if (dc) dc.closest('label').classList.add('hidden');
+  const note = disp.querySelector('.note');
+  const sub = document.createElement('span'); sub.className = 'sub'; sub.textContent = 'the ground'; disp.insertBefore(sub, note);
+  const mk = (id, txt) => { const l = document.createElement('label'); l.innerHTML = '<input type="checkbox" id="' + id + '"> ' + txt; disp.insertBefore(l, note); return l.querySelector('input'); };
+  const d1 = mk('disp-gdesc', 'the map’s description on each card');
+  d1.checked = !!PREFS.ground.desc;
+  d1.addEventListener('change', () => { PREFS.ground.desc = d1.checked; savePrefs(); renderGroundRack(); });
+  const d2 = mk('disp-gheld', 'how the place you stand in is held, under its row');
+  d2.checked = !!PREFS.ground.held;
+  d2.addEventListener('change', () => { PREFS.ground.held = d2.checked; savePrefs(); renderGroundRack(); });
+}
 
 /* ── boot ── */
 HANDLE = handleFromUrl();
