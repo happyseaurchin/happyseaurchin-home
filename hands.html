@@ -75,6 +75,15 @@
     display:flex;flex-direction:column;gap:9px}
   .dcard.fam{background:hsl(var(--fam-h) var(--fam-s) var(--fam-l));
     border-color:hsl(var(--fam-h) var(--fam-s) var(--fam-line-l))}
+  /* THE MINT CARD IS AN ACT, NOT A CARD, and carried no style of its own — it
+   * wore the exact skin of the things it makes, so the one place on the page
+   * where a person writes their own intent read as an empty item in a row of
+   * items. Dashed and in the liquid, like every other do-this-now on the site. */
+  .dcard.blank{background:rgba(var(--liquid-rgb),0.07);
+    border:1px dashed rgba(var(--liquid-rgb),0.55);cursor:pointer}
+  .dcard.blank:hover{background:rgba(var(--liquid-rgb),0.13);border-color:var(--liquid)}
+  .dcard.blank .pile,.dcard.blank .txt.add{color:var(--liquid)}
+  .dcard.blank .txt.add{font-weight:600}
   .dcard .aim{font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim);display:flex;gap:8px}
   .dcard.fam .aim{color:hsl(var(--fam-h) var(--fam-s) var(--fam-ink-l))}
   .dcard .aim .st{margin-left:auto;text-transform:none;letter-spacing:0.04em}
@@ -634,7 +643,13 @@ function blankCardEl(){
     + '<span class="aim"><span class="pile">mint</span></span>'
     + '<div class="txt add">＋ write one of your own</div></div>';
 }
-function deckLabel(d){ return d === 'now' ? 'my now' : d; }
+/* the deck's own bare name, for a sentence — 'dealt from beach-venture' */
+function deckName(d){ return d === 'now' ? 'my now' : d; }
+/* the ROW's heading. A deck row is a SOURCE: its cards came FROM somewhere and
+ * nobody in this hand wrote them. The preposition is what carries that, and it
+ * is what tells these rows apart from 'my cards' above, which the holder did
+ * write. David, 2026-09-14. */
+function deckLabel(d){ return 'from ' + deckName(d); }
 /* where a deck's own page is — the walk for a project family, /now for the now.
  * A row that names a source must be able to go there, or the source is a label. */
 function deckHref(d){
@@ -676,9 +691,20 @@ function render(){
     ? '<div class="carousel">' + held.map(c => cardEl(c, { showDeck: true })).join('') + '</div>'
     : '<div class="empty-row">nothing compiled yet — ＋ on any card below puts it here</div>');
 
+  /* ── MY CARDS — written, not dealt, and SECOND on purpose (David, 2026-09-14).
+   * This pile used to render last, below every deck and the confirm row, on the
+   * reasoning that what is held lightly belongs out of the way. But it is the
+   * pile a person WRITES INTO, and the only blank card on the page lives in it —
+   * so the one act of putting down your own intent sat furthest from where a
+   * hand reaches. Under the hand it is, and the decks follow. ── */
+  const mine = CARDS.filter(c => !c.toward);
+  out.push(rowHead('my cards', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
+    links: mine.length ? flick('?aim=mine') : '',
+    sub: 'Written by hand, on no clock and toward no spine — yours alone, answering to nobody’s deck. Click the blank card and type; Enter lands it, Escape leaves.' }));
+  out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
+
   /* ── ONE ROW PER DECK — your now first, then the projects: the grounded work
-   * (the subject's own intention; the spine-defined objectives). The unattached
-   * MINE pile renders at the bottom, held lightly, out of the way. ── */
+   * (the subject's own intention; the spine-defined objectives). ── */
   for (const d of DECKS){
     const cards = CARDS.filter(c => c.toward === d);
     out.push(rowHead(deckLabel(d), cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty', {
@@ -696,13 +722,6 @@ function render(){
       sub: 'Someone else says this happened, at a rung you stand at too. Confirm what you received rather than what you gave — the person whose need was met is the one who knows. It writes one line in your own reading and nothing else moves, and the account stands whether or not you confirm it.' }));
     out.push('<div class="carousel">' + ASKS.map(askCardEl).join('') + '</div>');
   }
-
-  /* ── MINE — written, not dealt; the bottom on purpose. ── */
-  const mine = CARDS.filter(c => !c.toward);
-  out.push(rowHead('mine', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
-    links: mine.length ? flick('?aim=mine') : '',
-    sub: 'Held lightly — written by hand, on no clock and toward no spine. The grounded work lives above: your now, and the projects. Click the blank card and type; Enter lands it, Escape leaves.' }));
-  out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
 
   /* ── DONE TODAY — the day's record, visible where the person looks. A finished
    * card vanished from every row the moment it finished, which read as loss
@@ -737,8 +756,8 @@ function render(){
       b.disabled = true; b.textContent = 'dealing…';
       try {
         const r = await deal(d);
-        if (r.ok) toast('✓ dealt from ' + deckLabel(d));
-        else if (r.none) toast(deckLabel(d) + ' is asking nothing new at today or this week');
+        if (r.ok) toast('✓ dealt from ' + deckName(d));
+        else if (r.none) toast(deckName(d) + ' is asking nothing new at today or this week');
         else if (r.full) toast('that pile holds nine live cards — finish or let go before dealing more', true);
         else if (!r.quiet) toast('the deal did not land', true);
         await reload();
