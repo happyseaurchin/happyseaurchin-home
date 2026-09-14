@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Semantic flow — the window as it is compiled</title>
+<meta name="description" content="A live, Sankey-like view of actual semantic compilation: each vertical line is a context window at one moment (height = tokens), the ribbons carry its spans across the calls of one loop, coloured by which rung of the lodestone they answer to. The sibling of filmstrip-3d, which shows blocks; this shows compilation.">
+<style>
+  html, body { margin: 0; padding: 0; background: #f5f5f0; font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; color: #222; }
+  body { padding: 0 16px 40px; }
+  a { color: #335; }
+  #panel {
+    position: sticky; top: 0; z-index: 30; margin: 0 -16px 10px; padding: 10px 16px 8px;
+    background: rgba(245,245,240,0.96); border-bottom: 1px solid #ccc; font-size: 11px; line-height: 1.5;
+  }
+  #panel h1 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+  #panel .sub { color: #556; max-width: 980px; margin: 0 0 6px; }
+  #panel .row { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin-top: 4px; }
+  #panel .row .k { color: #778; min-width: 56px; }
+  #panel button, #panel label.file {
+    font-family: inherit; font-size: 10px; padding: 3px 8px; margin: 0;
+    background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer; color: #222;
+  }
+  #panel button.active { background: #222; color: #fff; border-color: #222; }
+  #panel label.file input { display: none; }
+  #rows { display: flex; flex-direction: column; gap: 22px; }
+  .run { border: 1px solid #d8d8d0; border-radius: 4px; background: #fbfbf8; }
+  .run header { padding: 8px 12px 4px; font-size: 11px; line-height: 1.45; border-bottom: 1px solid #e6e6df; }
+  .run header .title { font-weight: 600; font-size: 12px; }
+  .run header .meta { color: #667; }
+  .run header .note { color: #667; font-size: 10px; margin-top: 2px; }
+  .run .scroll { overflow-x: auto; overflow-y: hidden; }
+  .run svg { display: block; }
+  .col-label { font-size: 10px; fill: #445; }
+  .col-kind { font-size: 9px; fill: #889; }
+  .col-total { font-size: 10px; fill: #445; font-variant-numeric: tabular-nums; }
+  .col-est { fill: #998; }
+  .span { stroke: #f5f5f0; stroke-width: 1; cursor: pointer; }
+  .span:hover { stroke: #222; stroke-width: 1.2; }
+  .span.ghost { stroke: #666; stroke-dasharray: 3 2; fill-opacity: 0.55; }
+  .ribbon { stroke: none; }
+  .ribbon.changed { stroke: #777; stroke-width: 0.6; stroke-dasharray: 4 3; }
+  .ribbon:hover { fill-opacity: 0.85 !important; }
+  .readall { fill: #000; fill-opacity: 0.05; stroke: none; }
+  .stub { stroke: none; }
+  .stub-label { font-size: 8px; fill: #778; }
+  .span-label { font-size: 8.5px; fill: #fff; pointer-events: none; }
+  .span-label.dark { fill: #222; }
+  #tip {
+    position: fixed; pointer-events: none; display: none; z-index: 40; max-width: 360px;
+    padding: 7px 9px; background: rgba(20,20,20,0.93); color: #f0f0e8; font-size: 10px; line-height: 1.45; border-radius: 3px;
+  }
+  #tip .h { font-weight: 600; color: #fff; }
+  #tip .rung { color: #cfd8ff; }
+  #tip .dim { color: #aaa; }
+  #peek {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 92vw); z-index: 50; display: none;
+    background: #fff; border-left: 1px solid #bbb; box-shadow: -4px 0 18px rgba(0,0,0,0.12); flex-direction: column;
+  }
+  #peek.open { display: flex; }
+  #peek header { padding: 8px 12px; border-bottom: 1px solid #ddd; font-size: 11px; display: flex; gap: 8px; align-items: baseline; }
+  #peek header .t { font-weight: 600; }
+  #peek header .m { color: #778; margin-left: auto; font-size: 10px; }
+  #peek header button { font-family: inherit; font-size: 10px; padding: 2px 7px; background: #fff; border: 1px solid #aaa; border-radius: 3px; cursor: pointer; }
+  #peek pre { margin: 0; padding: 12px; overflow: auto; font-size: 10.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; flex: 1; }
+  #legend { margin-top: 18px; font-size: 10px; color: #445; line-height: 1.55; max-width: 1100px; }
+  #legend .sw { display: inline-block; width: 11px; height: 11px; vertical-align: -1px; margin-right: 5px; border-radius: 2px; }
+  #legend .dims { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 2px 16px; margin: 4px 0 8px; }
+  #legend .marks { color: #667; }
+  #status { font-size: 10px; color: #a55; margin-top: 6px; white-space: pre-wrap; }
+  @media (max-width: 640px) { #panel .sub { display: none; } }
+</style>
+</head>
+<body>
+<div id="panel">
+  <h1>Semantic flow — the window as it is compiled</h1>
+  <p class="sub">Each vertical line is a context window at one moment; its height is the tokens it held. Left to right is one loop — a call, its reply, the next call. The ribbons carry each span forward; a span's colour says which rung of the <a href="https://github.com/pscale-commons/bsp-mcp-server/blob/main/src/lodestone.json" title="pscale://lodestone — the sentinel, bundled in bsp-mcp">lodestone</a> it answers to. The stable rungs run unbroken across every line; the volatile rungs change step to step. Blocks are the sibling view: <a href="../filmstrip-3d/?beach=home">filmstrip-3d</a> shows what stands on the beach; this shows what entered a mind, from where, and what came back.</p>
+  <div class="row"><span class="k">runs</span>
+    <button data-src="egg-one">egg-one · four seat wakes, 14 Aug</button>
+    <button data-src="mirror">mirror ask · happyseaurchin, 12 Sep</button>
+    <button data-src="session">weft · this lane's session, 14 Sep</button>
+    <button data-src="v007">biome wake v007 (recorded)</button>
+    <button data-src="cloop">C-loop · first awakening, 30 Mar</button>
+    <button data-src="all" class="active">the three constitutions</button>
+    <label class="file">upload <input type="file" id="file" accept=".json,application/json" multiple></label>
+  </div>
+  <div class="row"><span class="k">scale</span>
+    <button data-scale="shared" class="active">shared across runs</button>
+    <button data-scale="fit">fit each run</button>
+    <span class="k" style="margin-left:10px">stack</span>
+    <button data-stack="stability" class="active">by stability</button>
+    <button data-stack="window">as the prompt reads</button>
+    <span class="k" style="margin-left:10px">labels</span>
+    <button data-labels="on" class="active">on</button>
+    <button data-labels="off">off</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<div id="rows"></div>
+<div id="legend"></div>
+<div id="tip"></div>
+<div id="peek"><header><span class="t"></span><span class="m"></span><button id="peek-close">close</button></header><pre></pre></div>
+
+<script src="/vendor/d3.v7.min.js"></script>
+<script>
+// ───────────────────────────────────────────────────────────────────────────
+// The lodestone, as colour. Seven dimensions, each a hue; the rung a span
+// answers to is named in its tooltip so the page can say which rung of which
+// block every ribbon is. Sub-rung lines are the lodestone's own sentences,
+// shortened. The mapping from a ref name to a rung is declared here, visibly,
+// and is the page's one editorial act.
+// ───────────────────────────────────────────────────────────────────────────
+const DIMS = {
+  '7': { name: 'composition', color: '#3a3a3a', line: 'HOW THE OTHER SIX GET INTO A WINDOW — the bundle unfolding; whoever curates the composition curates what the thinking wakes inside' },
+  '1': { name: 'stance',      color: '#6b4fbb', line: 'WHO I AM HERE — the constitutive self; slow, it composes first because everything else is read through it' },
+  '2': { name: 'ground',      color: '#4a6fa5', line: 'WHAT THIS MEDIUM IS and what its law is — the physics an act happens within' },
+  '3': { name: 'intention',   color: '#d08a2e', line: 'WHAT I REACH TOWARD — the direction that makes a sequence of turns a trajectory' },
+  '5': { name: 'relation',    color: '#c04a86', line: 'WHO ELSE IS HERE and my standing to them — the between, slow and fast at once' },
+  '4': { name: 'situation',   color: '#3f9a5a', line: 'WHERE AND WHEN I AM, at what grain, and what has moved — the fast dimension' },
+  '6': { name: 'given',       color: '#c9463d', line: "WHAT THIS TURN'S WORK IS — the ask, the gap, the thing in front of you" },
+  'harness':  { name: 'harness',  color: '#cfcfc6', line: 'what the harness adds around the beach — system prompt, tool schemas, memory; never seen by the substrate' },
+  'tool':     { name: 'fetched',  color: '#8a97a8', line: 'a tool result entering the window — a block read, a file, a query' },
+  'output':   { name: 'reply',    color: '#2a8a8a', line: "the mind's own emission — its text and calls, which feed the next window" },
+  'call':     { name: 'call',     color: '#5fb3b3', line: 'a tool call the mind made — it becomes the fetched span in the next window' },
+  'thinking': { name: 'thinking', color: '#d9d3e8', line: 'thought, drawn where it happened and not carried forward' },
+  'loop':     { name: 'in-loop',  color: '#7fb0b0', line: 'work done across the tool turns of one wake — counted, not logged per turn' },
+};
+const STACK_RANK = { harness: 0, '7': 1, '1': 2, '2': 3, '3': 4, '5': 5, '4': 6, '6': 7, tool: 8, output: 9, call: 10, loop: 11, thinking: 12 };
+const RUNG_LINES = {
+  '1.1': 'a shell is a mind\'s persistent structure while the cognition passing through it stays fluid',
+  '1.3': 'Character, Author, Designer, Observer — stances toward the same material; the face decides what you may touch',
+  '1.4': 'a shell any instance may inhabit for the duration — the gatekeeper, the soft-agent; a real change of stance',
+  '2.1': 'position carries the meaning; walking sunstone is the work\'s grammar',
+  '2.5': 'the sentinels stand at every door; a lighthouse is one operator\'s curation of one surface',
+  '3.1': 'purpose is the standing want that outlives a session, kept at your own block and re-read',
+  '3.2': 'what has been done is a block rather than a memory, read at whatever dilation the moment needs',
+  '3.3': 'work has a throw, an arc, a catch and an order; what is not yet ripe stands in a book',
+  '3.4': 'what you want from a surface can be left standing at it — presence is status',
+  '4.2': 'a world\'s public face is what its spatial, temporal and identity registers deliver',
+  '4.5': 'presence has resolution: someone live at your beat is AT the table',
+  '5.1': 'two parties who commit form a channel that is theirs — a place both may write',
+  '5.3': 'a pool is where voices gather at one place; there is no central resolver',
+  '5.4': 'coordination by everyone writing their own mirror at the same addresses',
+  '6.1': 'what arrives with a call is already composed — the moment delivered, not a pointer',
+  '6.4': 'how much of a thing you take is a choice: a point, a walk, a walk with its descent, or the whole',
+  '7.2': 'a set of addresses is itself a block; composing a window is unfolding such a bundle',
+  '7.3': 'a current is an address AND an aperture, never merely a block',
+};
+// ref name (a genus current, a mirror section, a beach block family) → rung
+const REF_RUNG = [
+  [/^(recipe|index)$/, '7.2'],
+  [/^(reflexive|koan)/, '1.1'], [/^(vision|constitution|identity|orientation|declaration|passport|shell|cook|reflective-compass)/, '1'],
+  [/^(soft-agent|soft_agent|gatekeeper)/, '1.4'], [/^(agent_id|face)$/, '1.3'],
+  [/^(slate|sunstone|starstone)/, '2.1'], [/^(whetstone|conventions|block-conventions|manifest|ways|strata|agent-id|open-commons|sundial|genome|capabilities)/, '2'],
+  [/^(purpose)/, '3.1'], [/^(history|daily|review|trace|stash|recent history|recent_history)/, '3.2'], [/^(order|solid history|solid_history)/, '3.4'], [/^(surface)/, '3.4'],
+  [/^(conditions|cadence|last-touched|calendar|news|watch)/, '4'], [/^(now|frame|presence|spatial|temporal|marks|lighthouse)/, '4.5'],
+  [/^(between|relationships|grain|sed)/, '5.1'], [/^(room|liquid|pool|peers)/, '5.3'],
+  [/^(gap|task|the ask|prompt|pending|user)/, '6.1'],
+  [/^(lodestone|function|compile|frame:)/, '7.3'],
+];
+function rungFor(name) {
+  if (!name) return null;
+  const n = String(name).toLowerCase();
+  for (const [re, r] of REF_RUNG) if (re.test(n)) return r;
+  return null;
+}
+function dimOf(span) {
+  if (span.cls && DIMS[span.cls] && !['prompt'].includes(span.cls)) return span.cls;
+  if (span.rung) return span.rung[0];
+  if (span.cls === 'prompt') return '6';
+  return 'tool';
+}
+const CHARS_PER_TOKEN = 4;
+const est = (chars) => (chars || 0) / CHARS_PER_TOKEN;
+
+// ───────────────────────────────────────────────────────────────────────────
+// Adapters — every input becomes a flow document: rows of moments, each a
+// window or an output, each a stack of spans. Only the genus adapter, the
+// mirror adapter and the C-loop adapter know a prompt's shape; the renderer
+// knows only spans and ribbons.
+// ───────────────────────────────────────────────────────────────────────────
+function parseJsonMaybe(s) { try { return JSON.parse(s); } catch { return null; } }
+function pretty(v) { return typeof v === 'string' ? v : JSON.stringify(v, null, 2); }
+
+// A genus window: SYSTEM is {recipe, index, self, …} (self keyed by digit, named by index);
+// MESSAGE is the given {now, gap, between, task, room, liquid, …}. Sectioned by construction.
+// An index entry is a string reference ('purpose', 'reflexive:1:-1') or, in the beach
+// dialect, a nested dilation ({_: 'conditions', 1: …}, {1: '-3'}); a nested entry with no
+// name is the genome's block for that slot. A current whose hydrated text equals its own
+// index entry was never resolved — the reference stands in the window in place of content.
+const GENOME_SLOTS = { '1': 'sunstone', '2': 'reflexive', '3': 'vision', '4': 'purpose', '5': 'conditions', '6': 'history', '7': 'capabilities', '8': 'relationships', '9': 'surface' };
+function refNameOf(slot, v) {
+  if (typeof v === 'string') return { name: v.split(':')[0], label: v };
+  if (v && typeof v === 'object') {
+    const u = typeof v._ === 'string' ? v._ : null;
+    const name = u ? u.split(':')[0] : (GENOME_SLOTS[slot] || `slot ${slot}`);
+    const att = typeof v['1'] === 'string' && /^-?\d+(\.\d+)?$/.test(v['1']) ? ` @${v['1']}` : '';
+    return { name, label: (u || name) + att };
+  }
+  return { name: GENOME_SLOTS[slot] || `slot ${slot}`, label: GENOME_SLOTS[slot] || `slot ${slot}` };
+}
+function genusWindowSpans(sysObj, msgObj) {
+  const spans = [];
+  const index = sysObj.index || {};
+  for (const [k, v] of Object.entries(sysObj)) {
+    if (k === 'self' && v && typeof v === 'object') {
+      for (const [d, cur] of Object.entries(v)) {
+        const { name, label } = refNameOf(d, index[d]);
+        const text = pretty(cur);
+        const unresolved = cur === null || cur === undefined || (index[d] !== undefined && typeof index[d] !== 'string' && text === pretty(index[d]));
+        spans.push({ key: `self:${name}`, label: label + (unresolved ? ' — unresolved' : ''), ref: label, rung: rungFor(name) || '1', cls: 'current', chars: text.length, text: unresolved ? `UNRESOLVED — the window holds the reference itself, not what it points at:\n${text}\n\nThe hydrate that composed this window scooped string references only; a nested dilation entry stayed as written.` : text, side: 'system', unresolved });
+      }
+    } else {
+      const text = pretty(v);
+      spans.push({ key: `sys:${k}`, label: k, ref: k, rung: rungFor(k) || '7.2', cls: 'current', chars: text.length, text, side: 'system' });
+    }
+  }
+  for (const [k, v] of Object.entries(msgObj || {})) {
+    const text = pretty(v);
+    spans.push({ key: `given:${k}`, label: k, ref: k, rung: rungFor(k) || '6.1', cls: 'given', chars: text.length, text, side: 'message' });
+  }
+  return spans;
+}
+function fitTokens(spans, measuredTotal) {
+  const e = spans.reduce((s, x) => s + est(x.chars), 0) || 1;
+  const scale = measuredTotal ? measuredTotal / e : 1;
+  for (const s of spans) s.tokens = Math.max(1, Math.round(est(s.chars) * scale));
+  return spans.reduce((s, x) => s + x.tokens, 0);
+}
+// One genus frame (or a strip of them) → one row. A frame is {ts, system, message, output,
+// usage?, parsed?, extras?}. Consecutive frames are diffed by ref name.
+function adaptGenus(frames, title, notes) {
+  const moments = [];
+  let prevSpans = null;
+  frames.forEach((f, i) => {
+    const sysObj = parseJsonMaybe(f.system) || {}; const msgObj = parseJsonMaybe(f.message) || {};
+    const spans = genusWindowSpans(sysObj, msgObj);
+    const measured = f.usage && f.usage.input_tokens > 50 ? f.usage.input_tokens : null; // a 1-2 token count is the uncached remainder, not the window
+    const total = fitTokens(spans, measured);
+    if (prevSpans) {
+      const prevBy = new Map(prevSpans.map(s => [s.key, s]));
+      for (const s of spans) { const p = prevBy.get(s.key); if (!p) s.new = true; else if (p.text !== s.text) s.changed = true; }
+    }
+    const when = f.ts ? new Date(f.ts) : null;
+    const sameDay = frames.every(x => x.ts && String(x.ts).slice(0, 10) === String(frames[0].ts).slice(0, 10));
+    const stamp = when ? (sameDay ? when.toISOString().slice(11, 16) : when.toISOString().slice(5, 16).replace('T', ' ')) : '';
+    moments.push({ id: `w${i}`, label: `wake ${i + 1}${stamp ? ' · ' + stamp : ''}`, kind: 'window', tokens: total, measured: !!measured, spans });
+    // the reply — what came back from the wake, and what it fed
+    const out = [];
+    const outTokens = f.usage && f.usage.output_tokens ? f.usage.output_tokens : null;
+    const writes = f.parsed && f.parsed.writes ? f.parsed.writes : null;
+    if (writes) {
+      let writeChars = 0;
+      for (const [addr, content] of Object.entries(writes)) {
+        const block = addr.split(':')[0]; const text = pretty(content); writeChars += text.length;
+        out.push({ key: `write:${addr}`, label: `write ${addr}`, ref: addr, rung: rungFor(block) || '3', cls: 'output', chars: text.length, text, feeds: [`self:${block}`] });
+      }
+      if (f.parsed.note) out.push({ key: 'note', label: 'note (the history leaf\'s voicing)', rung: '3.2', cls: 'output', chars: f.parsed.note.length, text: f.parsed.note, feeds: ['self:history'] });
+      const narration = Math.max((f.output || '').length - writeChars, 0);
+      if (narration) out.push({ key: 'narration', label: 'narration', cls: 'output', chars: narration, text: f.output || '', feeds: [] });
+    } else {
+      const ex = f.extras || {};
+      const inner = ex.extras || {};
+      const resp = f.output || '';
+      if (resp.length) out.push({ key: 'reply', label: 'closing text', cls: 'output', chars: resp.length, text: resp, feeds: [] });
+      if (ex.tool_calls !== undefined) out.push({ key: 'loop', label: `${ex.tool_calls} tool calls · ${ex.turns} turns — in-loop work, not logged per turn`, cls: 'loop', chars: null, text: `The seat wake acted across ${ex.turns} turns with ${ex.tool_calls} tool calls (mode ${inner.mode || '?'}). The filmstrip logs the loop's endpoints, not its steps: what each call fetched and how the window grew turn by turn is not recorded today.`, feeds: [] });
+      if (!out.length) out.push({ key: 'reply', label: '(empty reply)', cls: 'output', chars: 0, text: '', feeds: [] });
+    }
+    const eo = out.reduce((s, x) => s + est(x.chars || 0), 0);
+    if (outTokens && eo > 0) { for (const s of out) s.tokens = Math.max(1, Math.round(est(s.chars || 0) * outTokens / eo)); }
+    else for (const s of out) s.tokens = Math.max(1, Math.round(est(s.chars || 0)));
+    const loop = out.find(s => s.key === 'loop');
+    if (loop && outTokens) { const rest = out.filter(s => s !== loop).reduce((a, b) => a + b.tokens, 0); loop.tokens = Math.max(outTokens - rest, Math.round(outTokens * 0.3)); }
+    else if (loop) loop.tokens = Math.max(loop.tokens, 60);
+    moments.push({ id: `o${i}`, label: `reply ${i + 1}`, kind: 'output', tokens: out.reduce((s, x) => s + x.tokens, 0), measured: !!outTokens, reads: 'all', spans: out, model: f.model });
+    prevSpans = spans;
+  });
+  // the return edge: the last reply's writes land on a projected next window
+  const last = frames[frames.length - 1];
+  const lastOut = moments[moments.length - 1];
+  const lastWin = moments[moments.length - 2];
+  if (last && last.parsed && last.parsed.writes) {
+    const spans = lastWin.spans.map(s => ({ ...s, changed: false, new: false }));
+    const by = new Map(spans.map(s => [s.key, s]));
+    for (const w of lastOut.spans) for (const k of (w.feeds || [])) { const t = by.get(k); if (t) { t.changed = true; t.chars += w.chars; t.tokens += w.tokens; } }
+    moments.push({ id: 'wnext', label: 'next window (projected)', kind: 'window', ghost: true, tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
+  } else if (frames.length > 1) {
+    // a strip: the in-loop work of each wake feeds the self-currents that changed by the next window
+    for (let i = 0; i + 1 < frames.length; i++) {
+      const o = moments[2 * i + 1], w = moments[2 * i + 2];
+      const changedSelf = w.spans.filter(s => s.changed && s.key.startsWith('self:')).map(s => s.key);
+      const loop = o.spans.find(s => s.key === 'loop') || o.spans[0];
+      if (loop) loop.feeds = changedSelf;
+    }
+  }
+  // what never resolved, and what moved — the row says it in words as well as colour
+  const unresolved = new Set(), changed = new Map();
+  for (const m of moments) if (m.kind === 'window' && !m.ghost) for (const sp of m.spans) { if (sp.unresolved) unresolved.add(sp.ref); if (sp.changed) changed.set(sp.label, (changed.get(sp.label) || 0) + 1); }
+  const extra = [];
+  if (unresolved.size) extra.push(`Unresolved in the window as composed: ${[...unresolved].join(', ')} — the reference stood in place of content (hairlines at the top of each window).`);
+  if (frames.length > 1 && changed.size) extra.push(`Changed between wakes: ${[...changed.entries()].map(([k, n]) => `${k} ×${n}`).join(', ')}; everything else carried byte-identical.`);
+  return { label: title, notes: [...notes, ...extra], moments };
+}
+
+// A mirror window: the soft template — framing, agent_id/face, then '# section' slots, then the now.
+function adaptMirror(row, title) {
+  const sys = row.system_prompt || '';
+  const spans = [];
+  const push = (key, label, text, rung, cls) => { if (text && text.trim()) spans.push({ key, label, ref: label, rung, cls, chars: text.length, text }); };
+  const idIdx = sys.indexOf('\nagent_id:');
+  const firstHash = sys.indexOf('\n# ');
+  const head = idIdx > 0 ? sys.slice(0, idIdx) : (firstHash > 0 ? sys.slice(0, firstHash) : sys);
+  push('framing', 'soft-agent framing (the shell inhabited)', head, '1.4', 'current');
+  if (idIdx > 0 && firstHash > idIdx) push('identity', 'agent_id · face', sys.slice(idIdx, firstHash), '1.3', 'current');
+  const body = firstHash > 0 ? sys.slice(firstHash) : '';
+  const re = /\n# ([^\n]+)\n([\s\S]*?)(?=\n# |\nnow · |$)/g; let m;
+  while ((m = re.exec(body)) !== null) {
+    const name = m[1].replace(/ — .*$/, '').trim();
+    const short = name.toLowerCase().startsWith('agent shell') ? 'shell (compass)' : name.toLowerCase().startsWith('frame') ? 'frame (where, who is present)' : name;
+    push(`sec:${short}`, short, m[0], rungFor(name.toLowerCase().replace(/^agent shell/, 'shell')) || rungFor(short) || '2', 'current');
+  }
+  const nowIdx = sys.lastIndexOf('\nnow · ');
+  if (nowIdx > 0) push('now', 'now (the clock on the envelope)', sys.slice(nowIdx), '4.5', 'current');
+  push('ask', 'the ask (the person\'s line)', row.user_prompt || '', '6.1', 'given');
+  const measured = row.input_tokens > 50 ? row.input_tokens : null;
+  const total = fitTokens(spans, measured);
+  const ex = row.extras || {};
+  const out = [];
+  if ((row.response || '').length) out.push({ key: 'reply', label: 'reply (what the person heard)', cls: 'output', chars: row.response.length, text: row.response, feeds: [] });
+  if (ex.tool_calls) out.push({ key: 'loop', label: `${ex.tool_calls} tool calls · ${ex.turns} turns — in-loop, not logged per turn`, cls: 'loop', chars: null, text: 'The soft loop read the beach between the ask and the reply. The filmstrip logs its endpoints only.', feeds: [] });
+  const outTokens = row.output_tokens || null;
+  const eo = out.reduce((s, x) => s + est(x.chars || 0), 0) || 1;
+  for (const s of out) s.tokens = Math.max(1, Math.round(est(s.chars || 0) * (outTokens ? outTokens / eo : 1)));
+  const loop = out.find(s => s.key === 'loop'); if (loop) loop.tokens = Math.max(loop.tokens, Math.round((outTokens || 40) * 0.6));
+  const when = row.created_at ? String(row.created_at).slice(0, 16).replace('T', ' ') : '';
+  return { label: title, notes: [`${row.model || ''} · ${when} · face ${ex.face || '?'} · tier ${ex.tier || '?'}`, measured ? '' : 'Window height is estimated from characters (four a token): the logged input count is the uncached remainder after prompt caching, not the window.'].filter(Boolean),
+    moments: [
+      { id: 'w0', label: 'the ask arrives', kind: 'window', tokens: total, measured: !!measured, spans },
+      { id: 'o0', label: 'reply', kind: 'output', tokens: out.reduce((s, x) => s + x.tokens, 0), measured: !!outTokens, reads: 'all', spans: out },
+    ] };
+}
+
+// A C-loop frame: '=== SECTION ===' blocks in system+message, then tool calls one by one, then the output.
+function adaptCloop(frame, title) {
+  const text = (frame.system || '') + '\n' + (frame.message || '');
+  const spans = [];
+  const re = /=== ([A-Z][A-Z0-9 _-]*) ===\n([\s\S]*?)(?=\n=== |$)/g; let m; let last = 0;
+  const lead = text.slice(0, text.search(/=== [A-Z]/) >= 0 ? text.search(/=== [A-Z]/) : 0);
+  if (lead.trim()) spans.push({ key: 'lead', label: 'kernel framing', rung: '1.4', cls: 'current', chars: lead.length, text: lead });
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1].trim(); const low = name.toLowerCase();
+    spans.push({ key: `sec:${low}`, label: low, ref: low, rung: rungFor(low) || '2', cls: 'current', chars: m[0].length, text: m[0] });
+    last = re.lastIndex;
+  }
+  const measured = frame.tokens && (frame.tokens.input || frame.tokens.in) > 50 ? (frame.tokens.input || frame.tokens.in) : null;
+  const moments = [];
+  let cur = spans.map(s => ({ ...s }));
+  fitTokens(cur, null);
+  const tools = frame.tools || [];
+  moments.push({ id: 'w0', label: 'wake', kind: 'window', tokens: cur.reduce((s, x) => s + x.tokens, 0), measured: false, spans: cur });
+  tools.forEach((t, i) => {
+    const inp = typeof t.input === 'string' ? t.input : JSON.stringify(t.input || {});
+    const blk = (inp.match(/'block':\s*'([^']+)'/) || [])[1] || '';
+    const label = `${t.name}${blk ? ' ' + blk : ''}`;
+    const res = t.output !== undefined ? pretty(t.output) : pretty(t.result || '');
+    const call = { key: `call:${i}`, label: `call → ${label}`, cls: 'call', rung: rungFor(blk), chars: inp.length, text: inp, feeds: [`tool:${i}`] };
+    call.tokens = Math.max(1, Math.round(est(inp.length)));
+    moments.push({ id: `o${i}`, label: `step ${i + 1}`, kind: 'output', tokens: call.tokens, measured: false, reads: 'all', spans: [call] });
+    const fetched = { key: `tool:${i}`, label, ref: blk || t.name, rung: rungFor(blk), cls: 'tool', chars: res.length, text: res, new: true };
+    fetched.tokens = Math.max(1, Math.round(est(res.length)));
+    cur = cur.map(s => ({ ...s, new: false })).concat([fetched]);
+    moments.push({ id: `w${i + 1}`, label: `after step ${i + 1}`, kind: 'window', tokens: cur.reduce((s, x) => s + x.tokens, 0), measured: false, spans: cur });
+  });
+  const outT = frame.tokens && (frame.tokens.output || frame.tokens.out) || null;
+  const outSpan = { key: 'output', label: 'output', cls: 'output', chars: (frame.output || '').length, text: frame.output || '', feeds: [] };
+  outSpan.tokens = outT || Math.max(1, Math.round(est(outSpan.chars)));
+  moments.push({ id: 'oend', label: 'output', kind: 'output', tokens: outSpan.tokens, measured: !!outT, reads: 'all', spans: [outSpan] });
+  return { label: title, notes: [`${frame.model || ''} · ${frame.ts || ''} · ${frame.concern || ''}`, 'Heights are estimated from characters; the kernel of that era logged one token count for the whole loop.' + (measured ? ` (logged input ${measured})` : '')], moments };
+}
+
+// Recognise a loaded thing and make rows of it.
+function toRows(data, name) {
+  if (data && data.flow === 1) return (data.rows || []).map(r => ({ ...r, label: r.label || data.title, notes: (data.meta && data.meta.notes) || [], title: data.title }));
+  const asFrame = (r) => ({ ts: r.created_at || r.ts, system: r.system_prompt ?? r.system, message: r.user_prompt ?? r.message, output: r.response ?? r.output, model: r.model, extras: r.extras, parsed: r.parsed,
+    usage: r.usage || { input_tokens: r.input_tokens, output_tokens: r.output_tokens } });
+  const isGenus = (r) => { const s = r.system_prompt ?? r.system; if (typeof s !== 'string' || !s.trim().startsWith('{')) return false; const o = parseJsonMaybe(s); return !!(o && (o.self || o.recipe || o.index)); };
+  const isCloop = (r) => typeof (r.system) === 'string' && /=== [A-Z]/.test(r.system) && !r.system_prompt;
+  if (Array.isArray(data)) {
+    if (data.length && data.every(isGenus)) {
+      const handle = (data[0].extras && ((data[0].extras.extras || {}).genus || data[0].extras.genus)) || 'genus';
+      const first = data[0].created_at || data[0].ts || '';
+      return [adaptGenus(data.map(asFrame), `${handle} — ${data.length} consecutive wakes from ${String(first).slice(0, 10)} (${name})`,
+        ['A window is sectioned by ref by construction: SYSTEM is the recipe, the index and the hydrated self keyed by the index; MESSAGE is the given.',
+         'Consecutive windows are diffed by ref: a solid ribbon carries a current unchanged, a dashed one carries it changed, a stub marks a current that entered.',
+         data.some(r => !(r.input_tokens > 50)) ? 'Window heights are estimated from characters: the logged input count is the uncached remainder after prompt caching. Reply heights are the closing turn\'s measured output.' : ''].filter(Boolean))];
+    }
+    if (data.length && data.every(isCloop)) return data.map((f, i) => adaptCloop(f, `${name} · frame ${i + 1}`));
+    if (data.length && data.every(r => typeof r.system_prompt === 'string')) return data.map((r, i) => adaptMirror(r, `${name} · row ${i + 1}`));
+  } else if (data && typeof data === 'object') {
+    if (isGenus(data)) return [adaptGenus([asFrame(data)], `${name} — one wake`, ['One recorded wake: the bundle unfolded, the reply, and the writes landing on a projected next window.'])];
+    if (isCloop(data)) return [adaptCloop(data, name)];
+    if (typeof data.system_prompt === 'string') return [adaptMirror(data, name)];
+  }
+  throw new Error(`unrecognised shape in ${name}`);
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Renderer — columns and ribbons.
+// ───────────────────────────────────────────────────────────────────────────
+const OPT = { scale: 'shared', stack: 'stability', labels: 'on' };
+const GEOM = { colW: 24, replyW: 14, pitch: 260, replyAt: 0.58, marginL: 96, marginR: 70, top: 34, bottom: 30, H: 540, gap: 1.5 };
+let RUNS = [];
+
+function stackSpans(spans) {
+  const arr = spans.map((s, i) => ({ s, i }));
+  if (OPT.stack === 'stability') arr.sort((a, b) => (STACK_RANK[dimOf(a.s)] ?? 8) - (STACK_RANK[dimOf(b.s)] ?? 8) || a.i - b.i);
+  return arr.map(x => x.s);
+}
+function spanColor(span, shadeIndex) {
+  const d = DIMS[dimOf(span)] || DIMS.tool;
+  const c = d3.color(d.color);
+  const k = shadeIndex % 3;
+  return k === 0 ? c.formatHex() : k === 1 ? c.brighter(0.55).formatHex() : c.darker(0.45).formatHex();
+}
+function fmt(n) { return n === null || n === undefined ? '—' : n.toLocaleString('en-GB'); }
+
+// Windows are the main columns, one pitch apart; a reply sits between two windows and is
+// drawn ABOVE the persistence ribbons — the harness, the currents, the earlier fetches carry
+// window to window, never through the reply. The reply receives the window whole (the grey
+// band) and feeds the next window what it emitted: its text, its calls, its writes.
+function layoutRun(run, tokensPerPx) {
+  const cols = []; let wi = 0;
+  run.moments.forEach((m, ci) => {
+    const spans = stackSpans(m.spans);
+    const isWindow = m.kind === 'window';
+    const x = isWindow ? GEOM.marginL + wi * GEOM.pitch : GEOM.marginL + Math.max(wi - 1, 0) * GEOM.pitch + GEOM.pitch * GEOM.replyAt;
+    if (isWindow) wi++;
+    let y = GEOM.top; const shade = new Map();
+    const placed = spans.map(s => {
+      const dim = dimOf(s); const idx = shade.get(dim) || 0; shade.set(dim, idx + 1);
+      const h = Math.max((s.tokens || 0) / tokensPerPx, 1.5);
+      const p = { span: s, y0: y, y1: y + h, color: spanColor(s, idx), col: ci, m };
+      y += h + GEOM.gap; return p;
+    });
+    cols.push({ m, x, w: isWindow ? GEOM.colW : GEOM.replyW, placed, isWindow, index: ci });
+  });
+  return cols;
+}
+// flows from A to B: 'persist' matches the same key (a window carrying to the next window);
+// 'feed' follows a reply span's declared feeds, or its own key when it declares none.
+function flowsBetween(A, B, mode) {
+  const flows = [];
+  const byKeyB = new Map(B.placed.map(p => [p.span.key, p]));
+  for (const a of A.placed) {
+    let targets;
+    if (mode === 'persist') targets = byKeyB.get(a.span.key) ? [byKeyB.get(a.span.key)] : [];
+    else targets = a.span.feeds !== undefined ? a.span.feeds.map(k => byKeyB.get(k)).filter(Boolean) : (byKeyB.get(a.span.key) ? [byKeyB.get(a.span.key)] : []);
+    for (const b of targets) flows.push({ a, b, A, B, mode });
+  }
+  return flows;
+}
+// Offsets: a source splits its height among its outgoing flows by the targets' tokens; a
+// target splits its height among ALL incoming flows (persistence and feeds together) by the
+// sources' tokens, so a carried current with a thread from the reply shows both.
+function assignOffsets(flows) {
+  const outBy = d3.group(flows, f => f.a);
+  for (const [a, fs] of outBy) {
+    fs.sort((p, q) => p.b.y0 - q.b.y0);
+    const h = a.y1 - a.y0; const tot = fs.reduce((s, f) => s + (f.b.span.tokens || 1), 0) || 1;
+    let y = a.y0;
+    for (const f of fs) { const hh = fs.length === 1 ? h : h * (f.b.span.tokens || 1) / tot; f.ay0 = y; f.ay1 = y + hh; y += hh; }
+  }
+  const inBy = d3.group(flows, f => f.b);
+  for (const [b, fs] of inBy) {
+    fs.sort((p, q) => (p.a.y0 - q.a.y0) || (p.mode === 'persist' ? -1 : 1));
+    const h = b.y1 - b.y0; const tot = fs.reduce((s, f) => s + (f.a.span.tokens || 1), 0) || 1;
+    let y = b.y0;
+    for (const f of fs) { const hh = fs.length === 1 ? h : h * (f.a.span.tokens || 1) / tot; f.by0 = y; f.by1 = y + hh; y += hh; }
+  }
+}
+function ribbonPath(xa, ya0, ya1, xb, yb0, yb1) {
+  const cx = (xa + xb) / 2;
+  return `M${xa},${ya0} C${cx},${ya0} ${cx},${yb0} ${xb},${yb0} L${xb},${yb1} C${cx},${yb1} ${cx},${ya1} ${xa},${ya1} Z`;
+}
+function extent(c) { return c.placed.length ? [c.placed[0].y0, c.placed[c.placed.length - 1].y1] : [GEOM.top, GEOM.top]; }
+
+function renderAll() {
+  const host = d3.select('#rows'); host.selectAll('*').remove();
+  if (!RUNS.length) return;
+  const maxTok = Math.max(...RUNS.map(r => Math.max(...r.moments.map(m => m.tokens || 1))));
+  RUNS.forEach((run, ri) => {
+    const runMax = Math.max(...run.moments.map(m => m.tokens || 1));
+    const tokensPerPx = (OPT.scale === 'shared' ? maxTok : runMax) / GEOM.H;
+    const cols = layoutRun(run, tokensPerPx);
+    const windows = cols.filter(c => c.isWindow);
+    const lastCol = cols[cols.length - 1];
+    const width = lastCol.x + lastCol.w + GEOM.marginR + (lastCol.isWindow ? 0 : 40);
+    const rowH = Math.min(GEOM.H, Math.ceil(runMax / tokensPerPx) + 4); // a run takes the height it needs under a shared scale
+    const height = GEOM.top + rowH + GEOM.bottom + 40;
+    const box = host.append('div').attr('class', 'run');
+    const head = box.append('header');
+    head.append('div').attr('class', 'title').text(run.label || run.title || `run ${ri + 1}`);
+    const totals = windows.map(c => c.m.tokens || 0);
+    head.append('div').attr('class', 'meta').text(`${windows.length} windows · ${fmt(Math.min(...totals))} → ${fmt(Math.max(...totals))} tokens${OPT.scale === 'shared' ? ' · shared scale' : ' · fitted'}`);
+    for (const n of (run.notes || [])) head.append('div').attr('class', 'note').text(n);
+    const svg = box.append('div').attr('class', 'scroll').append('svg').attr('width', width).attr('height', height);
+    // ── flows ──
+    const flows = [];
+    for (let i = 0; i + 1 < windows.length; i++) flows.push(...flowsBetween(windows[i], windows[i + 1], 'persist'));
+    const readBands = [];
+    cols.forEach((c, ci) => {
+      if (c.isWindow) return;
+      const prevW = [...cols.slice(0, ci)].reverse().find(x => x.isWindow);
+      const nextW = cols.slice(ci + 1).find(x => x.isWindow);
+      if (prevW && c.m.reads === 'all') readBands.push([prevW, c]);
+      if (nextW) flows.push(...flowsBetween(c, nextW, 'feed'));
+    });
+    assignOffsets(flows);
+    const gPersist = svg.append('g'), gRead = svg.append('g'), gFeed = svg.append('g');
+    for (const f of flows) {
+      const changed = !!f.b.span.changed && f.mode === 'persist';
+      const feed = f.mode === 'feed';
+      (feed ? gFeed : gPersist).append('path').attr('class', 'ribbon' + (changed ? ' changed' : ''))
+        .attr('d', ribbonPath(f.A.x + f.A.w, f.ay0, f.ay1, f.B.x, f.by0, f.by1))
+        .attr('fill', feed ? f.a.color : f.b.color).attr('fill-opacity', changed ? 0.26 : feed ? 0.62 : 0.5)
+        .on('mousemove', (ev) => showTip(ev, f.b.span, f.B.m, feed ? `fed by ${f.a.span.label}` : changed ? 'carried — content changed' : 'carried unchanged'))
+        .on('mouseleave', hideTip);
+    }
+    for (const [A, B] of readBands) {
+      const [a0, a1] = extent(A), [b0, b1] = extent(B);
+      gRead.append('path').attr('class', 'readall').attr('d', ribbonPath(A.x + A.w, a0, a1, B.x, b0, b1))
+        .append('title').text('the window, read whole — the mind consumed everything to the left before emitting what is to the right');
+    }
+    // ── entry stubs: window spans nothing carried and nothing fed ──
+    const fed = new Set(flows.map(f => f.b));
+    windows.forEach((c, wi) => {
+      if (wi === 0) return;
+      for (const p of c.placed) {
+        if (fed.has(p) || p.span.cls === 'harness' || p.span.cls === 'prompt') continue;
+        const x0 = c.x - 30;
+        gFeed.append('path').attr('class', 'stub').attr('fill', p.color).attr('fill-opacity', 0.4).attr('d', `M${x0},${(p.y0 + p.y1) / 2} L${c.x},${p.y0} L${c.x},${p.y1} Z`)
+          .on('mousemove', (ev) => showTip(ev, p.span, c.m, 'entered here')).on('mouseleave', hideTip);
+        if (p.y1 - p.y0 > 9 && OPT.labels === 'on') svg.append('text').attr('class', 'stub-label').attr('x', x0 - 2).attr('y', (p.y0 + p.y1) / 2 + 3).attr('text-anchor', 'end').text(p.span.new ? (p.span.cls === 'tool' ? 'fetched' : 'enters') : 'moved');
+      }
+    });
+    // ── columns ──
+    cols.forEach((c) => {
+      const g = svg.append('g');
+      g.append('text').attr('class', 'col-label').attr('x', c.x + c.w / 2).attr('y', GEOM.top - 18).attr('text-anchor', 'middle').text(c.m.label);
+      g.append('text').attr('class', 'col-kind').attr('x', c.x + c.w / 2).attr('y', GEOM.top - 7).attr('text-anchor', 'middle').text(c.isWindow ? 'window' : 'emitted');
+      const labelRoom = c.isWindow ? GEOM.pitch * GEOM.replyAt - c.w - 12 : GEOM.pitch * (1 - GEOM.replyAt) - c.w - 12;
+      for (const p of c.placed) {
+        g.append('rect').attr('class', 'span' + (c.m.ghost ? ' ghost' : '')).attr('x', c.x).attr('y', p.y0).attr('width', c.w).attr('height', Math.max(p.y1 - p.y0, 0.8))
+          .attr('fill', p.color).attr('fill-opacity', p.span.unresolved ? 0.35 : 1)
+          .on('mousemove', (ev) => showTip(ev, p.span, c.m, p.span.unresolved ? 'UNRESOLVED reference' : p.span.new ? 'entered here' : p.span.changed ? 'changed since the last window' : ''))
+          .on('mouseleave', hideTip)
+          .on('click', () => openPeek(p.span, c.m));
+        if (OPT.labels === 'on' && (p.y1 - p.y0) >= 11) {
+          const lab = (p.span.label || p.span.key).toString();
+          const maxChars = Math.max(6, Math.floor(labelRoom / 5.2));
+          const txt = lab.length > maxChars ? lab.slice(0, maxChars - 1) + '…' : lab;
+          g.append('text').attr('class', 'span-label dark').attr('x', c.x + c.w + 4).attr('y', p.y0 + Math.min(10, (p.y1 - p.y0) / 2 + 3)).attr('fill', '#333').text(txt);
+        }
+      }
+      const total = c.m.tokens || 0;
+      g.append('text').attr('class', 'col-total' + (c.m.measured ? '' : ' col-est')).attr('x', c.x + c.w / 2).attr('y', GEOM.top + rowH + 16).attr('text-anchor', 'middle').text((c.m.measured ? '' : '≈') + fmt(total));
+      if (c.m.model) g.append('text').attr('class', 'col-kind').attr('x', c.x + c.w / 2).attr('y', GEOM.top + rowH + 28).attr('text-anchor', 'middle').text(c.m.model.replace('claude-', ''));
+    });
+    svg.append('text').attr('class', 'col-kind').attr('x', width - 8).attr('y', GEOM.top + rowH + 16).attr('text-anchor', 'end').text('time →');
+  });
+  renderLegend();
+}
+function renderLegend() {
+  const L = d3.select('#legend'); L.selectAll('*').remove();
+  L.append('div').text('colour — which rung of the lodestone a span answers to (hover any span for its exact rung):');
+  const dims = L.append('div').attr('class', 'dims');
+  for (const k of ['7', '1', '2', '3', '5', '4', '6', 'harness', 'tool', 'call', 'output', 'loop', 'thinking']) {
+    const d = DIMS[k]; const row = dims.append('div');
+    row.append('span').attr('class', 'sw').style('background', d.color);
+    row.append('b').text(d.name + (/^\d$/.test(k) ? ` (lodestone ${k})` : '') + ' — ');
+    row.append('span').text(d.line);
+  }
+  L.append('div').attr('class', 'marks').html('ribbons — <b>solid</b>: carried unchanged · <b>dashed, paler</b>: carried, content changed · <b>wedge at the left</b>: entered here (a fetched result, a mark that moved) · <b>grey band</b>: the window read whole before the reply · <b>dashed column</b>: a projected next window, the recorded writes landed on it. Column totals: measured tokens, or ≈ estimated from characters at four a token. Stack "by stability" puts the slow rungs at the top so the unbroken band reads as one; "as the prompt reads" keeps the order the mind actually received.');
+}
+
+// tooltip + peek
+const tip = document.getElementById('tip');
+function showTip(ev, span, moment, extra) {
+  const dim = dimOf(span); const d = DIMS[dim] || DIMS.tool;
+  const rungLine = span.rung && RUNG_LINES[span.rung] ? `<div class="rung">lodestone ${span.rung} — ${RUNG_LINES[span.rung]}</div>` : span.rung ? `<div class="rung">lodestone ${span.rung}</div>` : '';
+  tip.innerHTML = `<div class="h">${escapeHtml(span.label || span.key)}</div>` +
+    `<div class="dim">${d.name}${/^\d$/.test(dim) ? ' · lodestone ' + dim : ''} · ${moment.kind}${moment.label ? ' · ' + escapeHtml(moment.label) : ''}</div>` + rungLine +
+    `<div>${span.chars !== null && span.chars !== undefined ? fmt(span.chars) + ' chars · ' : ''}${fmt(span.tokens)} tokens${moment.measured ? '' : ' (≈)'}${extra ? ' · ' + extra : ''}</div>` +
+    (span.text ? `<div style="color:#bbb;margin-top:3px">${escapeHtml(String(span.text).slice(0, 220))}${String(span.text).length > 220 ? '…' : ''}</div>` : '');
+  tip.style.display = 'block';
+  const x = Math.min(ev.clientX + 14, window.innerWidth - 380), y = Math.min(ev.clientY + 14, window.innerHeight - 160);
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+}
+function hideTip() { tip.style.display = 'none'; }
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function openPeek(span, moment) {
+  const p = document.getElementById('peek');
+  p.querySelector('.t').textContent = span.label || span.key;
+  p.querySelector('.m').textContent = `${moment.label || moment.kind} · ${fmt(span.chars)} chars · ${fmt(span.tokens)} tokens${span.rung ? ' · lodestone ' + span.rung : ''}`;
+  p.querySelector('pre').textContent = span.text ? (String(span.text).length > 60000 ? String(span.text).slice(0, 60000) + '\n…' : span.text) : '(no text carried for this span — this source carries labels and sizes only)';
+  p.classList.add('open');
+}
+document.getElementById('peek-close').onclick = () => document.getElementById('peek').classList.remove('open');
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.getElementById('peek').classList.remove('open'); });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Sources
+// ───────────────────────────────────────────────────────────────────────────
+const SOURCES = {
+  'egg-one': 'data/egg-one-seat-2026-08-14.json',
+  'mirror': 'data/mirror-happyseaurchin-2026-09-12.json',
+  'session': 'data/session-weft-2026-09-14.json',
+  'v007': '../biome-filmstrip/examples/sample-wake-v007.json',
+  'cloop': '../filmstrip/examples/birth-first-awakening.json',
+};
+const status = (s) => { document.getElementById('status').textContent = s; };
+async function loadSources(list) {
+  const rows = []; const errs = [];
+  for (const item of list) {
+    const url = SOURCES[item] || item;
+    try {
+      const r = await fetch(url); if (!r.ok) throw new Error(`${r.status}`);
+      const data = await r.json();
+      rows.push(...toRows(data, item.replace(/^.*\//, '')));
+    } catch (e) { errs.push(`${item}: ${e.message}`); }
+  }
+  RUNS = rows; renderAll();
+  status(errs.length ? 'could not load — ' + errs.join(' · ') : '');
+}
+function setActive(attr, val) { document.querySelectorAll(`#panel button[${attr}]`).forEach(b => b.classList.toggle('active', b.getAttribute(attr) === val)); }
+document.querySelectorAll('#panel button[data-src]').forEach(b => b.onclick = () => {
+  const v = b.getAttribute('data-src'); setActive('data-src', v);
+  const list = v === 'all' ? ['egg-one', 'mirror', 'session'] : [v];
+  const u = new URL(location.href); u.searchParams.set('source', list.join(',')); history.replaceState(null, '', u);
+  loadSources(list);
+});
+document.querySelectorAll('#panel button[data-scale]').forEach(b => b.onclick = () => { OPT.scale = b.getAttribute('data-scale'); setActive('data-scale', OPT.scale); renderAll(); });
+document.querySelectorAll('#panel button[data-stack]').forEach(b => b.onclick = () => { OPT.stack = b.getAttribute('data-stack'); setActive('data-stack', OPT.stack); renderAll(); });
+document.querySelectorAll('#panel button[data-labels]').forEach(b => b.onclick = () => { OPT.labels = b.getAttribute('data-labels'); setActive('data-labels', OPT.labels); renderAll(); });
+document.getElementById('file').addEventListener('change', async (ev) => {
+  const files = [...ev.target.files]; const rows = []; const errs = [];
+  for (const f of files) { try { rows.push(...toRows(JSON.parse(await f.text()), f.name)); } catch (e) { errs.push(`${f.name}: ${e.message}`); } }
+  RUNS = rows; renderAll(); setActive('data-src', '—'); status(errs.join(' · '));
+});
+(function boot() {
+  const params = new URLSearchParams(location.search);
+  const src = params.get('source');
+  if (params.get('scale') === 'fit') { OPT.scale = 'fit'; setActive('data-scale', 'fit'); }
+  if (params.get('stack') === 'window') { OPT.stack = 'window'; setActive('data-stack', 'window'); }
+  let list = src ? src.split(',').map(s => s.trim()).filter(Boolean) : ['egg-one', 'mirror', 'session'];
+  if (list.includes('all')) list = ['egg-one', 'mirror', 'session'];
+  const known = Object.keys(SOURCES).find(k => list.length === 1 && list[0] === k);
+  setActive('data-src', known || (list.join(',') === 'egg-one,mirror,session' ? 'all' : '—'));
+  loadSources(list);
+})();
+</script>
+</body>
+</html>
