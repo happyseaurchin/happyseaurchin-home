@@ -1174,15 +1174,21 @@ $('rack').addEventListener('click', e => {
   const badge = e.target.closest('.b');
   const lv = card.dataset.lv;
   if (lv === 'p'){
-    /* a tap stands there — the rows beneath follow; the same card again, or a count, opens the popup */
+    /* THE LADDER IS NEVER LOST BY TAPPING IT. A card already on the path — an ancestor
+     * or the terminus — opens its own popup and moves nothing: tapping Earth while
+     * standing in the kitchen used to stand you at Earth and drop every rung beneath
+     * (David, 2026-09-14: "I can only see two rungs"). A card on your standpoint's
+     * ladder, marked you, unfolds the whole ladder again. Only a card off both stands
+     * there, and the rows beneath follow it. */
     const depth = +card.dataset.depth, d = card.dataset.d;
-    const was = SEL.gpath;
-    const next = gJump(SEL.gpath.slice(0, depth) + d);
-    const again = next === was;
-    SEL.gpath = next; SEL.level = 'p';
+    const walk = SEL.gpath.slice(0, depth) + d;
+    const onPath = SEL.gpath.slice(0, depth + 1) === walk;
+    const onLadder = !!STAND && STAND.startsWith(walk);
+    if (onPath){ G_SHEET_WALK = gJump(walk); openSheet(badge ? 'voices' : 'text'); return; }
+    if (onLadder && !badge){ SEL.gpath = STAND; SEL.level = 'p'; renderGroundRack(); return; }
+    SEL.gpath = gJump(walk); SEL.level = 'p';
     renderGroundRack();
-    if (badge) openSheet('voices');
-    else if (again) openSheet('text');
+    if (badge){ G_SHEET_WALK = SEL.gpath; openSheet('voices'); }
     return;
   }
   if (lv === 't'){
@@ -1636,6 +1642,7 @@ function gLensText(addr){
   const t = gSem(gNode(SPINE, String(addr))); return t ? (gProse(t) || null) : null;
 }
 let RING = null, GCENSUS = null, MYADD = null, STAND = '';
+let G_SHEET_WALK = '';               /* the place the popup is open at — an ancestor on the path, or the terminus */
 async function readAt(url, name){
   const r = await fetch(url + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
   if (r.status === 404) return null;
@@ -1685,7 +1692,7 @@ function renderGround(){
   $('bar-who').textContent = HANDLE || 'anyone';
   $('mast-title').innerHTML = 'The earth-map, <span class="cool">walked</span>.';
   const mp = document.querySelector('.masthead p:not(.stamp)');
-  if (mp) mp.textContent = 'Slide sideways through the places; tap a card to stand there. Each row follows the one above it — the country you choose decides the regions you see, down to the room. A card says what the map holds for that place; the count says who has spoken there; the popup holds the map’s words, how the place is held, everyone’s voice and — with your handle in the URL — your own.';
+  if (mp) mp.textContent = 'Slide sideways through the places. Tap a card to stand there and the rows beneath follow it; tap a card on your own ladder and the popup opens without losing a rung. A card says what the map holds for that place; the count says who has spoken there; the popup holds the map’s words, how the place is held, everyone’s voice and — with your handle in the URL — your own.';
   $('band-title').textContent = 'Walk the earth-map.';
   const bp = document.querySelector('#review .band-head p:not(.eyebrow)');
   if (bp) bp.textContent = 'The map’s names and descriptions are the keeper’s. Your voice at a place is yours; a place the map lacks is yours to add, for the keeper’s pass to adopt.';
@@ -1745,7 +1752,10 @@ function renderGroundRack(){
     const el = c.querySelector('.rcard.sel');
     if (el) c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.offsetWidth) / 2, behavior: 'auto' });
   });
-  $('toward').innerHTML = 'standing at · <b>' + esc(gLabel(g)) + '</b>';
+  $('toward').innerHTML = 'standing at · <b>' + esc(gLabel(g)) + '</b>' +
+    (STAND && g !== STAND ? ' · <a href="#" id="tw-stand" title="unfold the ladder above where you are placed">back to where you stand →</a>' : '');
+  const tw = $('tw-stand');
+  if (tw) tw.addEventListener('click', e => { e.preventDefault(); SEL.gpath = STAND; SEL.level = 'p'; renderGroundRack(); });
   const h = HANDLE ? '/' + encodeURIComponent(HANDLE) : '';
   const fh = $('foot-here'), fg = $('foot-globe'), fm = $('foot-gmirror');
   if (fh) fh.href = '/here' + h + '?at=' + gFull(g);
@@ -1806,7 +1816,7 @@ async function gSave(kind, walk, text){
 }
 function paintGroundSheet(){
   const tabs = $('sh-tabs'); tabs.classList.remove('hidden');
-  const walk = SEL.gpath, node = gNode(SPINE, walk), t = gSem(node);
+  const walk = G_SHEET_WALK || SEL.gpath, node = gNode(SPINE, walk), t = gSem(node);
   const vs = lensed(voicesAt(walk)).shown;
   if (SHEET.pane === 'cards') SHEET.pane = 'text';
   $('sh-where').textContent = gLabel(walk);
