@@ -957,6 +957,15 @@
       /* whatever you are standing in belongs in the row even if you hold no mirror
        * there yet — otherwise the row silently disagrees with the page above it */
       if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
+      /* THE GROUND IS EVERYONE'S. 'here' is the one family named by register rather
+       * than by spine: — its spine is spatial:earth at the real and your voice there
+       * is identity:<handle> — so the apex index never lists it and the rule above
+       * cannot find it. Every handle stands on the earth-map, so it is offered in the
+       * row on every page that can walk it (David, 2026-09-14: "why doesn't here
+       * appear?") and stays a choice like any other; a page that cannot walk the
+       * ground leaves it out even when a saved list names it. */
+      var walksGround = !!{ walk: 1 }[cfg.page];
+      if (walksGround && mine.indexOf('here') < 0) mine.push('here');
       mine.sort();
 
       /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at lists:<handle> branch 1,
@@ -968,6 +977,7 @@
         /* A family with its own page is held out of the COMPUTED default, because
          * nobody chose it. Named in the list it is a choice, so it stands. */
         visible = stated.slice();
+        if (!walksGround) visible = visible.filter(function(f){ return f !== 'here'; });
         if (cfg.family && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
         /* a stated project you hold no mirror in yet is still yours — offer it too */
         stated.forEach(function(f){ if (mine.indexOf(f) < 0) mine.push(f); });
