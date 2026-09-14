@@ -411,7 +411,7 @@ function toRows(data, name) {
 // Renderer — columns and ribbons.
 // ───────────────────────────────────────────────────────────────────────────
 const OPT = { scale: 'shared', stack: 'stability', labels: 'on' };
-const GEOM = { colW: 24, replyW: 14, pitch: 260, replyAt: 0.58, marginL: 96, marginR: 70, top: 34, bottom: 30, H: 540, gap: 1.5 };
+const GEOM = { colW: 24, replyW: 14, pitch: 260, replyAt: 0.58, marginL: 96, marginR: 70, top: 34, bottom: 30, H: 540, gap: 1.2 };
 let RUNS = [];
 
 function stackSpans(spans) {
@@ -441,7 +441,7 @@ function layoutRun(run, tokensPerPx) {
     let y = GEOM.top; const shade = new Map();
     const placed = spans.map(s => {
       const dim = dimOf(s); const idx = shade.get(dim) || 0; shade.set(dim, idx + 1);
-      const h = Math.max((s.tokens || 0) / tokensPerPx, 1.5);
+      const h = Math.max((s.tokens || 0) / tokensPerPx, 1.2);
       const p = { span: s, y0: y, y1: y + h, color: spanColor(s, idx), col: ci, m };
       y += h + GEOM.gap; return p;
     });
@@ -490,6 +490,8 @@ function extent(c) { return c.placed.length ? [c.placed[0].y0, c.placed[c.placed
 function renderAll() {
   const host = d3.select('#rows'); host.selectAll('*').remove();
   if (!RUNS.length) return;
+  const panelH = (document.getElementById('panel') || {}).offsetHeight || 170;
+  GEOM.H = Math.max(360, Math.min(680, window.innerHeight - panelH - 200));
   const maxTok = Math.max(...RUNS.map(r => Math.max(...r.moments.map(m => m.tokens || 1))));
   RUNS.forEach((run, ri) => {
     const runMax = Math.max(...run.moments.map(m => m.tokens || 1));
@@ -500,7 +502,10 @@ function renderAll() {
     const windows = cols.filter(c => c.isWindow);
     const lastCol = cols[cols.length - 1];
     const width = lastCol.x + lastCol.w + GEOM.marginR + (lastCol.isWindow ? 0 : 40);
-    const rowH = Math.min(GEOM.H, Math.ceil(runMax / tokensPerPx) + 4); // a run takes the height it needs under a shared scale
+    // The row is as tall as what was placed: minimum heights and gaps make a window of many
+    // thin spans taller than its tokens alone, so the extent is measured, never assumed.
+    const extentBottom = Math.max(GEOM.top + 24, ...cols.map(c => c.placed.length ? c.placed[c.placed.length - 1].y1 : GEOM.top));
+    const rowH = Math.ceil(extentBottom - GEOM.top);
     const height = GEOM.top + rowH + GEOM.bottom + 40;
     const box = host.append('div').attr('class', 'run');
     const head = box.append('header');
@@ -649,8 +654,11 @@ document.querySelectorAll('#panel button[data-src]').forEach(b => b.onclick = ()
   const u = new URL(location.href); u.searchParams.set('source', list.join(',')); history.replaceState(null, '', u);
   loadSources(list);
 });
-document.querySelectorAll('#panel button[data-scale]').forEach(b => b.onclick = () => { OPT.scale = b.getAttribute('data-scale'); setActive('data-scale', OPT.scale); renderAll(); });
-document.querySelectorAll('#panel button[data-stack]').forEach(b => b.onclick = () => { OPT.stack = b.getAttribute('data-stack'); setActive('data-stack', OPT.stack); renderAll(); });
+function setParam(k, v) { const u = new URL(location.href); u.searchParams.set(k, v); history.replaceState(null, '', u); }
+document.querySelectorAll('#panel button[data-scale]').forEach(b => b.onclick = () => { OPT.scale = b.getAttribute('data-scale'); setActive('data-scale', OPT.scale); setParam('scale', OPT.scale); renderAll(); });
+document.querySelectorAll('#panel button[data-stack]').forEach(b => b.onclick = () => { OPT.stack = b.getAttribute('data-stack'); setActive('data-stack', OPT.stack); setParam('stack', OPT.stack); renderAll(); });
+let resizeTimer = null;
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderAll, 150); });
 document.querySelectorAll('#panel button[data-labels]').forEach(b => b.onclick = () => { OPT.labels = b.getAttribute('data-labels'); setActive('data-labels', OPT.labels); renderAll(); });
 document.getElementById('file').addEventListener('change', async (ev) => {
   const files = [...ev.target.files]; const rows = []; const errs = [];
