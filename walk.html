@@ -135,6 +135,24 @@
   .b.bv{color:var(--liquid);border:1px solid rgba(var(--liquid-rgb),0.35)}
   .b.bc{color:var(--solid);border:1px solid rgba(var(--solid-rgb),0.35)}
 
+  /* ── THE GOLDEN CARD — the pile, standing in the gap between a rung and its
+   * next. Gold because gold is ALREADY the cards colour: .b.bc rides --solid,
+   * so the chip a time cell wears for its cards and the card that holds the
+   * pile are one colour, and a person reads them as one thing. Nothing new is
+   * introduced.
+   * It is deliberately NOT a time cell — narrower, dashed, no address, no
+   * voice, and its own sheet. A card has no date (function:ahead:3), and the
+   * one real risk of drawing one inside a row of days is that it starts to
+   * look like it has one; those four differences are what carry the seam. ── */
+  .rcard.gold{flex:0 0 auto;min-width:148px;max-width:190px;
+    background:linear-gradient(165deg,rgba(var(--solid-rgb),0.16) 0%,rgba(var(--solid-rgb),0.06) 100%);
+    border:1px dashed rgba(var(--solid-rgb),0.5)}
+  .rcard.gold:hover{border-color:var(--solid)}
+  .rcard.gold .lab{color:var(--solid);font-size:0.92rem}
+  .rcard.gold .lab .n{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;margin-left:auto;font-weight:400}
+  .rcard.gold .say{color:var(--vapour-dim);min-height:0;-webkit-line-clamp:3}
+  body.hidegold .rcard.gold{display:none}
+
   /* ── the sheet: one popup over the rack, three panes — where you tapped chooses the pane ── */
   .veil{position:fixed;inset:0;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(3px);
     display:flex;align-items:flex-end;justify-content:center;z-index:30}
@@ -332,6 +350,8 @@
   <label><input type="checkbox" id="disp-work"> show the address each card stands at</label>
   <span class="sub">whose voices count</span>
   <label><input type="checkbox" id="disp-cast"> only the cast’s — a view, never a gate</label>
+  <span class="sub">cards</span>
+  <label><input type="checkbox" id="disp-gold"> the pile between each rung and its next</label>
   <span class="note">kept on this device — your reading posture, never written to the beach</span>
 </div>
 
@@ -541,6 +561,7 @@ const PREF_KEY = 'walk-display';
 const DEFAULT_PREFS = {
   rows: { ce:false, de:true, y:true, s:true, m:true, w:true, d:true, g:false },
   badges: { voices:true, cards:true },
+  gold: true,                          /* the interstitial pile cards between each rung and its next */
   workings: false,
   cast: false,
   ground: { desc: true, held: true },   /* the ground's own dials: the map's description on each card; how the place stood in is held */
@@ -551,6 +572,10 @@ try {
   if (stored) PREFS = { rows: Object.assign({}, DEFAULT_PREFS.rows, stored.rows),
                         badges: Object.assign({}, DEFAULT_PREFS.badges, stored.badges),
                         workings: !!stored.workings, cast: !!stored.cast,
+                        /* DEFAULT ON for a posture stored before this dial existed — the
+                         * count-chip lesson two comments down: a thing hidden by a dial
+                         * nobody set reads as breakage days later. */
+                        gold: stored.gold === undefined ? true : !!stored.gold,
                         ground: Object.assign({}, DEFAULT_PREFS.ground, stored.ground || {}) };
   /* ONE-TIME MIGRATION (2026-08-25): the count chips default ON — a stored
    * preference from before this ruling had them silently off, and a hidden-by-
@@ -571,6 +596,7 @@ function applyDisplay(){
   }
   document.body.classList.toggle('hidebv', !PREFS.badges.voices);
   document.body.classList.toggle('hidebc', !PREFS.badges.cards);
+  document.body.classList.toggle('hidegold', !PREFS.gold);
   document.body.classList.toggle('workings', !!PREFS.workings);
   /* the cast lens rides the same dial sheet now — a lens over nobody is a blank
    * stare, so it holds at everyone until a cast is actually registered */
@@ -609,12 +635,18 @@ function planeCards(deck){
       if (digits.length < mfloor) return;
       if (digits.every(d => d === '0')) return;
       if (digits.length > mfloor && digits.slice(mfloor).every(d => d === '0')) return;
-      if (node.trim()) found.push({ addr: digits.join(''), node: node.trim() });
+      /* THE PILE RIDES OUT WITH THE CARD. The pile digit sits AT the floor
+       * plane, so it is digits[mfloor - 1] whatever the block's wrap history —
+       * at floor 1 a card at '31' is pile 3, and after a supernest the same
+       * card reads '031' and is still pile 3, because the padding tracks the
+       * floor. Derived here, where mfloor is known, rather than re-derived by
+       * every reader out of an address whose floor it would have to guess. */
+      if (node.trim()) found.push({ addr: digits.join(''), pile: digits[mfloor - 1] || '', node: node.trim() });
       return;
     }
     if (!node || typeof node !== 'object') return;
     if (isEntryNode(node)){
-      if (digits.length >= mfloor) found.push({ addr: digits.join(''), node });
+      if (digits.length >= mfloor) found.push({ addr: digits.join(''), pile: digits[mfloor - 1] || '', node });
       return;
     }
     if ('_' in node) plane(node['_'], digits.concat('0'));
@@ -638,7 +670,7 @@ function openCardsOf(deck){
     if (!text) return;
     const state = obj ? (n['4'] || null) : null;
     if (state === 'done' || state === 'drop') return;
-    out.push({ addr: c.addr, text,
+    out.push({ addr: c.addr, pile: c.pile, text,
                held: state === 'doing' ? 'doing now' : (state === 'held' ? 'in hand' : ''),
                toward: obj ? (n['2'] || null) : null });
   });
@@ -713,6 +745,9 @@ function cardHomes(){
   return out;
 }
 const cardsAt = addr => (MODE === 'tree' || MODE === 'ground') ? [] : cardHomes().filter(c => c.home === addr);
+/* the cards held at one HORIZON rather than at one point — every hand's, this
+ * family only, since cardHomes has already dropped the ones aimed elsewhere */
+const cardsAtPile = p => (MODE === 'tree' || MODE === 'ground') ? [] : cardHomes().filter(c => c.pile === p);
 /* in a tree walk, a card aims at the family in its own field 2; the sheet lists them at any branch */
 const famCards = () => cardHomes();
 const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) === addr).length;
@@ -1030,7 +1065,8 @@ function rcard(label, addr, isSel, isNow, data){
   const t = lensText(addr);
   const lv = (String(data).match(/data-lv="(\w+)"/) || [])[1];
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
-  return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' + data + '>' +
+  return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' +
+    (isNow ? 'data-now="1" ' : '') + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
@@ -1040,6 +1076,48 @@ function rcard(label, addr, isSel, isNow, data){
  * year of the decade — so nothing vanishes as you click. A click highlights in
  * place and re-renders only the rows BENEATH; a row never scrolls itself. ── */
 const LEVELS = ['ce', 'de', 'y', 's', 'm', 'w', 'd', 'g'];
+/* THE PILES, verbatim from /hands and /next — one vocabulary for one block.
+ * This page COMPUTED a pile on every mint and had no word for one, which is
+ * why a card could land somewhere the page could not name. Note the two
+ * vocabularies are different axes and stay apart: 'this week' is the RUNG you
+ * are standing at; 'a week out' is HOW FAR AHEAD you hold the card. */
+const PILES = [
+  { d: '1', label: 'within hours' }, { d: '2', label: 'tomorrow' },
+  { d: '3', label: 'a week out' },   { d: '4', label: 'a month out' },
+  { d: '5', label: 'a season out' }, { d: '6', label: 'a year out' },
+  { d: '7', label: 'a decade out' },
+];
+const pileLabel = d => (PILES.find(x => x.d === String(d)) || {}).label || '';
+/* WHICH ROWS CARRY A GOLDEN CARD. The pile ladder and this rack are the same
+ * ladder read two ways — seven piles, seven rungs, one to one — so a row's pile
+ * is its own pscale. The century is the one exception and carries none: it
+ * shares pile 7 with the decade above, and one pile drawn twice would be two
+ * doors onto one hand. */
+const GOLD_OF_LEVEL = { g: '1', d: '2', w: '3', m: '4', s: '5', y: '6', de: '7' };
+/* THE GOLDEN CARD — one per row, standing immediately after that row's NOW
+ * cell: the pile, drawn in the gap between this rung and its next.
+ *
+ * ANCHORED TO NOW AND NEVER TO THE SELECTION, because a pile is measured from
+ * now. Browse away from now and that row has no adjacency to draw, so it
+ * carries no golden card — which falls out for nothing and is honest.
+ *
+ * AND THE GAP IS WHY IT IS A CARD AT ALL. A row here is not a strip of time:
+ * it is the SIBLINGS INSIDE ONE PARENT — the days of the selected band, the
+ * three months of the selected season — so 'the next one' is simply NOT DRAWN
+ * whenever now sits at a parent's edge. Monday the 14th is the last day of its
+ * band; September the last month of its season. Between a seventh and a third
+ * of the time there is no next cell to put anything in, which is what retires
+ * the idea of drawing the card inside it. This is the only element that can
+ * stand for an adjacency the row's own boundary hides. */
+function gcard(lv){
+  const p = GOLD_OF_LEVEL[lv];
+  if (!p) return '';
+  const cs = cardsAtPile(p);
+  return '<div class="rcard gold" role="button" tabindex="0" data-lv="pile" data-pile="' + p + '">' +
+    '<span class="lab">' + esc(pileLabel(p)) + (cs.length ? '<span class="n">' + cs.length + '</span>' : '') + '</span>' +
+    '<span class="say">' + esc(cs.length ? short(cs[0].text, 110) : 'nothing held this far out') + '</span>' +
+    '<div class="badges"></div></div>';
+}
 function buildRow(lv){
   const cards = [];
   if (lv === 'ce'){
@@ -1095,6 +1173,16 @@ function buildRow(lv){
     for (let g = 1; g <= 9; g++)
       cards.push(rcard(GATHERINGS[g - 1], gatherAddr(SEL.y, SEL.m0, SEL.d, g),
         g === SEL.g, isToday && g === TODAY.g, 'data-lv="g" data-g="' + g + '"'));
+  }
+  /* SPLICED IN AFTER NOW, in one place rather than at each of the ten sites
+   * that push a cell below — the branches are left exactly as they were, and
+   * the card rides in on the data-now marker rcard already emits. A row with
+   * no now cell (browsed elsewhere, or a rung with no pile) simply returns as
+   * it always did. */
+  const g = gcard(lv);
+  if (g){
+    const i = cards.findIndex(c => c.indexOf('data-now=') !== -1);
+    if (i >= 0) return cards.slice(0, i + 1).concat(g, cards.slice(i + 1)).join('');
   }
   return cards.join('');
 }
@@ -1173,6 +1261,13 @@ $('rack').addEventListener('click', e => {
   const card = e.target.closest('.rcard'); if (!card) return;
   const badge = e.target.closest('.b');
   const lv = card.dataset.lv;
+  if (lv === 'pile'){
+    /* ITS OWN SHEET, never the spine-and-voices one. What a pile holds is
+     * neither the family's line nor anybody's reading, and sharing a popup
+     * with them is the surest way to make it read as a time cell. */
+    SHEET = { pile: card.dataset.pile }; paintSheet(); $('sheet-veil').classList.remove('hidden');
+    return;
+  }
   if (lv === 'p'){
     /* THE LADDER IS NEVER LOST BY TAPPING IT. A card already on the path — an ancestor
      * or the terminus — opens its own popup and moves nothing: tapping Earth while
@@ -1294,18 +1389,6 @@ function openSheet(pane){
   }
   SHEET = { pane }; paintSheet(); $('sheet-veil').classList.remove('hidden');
 }
-/* THE PILES, verbatim from /hands and /next — one vocabulary for one block.
- * This page COMPUTED a pile on every mint and had no word for one, which is
- * why a card could land somewhere the page could not name. Note the two
- * vocabularies are different axes and stay apart: 'this week' is the RUNG you
- * are standing at; 'a week out' is HOW FAR AHEAD you hold the card. */
-const PILES = [
-  { d: '1', label: 'within hours' }, { d: '2', label: 'tomorrow' },
-  { d: '3', label: 'a week out' },   { d: '4', label: 'a month out' },
-  { d: '5', label: 'a season out' }, { d: '6', label: 'a year out' },
-  { d: '7', label: 'a decade out' },
-];
-const pileLabel = d => (PILES.find(x => x.d === String(d)) || {}).label || '';
 /* THE PILE DIGIT IS THE PSCALE OF THE RUNG — the ladder said as a map rather
  * than as arithmetic. Future-adjacency is SELF-SIMILAR at every rung (David,
  * 2026-09-14): this-hour to next-hour, today to tomorrow, this-month to
@@ -1342,6 +1425,25 @@ function paintSheet(){
   if (!SHEET) return;
   if (GROUND){ paintGroundSheet(); return; }
   const tabs = $('sh-tabs');
+  if (SHEET.pile){
+    /* A HORIZON, NOT A POINT — and the sheet says so in the first line,
+     * because this is the one place the bookings seam could blur: the card was
+     * reached from a row of dates and holds nothing dated. */
+    tabs.classList.add('hidden');
+    $('sh-mirror').classList.add('hidden');
+    const p = SHEET.pile, cs = cardsAtPile(p);
+    $('sh-where').textContent = pileLabel(p) + ' — what is held this far out';
+    $('sh-body').innerHTML =
+      '<span class="silent">A pile is how far ahead a thing is held, never a date — these carry no day of their own, and they stand here until they are done or let go. Toward <b>' + esc(VENTURE) + '</b>.</span>' +
+      (cs.length
+        ? cs.map(c => '<div class="cardenv' + (c.who === HANDLE ? ' you' : '') + '"><span class="cwho">' + esc(whoName(c.who)) +
+            '</span><div class="ctext">' + esc(c.text) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</div></div>').join('')
+        : '<span class="silent">nobody holds anything ' + esc(pileLabel(p)) + ' toward ' + esc(VENTURE) + ' yet</span>') +
+      (HANDLE
+        ? '<p class="mnote">a card is minted, re-piled and finished in the hand · <a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a></p>'
+        : '<p class="mnote">say who you are at the top of the page to hold cards of your own</p>');
+    return;
+  }
   if (SHEET.gather){
     tabs.classList.add('hidden');
     /* the one link on this page that names a PLACE rather than a point, so it
@@ -1605,6 +1707,9 @@ $('disp').querySelectorAll('input[data-badge]').forEach(cb => {
   const dw = document.getElementById('disp-work');
   dw.checked = !!PREFS.workings;
   dw.addEventListener('change', () => { PREFS.workings = dw.checked; savePrefs(); applyDisplay(); });
+  const dg = document.getElementById('disp-gold');
+  dg.checked = !!PREFS.gold;
+  dg.addEventListener('change', () => { PREFS.gold = dg.checked; savePrefs(); applyDisplay(); });
   const dc = document.getElementById('disp-cast');
   dc.checked = !!PREFS.cast;
   dc.addEventListener('change', () => {
