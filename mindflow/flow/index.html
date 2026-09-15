@@ -158,7 +158,7 @@
     <button data-src="all" class="active">the three constitutions</button>
     <label class="file">upload <input type="file" id="file" accept=".json,application/json" multiple></label>
   </div>
-  <p class="note"><b>upload</b> takes JSON, one file or several: a <b>call log</b> — an object or an array of them, each carrying <code>system_prompt</code> / <code>user_prompt</code> / <code>response</code> and its usage, which is the shape an Anthropic API log already has — or a <b>flow document</b> (<code>flow: 1</code>), which is what <code>session-flow.py</code> writes from a Claude Code transcript. Genus wakes and C-loop frames are recognised by their own shape. Files are read <b>in your browser</b> and go nowhere; and a flow document carries labels and sizes only — no tool result bodies, and secrets dropped unread — so it is safe to hand to someone in a way a raw transcript is not. <code>?source=</code> also takes a path or URL, so a document served anywhere can be drawn here without uploading it at all.</p>
+  <p class="note"><b>upload</b> takes JSON, one file or several: a <b>call log</b> — an object or an array of them, each carrying <code>system_prompt</code> / <code>user_prompt</code> / <code>response</code> and its usage, which is the shape an Anthropic API log already has — or a <b>flow document</b> (<code>flow: 1</code>), which is what <code>session-flow.py</code> writes from a Claude Code transcript. Genus wakes and C-loop frames are recognised by their own shape. Files are read <b>in your browser</b> and go nowhere; and a flow document carries labels and sizes only — no tool result bodies, and secrets dropped unread — so it is safe to hand to someone in a way a raw transcript is not. <code>?source=</code> also takes a path or URL, so a document served anywhere can be drawn here without uploading it at all — including <code>beach:&lt;block&gt;</code>, which reads a flow document published on a beach (<code>beach@&lt;origin&gt;:&lt;block&gt;</code> for another one). Add <code>&amp;poll=3</code> to any source to re-read it every few seconds and watch a session compile as it runs.</p>
   <div class="row"><span class="k">scale</span>
     <button data-scale="shared" class="active">shared across runs</button>
     <button data-scale="fit">fit each run</button>
@@ -722,13 +722,43 @@ const SOURCES = {
   'cloop': '../filmstrip/examples/birth-first-awakening.json',
 };
 const status = (s) => { document.getElementById('status').textContent = s; };
+/* A source is a built-in key, a path or URL, or `beach:<block>` — which reads
+   that block from a federated beach (`beach@<origin>:<block>` for another one).
+   The beach serves a block as its own JSON, so what comes back is a pscale
+   block and not a flow document; unwrapBlock lifts the document out of it. */
+const DEFAULT_BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+function resolveSource(item) {
+  if (SOURCES[item]) return SOURCES[item];
+  const m = /^beach(?:@([^:]+(?::\d+)?))?:(.+)$/.exec(item);
+  if (!m) return item;
+  const origin = m[1] ? (/^https?:\/\//.test(m[1]) ? m[1] : 'https://' + m[1]).replace(/\/+$/, '') + '/.well-known/pscale-beach' : DEFAULT_BEACH;
+  return origin + '?block=' + encodeURIComponent(m[2]);
+}
+
+/* A flow document published on the beach lives INSIDE a pscale block, because a
+   block is `_` plus positions 1-9 and a flow document is neither — storing the
+   document as the block itself would leave something on the beach that cannot be
+   walked. So the convention is: the underscore says what the block is, and a
+   position carries the document. We do not care which position. */
+function unwrapBlock(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  if (data.flow || data.system_prompt || data.system) return data;   // already a document
+  if (!('_' in data)) return data;
+  for (const k of Object.keys(data)) {
+    if (!/^\d+$/.test(k)) continue;
+    const v = data[k];
+    if (v && typeof v === 'object' && (v.flow || Array.isArray(v) || v.system_prompt || v.system)) return v;
+  }
+  return data;
+}
+
 async function loadSources(list) {
   const rows = []; const errs = [];
   for (const item of list) {
-    const url = SOURCES[item] || item;
+    const url = resolveSource(item);
     try {
       const r = await fetch(url); if (!r.ok) throw new Error(`${r.status}`);
-      const data = await r.json();
+      const data = unwrapBlock(await r.json());
       rows.push(...toRows(data, item.replace(/^.*\//, '')));
     } catch (e) { errs.push(`${item}: ${e.message}`); }
   }
@@ -746,7 +776,7 @@ function startPolling(list, seconds) {
     let sig = '';
     for (const item of list) {
       try {
-        const r = await fetch(SOURCES[item] || item, { cache: 'no-store' });
+        const r = await fetch(resolveSource(item), { cache: 'no-store' });
         sig += r.ok ? await r.text() : 'x';
       } catch (e) { sig += 'x'; }
     }
