@@ -163,6 +163,9 @@
     <span class="k" style="margin-left:10px">labels</span>
     <button data-labels="on" class="active">on</button>
     <button data-labels="off">off</button>
+    <span class="k" style="margin-left:10px">theme</span>
+    <button data-theme-set="light">light</button>
+    <button data-theme-set="dark">dark</button>
   </div>
   <div id="status"></div>
 </div>
@@ -734,6 +737,23 @@ document.querySelectorAll('#panel button[data-src]').forEach(b => b.onclick = ()
   loadSources(list);
 });
 function setParam(k, v) { const u = new URL(location.href); u.searchParams.set(k, v); history.replaceState(null, '', u); }
+
+/* The one place the theme is set, whether the reader asked or the embedding
+   page did. A reader's choice persists under the site-wide 'view:theme' that
+   theme.js uses, and rides the URL like the other view switches; the parent
+   page's does neither, because it is the page's choice and not the reader's.
+   Spans are painted fills rather than CSS, so either way it has to redraw. */
+function setTheme(t, fromReader) {
+  if (t !== 'dark' && t !== 'light') return;
+  document.documentElement.setAttribute('data-theme', t);
+  setActive('data-theme-set', t);
+  if (fromReader) {
+    try { localStorage.setItem('view:theme', t); } catch (e) {}
+    setParam('theme', t);
+  }
+  try { renderAll(); renderLegend(); } catch (e) {}
+}
+document.querySelectorAll('#panel button[data-theme-set]').forEach(b => b.onclick = () => setTheme(b.getAttribute('data-theme-set'), true));
 document.querySelectorAll('#panel button[data-scale]').forEach(b => b.onclick = () => { OPT.scale = b.getAttribute('data-scale'); setActive('data-scale', OPT.scale); setParam('scale', OPT.scale); renderAll(); });
 document.querySelectorAll('#panel button[data-stack]').forEach(b => b.onclick = () => { OPT.stack = b.getAttribute('data-stack'); setActive('data-stack', OPT.stack); setParam('stack', OPT.stack); renderAll(); });
 let resizeTimer = null;
@@ -753,6 +773,7 @@ document.getElementById('file').addEventListener('change', async (ev) => {
   if (list.includes('all')) list = ['egg-one', 'mirror', 'session'];
   const known = Object.keys(SOURCES).find(k => list.length === 1 && list[0] === k);
   setActive('data-src', known || (list.join(',') === 'egg-one,mirror,session' ? 'all' : '—'));
+  setActive('data-theme-set', document.documentElement.getAttribute('data-theme'));
   loadSources(list);
 })();
 
@@ -765,11 +786,8 @@ document.getElementById('file').addEventListener('change', async (ev) => {
   try {
     new MutationObserver(function () {
       var t = root.getAttribute('data-theme');
-      if (t !== 'dark' && t !== 'light') return;
       if (t === document.documentElement.getAttribute('data-theme')) return;
-      document.documentElement.setAttribute('data-theme', t);
-      /* the spans are painted fills, not CSS — they need redrawing */
-      try { renderAll(); renderLegend(); } catch (e) {}
+      setTheme(t, false);
     }).observe(root, { attributes: true, attributeFilter: ['data-theme'] });
   } catch (e) {}
 })();
