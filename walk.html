@@ -114,6 +114,16 @@
   .disp label input{accent-color:var(--liquid);margin:0}
   .disp .note{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);line-height:1.5;max-width:24ch;margin-top:6px}
   .rack .carousel{padding-top:6px;padding-bottom:10px}
+  /* ── THE ROOM TO CENTRE. A row could not centre a cell sitting at its own
+   * edge — scrollLeft clamps at 0 — so the day row pinned Tue 15 flush left
+   * while the week and gathering rows centred, and the golden cards after them
+   * came out ragged. Half a viewport of air at each end gives every cell the
+   * room to reach the middle, which is also what scroll-snap-align:center has
+   * been asking for all along. Measured in Chromium at 1200px and 390px:
+   * without these the now cells sit up to 432px apart across the rows; with
+   * them they align to the pixel, and so do the golden cards. ── */
+  .rack .carousel::before,
+  .rack .carousel::after{content:"";flex:0 0 calc(50% - min(33vw,150px))}
   .rcard{flex:0 0 66vw;max-width:300px;scroll-snap-align:center;cursor:pointer;
     background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.4) 0%,rgba(var(--card-rgb),0.4) 100%);
     border:1px solid var(--line);border-radius:13px;padding:13px 15px 11px;
@@ -1186,9 +1196,22 @@ function buildRow(lv){
   }
   return cards.join('');
 }
+/* EVERY ROW CENTRES ON NOW — which is the one cell they all share, so centring
+ * it lines the rows up with each other, and the golden cards that follow it
+ * fall into a single vertical column down the rack.
+ *
+ * BUT NOW WINS ONLY WHERE IT IS ALSO WHERE YOU STAND. A row you are browsing
+ * must not yank itself back to today under your finger, so a row whose
+ * selection has moved off now follows the selection, exactly as every row did
+ * before. On load the two are the same cell in every row — which is precisely
+ * when the column is worth having — and a row that holds no now at all (a week
+ * you have browsed away to, a tree or ground row that has no now to hold)
+ * keeps the old behaviour untouched. */
 function positionRow(lv){
   const c = $('row-' + lv);
-  const el = c.querySelector('.rcard.sel');
+  const now = c.querySelector('.rcard[data-now]');
+  const sel = c.querySelector('.rcard.sel');
+  const el = (!sel || sel === now) ? (now || sel) : sel;
   if (el) c.scrollTo({ left: el.offsetLeft - (c.clientWidth - el.offsetWidth) / 2, behavior: 'auto' });
 }
 function selMatches(lv, el){
