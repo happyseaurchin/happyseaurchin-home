@@ -85,6 +85,8 @@
   #panel .row .k { color: var(--fl-dim); min-width: 56px; }
   #panel .note { color: var(--fl-text3); max-width: 980px; margin: 5px 0 0; font-size: 10px; line-height: 1.5; }
   #panel .note code { font-size: 10px; }
+  #live { margin: 5px 0 0; font-size: 10px; color: var(--fl-warn); }
+  #live::before { content: '●'; margin-right: 5px; }
   #panel button, #panel label.file {
     font-family: inherit; font-size: 10px; padding: 3px 8px; margin: 0;
     background: var(--fl-btn-bg); border: 1px solid var(--fl-btn-border); border-radius: 3px; cursor: pointer; color: var(--fl-text);
@@ -170,6 +172,7 @@
     <button data-theme-set="light">light</button>
     <button data-theme-set="dark">dark</button>
   </div>
+  <p id="live" hidden>live — re-reading every few seconds, redrawing only when the document changes</p>
   <div id="status"></div>
 </div>
 
@@ -732,6 +735,29 @@ async function loadSources(list) {
   RUNS = rows; renderAll();
   status(errs.length ? 'could not load — ' + errs.join(' · ') : '');
 }
+
+/* ?poll=<seconds> — re-fetch the same sources on a timer, for watching a
+   session compile as it runs (session-flow.py --watch writes the document).
+   Redraw only when the bytes changed: a redraw costs the reader their scroll
+   position and any open peek, and most ticks change nothing. */
+let POLL_SIG = null;
+function startPolling(list, seconds) {
+  const tick = async () => {
+    let sig = '';
+    for (const item of list) {
+      try {
+        const r = await fetch(SOURCES[item] || item, { cache: 'no-store' });
+        sig += r.ok ? await r.text() : 'x';
+      } catch (e) { sig += 'x'; }
+    }
+    if (POLL_SIG === null) { POLL_SIG = sig; return; }
+    if (sig === POLL_SIG) return;
+    POLL_SIG = sig;
+    loadSources(list);
+  };
+  tick();
+  setInterval(tick, Math.max(1, seconds) * 1000);
+}
 function setActive(attr, val) { document.querySelectorAll(`#panel button[${attr}]`).forEach(b => b.classList.toggle('active', b.getAttribute(attr) === val)); }
 document.querySelectorAll('#panel button[data-src]').forEach(b => b.onclick = () => {
   const v = b.getAttribute('data-src'); setActive('data-src', v);
@@ -778,6 +804,8 @@ document.getElementById('file').addEventListener('change', async (ev) => {
   setActive('data-src', known || (list.join(',') === 'egg-one,mirror,session' ? 'all' : '—'));
   setActive('data-theme-set', document.documentElement.getAttribute('data-theme'));
   loadSources(list);
+  const poll = parseFloat(params.get('poll'));
+  if (poll > 0) { document.getElementById('live').hidden = false; startPolling(list, poll); }
 })();
 
 // Embedded same-origin (the ecology page), follow its toggle live rather than

@@ -13,6 +13,19 @@ similar field is dropped unread. The transcript may hold keys; the flow document
 
     python3 session-flow.py <transcript.jsonl> [-o data/session.json] [--title "..."]
 
+WATCHING A LIVE SESSION. Claude Code appends to the transcript as the session runs, so
+--watch re-emits the document whenever the file grows, and the viewer at ?poll=<seconds>
+re-fetches it. Together that is live compilation, a few seconds behind:
+
+    python3 session-flow.py ~/.claude/projects/<project>/<session>.jsonl \
+        -o data/live.json --watch --title "live"
+    # then, served locally:  /mindflow/flow/?source=data/live.json&poll=3
+
+The write is atomic (a temp file in the same directory, then os.replace) because the
+viewer is reading the same path on a timer; without that it would eventually parse a
+half-written document. Nothing is sent anywhere: this writes a local file, and the
+viewer fetches it from wherever you serve it.
+
 Model (shared with index.html — `flow: 1`):
   rows[].moments[] alternate window / output. A window's `tokens` is the measured prompt
   size of that call (input + cache_creation + cache_read); an output's `tokens` is its
@@ -26,6 +39,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections import OrderedDict
 
 CHARS_PER_TOKEN = 4.0
@@ -222,18 +236,54 @@ def main():
     ap.add_argument('-o', '--out', default=None)
     ap.add_argument('--title', default=None)
     ap.add_argument('--max-calls', type=int, default=0, help='cap the number of calls drawn (0 = all)')
+    ap.add_argument('--watch', action='store_true',
+                    help='re-emit whenever the transcript grows, for watching a session as it runs')
+    ap.add_argument('--interval', type=float, default=2.0,
+                    help='seconds between checks when watching (default 2)')
     a = ap.parse_args()
+    out = a.out or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'session.json')
+    os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
+
+    if not a.watch:
+        emit(a, out)
+        return
+
+    # The viewer is reading `out` on its own timer, so only rebuild when the
+    # transcript has actually grown — size and mtime are enough, and cost nothing.
+    print(f'watching {a.transcript} → {out} (every {a.interval}s; ctrl-c to stop)', file=sys.stderr)
+    seen = None
+    while True:
+        try:
+            st = os.stat(a.transcript)
+            sig = (st.st_size, st.st_mtime_ns)
+        except OSError as e:
+            print(f'  waiting for {a.transcript}: {e}', file=sys.stderr)
+            time.sleep(a.interval)
+            continue
+        if sig != seen:
+            try:
+                emit(a, out)
+                seen = sig
+            except Exception as e:
+                # a transcript caught mid-write is normal; try again next tick
+                print(f'  skipped: {e}', file=sys.stderr)
+        time.sleep(a.interval)
+
+
+def emit(a, out):
     prompt, calls, results = load_transcript(a.transcript)
     if a.max_calls:
         calls = calls[:a.max_calls]
     title = a.title or f'Claude Code session — {os.path.basename(a.transcript)[:8]}'
     doc = build(prompt, calls, results, title)
-    out = a.out or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'session.json')
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    with open(out, 'w') as fh:
+    # atomic: the viewer may fetch this path at any moment, and a half-written
+    # document is a parse error rather than a missing frame
+    tmp = out + '.tmp'
+    with open(tmp, 'w') as fh:
         json.dump(doc, fh, indent=1)
-    n_calls = len(calls)
-    print(f'{out}: {n_calls} calls, {len(results)} tool results, harness ≈ {doc["rows"][0]["moments"][0]["spans"][0]["tokens"]} tokens', file=sys.stderr)
+    os.replace(tmp, out)
+    print(f'{out}: {len(calls)} calls, {len(results)} tool results, '
+          f'harness ≈ {doc["rows"][0]["moments"][0]["spans"][0]["tokens"]} tokens', file=sys.stderr)
 
 
 if __name__ == '__main__':
