@@ -85,6 +85,8 @@
   #panel .row .k { color: var(--fl-dim); min-width: 56px; }
   #panel .note { color: var(--fl-text3); max-width: 980px; margin: 5px 0 0; font-size: 10px; line-height: 1.5; }
   #panel .note code { font-size: 10px; }
+  #live { margin: 5px 0 0; font-size: 10px; color: var(--fl-warn); }
+  #live::before { content: '●'; margin-right: 5px; }
   #panel button, #panel label.file {
     font-family: inherit; font-size: 10px; padding: 3px 8px; margin: 0;
     background: var(--fl-btn-bg); border: 1px solid var(--fl-btn-border); border-radius: 3px; cursor: pointer; color: var(--fl-text);
@@ -156,7 +158,7 @@
     <button data-src="all" class="active">the three constitutions</button>
     <label class="file">upload <input type="file" id="file" accept=".json,application/json" multiple></label>
   </div>
-  <p class="note"><b>upload</b> takes JSON, one file or several: a <b>call log</b> — an object or an array of them, each carrying <code>system_prompt</code> / <code>user_prompt</code> / <code>response</code> and its usage, which is the shape an Anthropic API log already has — or a <b>flow document</b> (<code>flow: 1</code>), which is what <code>session-flow.py</code> writes from a Claude Code transcript. Genus wakes and C-loop frames are recognised by their own shape. Files are read <b>in your browser</b> and go nowhere; and a flow document carries labels and sizes only — no tool result bodies, and secrets dropped unread — so it is safe to hand to someone in a way a raw transcript is not. <code>?source=</code> also takes a path or URL, so a document served anywhere can be drawn here without uploading it at all.</p>
+  <p class="note"><b>upload</b> takes JSON, one file or several: a <b>call log</b> — an object or an array of them, each carrying <code>system_prompt</code> / <code>user_prompt</code> / <code>response</code> and its usage, which is the shape an Anthropic API log already has — or a <b>flow document</b> (<code>flow: 1</code>), which is what <code>session-flow.py</code> writes from a Claude Code transcript. Genus wakes and C-loop frames are recognised by their own shape. Files are read <b>in your browser</b> and go nowhere; and a flow document carries labels and sizes only — no tool result bodies, and secrets dropped unread — so it is safe to hand to someone in a way a raw transcript is not. <code>?source=</code> also takes a path or URL, so a document served anywhere can be drawn here without uploading it at all — including <code>beach:&lt;block&gt;</code>, which reads a flow document published on a beach (<code>beach@&lt;origin&gt;:&lt;block&gt;</code> for another one). Add <code>&amp;poll=3</code> to any source to re-read it every few seconds and watch a session compile as it runs.</p>
   <div class="row"><span class="k">scale</span>
     <button data-scale="shared" class="active">shared across runs</button>
     <button data-scale="fit">fit each run</button>
@@ -170,6 +172,7 @@
     <button data-theme-set="light">light</button>
     <button data-theme-set="dark">dark</button>
   </div>
+  <p id="live" hidden>live — re-reading every few seconds, redrawing only when the document changes</p>
   <div id="status"></div>
 </div>
 
@@ -455,8 +458,78 @@ function adaptCloop(frame, title) {
   return { label: title, notes: [`${frame.model || ''} · ${frame.ts || ''} · ${frame.concern || ''}`, 'Heights are estimated from characters; the kernel of that era logged one token count for the whole loop.' + (measured ? ` (logged input ${measured})` : '')], moments };
 }
 
+// A flow BLOCK — what bsp-mcp's flow producer writes at flow:<handle> (src/flow.ts there): a
+// pscale block, only `_` and 1-9 at every level (the beach's shape gate), so it walks with
+// bsp() and needs no viewer; this adapter draws it. Three wakes at 1-3, oldest first, each
+// {_, 1: window {1 SYSTEM, 2 MESSAGE}, 2: reply {1 writes, 2 note, 3 in-loop}}; a side's
+// children are the parts in window order, the hydrated bundle a part whose children are its
+// currents; a span {_ its line, 1 reference, 2 chars, 3 lodestone rung, 4 change since the
+// previous window (for a write: the current it feeds), 5 fingerprint}. Labels, addresses and
+// sizes only — the peek shows the line and the address, never text.
+const isSpanNode = (v) => !!v && typeof v === 'object' && typeof v['1'] === 'string' && /^\d+$/.test(String(v['2'] ?? ''));
+const digitKeys = (o) => Object.keys(o || {}).filter(k => /^[1-9]$/.test(k)).sort();
+function isFlowBlock(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d) || typeof d._ !== 'string') return false;
+  return digitKeys(d).some(k => {
+    const win = d[k] && d[k]['1']; const side = win && win['1'];
+    return !!side && typeof side === 'object' && digitKeys(side).some(s => isSpanNode(side[s]) || (side[s] && typeof side[s] === 'object' && digitKeys(side[s]).some(g => isSpanNode(side[s][g]))));
+  });
+}
+const blockNameOf = (ref) => String(ref).split(' ')[0].replace(/(:-?\d+(\.\d+)?)+$/, '');
+function adaptFlowBlock(block, name) {
+  const handle = (/the window of ([A-Za-z0-9_-]+)/.exec(block._ || '') || [])[1] || 'genus';
+  const wakes = digitKeys(block).map(k => block[k]).filter(w => w && typeof w === 'object' && w['1'] && typeof w['1'] === 'object');
+  const spanOf = (v, key, cls, side) => {
+    const chars = Number(v['2']) || 0; const flag = String(v['4'] || '');
+    return { key, label: v['1'] + (flag === 'unresolved' ? ' — unresolved' : ''), ref: v['1'], rung: v['3'] || null, cls, chars, tokens: Math.max(1, Math.round(est(chars))), text: v._ || '', side, new: flag === 'new', changed: flag === 'changed', unresolved: flag === 'unresolved' };
+  };
+  const moments = [];
+  wakes.forEach((wk, i) => {
+    const win = wk['1']; const spans = [];
+    for (const sideKey of ['1', '2']) {
+      const side = win[sideKey]; if (!side || typeof side !== 'object') continue;
+      const sys = sideKey === '1';
+      for (const k of digitKeys(side)) {
+        const part = side[k];
+        if (isSpanNode(part)) spans.push(spanOf(part, sys ? `sys:${part['1']}` : `given:${part['1']}`, sys ? 'current' : 'given', sys ? 'system' : 'message'));
+        else if (part && typeof part === 'object') for (const g of digitKeys(part)) if (isSpanNode(part[g])) spans.push(spanOf(part[g], `self:${blockNameOf(part[g]['1'])}`, 'current', 'system'));
+      }
+    }
+    const m = /^window composed (\S+)/.exec(win._ || ''); const when = m ? new Date(m[1]) : null;
+    moments.push({ id: `w${i}`, label: `wake ${i + 1}${when && !isNaN(when) ? ' · ' + when.toISOString().slice(5, 16).replace('T', ' ') : ''}`, kind: 'window', tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
+    const reply = wk['2']; if (!reply || typeof reply !== 'object') return;
+    const out = [];
+    const writes = reply['1'] || {};
+    for (const k of digitKeys(writes)) { const v = writes[k]; if (!isSpanNode(v)) continue; out.push({ key: `write:${v['1']}`, label: `write ${v['1']}`, ref: v['1'], rung: v['3'] || '3', cls: 'output', chars: Number(v['2']) || 0, text: v._ || '', feeds: v['4'] ? [`self:${v['4']}`] : [] }); }
+    const note = reply['2']; if (isSpanNode(note) && Number(note['2']) > 0) out.push({ key: 'note', label: "note (the history leaf's voicing)", ref: note['1'], rung: '3.2', cls: 'output', chars: Number(note['2']), text: note._ || '', feeds: ['self:history'] });
+    const loop = reply['3']; const acted = loop ? Number(loop['4']) || 0 : 0;
+    if (acted) out.push({ key: 'loop', label: `${acted} in-loop writes — counted, not logged per turn`, cls: 'loop', chars: null, text: loop._ || '', feeds: [] });
+    if (!out.length) out.push({ key: 'reply', label: '(a fold with no writes)', cls: 'output', chars: 0, text: reply._ || '', feeds: [] });
+    for (const s of out) s.tokens = Math.max(1, Math.round(est(s.chars || 0)));
+    const lp = out.find(s => s.key === 'loop'); if (lp) lp.tokens = Math.max(lp.tokens, 60);
+    moments.push({ id: `o${i}`, label: `reply ${i + 1}`, kind: 'output', tokens: out.reduce((s, x) => s + x.tokens, 0), measured: false, reads: 'all', spans: out });
+  });
+  // the return edge: the last reply's writes land on a projected next window
+  const lastOut = moments[moments.length - 1]; const lastWin = moments[moments.length - 2];
+  if (lastOut && lastOut.kind === 'output' && lastWin && lastOut.spans.some(s => s.feeds && s.feeds.length)) {
+    const spans = lastWin.spans.map(s => ({ ...s, changed: false, new: false }));
+    const by = new Map(spans.map(s => [s.key, s]));
+    for (const w of lastOut.spans) for (const k of (w.feeds || [])) { const t = by.get(k); if (t) { t.changed = true; t.chars += w.chars || 0; t.tokens += w.tokens; } }
+    moments.push({ id: 'wnext', label: 'next window (projected)', kind: 'window', ghost: true, tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
+  }
+  const pending = wakes.length && !wakes[wakes.length - 1]['2'];
+  const notes = [
+    `${handle} — the window as composed, published by its own door to flow:${handle} (${name}); ${wakes.length} wake${wakes.length === 1 ? '' : 's'} standing${pending ? ', the newest awaiting its reply' : ''}.`,
+    'Labels, addresses and sizes only: a span is a reference to a public block and its size; no text is carried, so the peek shows the line and the address.',
+    'Window heights are estimated from characters (four a token): the router that composes the window never makes the inference call. Flags come from the block itself — the producer fingerprints each part and marks what entered or changed since the previous window.',
+    block['9'] && block['9']._ ? String(block['9']._) : '',
+  ].filter(Boolean);
+  return { label: `${handle} — ${wakes.length} wake${wakes.length === 1 ? '' : 's'}, read from the beach`, notes, moments };
+}
+
 // Recognise a loaded thing and make rows of it.
 function toRows(data, name) {
+  if (isFlowBlock(data)) return [adaptFlowBlock(data, name)];
   if (data && data.flow === 1) return (data.rows || []).map(r => ({ ...r, label: r.label || data.title, notes: (data.meta && data.meta.notes) || [], title: data.title }));
   const asFrame = (r) => ({ ts: r.created_at || r.ts, system: r.system_prompt ?? r.system, message: r.user_prompt ?? r.message, output: r.response ?? r.output, model: r.model, extras: r.extras, parsed: r.parsed,
     usage: r.usage || { input_tokens: r.input_tokens, output_tokens: r.output_tokens } });
@@ -719,18 +792,71 @@ const SOURCES = {
   'cloop': '../filmstrip/examples/birth-first-awakening.json',
 };
 const status = (s) => { document.getElementById('status').textContent = s; };
+/* A source is a built-in key, a path or URL, or `beach:<block>` — which reads
+   that block from a federated beach (`beach@<origin>:<block>` for another one).
+   The beach serves a block as its own JSON, so what comes back is a pscale
+   block and not a flow document; unwrapBlock lifts the document out of it. */
+const DEFAULT_BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+function resolveSource(item) {
+  if (SOURCES[item]) return SOURCES[item];
+  const m = /^beach(?:@([^:]+(?::\d+)?))?:(.+)$/.exec(item);
+  if (!m) return item;
+  const origin = m[1] ? (/^https?:\/\//.test(m[1]) ? m[1] : 'https://' + m[1]).replace(/\/+$/, '') + '/.well-known/pscale-beach' : DEFAULT_BEACH;
+  return origin + '?block=' + encodeURIComponent(m[2]);
+}
+
+/* A flow document published on the beach lives INSIDE a pscale block, because a
+   block is `_` plus positions 1-9 and a flow document is neither — storing the
+   document as the block itself would leave something on the beach that cannot be
+   walked. So the convention is: the underscore says what the block is, and a
+   position carries the document. We do not care which position. */
+function unwrapBlock(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return data;
+  if (data.flow || data.system_prompt || data.system) return data;   // already a document
+  if (!('_' in data)) return data;
+  for (const k of Object.keys(data)) {
+    if (!/^\d+$/.test(k)) continue;
+    const v = data[k];
+    if (v && typeof v === 'object' && (v.flow || Array.isArray(v) || v.system_prompt || v.system)) return v;
+  }
+  return data;
+}
+
 async function loadSources(list) {
   const rows = []; const errs = [];
   for (const item of list) {
-    const url = SOURCES[item] || item;
+    const url = resolveSource(item);
     try {
       const r = await fetch(url); if (!r.ok) throw new Error(`${r.status}`);
-      const data = await r.json();
+      const data = unwrapBlock(await r.json());
       rows.push(...toRows(data, item.replace(/^.*\//, '')));
     } catch (e) { errs.push(`${item}: ${e.message}`); }
   }
   RUNS = rows; renderAll();
   status(errs.length ? 'could not load — ' + errs.join(' · ') : '');
+}
+
+/* ?poll=<seconds> — re-fetch the same sources on a timer, for watching a
+   session compile as it runs (session-flow.py --watch writes the document).
+   Redraw only when the bytes changed: a redraw costs the reader their scroll
+   position and any open peek, and most ticks change nothing. */
+let POLL_SIG = null;
+function startPolling(list, seconds) {
+  const tick = async () => {
+    let sig = '';
+    for (const item of list) {
+      try {
+        const r = await fetch(resolveSource(item), { cache: 'no-store' });
+        sig += r.ok ? await r.text() : 'x';
+      } catch (e) { sig += 'x'; }
+    }
+    if (POLL_SIG === null) { POLL_SIG = sig; return; }
+    if (sig === POLL_SIG) return;
+    POLL_SIG = sig;
+    loadSources(list);
+  };
+  tick();
+  setInterval(tick, Math.max(1, seconds) * 1000);
 }
 function setActive(attr, val) { document.querySelectorAll(`#panel button[${attr}]`).forEach(b => b.classList.toggle('active', b.getAttribute(attr) === val)); }
 document.querySelectorAll('#panel button[data-src]').forEach(b => b.onclick = () => {
@@ -778,6 +904,8 @@ document.getElementById('file').addEventListener('change', async (ev) => {
   setActive('data-src', known || (list.join(',') === 'egg-one,mirror,session' ? 'all' : '—'));
   setActive('data-theme-set', document.documentElement.getAttribute('data-theme'));
   loadSources(list);
+  const poll = parseFloat(params.get('poll'));
+  if (poll > 0) { document.getElementById('live').hidden = false; startPolling(list, poll); }
 })();
 
 // Embedded same-origin (the ecology page), follow its toggle live rather than
