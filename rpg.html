@@ -68,6 +68,9 @@ details.walk summary::before{content:'▸ ';font-family:var(--mono);color:var(--
 details.walk[open] summary::before{content:'▾ '}
   .world code{display:block;margin-top:10px;font-family:var(--mono);font-size:12.5px;color:var(--foam);background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:8px;padding:9px 11px;overflow-wrap:anywhere}
   .world .hint{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:6px 0 0}
+  .world .roster{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:10px 0 0;line-height:1.8}
+  .world .roster a{color:var(--foam);border-bottom:1px dashed rgba(var(--solid-rgb),0.5)}
+  .world .roster a:hover{color:var(--liquid);border-color:var(--liquid)}
   .state{font-family:var(--mono);font-size:12.5px;color:var(--vapour-dim);padding:10px 0}
 
   .walk{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 10px}
@@ -223,6 +226,7 @@ async function renderWorlds(){
         '<a class="play" href="https://mirror.onen.ai/?world=' + encodeURIComponent(open.name) + '">play now ↗</a>' +
         '<button type="button" data-say="' + esc(say) + '">with your assistant</button>' +
       '</div>' +
+      '<p class="roster" data-table="' + esc(open.name) + '">who stands here — asking the table…</p>' +
       '<code class="hidden">' + esc(say) + '</code>' +
       '<p class="hint hidden">say that to your assistant — it takes you to the gate, then makes your character, then in</p>' +
       '<details class="host"><summary>host a private table of ' + esc(w.name) + '</summary>' +
@@ -248,6 +252,29 @@ async function renderWorlds(){
     setTimeout(() => { b.textContent = 'with your assistant'; }, 2000);
   }));
   if (location.hash){ const t = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (t) t.scrollIntoView({ block: 'start' }); }
+  renderRosters();
+}
+
+/* ── who stands at each open table — read from the table's own surface: every passport
+   there is a character, and a character's page is /page/<name>?world=<table>. Derived,
+   never kept as a list: the table's index IS its roster. ── */
+const APEX = BEACH.replace(/\/\.well-known\/pscale-beach$/, '');
+async function renderRosters(){
+  const els = Array.from(document.querySelectorAll('.roster[data-table]'));
+  await Promise.all(els.map(async el => {
+    const table = el.getAttribute('data-table');
+    let names = [];
+    try {
+      const r = await fetch(APEX + '/w/' + encodeURIComponent(table) + '/.well-known/pscale-beach', { headers:{Accept:'application/json'}, cache:'no-store' });
+      if (!r.ok) throw new Error(String(r.status));
+      const idx = await r.json();
+      names = (idx.blocks || []).filter(b => b.startsWith('passport:')).map(b => b.slice(9))
+        .filter(n => /^[a-z0-9_-]+$/i.test(n)).sort((a, b) => a.localeCompare(b));
+    } catch(e){ el.textContent = 'who stands here — the table did not answer'; return; }
+    el.innerHTML = names.length
+      ? 'standing here: ' + names.map(n => '<a href="/page/' + encodeURIComponent(n) + '?world=' + encodeURIComponent(table) + '" title="' + esc(n) + '\'s page — who they are, where they stand, the room now">' + esc(n) + '</a>').join(' · ')
+      : 'nobody stands here yet — the first character is yours to make';
+  }));
 }
 
 /* ── who has said which game they want — the room's committed lines, newest first ── */
