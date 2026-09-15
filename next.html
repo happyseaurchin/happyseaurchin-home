@@ -644,7 +644,7 @@ async function loadField(){
   if (PERSONAL){
     /* the hand answers to nobody's dials: it is one holder's own block, so the
      * disarm is personal by construction and no venture is hardwired — where a
-     * closed card lands is read off the card's own aim (see landRecord). */
+     * closed card lands is read off the card's own aim (see landCard). */
     if (HAND){ OP.disarm = 'person'; OP.venture = null; }
     else if (OP.venture === undefined) OP.venture = 'beach-venture';
     const mine = mirrors[HANDLE] || null;
@@ -1176,6 +1176,18 @@ function walkZeroAware(block, addr){
   }
   return n;
 }
+/* THE BEAT A CARD CLOSES IN — the day's nine parts, the sundial's finest named
+ * rung. A done card hangs BENEATH a beat and not beneath the day, because the
+ * day's own digits 1-9 ARE the nine beats: there is no free digit under a day
+ * that does not collide with one. Under a beat the digits are pscale 0, which
+ * is exactly where a card's sentence belongs, with its conditions at pscale −1
+ * beneath — the card's own shape (function:ahead:2), unchanged, re-anchored. */
+const BEATS_IN_DAY = 9;
+function beatOfNow(){
+  const d = new Date();
+  return Math.floor((d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds()) / 9600) + 1;
+}
+function beatRung(beat){ return dayRung().slice(0, 8) + String(beat || beatOfNow()); }
 /* ── THE TENSE FLIP — an intention becomes an account of what happened.
  * A card is written forward ('review the ahead piles'); the record it leaves
  * behind says what was done ('reviewed the ahead piles'), and this is what
@@ -1246,18 +1258,51 @@ function pastTense(text){
   if (w[0] === w[0].toUpperCase()) past = past[0].toUpperCase() + past.slice(1);
   return past + rest;
 }
-/* ── WHERE A DONE LANDS — the card's own field 2, never a hardwired family and
- * never a parse of its words (function:ahead:4). A card with no 2 lands in the
- * holder's own now — the whole of the difference between a project record and
- * a personal one, a read rather than a setting. ── */
-async function landRecord(recordText, card, elapsed){
+/* ── WHERE A DONE LANDS — AS A CARD, AT THE BEAT IT CLOSED IN.
+ *
+ * It used to land as a BULLET: '· ' + the past-tense sentence + an elapsed,
+ * appended into the day's prose in <family>:<handle>. So a completion existed
+ * TWICE, in two shapes, in two blocks — a structured card in the pile waiting
+ * for the morning sweep, and a line of prose that persisted. The card was the
+ * thing; the bullet was what everyone else could actually see.
+ *
+ * Now the CARD lands, as a node, and the pile slot is freed at once. One shape,
+ * one place, one act (David's ruling 2026-09-15; drafted at
+ * proposal:card-hand:3). What this buys, in order of weight: it retires the
+ * last prose-parsing mechanism in the card system — the witness loop matched
+ * claims with /^·\s*(.+)$/ over a person's own revisable prose, in the very
+ * cell they also write their reading into, which is the collision class
+ * function:ahead:2 retired for cards after two live incidents; the pile ceiling
+ * stops counting things already finished; and an account becomes a POSITION a
+ * witness can point at rather than a sentence that moves when its author edits
+ * the paragraph around it.
+ *
+ * THE ORDER OF THE TWO WRITES IS THE SAFETY. The mirror is written FIRST and
+ * the slot cleared only on success: a failed clear leaves a card in two places,
+ * which is visible and recoverable, while a failed landing after a clear would
+ * lose the card outright. A landing that cannot happen at all — no mirror
+ * there yet, a refused latch, every beat of the day full — leaves the card in
+ * the pile, flipped to done exactly as before, so nothing is ever dropped on
+ * the floor; the sweep still reclaims those, which is the only job it has left.
+ *
+ * The AIM is still read off the card's own field 2, never a hardwired family
+ * and never a parse of its words (function:ahead:4); a card with no 2 lands in
+ * the holder's own now. ── */
+async function landCard(card, doneText, elapsed){
   if (!PERSONAL) return { skipped: true };
   const fam = (card && card.toward) || (HAND ? 'now' : null);
   if (!fam) return { skipped: true };
   const name = fam + ':' + HANDLE;
   const block = await readBlock(name).catch(() => null);
-  if (!block) return { skipped: true, name };   // no reading there yet — the card stands alone
-  const line = '· ' + pastTense(recordText) + (elapsed ? ' (' + elapsed + ')' : '');
+  if (!block) return { skipped: true, name, fam };   // no reading there yet — the card stands alone
+  /* THE CARD, AS A CARD. Its sentence at pscale 0, its conditions at −1, the
+   * shape function:ahead:2 already gives it — only the anchor moves. Field 6
+   * is the one addition: the elapsed is a property of the CLOSING rather than
+   * of the card, it has nowhere else to go now the prose line is gone, and a
+   * position is what this whole change is for. */
+  const node = { '_': doneText, '2': fam, '3': iso(), '4': 'done' };
+  if (card && card.from) node['5'] = card.from;
+  if (elapsed) node['6'] = elapsed;
   /* THE LANDING'S KEY FOLLOWS THE TARGET, never the hand. Each surface has
    * historically named its latch its own way, so read every home that block's
    * key may live in, newest convention first; a success re-stores it under the
@@ -1266,44 +1311,41 @@ async function landRecord(recordText, card, elapsed){
   if (fam === 'now') keyHomes.push('now-latch:' + HANDLE);
   keyHomes.push('mirror-latch:' + fam + ':' + HANDLE);
   const secret = keyHomes.map(k => localStorage.getItem(k)).find(v => v) || null;
-  /* A CLOCK FAMILY TAKES THE DAY'S RUNG; ANYTHING ELSE TAKES AN APPEND. The day
-   * rung is ten digits and only a block whose floor reaches that far can hold it —
-   * a floor-1 mirror would refuse the address outright. So the SHAPE OF THE TARGET
-   * decides the write, read from the block itself rather than assumed. */
+  /* A CLOCK FAMILY TAKES A BEAT OF TODAY; ANYTHING ELSE TAKES AN APPEND. A beat
+   * address is nine digits and only a block whose floor reaches that far can
+   * hold one — a floor-1 mirror would refuse it outright — so the SHAPE OF THE
+   * TARGET decides the write, read from the block itself rather than assumed. */
   const deep = floorOf(block) >= 8;
-  const addr = deep ? dayRung() : null;
-  let body;
+  let addr = null;
   if (deep){
-    /* MERGE, NEVER REPLACE: the day cell may already be an object — the day's
-     * voicing at its underscore with gathering cells beneath — and a string
-     * written over it would eat the gatherings. The record joins the cell's own
-     * voice; everything beneath rides through untouched (the /now composeWrite
-     * lesson, applied here). */
-    const node = walkZeroAware(block, addr);
-    if (node && typeof node === 'object'){
-      const prior = typeof node['_'] === 'string' ? node['_'] : '';
-      body = { block: name, spindle: addr,
-               content: Object.assign({}, node, { '_': prior && prior.trim() ? prior + '\n' + line : line }) };
-    } else {
-      const prior = typeof node === 'string' ? node : '';
-      body = { block: name, spindle: addr, content: prior && prior.trim() ? prior + '\n' + line : line };
+    /* the first free digit under this beat, then later beats of the same day:
+     * nine cards closed inside one beat is already a lot, and a day holds
+     * eighty-one before this can fail at all */
+    for (let b = beatOfNow(); b <= BEATS_IN_DAY && !addr; b++){
+      const at = walkZeroAware(block, beatRung(b));
+      for (let d = 1; d <= 9; d++){
+        const taken = at && typeof at === 'object' && at[String(d)] !== undefined;
+        if (!taken){ addr = beatRung(b) + d; break; }
+      }
     }
-  } else {
-    body = { block: name, append: true, content: line };
+    if (!addr) return { full: true, name, fam };
   }
+  const body = deep
+    ? { block: name, spindle: addr, content: node }
+    : { block: name, append: true, content: node };
   let w = await writeBlock(Object.assign(body, secret ? { secret } : {}));
-  if (w.ok){
-    if (secret) localStorage.setItem('next-latch:' + name, secret);
-    return { addr, name, fam, append: !deep };
-  }
-  if (lockRequired(w)){
+  if (!w.ok && lockRequired(w)){
     const v = prompt(name + ' is latched — its key (the one you set where you write it), kept on this device:');
     if (v !== null && v.trim()){
       w = await writeBlock(Object.assign(body, { secret: v.trim() }));
-      if (w.ok){ localStorage.setItem('next-latch:' + name, v.trim()); return { addr, name, fam, append: !deep }; }
+      if (w.ok) localStorage.setItem('next-latch:' + name, v.trim());
     }
   }
-  return { refused: true, name, fam, why: (w.data && (w.data.error || w.data.code)) || w.status };
+  if (!w.ok) return { refused: true, name, fam, why: (w.data && (w.data.error || w.data.code)) || w.status };
+  if (secret) localStorage.setItem('next-latch:' + name, secret);
+  /* AND ONLY NOW is the slot given back — the card is somewhere else first. */
+  const freed = card && card.addr ? await writeMark(card.addr, { '_': '' }) : { ok: false };
+  return { addr, name, fam, append: !deep, freed: !!freed.ok };
 }
 
 /* ── NO LADDER STRIP ABOVE THE DECK. The venture's today, this-week and this-month
@@ -1315,13 +1357,15 @@ async function landRecord(recordText, card, elapsed){
  * three lines already stand on the walk and in the morning, which is where a
  * person goes when context is what they want. Removed on the keeper's word. ── */
 
-/* ── the morning sweep — yesterday's closed cards give back their slots.
- * A closed card stays in the mirror (silence is the holder's act, never the
- * page's), so nine lifetime cards would jam the hand. The sweep is the holder's
- * one tap: cards marked DONE or DROP on an earlier day fall silent at their
- * addresses. A DONE already landed in the venture reading on its own day; a DROP
- * was retired and claims nothing. TOMORROW cards are not touched — they re-arm
- * by date on their own. ── */
+/* ── the morning sweep — now a BACKSTOP rather than a ritual.
+ * A DONE frees its own slot the moment it lands in the timeline (landCard), so
+ * the sweep no longer has the daily job it was built for. What is left to it is
+ * the honest remainder: DROPS, which retire in place and claim nothing
+ * (function:ahead:4 — 'nothing clears itself'), and any DONE whose landing could
+ * not happen — no mirror there yet, a refused latch, a day whose beats were
+ * full. Those still hold slots, and this is still the holder's one tap to give
+ * them back. On most days it will find nothing and stay hidden.
+ * TOMORROW cards are not touched — they re-arm by date on their own. ── */
 function sweepable(){
   if (!PERSONAL) return [];
   const t = today();
@@ -1413,10 +1457,16 @@ async function commitSheet(){
      * holder's; with a line typed, that line lands instead, flipped and truer.
      * The card's raw words still supply the AIM, so where it lands is unchanged
      * by whether anything was typed. A DROP retires and lands nowhere. */
+    /* THE FLIP ABOVE IS NOW THE FALLBACK, not the destination. It still runs
+     * first and unchanged, so a landing that cannot happen leaves exactly the
+     * behaviour of before — a done card sitting in its slot for the sweep. When
+     * the landing DOES happen, landCard frees that slot itself and the card is
+     * in the timeline rather than in the pile. One extra write on the happy
+     * path, bought for a failure path that loses nothing. */
     let landed = null;
     if (kind !== 'respond' && PERSONAL)
-      landed = await landRecord(card.text + (note ? ' — ' + note : ''), card,
-                                kind === 'finish' ? fmtElapsed(elapsedMs()) : null);
+      landed = await landCard(card, doneText,
+                              kind === 'finish' ? fmtElapsed(elapsedMs()) : null);
     closeSheet();
     if (kind === 'finish'){ TIMER = null; saveTimer(); hideDoing(); }
     const top = document.querySelector('.cardface.top');
@@ -1428,10 +1478,11 @@ async function commitSheet(){
     }
     setTimeout(() => {
       rebuildDeck(false); renderDeck();
-      if (landed && landed.addr) toast('✓ closed — landed in your ' + landed.fam + ' reading at today’s rung');
-      else if (landed && landed.name && landed.append) toast('✓ closed — landed in your ' + landed.fam + ' reading');
+      if (landed && landed.addr) toast('✓ the card stands in your ' + landed.fam + ' timeline, at this beat' + (landed.freed ? '' : ' — but its old slot did not clear'));
+      else if (landed && landed.name && landed.append) toast('✓ the card stands in your ' + landed.fam + ' reading' + (landed.freed ? '' : ' — but its old slot did not clear'));
+      else if (landed && landed.full) toast('closed — but every beat of today is full at ' + landed.name + ', so the card waits in your hand', true);
       else if (landed && landed.refused) toast('closed — but the landing at ' + landed.name + ' was refused (latch ⚿ differs?) — key trouble? happyseaurchin.com/key', true);
-      else if (landed && landed.skipped && landed.name) toast('✓ closed — nothing at ' + landed.name + ' yet, so the card stands alone');
+      else if (landed && landed.skipped && landed.name) toast('✓ closed — nothing at ' + landed.name + ' yet, so the card waits in your hand');
       else toast('✓ written to ' + FIELD + ':' + HANDLE);
     }, kind === 'finish' ? 0 : 430);
   } catch (e){
