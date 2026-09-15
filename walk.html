@@ -767,9 +767,19 @@ function cardHomes(){
  * — every hand's — and are always in the past or in today, because that is the
  * only kind of thing that can have closed.
  *
- * Read by PREFIX, so a day answers with everything that closed in any of its
- * beats and a week with every day beneath it. A card is a NODE and never a
- * line of prose: nothing here parses a sentence (function:ahead:2). ── */
+ * AND IT SHOWS AT EXACTLY ONE RUNG — the rung it was HELD at, which field 1
+ * carries out of the pile it left. Read by prefix ALONE a card appeared at
+ * every rung above its address at once: finish one on a Tuesday and it stood
+ * in the gathering, the day, the week, the month, the season and the year,
+ * six copies of one act (David, 2026-09-15). The prefix still decides
+ * CONTAINMENT — last week's card must not show at this week's cell — and the
+ * rung decides the ROW. A week-sized intent closes as a week-sized
+ * accomplishment and belongs on the week's row, whichever Tuesday it happened
+ * to land on.
+ * A card carrying no rung is read as a DAY, which is where the eye goes first
+ * and what a card minted in a hand with no rung of its own should be.
+ * A card is a NODE and never a line of prose: nothing here parses a sentence
+ * (function:ahead:2). ── */
 function doneCardsIn(raw, prefix){
   const out = [];
   (function walk(n, path){
@@ -777,7 +787,8 @@ function doneCardsIn(raw, prefix){
     if (isEntryNode(n)){
       const t = String(n['_'] || '').trim();
       if (n['4'] === 'done' && t && path.indexOf(prefix) === 0)
-        out.push({ addr: path, text: t, ts: n['3'] || '', elapsed: n['6'] || '' });
+        out.push({ addr: path, text: t, ts: n['3'] || '', elapsed: n['6'] || '',
+                   rung: Number(n['1']) || 2 });
       return;
     }
     if ('_' in n) walk(n['_'], path + '0');
@@ -785,12 +796,19 @@ function doneCardsIn(raw, prefix){
   })(raw, '');
   return out;
 }
+/* an address's own rung, read off its width: the sundial runs decade 3, year 4,
+ * season 5, month 6, week 7, day 8, gathering 9 — so the pscale is 10 minus the
+ * digits, which is the same ladder the piles are numbered on */
+const rungOfAddr = a => 10 - String(a).replace(/0+$/, '').length;
 const cardsAt = addr => {
   if (MODE === 'tree' || MODE === 'ground') return [];
   const pre = String(addr).replace(/0+$/, '');
   if (!pre) return [];
+  const rung = rungOfAddr(pre);
   const out = [];
-  MIRRORS.forEach(([who, blk]) => doneCardsIn(blk, pre).forEach(c => out.push(Object.assign({ who }, c))));
+  MIRRORS.forEach(([who, blk]) => doneCardsIn(blk, pre).forEach(c => {
+    if (c.rung === rung) out.push(Object.assign({ who }, c));
+  }));
   return out.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
 };
 /* the cards held at one HORIZON rather than at one point — every hand's, this
@@ -1282,15 +1300,16 @@ function renderRack(){
   /* the aim overhead is the COARSEST rung that has actually been spoken — a
    * young family whose decade is unvoiced showed a bare label and read as
    * broken, when the honest answer is simply the next rung down that speaks */
-  let tw = '';
-  const nowFam = VENTURE === 'now';
-  for (const n of [3, 4, 5, 6]){ tw = nowFam ? (lensText(TODAY_ADDR.slice(0, n)) || '') : textAt(SPINE, TODAY_ADDR.slice(0, n)); if (tw) break; }
-  $('toward').innerHTML = tw
-    ? 'toward \u00b7 <b>' + esc(short(tw, 150)) + '</b>'
-    : '<span class="silent">' + (nowFam
-        ? (LENS === 'mine' ? 'you have not voiced a year or a month yet — stand at one and say what it is toward'
-                           : 'each person’s now is their own — nothing is shared above today, by design')
-        : 'nothing written above today yet — stand at a year or a month and say what this is toward') + '</span>';
+  /* THE HEAD SAYS WHAT A CARD IS. It used to repeat the coarsest voiced rung
+   * back as 'toward …', which the rack already shows a row or two below and in
+   * the holder's own words — so the one line above the walk was spent saying
+   * something twice. A card is the thing on this page nobody arrives knowing
+   * (David, 2026-09-15), so the line says that instead. */
+  $('toward').innerHTML = '<b>cards</b> · something you mean to do, held at a rung of the '
+    + 'adjacent future — within hours, tomorrow, a week out, a year out. Each rung’s golden card '
+    + 'holds what is waiting there (turn them on under <b>options</b>); you take one up and finish it '
+    + 'at <a href="/hands' + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') + '">your hands</a>, '
+    + 'and once done it stands here in the timeline, at the rung it was held at.';
   renderRowsFrom('ce');
 }
 /* ── the tree rack — the same rows, grown from the spine's own branches: row one
