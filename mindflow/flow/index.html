@@ -458,8 +458,78 @@ function adaptCloop(frame, title) {
   return { label: title, notes: [`${frame.model || ''} · ${frame.ts || ''} · ${frame.concern || ''}`, 'Heights are estimated from characters; the kernel of that era logged one token count for the whole loop.' + (measured ? ` (logged input ${measured})` : '')], moments };
 }
 
+// A flow BLOCK — what bsp-mcp's flow producer writes at flow:<handle> (src/flow.ts there): a
+// pscale block, only `_` and 1-9 at every level (the beach's shape gate), so it walks with
+// bsp() and needs no viewer; this adapter draws it. Three wakes at 1-3, oldest first, each
+// {_, 1: window {1 SYSTEM, 2 MESSAGE}, 2: reply {1 writes, 2 note, 3 in-loop}}; a side's
+// children are the parts in window order, the hydrated bundle a part whose children are its
+// currents; a span {_ its line, 1 reference, 2 chars, 3 lodestone rung, 4 change since the
+// previous window (for a write: the current it feeds), 5 fingerprint}. Labels, addresses and
+// sizes only — the peek shows the line and the address, never text.
+const isSpanNode = (v) => !!v && typeof v === 'object' && typeof v['1'] === 'string' && /^\d+$/.test(String(v['2'] ?? ''));
+const digitKeys = (o) => Object.keys(o || {}).filter(k => /^[1-9]$/.test(k)).sort();
+function isFlowBlock(d) {
+  if (!d || typeof d !== 'object' || Array.isArray(d) || typeof d._ !== 'string') return false;
+  return digitKeys(d).some(k => {
+    const win = d[k] && d[k]['1']; const side = win && win['1'];
+    return !!side && typeof side === 'object' && digitKeys(side).some(s => isSpanNode(side[s]) || (side[s] && typeof side[s] === 'object' && digitKeys(side[s]).some(g => isSpanNode(side[s][g]))));
+  });
+}
+const blockNameOf = (ref) => String(ref).split(' ')[0].replace(/(:-?\d+(\.\d+)?)+$/, '');
+function adaptFlowBlock(block, name) {
+  const handle = (/the window of ([A-Za-z0-9_-]+)/.exec(block._ || '') || [])[1] || 'genus';
+  const wakes = digitKeys(block).map(k => block[k]).filter(w => w && typeof w === 'object' && w['1'] && typeof w['1'] === 'object');
+  const spanOf = (v, key, cls, side) => {
+    const chars = Number(v['2']) || 0; const flag = String(v['4'] || '');
+    return { key, label: v['1'] + (flag === 'unresolved' ? ' — unresolved' : ''), ref: v['1'], rung: v['3'] || null, cls, chars, tokens: Math.max(1, Math.round(est(chars))), text: v._ || '', side, new: flag === 'new', changed: flag === 'changed', unresolved: flag === 'unresolved' };
+  };
+  const moments = [];
+  wakes.forEach((wk, i) => {
+    const win = wk['1']; const spans = [];
+    for (const sideKey of ['1', '2']) {
+      const side = win[sideKey]; if (!side || typeof side !== 'object') continue;
+      const sys = sideKey === '1';
+      for (const k of digitKeys(side)) {
+        const part = side[k];
+        if (isSpanNode(part)) spans.push(spanOf(part, sys ? `sys:${part['1']}` : `given:${part['1']}`, sys ? 'current' : 'given', sys ? 'system' : 'message'));
+        else if (part && typeof part === 'object') for (const g of digitKeys(part)) if (isSpanNode(part[g])) spans.push(spanOf(part[g], `self:${blockNameOf(part[g]['1'])}`, 'current', 'system'));
+      }
+    }
+    const m = /^window composed (\S+)/.exec(win._ || ''); const when = m ? new Date(m[1]) : null;
+    moments.push({ id: `w${i}`, label: `wake ${i + 1}${when && !isNaN(when) ? ' · ' + when.toISOString().slice(5, 16).replace('T', ' ') : ''}`, kind: 'window', tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
+    const reply = wk['2']; if (!reply || typeof reply !== 'object') return;
+    const out = [];
+    const writes = reply['1'] || {};
+    for (const k of digitKeys(writes)) { const v = writes[k]; if (!isSpanNode(v)) continue; out.push({ key: `write:${v['1']}`, label: `write ${v['1']}`, ref: v['1'], rung: v['3'] || '3', cls: 'output', chars: Number(v['2']) || 0, text: v._ || '', feeds: v['4'] ? [`self:${v['4']}`] : [] }); }
+    const note = reply['2']; if (isSpanNode(note) && Number(note['2']) > 0) out.push({ key: 'note', label: "note (the history leaf's voicing)", ref: note['1'], rung: '3.2', cls: 'output', chars: Number(note['2']), text: note._ || '', feeds: ['self:history'] });
+    const loop = reply['3']; const acted = loop ? Number(loop['4']) || 0 : 0;
+    if (acted) out.push({ key: 'loop', label: `${acted} in-loop writes — counted, not logged per turn`, cls: 'loop', chars: null, text: loop._ || '', feeds: [] });
+    if (!out.length) out.push({ key: 'reply', label: '(a fold with no writes)', cls: 'output', chars: 0, text: reply._ || '', feeds: [] });
+    for (const s of out) s.tokens = Math.max(1, Math.round(est(s.chars || 0)));
+    const lp = out.find(s => s.key === 'loop'); if (lp) lp.tokens = Math.max(lp.tokens, 60);
+    moments.push({ id: `o${i}`, label: `reply ${i + 1}`, kind: 'output', tokens: out.reduce((s, x) => s + x.tokens, 0), measured: false, reads: 'all', spans: out });
+  });
+  // the return edge: the last reply's writes land on a projected next window
+  const lastOut = moments[moments.length - 1]; const lastWin = moments[moments.length - 2];
+  if (lastOut && lastOut.kind === 'output' && lastWin && lastOut.spans.some(s => s.feeds && s.feeds.length)) {
+    const spans = lastWin.spans.map(s => ({ ...s, changed: false, new: false }));
+    const by = new Map(spans.map(s => [s.key, s]));
+    for (const w of lastOut.spans) for (const k of (w.feeds || [])) { const t = by.get(k); if (t) { t.changed = true; t.chars += w.chars || 0; t.tokens += w.tokens; } }
+    moments.push({ id: 'wnext', label: 'next window (projected)', kind: 'window', ghost: true, tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
+  }
+  const pending = wakes.length && !wakes[wakes.length - 1]['2'];
+  const notes = [
+    `${handle} — the window as composed, published by its own door to flow:${handle} (${name}); ${wakes.length} wake${wakes.length === 1 ? '' : 's'} standing${pending ? ', the newest awaiting its reply' : ''}.`,
+    'Labels, addresses and sizes only: a span is a reference to a public block and its size; no text is carried, so the peek shows the line and the address.',
+    'Window heights are estimated from characters (four a token): the router that composes the window never makes the inference call. Flags come from the block itself — the producer fingerprints each part and marks what entered or changed since the previous window.',
+    block['9'] && block['9']._ ? String(block['9']._) : '',
+  ].filter(Boolean);
+  return { label: `${handle} — ${wakes.length} wake${wakes.length === 1 ? '' : 's'}, read from the beach`, notes, moments };
+}
+
 // Recognise a loaded thing and make rows of it.
 function toRows(data, name) {
+  if (isFlowBlock(data)) return [adaptFlowBlock(data, name)];
   if (data && data.flow === 1) return (data.rows || []).map(r => ({ ...r, label: r.label || data.title, notes: (data.meta && data.meta.notes) || [], title: data.title }));
   const asFrame = (r) => ({ ts: r.created_at || r.ts, system: r.system_prompt ?? r.system, message: r.user_prompt ?? r.message, output: r.response ?? r.output, model: r.model, extras: r.extras, parsed: r.parsed,
     usage: r.usage || { input_tokens: r.input_tokens, output_tokens: r.output_tokens } });
