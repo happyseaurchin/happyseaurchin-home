@@ -754,13 +754,51 @@ function cardHomes(){
   }));
   return out;
 }
-const cardsAt = addr => (MODE === 'tree' || MODE === 'ground') ? [] : cardHomes().filter(c => c.home === addr);
+/* ── WHAT CLOSED HERE. A time cell used to show every OPEN card in the family,
+ * because cardHomes homed them all at today — the rule from before the piles
+ * were drawn. Once the golden cards carried the piles that became a second
+ * copy of the same cards a few pixels away, and worse, a claim that a thing
+ * with no day had one.
+ *
+ * So the division is now clean and it is the one David ruled: ANYTHING NOT DONE
+ * IS IN THE GOLDEN PILE AT ITS RUNG; THE TIME CELLS SHOW WHAT HAPPENED. A done
+ * card leaves its pile and stands as a card at the beat it closed in
+ * (next.html landCard), so a cell's cards are read out of the family's mirrors
+ * — every hand's — and are always in the past or in today, because that is the
+ * only kind of thing that can have closed.
+ *
+ * Read by PREFIX, so a day answers with everything that closed in any of its
+ * beats and a week with every day beneath it. A card is a NODE and never a
+ * line of prose: nothing here parses a sentence (function:ahead:2). ── */
+function doneCardsIn(raw, prefix){
+  const out = [];
+  (function walk(n, path){
+    if (!n || typeof n !== 'object') return;
+    if (isEntryNode(n)){
+      const t = String(n['_'] || '').trim();
+      if (n['4'] === 'done' && t && path.indexOf(prefix) === 0)
+        out.push({ addr: path, text: t, ts: n['3'] || '', elapsed: n['6'] || '' });
+      return;
+    }
+    if ('_' in n) walk(n['_'], path + '0');
+    for (const d of childDigits(n)) walk(n[d], path + d);
+  })(raw, '');
+  return out;
+}
+const cardsAt = addr => {
+  if (MODE === 'tree' || MODE === 'ground') return [];
+  const pre = String(addr).replace(/0+$/, '');
+  if (!pre) return [];
+  const out = [];
+  MIRRORS.forEach(([who, blk]) => doneCardsIn(blk, pre).forEach(c => out.push(Object.assign({ who }, c))));
+  return out.sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+};
 /* the cards held at one HORIZON rather than at one point — every hand's, this
  * family only, since cardHomes has already dropped the ones aimed elsewhere */
 const cardsAtPile = p => (MODE === 'tree' || MODE === 'ground') ? [] : cardHomes().filter(c => c.pile === p);
 /* in a tree walk, a card aims at the family in its own field 2; the sheet lists them at any branch */
 const famCards = () => cardHomes();
-const cardsUnder = addr => cardHomes().filter(c => c.home.slice(0, addr.length) === addr).length;
+
 
 /* ── writes — the deck page's write path, held to exactly ── */
 async function writeWithLatch(body, what){
@@ -1080,7 +1118,7 @@ function rcard(label, addr, isSel, isNow, data){
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
-    (cs ? '<span class="b bc" title="open the detail below">' + cs + (cs === 1 ? ' card' : ' cards') + '</span>' : '') + '</div></div>';
+    (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') + '</div></div>';
 }
 /* ── the rows. Each shows its FULL sibling set — every month of the year, every
  * year of the decade — so nothing vanishes as you click. A click highlights in
@@ -1544,13 +1582,11 @@ function paintSheet(){
     else
       b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
   } else {
-    const finer = cardsUnder(addr) - cs.length;
     b.push(cs.length
       ? cs.map(c => '<div class="cardenv' + (c.who === HANDLE ? ' you' : '') + '"><span class="cwho">' + esc(whoName(c.who)) +
-          (c.who === HANDLE ? ' <a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">hands ↗</a>' : '') +
-          '</span><div class="ctext">' + esc(c.text) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</div></div>').join('')
-      : '<span class="silent">no cards held toward this right now</span>');
-    if (finer > 0) b.push('<span class="silent">and ' + finer + ' held at finer times beneath — stand there to see them</span>');
+          (c.elapsed ? '<span class="st">' + esc(c.elapsed) + '</span>' : '') +
+          '</span><div class="ctext">' + esc(c.text) + '</div></div>').join('')
+      : '<span class="silent">nothing closed here — a card stands here once it is done, and waits in the golden pile until then</span>');
     if (HANDLE)
       b.push('<div class="addwrap"><div class="mintbox">' +
         '<div class="sub">mint a card — one doable thing</div>' +

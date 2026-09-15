@@ -169,10 +169,6 @@ const PILES = [
 ];
 const pileLabel = d => (PILES.find(x => x.d === String(d)) || {}).label || '';
 
-/* THE RUNG A DEAL COMES FROM, said in words. A clock family's ladder is read by
- * pscale, so the name is a function of the pscale and never of a stored label. */
-const RUNGS = { 2:'today', 3:'this week', 4:'this month', 5:'this season', 6:'this year', 7:'this decade' };
-
 /* WHICH PILE A DEALT CARD LANDS IN — THE PILE DIGIT IS THE PSCALE OF THE RUNG.
  * The rung it was asked at is the rung it is held at, so the pile follows the
  * pscale exactly and the holder is never asked.
@@ -196,7 +192,8 @@ let HANDLE = null, CARDS = [], ALLCARDS = [], DECKS = [], FIELDS = [], ASKS = []
  * next move is to confirm it a second time. The stored line is what settles it;
  * this only stops a stale read from offering the same account twice. */
 const ACTED = new Set();
-const askKey = a => a.family + '|' + String(a.who).toLowerCase() + '|' + norm(a.claim);
+/* one ask, one address — the claim's own position, which nothing can move */
+const askKey = a => a.family + '|' + a.addr;
 
 /* ── tiny beach client ── */
 async function readIndex(){
@@ -558,36 +555,71 @@ async function letGo(card){
  * opening with '·' in a mirror at a rung. Prose a person typed themselves is not
  * a claim and is never offered — settlement arises from done cards, which is
  * exactly what it is for. */
-const CLAIM_LINE = /^·\s*(.+)$/;
-const WITNESS_LINE = /^WITNESSED\b[^—]*—\s*([^:]+):\s*(.*)$/;
+/* ── A CLAIM IS A POSITION, NOT A SENTENCE.
+ *
+ * This loop used to find claims with /^·\s*(.+)$/ and its own prior
+ * confirmations with /^WITNESSED\b…/ — two regexes over a person's own
+ * revisable prose, in the very cell they also write their reading into. Edit
+ * your day's words and your claims moved or vanished; write a line beginning
+ * '· ' for any other reason and you had made a claim you never made. That is
+ * the collision class function:ahead:2 retired for CARDS after two live
+ * incidents (archive:ways:deck:2026-08-26); the card loop took the lesson and
+ * the witness loop never did.
+ *
+ * It does now. A finished card stands in its holder's mirror as a NODE at the
+ * beat it closed in (next.html landCard), so a claim is found by walking to a
+ * position, and a confirmation POINTS AT that position by address.
+ *
+ * WHY THE WITNESS DOES NOT SIT AT THE SELF-SAME ADDRESS, which is what
+ * function:ahead:5 says while claims were lines: as a NODE it would collide
+ * with my own card, if I happened to close one at that beat and digit. So it
+ * takes a free digit under the SAME BEAT in my own mirror and names what it
+ * confirms at field 2. The rule the law is protecting is untouched — nothing
+ * shared is written, the confirmation lands in the witness's own block, at the
+ * same rung, collision stays impossible and no lock model moves. ── */
+const DONE_AT = (n) => n && typeof n === 'object' && n['4'] === 'done' && String(n['_'] || '').trim();
+const WITNESS_OF = (n) => n && typeof n === 'object' && n['4'] === 'witnessed' && String(n['2'] || '');
+/* every node of one kind under an address prefix, with the path it stands at */
+function nodesUnder(raw, prefix, keep){
+  const out = [];
+  (function walk(n, path){
+    if (!n || typeof n !== 'object') return;
+    if (isEntryNode(n)){
+      const v = keep(n);
+      if (v && path.indexOf(prefix) === 0) out.push({ addr: path, node: n, value: v });
+      return;
+    }
+    if ('_' in n) walk(n['_'], path + '0');
+    for (const d of childDigits(n)) walk(n[d], path + d);
+  })(raw, '');
+  return out;
+}
 async function gatherAsks(index, addr){
   const asks = [];
+  /* THE WEEK IS THE REACH, as it was when this read a ladder at pscale 2-3: a
+   * card that closed today or earlier this week can still be confirmed, and
+   * nothing older is offered. A week prefix is the day's first seven digits. */
+  const week = String(addr).replace(/0+$/, '').slice(0, 7);
+  const day  = String(addr).replace(/0+$/, '').slice(0, 8);
   for (const fam of FIELDS){
     const others = (index.blocks || []).filter(b =>
       b.startsWith(fam + ':') && b.slice(fam.length + 1).indexOf(':') === -1 && b !== fam + ':' + HANDLE);
     if (!others.length) continue;
-    /* what this hand has already confirmed, so an ask is offered once and no more */
-    const done = new Set();
+    /* what this hand has already confirmed — matched by the ADDRESS confirmed,
+     * which no later edit of anyone's prose can move, so an ask is offered once
+     * and no more */
+    const seen = new Set();
     const mineB = await readBlock(fam + ':' + HANDLE).catch(() => null);
-    if (mineB) for (const rung of ladder(mineB, addr))
-      for (const l of rung.text.split('\n')){
-        const m = l.match(WITNESS_LINE);
-        if (m) done.add(m[1].trim().toLowerCase() + '|' + norm(m[2]));
-      }
+    if (mineB) nodesUnder(mineB, week, WITNESS_OF).forEach(w => seen.add(w.value));
     for (const name of others){
       const who = name.slice(fam.length + 1);
       const b = await readBlock(name).catch(() => null);
       if (!b) continue;
-      for (const rung of ladder(b, addr)){
-        if (rung.pscale < 2 || rung.pscale > 3) continue;
-        for (const l of rung.text.split('\n')){
-          const m = l.match(CLAIM_LINE);
-          if (!m) continue;
-          const claim = m[1].trim();
-          if (done.has(who.toLowerCase() + '|' + norm(claim))) continue;
-          asks.push({ who, claim, family: fam, addr: rung.addr, rung: RUNGS[rung.pscale] || '' });
-        }
-      }
+      nodesUnder(b, week, DONE_AT).forEach(c => {
+        if (seen.has(c.addr)) return;
+        asks.push({ who, claim: c.value, family: fam, addr: c.addr,
+                    rung: c.addr.indexOf(day) === 0 ? 'today' : 'this week' });
+      });
     }
   }
   return asks;
@@ -604,15 +636,33 @@ async function confirm(ask){
     if (!w0.ok) return w0;
     block = await readBlock(name).catch(() => null);
   }
-  let n = block;
-  for (const ch of String(ask.addr).replace(/0+$/, '')){
-    if (!n || typeof n !== 'object'){ n = null; break; }
-    n = (ch === '0') ? n['_'] : n[ch];
+  /* A FREE DIGIT UNDER THE SAME BEAT, in my own block — not the claim's own
+   * address, which in my mirror is a position my own cards may already hold.
+   * The beat is the claim's address less its last digit. */
+  const beat = String(ask.addr).slice(0, -1);
+  let at = block;
+  for (const ch of beat){
+    if (!at || typeof at !== 'object'){ at = null; break; }
+    at = (ch === '0') ? at['_'] : at[ch];
   }
-  const prior = typeof n === 'string' ? n : (n && typeof n === 'object' && typeof n['_'] === 'string' ? n['_'] : null);
-  const line = 'WITNESSED ' + new Date().toISOString().slice(0,16) + 'Z — ' + ask.who + ': ' + ask.claim;
-  return withLatch(name, { block: name, spindle: ask.addr,
-    content: prior && prior.trim() ? prior + '\n' + line : line });
+  let slot = null;
+  for (let d = 1; d <= 9; d++){
+    const taken = at && typeof at === 'object' && at[String(d)] !== undefined;
+    if (!taken){ slot = String(d); break; }
+  }
+  if (!slot) return { ok: false, data: { error: 'every position under that beat is taken in your own reading' } };
+  /* THE CONFIRMATION AS A NODE: whose account at 1, WHICH ACCOUNT at 2 — the
+   * address, which no later edit of anyone's words can move — the moment at 3,
+   * and what it is at 4. The claim's own words ride the underscore so the
+   * confirmation reads as something on its own, without having to be resolved
+   * against another block to mean anything. */
+  return withLatch(name, { block: name, spindle: beat + slot, content: {
+    '_': ask.claim,
+    '1': ask.who,
+    '2': ask.addr,
+    '3': new Date().toISOString().slice(0, 16) + 'Z',
+    '4': 'witnessed',
+  } });
 }
 
 /* ── render ── */
@@ -733,16 +783,22 @@ function render(){
     out.push('<div class="carousel">' + ASKS.map(askCardEl).join('') + '</div>');
   }
 
-  /* ── DONE TODAY — the day's record, visible where the person looks. A finished
-   * card vanished from every row the moment it finished, which read as loss
-   * ('all gone, no trace') twice over; the day's completions stand here, dim and
-   * read-only, until the morning sweep clears them. ── */
+  /* ── STILL HOLDING A SLOT — what closed today and is still in the hand.
+   * A FINISHED CARD NO LONGER BELONGS HERE. It leaves the pile at the moment it
+   * closes and stands as a card in its family's timeline, at the beat it closed
+   * in (next.html landCard) — which is where the walk shows it, and where
+   * another hand can confirm it. So this row has stopped being the day's record
+   * and become the honest remainder: DROPS, which retire in place and claim
+   * nothing (function:ahead:4 — 'nothing clears itself'), and any DONE whose
+   * landing could not happen — no mirror there yet, a refused latch, a day whose
+   * beats were full. On most days it will be empty, and that is the change
+   * working rather than the row broken. ── */
   const today = new Date().toISOString().slice(0, 10);
   const doneToday = ALLCARDS.filter(c => (c.state === 'done' || c.state === 'drop')
     && String(c.ts || '').slice(0, 10) === today);
   if (doneToday.length){
     out.push(rowHead('done today', doneToday.length + (doneToday.length === 1 ? ' card' : ' cards'), {
-      sub: 'Finished or put down since midnight — the trace, not the work: a done card’s record has already landed where it aimed. The sweep clears these tomorrow.' }));
+      sub: 'Put down since midnight, or finished and unable to land — these still hold slots, and the sweep frees them tomorrow. A card that closed cleanly is not here: it is standing in its family’s timeline at the beat it closed in, where it can be confirmed.' }));
     out.push('<div class="carousel">' + doneToday.map(c =>
       '<div class="dcard" style="opacity:0.55" data-addr="' + esc(c.addr) + '"><span class="aim"><span class="pile">' + (c.state === 'done' ? 'done' : 'put down') + '</span>'
       + (c.toward ? '<span class="st">' + esc(deckLabel(c.toward)) + '</span>' : '') + '</span>'
