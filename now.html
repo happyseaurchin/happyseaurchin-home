@@ -227,14 +227,17 @@
     <div id="ladder"></div>
   </section>
 
-  <section class="pane" id="pane-projects">
-    <h2>mine at this beat</h2>
-    <div id="projects"></div>
-  </section>
-
+  <!-- IN HAND ABOVE MINE AT THIS BEAT (David, 2026-09-15). Under your own
+       ladder comes what you have TAKEN UP; the projects' lines are the context
+       around it. Acting before context, and it is where a hand reaches. -->
   <section class="pane" id="pane-hand">
     <h2>in hand</h2>
     <div id="hand"></div>
+  </section>
+
+  <section class="pane" id="pane-projects">
+    <h2>mine at this beat</h2>
+    <div id="projects"></div>
   </section>
 
   <footer class="foot">
@@ -636,7 +639,17 @@ async function renderProjects(){
   });
 }
 
-/* ── in hand — DOING cards across the personal decks, the flick left to /next ── */
+/* ── in hand — THE COMPILED HAND across the personal decks, the flick left to
+ * /next. This pane read only state 'doing' and so stood empty for anyone whose
+ * cards were merely HELD — which is most people, most of the time: /hands
+ * compiles the top hand with inHand = held OR doing, and this page called the
+ * same thing by the same name and meant half of it. Two panes, one word, two
+ * filters, and the narrower one looked broken (David, 2026-09-15: 'there is an
+ * in hand section in /now but it is currently empty'). It was not broken; it
+ * was answering a different question.
+ * The two states stay distinguishable on the card, because they are not the
+ * same act: HELD is a selection (function:ahead:4 — 'compiling is a selection,
+ * never a move'), DOING is a claim in place. ── */
 function leaves(node, addr, out){
   out = out || [];
   if (typeof node === 'string'){ if (node.trim()) out.push({ addr, text: node.trim() }); return out; }
@@ -659,7 +672,9 @@ async function renderHand(){
   if (mine) for (const pile of Object.keys(mine).filter(k => /^[1-9]$/.test(k))){
     (function walkPile(node){
       if (isEntry(node)){
-        if (node['4'] === 'doing') doing.push({ deck: node['2'] || 'my hand', text: node._ });
+        /* claimed first, then merely compiled — a claim outranks a selection */
+        if (node['4'] === 'doing' || node['4'] === 'held')
+          doing.push({ deck: node['2'] || 'my hand', text: node._, state: node['4'] });
         return;
       }
       if (node && typeof node === 'object')
@@ -668,20 +683,22 @@ async function renderHand(){
   }
   box.innerHTML = '';
   if (!doing.length){
-    box.innerHTML = '<p class="hand-quiet">nothing claimed right now — <a id="hand-next" href="/next/' +
+    box.innerHTML = '<p class="hand-quiet">nothing in hand right now — <a id="hand-next" href="/next/' +
       encodeURIComponent(HANDLE) + '">flick your hand</a> to take one up.</p>';
     return;
   }
+  doing.sort((a, b) => (a.state === 'doing' ? 0 : 1) - (b.state === 'doing' ? 0 : 1));
   doing.slice(0, 3).forEach(c => {
     const el = document.createElement('div');
     el.className = 'card';
-    el.innerHTML = '<span class="st">doing<span class="work"> · ' + esc(c.deck) + '</span></span><p>' + esc(c.text) + '</p>';
+    el.innerHTML = '<span class="st">' + (c.state === 'doing' ? 'doing' : 'in hand') +
+      '<span class="work"> · ' + esc(c.deck) + '</span></span><p>' + esc(c.text) + '</p>';
     box.appendChild(el);
   });
   const more = doing.length - 3;
   const tail = document.createElement('p');
   tail.className = 'hand-quiet';
-  tail.innerHTML = (more > 0 ? '+' + more + ' more held · ' : '') +
+  tail.innerHTML = (more > 0 ? '+' + more + ' more in hand · ' : '') +
     '<a href="/next/' + encodeURIComponent(HANDLE) + '">the deck →</a>';
   box.appendChild(tail);
 }
@@ -959,8 +976,8 @@ function buildPop(){
     rbox.appendChild(l);
   });
   const pbox = $('pop-panes'); pbox.innerHTML = '';
-  [['projects', 'mine at this beat — the chosen projects at today'],
-   ['hand', 'in hand — the cards being done']].forEach(([k, txt]) => {
+  [['hand', 'in hand — the cards you have taken up'],
+   ['projects', 'mine at this beat — the chosen projects at today']].forEach(([k, txt]) => {
     const l = document.createElement('label');
     l.innerHTML = '<input type="checkbox"' + (PREFS.panes[k] ? ' checked' : '') + '> ' + txt;
     l.querySelector('input').addEventListener('change', e => {
