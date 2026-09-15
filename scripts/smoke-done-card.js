@@ -23,7 +23,10 @@ function setAt(block, addr, node){
   return block;
 }
 const DAY='20263331', BEAT=DAY+'5', WEEK=DAY.slice(0,7);
-const card = (t,ela) => ({_:t,'2':'beach-venture','3':'2026-09-15T12:00Z','4':'done',...(ela?{'6':ela}:{})});
+const card = (t,ela,rung) => ({_:t,'1':String(rung||2),'2':'beach-venture','3':'2026-09-15T12:00Z','4':'done',...(ela?{'6':ela}:{})});
+const rungOfAddr = a => 10 - String(a).replace(/0+$/,'').length;
+const atRung = (blk, addr) => { const pre=String(addr).replace(/0+$/,''); const r=rungOfAddr(pre);
+  return doneCardsIn(blk, pre).filter(c => c.rung === r); };
 
 const david = setAt(mirror('David'), BEAT+'1', card('Wrote the golden card.','2h10'));
 setAt(david, BEAT+'2', card('Fixed the ragged column.','40m'));
@@ -65,5 +68,22 @@ t('two claims remain unconfirmed', nodesUnder(david, WEEK, DONE_AT).filter(c=>!s
 t('my own card is still a card, not a witness', doneCardsIn(mine, DAY).map(c=>c.text), ['My own closed card.']);
 t('the witness is not mistaken for something I closed', doneCardsIn(mine, BEAT).length, 1);
 
-console.log('\n' + (pass ? 'PASS — the round trip closes' : 'FAIL'));
+console.log('\nand a card shows at ONE rung — the rung it was held at:');
+const WEEKA = DAY.slice(0,7);
+const holder = mirror('rungs');
+setAt(holder, BEAT+'1', card('a gathering-sized thing', null, 1));
+setAt(holder, BEAT+'2', card('a day-sized thing',       null, 2));
+setAt(holder, BEAT+'3', card('a week-sized thing',      null, 3));
+setAt(holder, BEAT+'4', card('a year-sized thing',      null, 6));
+t('the gathering row shows only the gathering-sized one', atRung(holder, BEAT).map(c=>c.text), ['a gathering-sized thing']);
+t('the day row shows only the day-sized one',             atRung(holder, DAY).map(c=>c.text),  ['a day-sized thing']);
+t('the week row shows only the week-sized one',           atRung(holder, WEEKA).map(c=>c.text),['a week-sized thing']);
+t('the year row shows only the year-sized one',           atRung(holder, '2026').map(c=>c.text),['a year-sized thing']);
+t('the month row shows none of them',                     atRung(holder, DAY.slice(0,6)).length, 0);
+t('a card with no rung reads as a day',
+  atRung(setAt(mirror('legacy'), BEAT+'1', {_:'landed before the rung existed','2':'beach-venture','4':'done'}), DAY).length, 1);
+t('and that legacy card does NOT also show at the week',
+  atRung(setAt(mirror('legacy2'), BEAT+'1', {_:'landed before the rung existed','2':'beach-venture','4':'done'}), WEEKA).length, 0);
+
+console.log('\n' + (pass ? 'PASS — the round trip closes, and each card stands at one rung' : 'FAIL'));
 process.exit(pass?0:1);
