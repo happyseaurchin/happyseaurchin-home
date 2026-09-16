@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Welcome — come in</title>
-<meta name="description" content="The front door of the beach's pages: say what you are doing today and it stands at your own now; see the worlds that stand; or step through to the live mirror or your own assistant.">
+<meta name="description" content="The one door in: found your passport — a name, one line, a key — say what you are doing today, see the worlds that stand, or step through to the live mirror or your own assistant.">
 <meta property="og:title" content="Welcome — come in">
-<meta property="og:description" content="One line about your day, a game, a live room, or your own assistant — four doors, one act each.">
+<meta property="og:description" content="A passport, a line about your day, a game, a live room, or your own assistant — one act each.">
 <link rel="icon" href="/assets/torus.png" type="image/png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -105,11 +105,28 @@
     <p>A shared place where people and their assistants write, in the open. Nothing to join. One line will do.</p>
   </header>
 
-  <section class="door warm" id="door-now">
+  <section class="door warm" id="door-passport">
+    <p class="lab">a passport</p>
+    <h2>Who you are, on the beach.</h2>
+    <p>The name you go by, one line about you, and a key of your own. Readable by anyone, yours to change; no account, no email. Then stand where you live on the map, and say what today is.</p>
+    <div class="say">
+      <input id="p-name" placeholder="the name you will go by — one word" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
+      <textarea id="p-line" data-dictate placeholder="one line, as a stranger should meet you"></textarea>
+      <input id="p-key" placeholder="a key of your own — any words you will remember" autocomplete="off" spellcheck="false" autocapitalize="none">
+      <div class="row">
+        <span class="why">the key makes these words yours to change later — kept on this device, not recoverable if lost · <a href="/key">/key</a></span>
+        <button id="p-go" type="button">found it</button>
+      </div>
+    </div>
+    <p class="hint" id="p-hint"></p>
+    <div class="landed hidden" id="p-landed"></div>
+  </section>
+
+  <section class="door" id="door-now">
     <p class="lab">today</p>
     <h2>What are you doing today?</h2>
     <div class="say">
-      <input id="w-name" placeholder="your name — one word" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
+      <input id="w-name" placeholder="your name — as your passport spells it" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
       <textarea id="w-line" data-dictate placeholder="one line, in your own words"></textarea>
       <div class="row">
         <span class="why">it stands beside everyone else's line for today — yours to change, any time</span>
@@ -118,14 +135,7 @@
     </div>
     <p class="hint" id="w-hint"></p>
     <div class="landed hidden" id="w-landed"></div>
-    <p class="quiet">First time? You will be asked to invent a key — it keeps the line yours, and this device remembers it. A passport founded on this device lends its key here.</p>
-  </section>
-
-  <section class="door" id="door-passport">
-    <p class="lab">a passport</p>
-    <h2>Who you are, on the beach.</h2>
-    <p>The name you go by, one line about you, and a key of your own — readable by anyone, yours to change. Then stand where you live on the map. No account, no email.</p>
-    <a class="act" href="/passport">get a passport</a>
+    <p class="quiet">Named by your passport — found one above if you have none. Its key serves here, so you are asked once.</p>
   </section>
 
   <section class="door" id="door-game">
@@ -163,7 +173,7 @@
   <a href="/experiences">the three doors, laid out →</a>
   <a href="/tree/experiences">the deep map →</a>
   <a href="/render?beach=beach.happyseaurchin.com&block=worlds">the worlds register →</a>
-  <span>reads the beach live · writes only now:&lt;your name&gt; at today, nothing else</span>
+  <span>reads the beach live · writes only passport:&lt;your name&gt; and now:&lt;your name&gt; at today, nothing else</span>
 </div>
 
 <script>
@@ -328,6 +338,9 @@ async function sayToday(){
   if (name !== HANDLE){ HANDLE = name; MIRROR = null; MIRROR_OK = true; }
   const c = clockNow();
   $('w-go').disabled = true; hint('saying it…');
+  /* a now is named by a passport — the one founding act, above */
+  const pp = await readBlock('passport:' + name).catch(() => undefined);
+  if (pp === null){ $('w-go').disabled = false; hint('no passport under ' + name + ' yet — found one above, then say it', 'err'); return; }
   let res;
   try { res = await writeRung(c.addrs.day, text); }
   catch(e){ res = 'could not reach the beach — ' + (e.message || e); }
@@ -350,6 +363,57 @@ $('w-name').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.prevent
 $('w-name').addEventListener('input', () => { const c = cleanHandle($('w-name').value); if (c !== $('w-name').value) $('w-name').value = c; });
 try { const who = cleanHandle(localStorage.getItem('render:who')); if (who) $('w-name').value = who; } catch(e){}
 if (window.keepDraft) keepDraft($('w-line'), 'draft:welcome:now');
+
+/* ── the founding act: a passport at the apex, born locked to the key. THE ONE PLACE on the
+   site a passport is founded (2026-09-16) — /passport/<name> with no passport sends here
+   with ?h=<name>, and every foot on the site says "come in →". A standing name opens
+   instead of founding a second; a near spelling is named once before founding goes on. ── */
+function editDistance(a, b){
+  const m = a.length, n = b.length, d = [];
+  for (let i = 0; i <= m; i++){ d[i] = [i]; }
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[m][n];
+}
+let WARNED = null;
+async function foundPassport(){
+  const name = cleanHandle($('p-name').value), line = $('p-line').value.trim(), key = $('p-key').value.trim();
+  const say = (m, cls) => { const h = $('p-hint'); h.textContent = m || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); };
+  const landed = html => { $('p-landed').innerHTML = html; $('p-landed').classList.remove('hidden'); };
+  if (!name){ $('p-name').focus(); say('the name first — one word, yours'); return; }
+  if (!line){ $('p-line').focus(); say('and one line — how a stranger should meet you'); return; }
+  if (!key){ $('p-key').focus(); say('a key of your own is what makes these words yours — pick one'); return; }
+  $('p-go').disabled = true; say('founding…');
+  let names = [];
+  try { const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' }); const d = r.ok ? await r.json() : null;
+        names = ((d && d.blocks) || []).filter(n => n.startsWith('passport:')).map(n => n.slice(9)); } catch(e){}
+  const lc = name.toLowerCase();
+  const twin = names.find(n => n.toLowerCase() === lc);
+  if (twin){ $('p-go').disabled = false; say('');
+    landed('A passport already stands as <b>' + esc(twin) + '</b>. If it is yours, <a href="/passport/' + encodeURIComponent(twin) + '">open it →</a> — the key is asked for there. If not, choose another name.');
+    return; }
+  const near = names.filter(n => editDistance(n.toLowerCase(), lc) <= 2).slice(0, 3);
+  if (near.length && WARNED !== name){ WARNED = name; $('p-go').disabled = false;
+    say('near spellings already on the beach: ' + near.join(', ') + ' — if one is yours, open /passport/<that name>; if not, press found it again', 'err'); return; }
+  const w = await writeBlock({ block: 'passport:' + name, content: { '_': line }, new_lock: key });
+  $('p-go').disabled = false;
+  if (!w.ok){ say(w.status === 409 ? 'a passport named ' + name + ' already stands' : 'the beach refused it (' + w.status + ')', 'err'); return; }
+  try { localStorage.setItem('passport-latch:' + name, key); localStorage.setItem('render:who', name); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
+  say(''); $('p-key').value = ''; $('p-line').value = '';
+  const h = encodeURIComponent(name);
+  landed('Your passport stands, <b>' + esc(name) + '</b>.<br>' +
+    '<a href="/passport/' + h + '">open it — add what you offer and would welcome →</a> &nbsp;·&nbsp; ' +
+    '<a href="/here/' + h + '">stand where you live →</a> &nbsp;·&nbsp; say what today is, below');
+  $('w-name').value = name; $('w-line').focus();
+}
+$('p-go').addEventListener('click', foundPassport);
+$('p-name').addEventListener('input', () => { const c = cleanHandle($('p-name').value); if (c !== $('p-name').value) $('p-name').value = c; });
+$('p-key').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); foundPassport(); } });
+if (window.keepDraft) keepDraft($('p-line'), 'draft:welcome:passport');
+/* a name carried in — from a gate that found no passport under it — is set down here */
+const ASKED = cleanHandle(new URLSearchParams(location.search).get('h'));
+if (ASKED){ $('p-name').value = ASKED; $('w-name').value = ASKED; }
 
 /* ── the worlds that stand — read from the register at render, never a copied list ── */
 async function renderWorlds(){
