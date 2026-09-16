@@ -76,14 +76,23 @@
      the page, so there is no second source of truth to drift. A page whose
      subject is a FIELD — a walk, a recency or heatmap, a family's map, a fold —
      is showing somebody's project, so the thing to make is a field of your own.
-     Anywhere else the offer stays the now, as it always was. The fault this
-     closes: the link was hardcoded to /now everywhere, so a project walk offered
-     to create a now — an answer to a question nobody standing there had asked. */
+     Anywhere else the offer is THE PASSPORT: the one thing a person writes by
+     hand, and the door a stranger comes in by — a name, one line, a key. It was
+     the now until 2026-09-16, which sent a reader from someone's place on the map
+     to a clock (David: "how does anyone, especially someone who is not a user,
+     get to their passport?"); a now is made from /welcome's today, or at /now.
+     The earlier fault of the same kind: the link was hardcoded to /now everywhere,
+     so a project walk offered to create a now — an answer to a question nobody
+     standing there had asked. */
   var FIELD = { walk:1, recency:1, heatmap:1, tree:1, fold:1 };
+  /* withheld on the door itself — /passport, /self, /shell/<handle> — where it
+     would offer the page already open */
+  var DOOR = { passport:1, self:1, shell:1 };
   document.addEventListener('DOMContentLoaded', function(){
     if (document.getElementById('create-your-own')) return;
     var path = location.pathname.replace(/\/+$/, '');
-    var onField = !!FIELD[(path.split('/')[1] || '').toLowerCase()];
+    var first = (path.split('/')[1] || '').toLowerCase().replace(/\.html$/, '');   /* a local preview serves the file by name */
+    var onField = !!FIELD[first], onDoor = !!DOOR[first];
     var p = document.createElement('p');
     p.id = 'create-your-own';
     p.style.cssText = 'display:flex;gap:22px;justify-content:center;flex-wrap:wrap;' +
@@ -94,8 +103,8 @@
       a.href = href; a.textContent = text;
       p.appendChild(a);
     }
-    door(onField ? 'https://happyseaurchin.com/found' : 'https://happyseaurchin.com/now',
-         onField ? 'found a field of your own \u2192' : 'create your own \u2192');
+    if (onField) door('https://happyseaurchin.com/found', 'found a field of your own \u2192');
+    else if (!onDoor) door('https://happyseaurchin.com/passport', 'get a passport \u2192');
     /* EVERY FIELD — the index of them all. Named for what it SHOWS, never for the
        route that happens to serve it: '/tree' is the plumbing and a reader never
        has to meet the word. Withheld on the index itself, where it would offer
@@ -1240,7 +1249,9 @@
         var foot = document.createElement('div'); foot.className = 'dd__foot';
         var save = document.createElement('button'); save.type = 'button'; save.className = 'dd__edit';
         save.setAttribute('data-keep-open','');
-        save.textContent = cfg.handle ? 'save to the beach' : 'sign in to save';
+        /* there is no sign-in on this site: a handle is carried in the page's path,
+         * so a page without one has nowhere to keep the list yet */
+        save.textContent = cfg.handle ? 'save to the beach' : 'needs your handle to save';
         save.disabled = !cfg.handle;
         save.title = cfg.handle ? 'writes branch 2 of lists:' + cfg.handle : 'a list needs a handle to belong to';
         save.addEventListener('click', function(e){
