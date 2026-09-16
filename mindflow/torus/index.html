@@ -170,8 +170,26 @@ async function refresh(turns) {
   for (const b of recent('trace:')) { const h = b.slice(6); try { for (const e of entries(await block(b))) push({ who: h, block: 'pool:' + h, ts: tsOf(e['3']), kind: 'wake', text: e._, door: e['2'] }); } catch { /* quiet */ } }
   // presence — one slot per agent, heartbeat-overwritten, at the bare surface
   try { for (const e of entries(await block('presence'))) push({ who: e['1'], block: '/', ts: tsOf(e['3']), kind: 'present', text: e._ }); } catch { /* none */ }
-  // torus-mirror lines — the living side's own family: the newest line, at the instant the mirror was touched
-  for (const b of recent('torus-mirror:')) { const h = b.slice(13); try { const leaf = newestLine(await block(b)); if (leaf) { const at = ((/\bat (\S+)/.exec(leaf.text) || [])[1] || '/').replace(/[—,.;]$/, ''); push({ who: h, block: at, ts: tsOf(touched[b]), kind: 'line', text: leaf.text }); } } catch { /* quiet */ } }
+  // torus-mirror turns — the living side's own family. Beneath each beat every turn keeps both its
+  // ends (function:torus-mirror 1.2, ruled 2026-09-16): 6 the instant of arrival, 3 the instant of the
+  // reply — an instance's life at the second. A mirror said before the ruling holds a bare line at
+  // the beat; that reads as before, at the instant the mirror was touched.
+  for (const b of recent('torus-mirror:')) {
+    const h = b.slice(13);
+    try {
+      const node = await block(b); let turns = 0;
+      (function walk(n, path) {
+        if (!n || typeof n !== 'object') return;
+        if (path.length === 10) {
+          if (!/[1-9]/.test(path)) return;
+          for (const k of Object.keys(n)) { const t = n[k]; if (!/^[1-9]$/.test(k) || !t || typeof t !== 'object' || typeof t._ !== 'string') continue; const at = ((/\bat (\S+)/.exec(t._) || [])[1] || '/').replace(/[—,.;]$/, ''); const a = tsOf(t['6']), z = tsOf(t['3']); if (a) push({ who: h, block: at, ts: a, kind: 'arrive', text: t._ }); if (z && z !== a) push({ who: h, block: at, ts: z, kind: 'line', text: t._ }); turns++; }
+          return;
+        }
+        for (const k of Object.keys(n)) walk(n[k], path + (k === '_' ? '0' : k));
+      })(node, '');
+      if (!turns) { const leaf = newestLine(node); if (leaf) { const at = ((/\bat (\S+)/.exec(leaf.text) || [])[1] || '/').replace(/[—,.;]$/, ''); push({ who: h, block: at, ts: tsOf(touched[b]), kind: 'line', text: leaf.text }); } }
+    } catch { /* quiet */ }
+  }
   // window sizes — flow:<handle>, the composition the producer publishes
   const sizes = {};
   for (const b of recent('flow:')) { try { const f = await block(b); const wakes = Object.keys(f).filter((k) => /^[1-9]$/.test(k)).map((k) => f[k]).filter((w) => w && w['1'] && typeof w['1'] === 'object'); const last = wakes[wakes.length - 1]; const m = /≈ ([\d,]+) tokens/.exec((last && last['1'] && last['1']._) || ''); if (m) sizes[b.slice(5)] = Number(m[1].replace(/,/g, '')); } catch { /* none */ } }
@@ -243,7 +261,7 @@ function build(tNow) {
       }
       const last = fibre[fibre.length - 1];
       // an act (a commit, a mark, a wake) is a moment with a short tail; a standing (presence, vapour, a line) runs on to the leading edge while it is recent
-      const standing = ['present', 'vapour', 'line'].includes(last.kind) && tNow - last.ts <= liveMs();
+      const standing = ['present', 'vapour', 'line', 'arrive'].includes(last.kind) && tNow - last.ts <= liveMs();   // an arrival with no reply yet is an instance alive now
       const tailTo = standing ? tNow : Math.min(tNow, last.ts + tailMs());
       if (tailTo > last.ts) { const steps = Math.max(1, Math.min(24, Math.round((tailTo - last.ts) / stepMs()))); for (let s = 1; s <= steps; s++) { const t = last.ts + ((tailTo - last.ts) * s) / steps; pts.push({ p: place(last, t, thetaOf(last.block), phiOf(t)), c: colour(last, last.ts) }); } }
       if (pts.length > 1) tubes.push({ pts, who });
