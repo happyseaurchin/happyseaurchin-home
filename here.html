@@ -175,7 +175,7 @@
     <p class="eyebrow" id="m-eyebrow">where you stand</p>
     <h1 id="m-name">—</h1>
     <p class="sub"><span id="m-rung">—</span><span class="work"> · <span id="m-addr"></span> · spatial:<span id="m-world"></span></span></p>
-    <p class="sub links"><a id="l-globe" href="/globe" title="this place on the globe">on the globe ↗</a> · <a id="l-mirror" href="https://mirror.onen.ai/" target="_blank" rel="noopener" title="the mirror, at this very address">the mirror here ↗</a> · <a id="l-walk" href="/walk/here" title="the earth-map as rows — every place beside its neighbours, everyone’s voice at each">the spread →</a><span id="l-stand-wrap" class="hidden"> · <a id="l-stand" href="#">back to where you stand</a></span></p>
+    <p class="sub links"><a id="l-globe" href="/globe" title="this place on the globe">on the globe ↗</a> · <a id="l-mirror" href="https://mirror.onen.ai/" target="_blank" rel="noopener" title="the mirror, at this very address">the mirror here ↗</a> · <a id="l-walk" href="/walk/here" title="the earth-map as rows — every place beside its neighbours, everyone’s voice at each">the spread →</a><span id="l-stand-wrap" class="hidden"> · <a id="l-stand" href="#">back to where you stand</a></span><span id="l-standhere-wrap" class="hidden"> · <a id="l-standhere" href="#" title="write this address into your own passport as where you stand — your hand, your key">stand here</a></span><span id="l-youstand" class="hidden"> · you stand here</span></p>
     <p id="m-note" class="note hidden"></p>
   </header>
 
@@ -469,6 +469,36 @@ async function saveMirror(kind, mutate){
   return true;
 }
 
+/* ── STAND HERE — the Location line in the person's own passport, by their own hand.
+ * Position 3 carries how they are met and then 'Location: *:<origin>:spatial:<world>:<address> — <words>';
+ * the words before 'Location:' stay, the clause after it is replaced. Written where the passport is
+ * kept (the apex, or the real for a handle the world's door founded there), under the passport's own
+ * key, kept on this device as passport-latch:<handle>. ── */
+async function standHere(walk, words){
+  const origin = PASSPORT_AT === 'the real' ? REAL : APEX;
+  const name = 'passport:' + HANDLE;
+  const fresh = await readBlock(origin, name).catch(() => undefined);
+  if (fresh === undefined) return 'the beach did not answer — nothing written';
+  if (fresh === null) return 'no passport named ' + HANDLE + ' where one was read a moment ago';
+  const p3 = typeof fresh['3'] === 'string' ? fresh['3'] : '';
+  const before = p3.split(/\s*\bLocation:/i)[0].trim();
+  const line = (before ? before + ' ' : '') + 'Location: *:' + MAP.origin + ':spatial:' + MAP.world + ':' + fullOf(walk) + (words ? ' — ' + words : '');
+  const key = 'passport-latch:' + HANDLE;
+  const body = { block: name, spindle: '3', content: line };
+  let latch = null;
+  try { latch = localStorage.getItem(key); } catch(e){}
+  if (latch) body.secret = latch;
+  let w = await writeBlock(origin, body);
+  if (lockRequired(w)){
+    const v = prompt('Your passport is latched — enter its key (kept on this device; check the first letter — phones capitalise it):');
+    if (v === null || !v.trim()) return 'nothing written';
+    body.secret = v.trim();
+    w = await writeBlock(origin, body);
+    if (w.ok){ try { localStorage.setItem(key, v.trim()); } catch(e){} }
+  }
+  if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
+  return true;
+}
 /* ── rendering ── */
 function toast(msg){ const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.remove('show'), 2600); }
 const hereUrl = walk => '/here' + (HANDLE ? '/' + enc(HANDLE) : '') + '?at=' + fullOf(walk);
@@ -499,14 +529,22 @@ function renderStand(){
   $('l-globe').href = globeUrl(w);
   $('l-globe').classList.toggle('hidden', MAP.origin !== REAL);
   $('l-mirror').href = mirrorUrl(w);
+  $('l-standhere').onclick = e => { e.preventDefault(); openSheet({ kind: 'stand', walk: w, existing: '' }); };
   $('l-walk').href = '/walk/here' + (HANDLE ? '/' + enc(HANDLE) : '') + '?at=' + fullOf(w);
   $('l-stand-wrap').classList.toggle('hidden', !(STAND && !atStand));
   if (STAND && !atStand) $('l-stand').href = hereUrl(STAND.walk);
+  /* STAND HERE — the person's own hand on their own passport: the address they are
+   * standing on, at the grain they chose, written as the Location line (the act
+   * char-creation gives a reflection, done by the person instead). A named rung only;
+   * undecided ground cannot be stood on. */
+  const canStand = !!(HANDLE && PASSPORT_AT && s && w && !atStand);
+  $('l-standhere-wrap').classList.toggle('hidden', !canStand);
+  $('l-youstand').classList.toggle('hidden', !(HANDLE && atStand));
   const note = $('m-note');
   if (HANDLE && !STAND){
     note.innerHTML = PLACED_NOTE
-      ? 'Your passport says where you stand in words — “' + esc(PLACED_NOTE.length > 140 ? PLACED_NOTE.slice(0, 137) + '…' : PLACED_NOTE) + '” — but carries no address the map reads, so the map holds no standpoint for you yet. The door at the real places you (the form and the walk are at <a href="https://earth.beach.happyseaurchin.com/.well-known/pscale-beach?block=char-creation" target="_blank" rel="noopener">char-creation</a>); a reflection does the digits, never you. Until then, walk the map: nothing here needs a standpoint to be read or voiced.'
-      : 'Your passport carries no location line, so the map holds no standpoint for you. Carrying one is a choice most handles never make; the door at the real places you when you want it. Walk the map meanwhile.';
+      ? 'Your passport says where you stand in words — “' + esc(PLACED_NOTE.length > 140 ? PLACED_NOTE.slice(0, 137) + '…' : PLACED_NOTE) + '” — but carries no address the map reads, so the map holds no standpoint for you yet. Walk the ladder to where you live, at the grain you want known, and press <b>stand here</b>; where the map stops short, add your place to the earth-map and stand at the deepest rung meanwhile.'
+      : 'Your passport carries no location line, so the map holds no standpoint for you. Carrying one is a choice: walk the ladder to where you live, at the grain you want known, and press <b>stand here</b>; where the map stops short, add your place to the earth-map and stand at the deepest rung meanwhile.';
     note.classList.remove('hidden');
   } else note.classList.add('hidden');
 }
@@ -640,6 +678,7 @@ function renderMine(){
 
 /* ── the sheet ── */
 const HINTS = {
+  stand: 'This becomes where you stand: one line in your own passport, at this address, at this grain — the map, the globe and the tally will place you here. Add a few words if you like (a house, a road, a town in your own words); leave it empty to say only the place.',
   voice: 'What this place is to you — who is here, what it is like, how you hold it. One line, yours, at the place’s own address; the keeper reads it and compiles from it, naming you.',
   place: 'A place the earth-map does not hold yet, beneath this one — a house, a road, a room — named as you would to a friend. It takes the lowest free digit; the keeper’s pass adopts it into the map and replies with where it landed.'
 };
@@ -647,10 +686,12 @@ function refuseInSheet(msg){ $('s-refuse').textContent = msg; $('s-refuse').clas
 function openSheet(o){
   SHEET = o;
   const placeName = nameOf(sem(nodeAt(SPATIAL, o.walk))) || 'this ground';
-  $('s-kind').textContent = { voice: 'your voice at', place: 'add to the earth-map, beneath' }[o.kind];
+  $('s-kind').textContent = { voice: 'your voice at', place: 'add to the earth-map, beneath', stand: 'stand here —' }[o.kind];
   $('s-place').textContent = o.kind === 'place' ? nameOf(sem(nodeAt(SPATIAL, o.walk.slice(0, -1)))) || 'here' : placeName;
   $('s-addr').textContent = fullOf(o.walk);
-  $('s-block').textContent = o.kind === 'voice' ? idName() : spName();
+  $('s-block').textContent = o.kind === 'voice' ? idName() : o.kind === 'stand' ? 'passport:' + HANDLE + ' · 3' : spName();
+  $('s-save').textContent = o.kind === 'stand' ? 'stand here' : 'voice it';
+  $('s-text').placeholder = o.kind === 'stand' ? 'in your words, optional…' : 'in your own words…';
   $('s-hint').textContent = HINTS[o.kind];
   $('s-mirror').href = mirrorUrl(o.walk || '3');
   $('s-text').value = o.existing || '';
@@ -668,15 +709,17 @@ $('s-text').addEventListener('keydown', e => {
 $('s-save').addEventListener('click', async () => {
   if (!SHEET) return;
   const o = SHEET, text = $('s-text').value.trim();
-  if (!text){ closeSheet(); return; }
+  if (!text && o.kind !== 'stand'){ closeSheet(); return; }
   $('s-save').disabled = true; refuseInSheet('');
   let res;
-  if (o.kind === 'place') res = await saveMirror('spatial', b => { reach(b, o.walk)['_'] = text; });
+  if (o.kind === 'stand') res = await standHere(o.walk, text);
+  else if (o.kind === 'place') res = await saveMirror('spatial', b => { reach(b, o.walk)['_'] = text; });
   else res = await saveMirror('identity', b => { reach(b, o.walk)['_'] = text; });
   $('s-save').disabled = false;
   if (res !== true){ refuseInSheet(typeof res === 'string' ? res : 'not written'); return; }
   closeSheet();
-  toast(o.kind === 'place' ? 'added — the pass will fold it into the earth-map' : 'voiced — yours, whole');
+  toast(o.kind === 'place' ? 'added — the pass will fold it into the earth-map' : o.kind === 'stand' ? 'you stand here now' : 'voiced — yours, whole');
+  if (o.kind === 'stand'){ location.href = hereUrl(o.walk); return; }
   await reload();
 });
 
@@ -725,7 +768,7 @@ async function passportGate(){
   const near = [...new Set(names.filter(n => n !== HANDLE && (n.toLowerCase() === lc || editDistance(n.toLowerCase(), lc) <= 2)))].slice(0, 3);
   const note = $('ask-note');
   note.innerHTML = 'No passport named <b>' + esc(HANDLE) + '</b> at the apex or at the real, so no mirror can be founded under that name — a mirror is named by the passport handle, spelt exactly as the passport spells it. '
-    + (near.length ? 'Did you mean ' + near.map(n => '<a href="/here/' + enc(n) + '">' + esc(n) + '</a>').join(' or ') + '?' : 'Found your passport first at <a href="/found">/found</a>, or type the handle it uses.')
+    + (near.length ? 'Did you mean ' + near.map(n => '<a href="/here/' + enc(n) + '">' + esc(n) + '</a>').join(' or ') + '?' : 'Found your passport first at <a href="/passport/' + enc(HANDLE) + '">/passport</a>, or type the handle it uses.')
     + ' You can still <a href="/here?at=' + enc(AT_RAW || fullOf('3')) + '">walk the map</a> without one.';
   note.classList.remove('hidden');
   $('ask-handle').value = HANDLE;

@@ -2031,6 +2031,33 @@ async function gSave(kind, walk, text){
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   return true;
 }
+/* STAND HERE — position 3 of the passport, where the person keeps it (the apex first, the real
+ * as the fallback): the words before 'Location:' stay, the clause after it becomes this address.
+ * The passport's own key, kept on this device as passport-latch:<handle> — the same name /here uses. */
+async function gStandHere(walk, words){
+  const name = 'passport:' + HANDLE;
+  let origin = APEX, fresh = await readAt(APEX, name).catch(() => null);
+  if (!fresh){ origin = BEACH; fresh = await readAt(BEACH, name).catch(() => null); }
+  if (!fresh) return 'no passport named ' + HANDLE + ' at the apex or at the real — found one at /passport first';
+  const p3 = typeof fresh['3'] === 'string' ? fresh['3'] : '';
+  const before = p3.split(/\s*\bLocation:/i)[0].trim();
+  const line = (before ? before + ' ' : '') + 'Location: *:' + GROUND.origin + ':spatial:' + GROUND.world + ':' + gFull(walk) + (words ? ' — ' + words : '');
+  const key = 'passport-latch:' + HANDLE;
+  const post = async body => { const r = await fetch(origin, { method:'POST', cache:'no-store', headers:{'Content-Type':'application/json', Accept:'application/json'}, body: JSON.stringify(body) }); let d = null; try { d = await r.json(); } catch(e){} return { ok: r.ok, status: r.status, data: d }; };
+  const body = { block: name, spindle: '3', content: line };
+  let latch = null; try { latch = localStorage.getItem(key); } catch(e){}
+  if (latch) body.secret = latch;
+  let w = await post(body);
+  if (lockRequired(w)){
+    const v = prompt('Your passport is latched — enter its key (kept on this device; check the first letter — phones capitalise it):');
+    if (v === null || !v.trim()) return 'nothing written';
+    body.secret = v.trim();
+    w = await post(body);
+    if (w.ok){ try { localStorage.setItem(key, v.trim()); } catch(e){} }
+  }
+  if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
+  return true;
+}
 function paintGroundSheet(){
   const tabs = $('sh-tabs'); tabs.classList.remove('hidden');
   const walk = G_SHEET_WALK || SEL.gpath, node = gNode(SPINE, walk), t = gSem(node);
@@ -2052,6 +2079,12 @@ function paintGroundSheet(){
     const ring = gRing(RING, walk);
     if (ring.length) b.push('<div class="heldbox"><span class="sub">how this place is held</span><ol>' + ring.map(r => '<li value="' + r.d + '">' + esc(r.text) + '</li>').join('') + '</ol></div>');
     b.push('<span class="silent">the map’s words are the keeper’s — say what this place is to you in voices; a place the map lacks is yours to add below</span>');
+    /* STAND HERE — the Location line in your own passport, by your own hand, at this address */
+    if (HANDLE && t && walk !== STAND)
+      b.push('<div class="mirrorbox"><div class="sub">stand here</div><span class="hint">make ' + esc(gName(t)) + ' where you stand — one line in your own passport, at this grain; the map, the globe and the tally will place you here</span>' +
+        '<textarea id="gstand-text" placeholder="in your words, optional…"></textarea>' +
+        '<div class="row"><span class="hint work">passport:' + esc(HANDLE) + ' · 3 · ' + esc(gFull(walk)) + '</span><button id="gstand-go">stand here</button></div></div>');
+    else if (HANDLE && t) b.push('<span class="silent">you stand here</span>');
     if (HANDLE && t && walk.length < 11){
       const d = gNextFree(walk);
       b.push('<div class="mirrorbox"><div class="sub">add a place to the earth-map, beneath ' + esc(gName(t)) + '</div>' + (d
@@ -2098,6 +2131,20 @@ function paintGroundSheet(){
     });
     wireEnter($('gv-text'), () => gv.click());
     if (window.dictate) dictate($('gv-text'));
+  }
+  const gs = document.getElementById('gstand-go');
+  if (gs){
+    gs.addEventListener('click', async () => {
+      if (BUSY) return;
+      BUSY = true; gs.disabled = true;
+      try {
+        const res = await gStandHere(walk, $('gstand-text').value.trim());
+        if (res === true){ toast('you stand at ' + gName(t) + ' now'); SEL.level = undefined; await loadGround(); closeSheet(); }
+        else toast(res, true);
+      } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
+      finally { BUSY = false; const g = document.getElementById('gstand-go'); if (g) g.disabled = false; }
+    });
+    wireEnter($('gstand-text'), () => gs.click());
   }
   const ga = document.getElementById('gadd-go');
   if (ga){
