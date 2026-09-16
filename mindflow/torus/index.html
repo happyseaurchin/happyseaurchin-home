@@ -48,10 +48,11 @@
 <canvas id="c"></canvas>
 <div id="hud">
   <h1>the torus — the living side of <span id="host">the beach</span></h1>
-  <p>The ring is the beach's content, every block an arc, dark. Time circulates round the tube, one turn a day. A particle is an instance; its trail is its fibre; a room's thread is one small circle of the tube. Same beach, same picture.</p>
+  <p>The ring is the beach's content, every block an arc, dark. Time circulates round the tube, one turn per rung of the sundial you choose. A particle is an instance; its trail is its fibre; a room's thread is one small circle of the tube. Same beach, same picture.</p>
   <div id="status">reading the water…</div>
   <div id="ctl">
-    <label>window <input id="days" type="range" min="1" max="7" value="5"> <span id="daysv">5 days</span></label>
+    <label>turn <select id="turn"><option value="minute">a minute</option><option value="beat">a beat</option><option value="gathering">a gathering</option><option value="day" selected>a day</option></select></label>
+    <label>window <input id="days" type="range" min="1" max="12" value="5"> <span id="daysv">5 turns</span></label>
     <label>replay <input id="scrub" type="range" min="0" max="1000" value="1000"> <span id="scrubv">now</span></label>
     <label><input id="spin" type="checkbox" checked> turn</label>
   </div>
@@ -71,8 +72,20 @@ const P = new URLSearchParams(location.search);
 const BEACH = (P.get('beach') || 'https://beach.happyseaurchin.com').replace(/\/+$/, '').replace(/^(?!https?:\/\/)/, 'https://');
 const API = BEACH + '/.well-known/pscale-beach';
 const DAY = 86400000;
-const BEAT = 1067000;            // the sundial's beat: nine gatherings of nine, about eighteen minutes
-const LIVE_MS = 45 * 60000;       // a fibre whose last moment is this recent still stands at the leading edge
+// THE TURN IS A RUNG OF THE SUNDIAL. One turn round the tube is one rung: the second (-3), the breath (-2),
+// the minute (-1), the beat (0 — five to twenty minutes, one exchange in one room), the gathering (+1),
+// the day (+2). A mirror instance lives for seconds, a genus pulse for a minute, a person's visit for a
+// beat or a gathering, the beach's rhythm for a day — so the rung you turn by is which concurrency you
+// are looking at, and every other scale on the page follows the turn: what counts as recent, where a
+// fibre splits, how long an act's tail is, and how close two moments must be to twist.
+const TURNS = { second: 1000, breath: 10000, minute: 60000, beat: 1067000, gathering: 9 * 1067000, day: DAY };
+let turnName = TURNS[P.get('turn')] ? P.get('turn') : 'day';
+let TURN = TURNS[turnName];
+const liveMs = () => Math.min(45 * 60000, TURN / 4);     // a fibre whose last moment is this recent still stands at the leading edge
+const splitMs = () => TURN / 8;                           // a fibre splits where this much passes between moments
+const tailMs = () => TURN / 240;                          // an act's tail
+const plyMs = () => TURN / 60;                            // moments this close in one room twist together
+const stepMs = () => TURN / 144;                          // sampling along a fibre
 document.getElementById('host').textContent = BEACH.replace(/^https?:\/\//, '');
 
 // Which handles are which kind of instance. The torus families separate instances by
@@ -104,7 +117,7 @@ function thetaOf(block) {
 // hours climb over the top, the day wraps round behind and returns to the rim — so yesterday's same hour
 // lies under today's, one turn back, fading.
 let T_NOW = Date.now();
-function phiOf(ts) { const back = (T_NOW - ts) / DAY; return (back - Math.floor(back)) * Math.PI * 2; }
+function phiOf(ts) { const back = (T_NOW - ts) / TURN; return (back - Math.floor(back)) * Math.PI * 2; }
 function surface(theta, phi, rr) { const R1 = R + rr * Math.cos(phi); return new THREE.Vector3(R1 * Math.cos(theta), rr * Math.sin(phi), R1 * Math.sin(theta)); }
 function normalAt(theta, phi) { return new THREE.Vector3(Math.cos(phi) * Math.cos(theta), Math.sin(phi), Math.cos(phi) * Math.sin(theta)); }
 function alongRing(theta) { return new THREE.Vector3(-Math.sin(theta), 0, Math.cos(theta)); }
@@ -139,11 +152,11 @@ function newestLine(node) {
 }
 
 let DATA = { ev: [], sizes: {}, now: Date.now(), since: Date.now() - 3 * DAY, stamp: '' };
-async function refresh(days) {
+async function refresh(turns) {
   const idx = await getJSON(API);
   ring = idx.blocks || []; ringIndex = new Map(ring.map((b, i) => [b, i]));
   const touched = idx.touched || {};
-  const now = Date.now(); const since = now - days * DAY;
+  const now = Date.now(); const since = now - turns * TURN;
   const recent = (pre) => Object.entries(touched).filter(([b, t]) => b.startsWith(pre) && tsOf(t) >= since).sort((a, b) => tsOf(b[1]) - tsOf(a[1])).map(([b]) => b);
   const ev = [];
   const push = (e) => { if (e.who && e.ts >= since && e.ts <= now + 60000) ev.push(e); };
@@ -157,8 +170,26 @@ async function refresh(days) {
   for (const b of recent('trace:')) { const h = b.slice(6); try { for (const e of entries(await block(b))) push({ who: h, block: 'pool:' + h, ts: tsOf(e['3']), kind: 'wake', text: e._, door: e['2'] }); } catch { /* quiet */ } }
   // presence — one slot per agent, heartbeat-overwritten, at the bare surface
   try { for (const e of entries(await block('presence'))) push({ who: e['1'], block: '/', ts: tsOf(e['3']), kind: 'present', text: e._ }); } catch { /* none */ }
-  // torus-mirror lines — the living side's own family: the newest line, at the instant the mirror was touched
-  for (const b of recent('torus-mirror:')) { const h = b.slice(13); try { const leaf = newestLine(await block(b)); if (leaf) { const at = ((/\bat (\S+)/.exec(leaf.text) || [])[1] || '/').replace(/[—,.;]$/, ''); push({ who: h, block: at, ts: tsOf(touched[b]), kind: 'line', text: leaf.text }); } } catch { /* quiet */ } }
+  // torus-mirror turns — the living side's own family. Beneath each beat every turn keeps both its
+  // ends (function:torus-mirror 1.2, ruled 2026-09-16): 6 the instant of arrival, 3 the instant of the
+  // reply — an instance's life at the second. A mirror said before the ruling holds a bare line at
+  // the beat; that reads as before, at the instant the mirror was touched.
+  for (const b of recent('torus-mirror:')) {
+    const h = b.slice(13);
+    try {
+      const node = await block(b); let turns = 0;
+      (function walk(n, path) {
+        if (!n || typeof n !== 'object') return;
+        if (path.length === 10) {
+          if (!/[1-9]/.test(path)) return;
+          for (const k of Object.keys(n)) { const t = n[k]; if (!/^[1-9]$/.test(k) || !t || typeof t !== 'object' || typeof t._ !== 'string') continue; const at = ((/\bat (\S+)/.exec(t._) || [])[1] || '/').replace(/[—,.;]$/, ''); const a = tsOf(t['6']), z = tsOf(t['3']); if (a) push({ who: h, block: at, ts: a, kind: 'arrive', text: t._ }); if (z && z !== a) push({ who: h, block: at, ts: z, kind: 'line', text: t._ }); turns++; }
+          return;
+        }
+        for (const k of Object.keys(n)) walk(n[k], path + (k === '_' ? '0' : k));
+      })(node, '');
+      if (!turns) { const leaf = newestLine(node); if (leaf) { const at = ((/\bat (\S+)/.exec(leaf.text) || [])[1] || '/').replace(/[—,.;]$/, ''); push({ who: h, block: at, ts: tsOf(touched[b]), kind: 'line', text: leaf.text }); } }
+    } catch { /* quiet */ }
+  }
   // window sizes — flow:<handle>, the composition the producer publishes
   const sizes = {};
   for (const b of recent('flow:')) { try { const f = await block(b); const wakes = Object.keys(f).filter((k) => /^[1-9]$/.test(k)).map((k) => f[k]).filter((w) => w && w['1'] && typeof w['1'] === 'object'); const last = wakes[wakes.length - 1]; const m = /≈ ([\d,]+) tokens/.exec((last && last['1'] && last['1']._) || ''); if (m) sizes[b.slice(5)] = Number(m[1].replace(/,/g, '')); } catch { /* none */ } }
@@ -177,9 +208,6 @@ const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200); camera.position.set
 const controls = new THREE.OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.08; controls.autoRotate = true; controls.autoRotateSpeed = 0.35; controls.minDistance = 8; controls.maxDistance = 70;
 // the tube, faint, for orientation only — the form is meant to emerge from the fibres
 scene.add(new THREE.Mesh(new THREE.TorusGeometry(R, r, 14, 72), new THREE.MeshBasicMaterial({ color: 0x1a1f2a, wireframe: true, transparent: true, opacity: 0.2 })));
-// the seam — where the ring's circumference begins (the index's first block) and the bare surface stands
-const seamPts = []; for (let i = 0; i <= 48; i++) seamPts.push(surface(0, (i / 48) * Math.PI * 2, r * 1.01));
-scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(seamPts), new THREE.LineBasicMaterial({ color: 0x2a3140, transparent: true, opacity: 0.6 })));
 let nowLoop = null, fibres = null, sprites = [];
 const bg = new THREE.Color(0x0b0d12);
 
@@ -198,8 +226,8 @@ function build(tNow) {
   const seen = ev.filter((e) => e.ts <= tNow && e.ts >= since);
   // co-presence: who shares a room in the same beat → the ply
   const groups = new Map();
-  for (const e of seen) { const k = e.block + '|' + Math.floor(e.ts / BEAT); if (!groups.has(k)) groups.set(k, new Set()); groups.get(k).add(e.who); }
-  const ply = (e) => { const k = e.block + '|' + Math.floor(e.ts / BEAT); const members = [...groups.get(k)].sort(); const n = members.length; return { k: members.indexOf(e.who), n }; };
+  for (const e of seen) { const k = e.block + '|' + Math.floor(e.ts / plyMs()); if (!groups.has(k)) groups.set(k, new Set()); groups.get(k).add(e.who); }
+  const ply = (e) => { const k = e.block + '|' + Math.floor(e.ts / plyMs()); const members = [...groups.get(k)].sort(); const n = members.length; return { k: members.indexOf(e.who), n }; };
   // fibres: one instance's moments in order, split where more than three hours pass
   const byWho = new Map();
   for (const e of seen) { if (!byWho.has(e.who)) byWho.set(e.who, []); byWho.get(e.who).push(e); }
@@ -226,21 +254,21 @@ function build(tNow) {
         blocksLit.set(e.block, Math.max(blocksLit.get(e.block) || 0, e.ts));
         if (i === 0) pts.push({ p: place(e, e.ts, thetaOf(e.block), phiOf(e.ts)), c: colour(e, e.ts) });
         else {
-          const a = fibre[i - 1]; const dt = e.ts - a.ts; const steps = Math.max(1, Math.min(48, Math.round(dt / 600000)));
+          const a = fibre[i - 1]; const dt = e.ts - a.ts; const steps = Math.max(1, Math.min(48, Math.round(dt / stepMs())));
           const ta = thetaOf(a.block), tb = thetaOf(e.block);
           for (let s = 1; s <= steps; s++) { const t = a.ts + (dt * s) / steps; pts.push({ p: place(e, t, lerpAngle(ta, tb, s / steps), phiOf(t)), c: colour(e, t) }); }
         }
       }
       const last = fibre[fibre.length - 1];
       // an act (a commit, a mark, a wake) is a moment with a short tail; a standing (presence, vapour, a line) runs on to the leading edge while it is recent
-      const standing = ['present', 'vapour', 'line'].includes(last.kind) && tNow - last.ts <= LIVE_MS;
-      const tailTo = standing ? tNow : Math.min(tNow, last.ts + 6 * 60000);
-      if (tailTo > last.ts) { const steps = Math.max(1, Math.min(24, Math.round((tailTo - last.ts) / 600000))); for (let s = 1; s <= steps; s++) { const t = last.ts + ((tailTo - last.ts) * s) / steps; pts.push({ p: place(last, t, thetaOf(last.block), phiOf(t)), c: colour(last, last.ts) }); } }
+      const standing = ['present', 'vapour', 'line', 'arrive'].includes(last.kind) && tNow - last.ts <= liveMs();   // an arrival with no reply yet is an instance alive now
+      const tailTo = standing ? tNow : Math.min(tNow, last.ts + tailMs());
+      if (tailTo > last.ts) { const steps = Math.max(1, Math.min(24, Math.round((tailTo - last.ts) / stepMs()))); for (let s = 1; s <= steps; s++) { const t = last.ts + ((tailTo - last.ts) * s) / steps; pts.push({ p: place(last, t, thetaOf(last.block), phiOf(t)), c: colour(last, last.ts) }); } }
       if (pts.length > 1) tubes.push({ pts, who });
-      if (tNow - last.ts <= LIVE_MS) live.push({ who, e: last, p: pts[pts.length - 1].p });
+      if (tNow - last.ts <= liveMs()) live.push({ who, e: last, p: pts[pts.length - 1].p });
       fibre = [];
     };
-    for (const e of list) { if (fibre.length && e.ts - fibre[fibre.length - 1].ts > 3 * 3600000) flush(); fibre.push(e); }
+    for (const e of list) { if (fibre.length && e.ts - fibre[fibre.length - 1].ts > splitMs()) flush(); fibre.push(e); }
     flush();
   }
   // replace the drawn fibres — each a thin tube along its moments, coloured along its length
@@ -266,7 +294,8 @@ function build(tNow) {
   // the now-loop — the circle round the whole ring at this instant's angle: the leading face of the smoke ring
   if (nowLoop) { scene.remove(nowLoop); nowLoop.geometry.dispose(); }
   const phiNow = 0; const loopPts = []; for (let i = 0; i <= 180; i++) loopPts.push(surface((i / 180) * Math.PI * 2, phiNow, r * 1.02));
-  nowLoop = new THREE.Line(new THREE.BufferGeometry().setFromPoints(loopPts), new THREE.LineBasicMaterial({ color: 0x3d4656, transparent: true, opacity: 0.8 }));
+  nowLoop = new THREE.Line(new THREE.BufferGeometry().setFromPoints(loopPts), new THREE.LineDashedMaterial({ color: 0x3d4656, transparent: true, opacity: 0.55, dashSize: 0.25, gapSize: 0.45 }));
+  nowLoop.computeLineDistances();
   scene.add(nowLoop);
   // labels — the blocks lit in the window, newest first, at the leading edge just outside the tube
   // labels — one per FAMILY arc: the index keeps a family's blocks contiguous, so the lit blocks of
@@ -279,7 +308,7 @@ function build(tNow) {
     list.sort((a, b) => b.t - a.t);
     const newest = list[0].t;
     const names = list.slice(0, 3).map((x) => (x.b === '/' ? 'the surface' : x.b.slice(f.length))).join(' · ') + (list.length > 3 ? ` +${list.length - 3}` : '');
-    const el = document.createElement('div'); el.className = 'lbl' + (tNow - newest > DAY ? ' dim' : tNow - newest <= LIVE_MS ? ' live' : '');
+    const el = document.createElement('div'); el.className = 'lbl' + (tNow - newest > TURN ? ' dim' : tNow - newest <= liveMs() ? ' live' : '');
     el.textContent = f === '/' ? 'the surface' : `${f} ${names}`; labelsHost.appendChild(el);
     let sx = 0, sy = 0; for (const x of list) { sx += Math.cos(x.th); sy += Math.sin(x.th); }
     return { el, theta: Math.atan2(sy, sx), phi: 0 };
@@ -294,16 +323,19 @@ function status(text) { document.getElementById('status').textContent = text; }
 // ───────────────────────────────────────────────────────────────────────────
 // Controls: the window, the replay scrub, the turn.
 // ───────────────────────────────────────────────────────────────────────────
-let days = Number(P.get('days')) || 5; document.getElementById('days').value = String(days); document.getElementById('daysv').textContent = `${days} day${days === 1 ? '' : 's'}`;
+let days = Number(P.get('turns')) || Number(P.get('days')) || 5; document.getElementById('days').value = String(days); document.getElementById('turn').value = turnName;
+const turnWord = () => `${days} ${turnName}${days === 1 ? '' : 's'}`;
+document.getElementById('daysv').textContent = turnWord();
 let scrub = 1000;
 function tNowOf() { return scrub >= 1000 ? Date.now() : DATA.since + ((Date.now() - DATA.since) * scrub) / 1000; }
 function redraw() {
   const tNow = tNowOf(); const r_ = build(tNow);
   const liveWord = scrub >= 1000 ? 'live — re-read every minute' : `replay at ${fmtStamp(tNow)}`;
-  status(`${r_.fibres} fibre${r_.fibres === 1 ? '' : 's'} · ${r_.events} moments · ${r_.blocks} of ${ring.length} blocks lit · ${r_.live} at the leading edge · window ${days}d · ${liveWord}`);
+  status(`${r_.fibres} fibre${r_.fibres === 1 ? '' : 's'} · ${r_.events} moments · ${r_.blocks} of ${ring.length} blocks lit · ${r_.live} at the leading edge · one turn ${turnName === 'day' ? 'a day' : 'a ' + turnName} · window ${turnWord()} · ${liveWord}`);
   document.getElementById('scrubv').textContent = scrub >= 1000 ? 'now' : fmtStamp(tNow).slice(5);
 }
-document.getElementById('days').addEventListener('input', (e) => { days = Number(e.target.value); document.getElementById('daysv').textContent = `${days} day${days === 1 ? '' : 's'}`; });
+document.getElementById('days').addEventListener('input', (e) => { days = Number(e.target.value); document.getElementById('daysv').textContent = turnWord(); });
+document.getElementById('turn').addEventListener('change', async (e) => { turnName = e.target.value; TURN = TURNS[turnName]; document.getElementById('daysv').textContent = turnWord(); status('re-reading the water…'); try { await refresh(days); redraw(); } catch (err) { status('could not read the beach: ' + err.message); } });
 document.getElementById('days').addEventListener('change', async () => { status('re-reading the water…'); try { await refresh(days); redraw(); } catch (err) { status('could not read the beach: ' + err.message); } });
 document.getElementById('scrub').addEventListener('input', (e) => { scrub = Number(e.target.value); redraw(); });
 document.getElementById('spin').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; });
@@ -311,7 +343,7 @@ document.getElementById('spin').addEventListener('change', (e) => { controls.aut
 function renderLegend() {
   const L = document.getElementById('legend'); L.innerHTML = '';
   for (const k of ['human', 'genus', 'bsp', 'visitor']) { const a = document.createElement('span'); a.innerHTML = `<span class="sw" style="background:#${COLOR[k].toString(16).padStart(6, '0')}"></span>`; const b = document.createElement('span'); b.textContent = `${k} — ${KIND_WORD[k]}`; L.appendChild(a); L.appendChild(b); }
-  const dials = [['ring', 'the beach\'s index, in order — every block an arc; the bare surface at the seam'], ['tube', 'one turn a day, behind the instant drawn: the outer rim is now, the last hours climb over the top, yesterday\'s hour lies under today\'s'], ['fibre', 'one instance\'s moments joined, split where more than three hours pass; an act has a short tail, a standing runs to the edge'], ['twist', 'fibres in one room in one beat are plied round the thread'], ['fade', 'age toward the ground; the window slider sets how far back the ring remembers'], ['size', 'a genus particle\'s window, from flow:<handle>']];
+  const dials = [['ring', 'the beach\'s index, in order — every block an arc; the bare surface at the seam'], ['tube', 'one turn is the rung you choose — a minute, a beat, a gathering, a day — behind the instant drawn: the dashed rim is now, the recent past climbs over the top, a turn ago lies under it'], ['fibre', 'one instance\'s moments joined, split where more than three hours pass; an act has a short tail, a standing runs to the edge'], ['twist', 'fibres in one room in one beat are plied round the thread'], ['fade', 'age toward the ground; the window slider sets how far back the ring remembers'], ['size', 'a genus particle\'s window, from flow:<handle>']];
   for (const [k, v] of dials) { const a = document.createElement('span'); a.textContent = k; a.style.color = '#aeb4bf'; const b = document.createElement('span'); b.textContent = v; L.appendChild(a); L.appendChild(b); }
 }
 renderLegend();
