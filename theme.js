@@ -72,27 +72,23 @@
  */
 (function(){
   'use strict';
-  /* WHICH DOOR "your own" MEANS IS DECIDED BY WHERE YOU STAND, and the path is
-     the page, so there is no second source of truth to drift. A page whose
-     subject is a FIELD — a walk, a recency or heatmap, a family's map, a fold —
-     is showing somebody's project, so the thing to make is a field of your own.
-     Anywhere else the offer is THE PASSPORT: the one thing a person writes by
-     hand, and the door a stranger comes in by — a name, one line, a key. It was
-     the now until 2026-09-16, which sent a reader from someone's place on the map
-     to a clock (David: "how does anyone, especially someone who is not a user,
-     get to their passport?"); a now is made from /welcome's today, or at /now.
-     The earlier fault of the same kind: the link was hardcoded to /now everywhere,
-     so a project walk offered to create a now — an answer to a question nobody
-     standing there had asked. */
+  /* ONE DOOR IN, EVERYWHERE: "come in →" is /welcome — the single portal where a
+     visitor decides to add themselves (a passport: a name, one line, a key; then
+     today's line). The same text on every page, and the title it lands on, so
+     there is nothing to learn twice. Ruled 2026-09-16 (David: "a non-user who is
+     visiting someone's o-page can navigate it and then, at some point, DECIDE to
+     create their own, and they get a single page/portal"). Before it the foot
+     offered a now, then a passport page — each a door to something, neither the
+     decision. Withheld on /welcome itself. A FIELD page — a walk, a recency or
+     heatmap, a family's map, a fold — adds the field door as well, because
+     standing in somebody's project the other thing to make is a field of your
+     own. */
   var FIELD = { walk:1, recency:1, heatmap:1, tree:1, fold:1 };
-  /* withheld on the door itself — /passport, /self, /shell/<handle> — where it
-     would offer the page already open */
-  var DOOR = { passport:1, self:1, shell:1 };
   document.addEventListener('DOMContentLoaded', function(){
     if (document.getElementById('create-your-own')) return;
     var path = location.pathname.replace(/\/+$/, '');
     var first = (path.split('/')[1] || '').toLowerCase().replace(/\.html$/, '');   /* a local preview serves the file by name */
-    var onField = !!FIELD[first], onDoor = !!DOOR[first];
+    var onField = !!FIELD[first];
     var p = document.createElement('p');
     p.id = 'create-your-own';
     p.style.cssText = 'display:flex;gap:22px;justify-content:center;flex-wrap:wrap;' +
@@ -103,13 +99,13 @@
       a.href = href; a.textContent = text;
       p.appendChild(a);
     }
-    if (onField) door('https://happyseaurchin.com/found', 'found a field of your own \u2192');
-    else if (!onDoor) door('https://happyseaurchin.com/passport', 'get a passport \u2192');
+    if (first !== 'welcome') door('https://happyseaurchin.com/welcome', 'come in \u2192');
     /* EVERY FIELD — the index of them all. Named for what it SHOWS, never for the
        route that happens to serve it: '/tree' is the plumbing and a reader never
        has to meet the word. Withheld on the index itself, where it would offer
        the page already open — the same courtesy the places menu pays. */
     if (path !== '/tree') door('https://happyseaurchin.com/tree', 'every field \u2192');
+    if (onField) door('https://happyseaurchin.com/found', 'found a field \u2192');
     document.body.appendChild(p);
   });
 })();
@@ -470,24 +466,33 @@
   /* [label, page, shape] — shape says what the page's path takes, read off the
    * pages themselves: handle = /page/<handle>, family = /page/<family>/<handle>,
    * bare = no path at all. Wrong shape here is a dead link there. */
+  /* NAMES ARE NEUTRAL — now, here, page — never "your now": the menu lists the
+   * pages OF THE HANDLE IN THE URL, and on happyhedgehog's now that is her now,
+   * whoever is looking. The handle stands as the menu's first line so the names
+   * read as hers. (David, 2026-09-16: "so it doesn't matter who is looking".) */
   var WORK = [
-    ['your now',    'now',      'handle'],
-    ['your here',   'here',     'handle'],
-    ['your shell',  'shell',    'handle'],
-    ['the project', 'walk',     'family'],
-    ['my hands',     'hands',    'handle'],
+    ['now',          'now',      'handle'],
+    ['here',         'here',     'handle'],
+    ['page',         'page',     'handle'],
+    ['passport',     'passport', 'handle'],
+    ['hands',        'hands',    'handle'],
+    ['projects',     'walk',     'family'],
     ['one at a time','next',     'handle'],
-    ['the morning', 'morning',  'handle'],
-    ['the ledger',  'ledger',   'handle']
+    ['the morning',  'morning',  'handle'],
+    ['the ledger',   'ledger',   'handle']
   ];
   var GLANCE = [
-    ['recency', 'recency', 'family'],
-    ['across',  'across',  'handle'],
-    ['the field', 'field',  'handle'],
-    ['social brain', 'social-brain', 'optional'],
-    ['earth',   'earth',    'optional'],
-    ['globe',   'globe',    'optional']
+    ['recency',          'recency',      'family'],
+    ['relational field', 'field',        'handle'],
+    ['globe',            'globe',        'optional'],
+    ['social brain',     'social-brain', 'optional'],
+    ['across',           'across',       'handle'],
+    ['earth',            'earth',        'optional']
   ];
+  /* off until chosen — the ten that remain are what a newcomer meets */
+  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, 'https://mirror.onen.ai/':1 };
+  /* a page renamed keeps the lists that named it */
+  var DOOR_ALIAS = { shell:'passport', self:'passport' };
   /* who you do it with: the door in, and the live surface where people actually
    * meet. The mirror named here is the BARE place — a page's own 'mirror ↗'
    * carries that page's coordinate, which makes it an act; the two do not
@@ -516,6 +521,7 @@
       'padding:5px 8px;border-radius:5px;text-decoration:none;border-bottom:none;color:var(--vapour)}' +
     '.dd__menu a:hover{background:rgba(var(--wash-rgb),0.07);color:var(--liquid)}' +
     '.dd__menu .here{color:var(--foam)}' +
+    '.dd__who{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--solid);padding:4px 8px 7px;border-bottom:1px solid var(--line);margin-bottom:4px}' +
     '.dd__rule{height:1px;background:var(--line);margin:7px 4px}' +
     /* acts keep the bar\'s own register — a button still looks like a button */
     '.dd__menu button{width:100%;text-align:left}' +
@@ -630,11 +636,12 @@
     var all = [].concat.apply([], GROUPS), by = {}, out = [], seen = {};
     all.forEach(function(x){ by[x[1]] = x; });
     if (STATED_DOORS && STATED_DOORS.length){
-      STATED_DOORS.forEach(function(n){ if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
+      STATED_DOORS.forEach(function(n){ n = DOOR_ALIAS[n] || n; if (by[n] && !seen[n]){ seen[n] = 1; out.push(by[n]); } });
       if (here && by[here] && !seen[here]){ seen[here] = 1; out.push(by[here]); }
       return { list: out, custom: true, all: all };
     }
-    return { list: all, custom: false, all: all };
+    var dflt = all.filter(function(p){ return !DOORS_OFF[p[1]] || p[1] === here; });
+    return { list: dflt, custom: false, all: all };
   }
 
   /* ── the acts, gathered ───────────────────────────────────────────────────
@@ -1158,7 +1165,7 @@
     d.className = 'dd'; d.setAttribute('data-doors', '');
     var s = document.createElement('summary');
     s.textContent = 'go ▾';
-    s.title = 'the other places on this site — your handle travels with you';
+    s.title = 'this handle’s pages, and the places to glance at';
     d.appendChild(s);
 
     var menu = document.createElement('div');
@@ -1167,6 +1174,12 @@
     function paint(){
       menu.innerHTML = '';
       var a = arrange(cfg.here), lastGroup = null;
+      /* whose pages these are — the first line, so "now" reads as this handle's now */
+      if (cfg.handle){
+        var who = document.createElement('span');
+        who.className = 'dd__who'; who.textContent = cfg.handle;
+        menu.appendChild(who);
+      }
 
       function place(p){
         var u = href(p[1], p[2], cfg.handle, cfg.family);
