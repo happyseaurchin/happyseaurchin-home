@@ -483,7 +483,7 @@ function adaptFlowBlock(block, name) {
     const chars = Number(v['2']) || 0; const flag = String(v['4'] || '');
     return { key, label: v['1'] + (flag === 'unresolved' ? ' — unresolved' : ''), ref: v['1'], rung: v['3'] || null, cls, chars, tokens: Math.max(1, Math.round(est(chars))), text: v._ || '', side, new: flag === 'new', changed: flag === 'changed', unresolved: flag === 'unresolved' };
   };
-  const moments = [];
+  const moments = []; let probes = 0;
   wakes.forEach((wk, i) => {
     const win = wk['1']; const spans = [];
     for (const sideKey of ['1', '2']) {
@@ -496,7 +496,11 @@ function adaptFlowBlock(block, name) {
       }
     }
     const m = /^window composed (\S+)/.exec(win._ || ''); const when = m ? new Date(m[1]) : null;
-    moments.push({ id: `w${i}`, label: `wake ${i + 1}${when && !isNaN(when) ? ' · ' + when.toISOString().slice(5, 16).replace('T', ' ') : ''}`, kind: 'window', tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
+    // A window with no reply is a wake still in progress only when it is the newest; an earlier one
+    // was composed and not woken (the clock's due-gate probes for free) or never folded — say which.
+    const composedOnly = !wk['2'] && /no reply followed/.test(wk._ || '');
+    if (composedOnly) probes++;
+    moments.push({ id: `w${i}`, label: `wake ${i + 1}${when && !isNaN(when) ? ' · ' + when.toISOString().slice(5, 16).replace('T', ' ') : ''}${composedOnly ? ' · composed only' : ''}`, kind: 'window', tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
     const reply = wk['2']; if (!reply || typeof reply !== 'object') return;
     const out = [];
     const writes = reply['1'] || {};
@@ -519,7 +523,7 @@ function adaptFlowBlock(block, name) {
   }
   const pending = wakes.length && !wakes[wakes.length - 1]['2'];
   const notes = [
-    `${handle} — the window as composed, published by its own door to flow:${handle} (${name}); ${wakes.length} wake${wakes.length === 1 ? '' : 's'} standing${pending ? ', the newest awaiting its reply' : ''}.`,
+    `${handle} — the window as composed, published by its own door to flow:${handle} (${name}); ${wakes.length} wake${wakes.length === 1 ? '' : 's'} standing${pending ? ', the newest awaiting its reply' : ''}${probes ? `; ${probes} composed only — the door composed and did not wake (the clock's due-gate probes for free and spends only when something is due), or the wake never folded` : ''}.`,
     'Labels, addresses and sizes only: a span is a reference to a public block and its size; no text is carried, so the peek shows the line and the address.',
     'Window heights are estimated from characters (four a token): the router that composes the window never makes the inference call. Flags come from the block itself — the producer fingerprints each part and marks what entered or changed since the previous window.',
     block['9'] && block['9']._ ? String(block['9']._) : '',
