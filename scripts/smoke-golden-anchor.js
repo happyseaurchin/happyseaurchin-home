@@ -39,7 +39,7 @@ const place = (cells, gold = GOLD) => {
   const i = goldIx(row);
   if (i < 0) return 'ABSENT';
   const g = row[i];
-  const pin = /pin-l/.test(g) ? 'pin-l' : /pin-r/.test(g) ? 'pin-r' : '';
+  const pin = /rcard gold pin\b/.test(g) ? 'pin' : '';
   return (i === 0 ? 'first' : i === row.length - 1 ? 'last' : 'at ' + i) + (pin ? ' ' + pin : '');
 };
 
@@ -56,20 +56,20 @@ t('now beats the selection when the row holds both', place(browsed), 'at 1');
 // ── 2. the row is entirely LATER than now — David standing in the 2030s ────
 const thirties = ['2029', '2030', '2031', '2032', '2033', '2034', '2035', '2036', '2037', '2038', '2039']
   .map(y => cell(y, { sel: y === '2037' }));
-t('far left when every cell is later than now', place(thirties), 'first pin-l');
+t('far left when every cell is later than now', place(thirties), 'first pin');
 t('  and NOT beside the selection, which was the 2026-09-17 bug',
   spliceGold(thirties, GOLD, NOW).findIndex(c => /rcard gold/.test(c)) === 0, true);
 
 const seasonsUnder37 = ['20371', '20372', '20373', '20374'].map(a => cell(a, { sel: a === '20374' }));
-t('every finer row under a later year goes far left too', place(seasonsUnder37), 'first pin-l');
+t('every finer row under a later year goes far left too', place(seasonsUnder37), 'first pin');
 t('  and the month row under it as well',
-  place(['203741', '203742', '203743'].map(a => cell(a))), 'first pin-l');
+  place(['203741', '203742', '203743'].map(a => cell(a))), 'first pin');
 
 // ── 3. the row is entirely EARLIER than now — a retrospective at 2025 ──────
 const seasonsUnder25 = ['20251', '20252', '20253', '20254'].map(a => cell(a, { sel: a === '20253' }));
-t('far right when every cell is earlier than now', place(seasonsUnder25), 'last pin-r');
+t('far right when every cell is earlier than now', place(seasonsUnder25), 'last pin');
 t('  and the month row under it as well',
-  place(['202531', '202532', '202533'].map(a => cell(a))), 'last pin-r');
+  place(['202531', '202532', '202533'].map(a => cell(a))), 'last pin');
 
 // the YEAR row of that retrospective still CONTAINS now, so it is case 1
 const twenties = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029']
