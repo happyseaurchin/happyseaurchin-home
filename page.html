@@ -88,6 +88,14 @@
   .beat .bago{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:none}
   .sees{margin:0 0 8px 92px;padding:8px 12px;border-left:2px solid rgba(var(--solid-rgb),0.45);color:var(--vapour);font-size:0.98rem;white-space:pre-line}
   .sees .sh{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--solid);margin:0 0 4px}
+  .told{padding:9px 0 9px 12px;border-top:1px solid var(--line);border-left:2px solid rgba(var(--solid-rgb),0.45);color:var(--foam);font-size:1rem;white-space:pre-line}
+  .told:first-child{border-top:none}
+  .told .sh{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:0.06em;color:var(--vapour-dim);margin:0 0 4px}
+  .ways{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+  .ways .why{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin-right:2px}
+  .ways button.way{background:none;border:1px solid var(--line-strong);border-radius:999px;color:var(--foam);font-size:12.5px;padding:6px 12px;cursor:pointer}
+  .ways button.way:hover{border-color:var(--solid);color:var(--solid)}
+  .ways button.way:disabled{opacity:0.5;cursor:default}
   .declared{margin:10px 0 0;padding-top:8px;border-top:1px dashed var(--line-strong)}
   .declared .dh{font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 2px}
   .declared .btext{color:var(--vapour);font-style:italic}
@@ -447,6 +455,7 @@ let SPINE = null, FLOOR = 1, MIRRORS = {}, INDEX = [];
 let PASSPORT = null, STAND = null, PLACE = null, ROOM = null, PRESENCE = null, HISTORY = null, WITNESSED = null, KNOWS = null, PURPOSE = null;
 let LIQUID = null;   /* what stands declared at the room and has not yet happened */
 let DIAL = null;     /* the doorman's dial — the character's own block at its table */
+let WAYS = null;     /* where the room leads, as the router's room envelope names it (grit 1.51) */
 let WAKER = 'https://waker-production.up.railway.app';   /* the doorman's door; ways:doorbell at the apex says otherwise when it moves */
 let OPEN = false;    /* the hand open — this device holds the character's key, proven against the passport */
 let WATCH = null;    /* the holder's quiet re-read of the room while the page is open */
@@ -741,6 +750,7 @@ async function load(){
   wireNewPost();
   wireKey();
   wireAct();
+  if (OPEN && WORLD && STAND) loadWays();
   watchRoom();
   scrollToHash();
 
@@ -755,8 +765,8 @@ async function load(){
     if (ROOM) foot.push('<a href="' + esc(wk(BEACH) + '?block=pool:' + encodeURIComponent(STAND.addr)) + '">the room, raw →</a>');
     foot.push('<span>reads passport · knows · purpose' + (STAND ? ' · pool:' + esc(STAND.addr) + ' · presence' : '') + ' of ' + esc(HANDLE) + ' at ' + esc(host(BEACH)) +
       (STAND ? ' · the place from spatial:' + esc(STAND.world) + (PLACE ? ' at ' + esc(host(PLACE.origin)) : ' (not reached)') : '') +
-      (STAND ? ' · lines said from liquid:pool:' + esc(STAND.addr) + ' · renderings beneath the beats from witnessed and history · the doorman\'s dial wake:' + esc(HANDLE) : '') +
-      ' · the holder\'s hand, once the key is proven against the passport: a line said (its own slot in liquid:pool:&lt;room&gt;, staged as any client stages), and make-it-happen asked of the doorman (POST /fold at ' + esc(host(WAKER)) + ') · the page never commits a beat and never thinks</span>');
+      (STAND ? ' · lines said from liquid:pool:' + esc(STAND.addr) + ' · the narration from the renderings in witnessed and history · the ways from the router\'s room envelope · the doorman\'s dial wake:' + esc(HANDLE) : '') +
+      ' · the holder\'s hand, once the key is proven against the passport: a line said (its own slot in liquid:pool:&lt;room&gt;, staged as any client stages), make-it-happen asked of the doorman (POST /fold at ' + esc(host(WAKER)) + '), and a way tapped walked as grit 1.5\'s four steps under the key · the page never resolves a beat and never thinks</span>');
   }
   $('foot').innerHTML = foot.join('');
 }
@@ -801,23 +811,37 @@ function renderPlace(){
   return out.join('');
 }
 
-/* ── the room now — the beats, by handle, as the record has them; beneath a beat, for its
-   player alone, the moment as the character lived it (the rendering kept in the character's
-   own account); then what stands declared and has not yet happened — the table's own view
-   of intentions, shown to everyone as the table shows it ── */
+/* ── the room now — for everyone, the beats by handle as the record has them. For the player
+   holding the character's key it is the character's NARRATION (history is the narration;
+   the clean mirror §1.1): a beat a kept rendering tells stands as that rendering, an untold
+   beat stands raw, and the moments kept from rooms the character stood in before come first,
+   in the order they were lived. A rendering read back from the account knows only the last
+   slot it covers, so it replaces that beat alone — nothing is hidden that no rendering
+   narrates. Then what is said and not yet happened, as the table shows it to everyone. ── */
+function toldElsewhere(){
+  const out = [];
+  const take = block => entriesOf(block).forEach(e => {
+    const text = fieldOf(e, '_'), m = fieldOf(e, '2').match(/^pool:(.+):(\d+)$/);
+    if (text && m && m[1] !== STAND.addr) out.push({ text, ts: fieldOf(e, '3') });
+  });
+  take(WITNESSED); take(HISTORY);
+  return out.sort((a, b) => (a.ts || '').localeCompare(b.ts || ''));
+}
 function roomRecord(){
   const out = [];
   const beats = ROOM ? beatsOf(ROOM) : [];
-  const sees = (OPEN && STAND) ? renderingsFor(STAND.addr) : {};
-  if (!beats.length){
+  const narrating = !!(OPEN && STAND);
+  const told = narrating ? renderingsFor(STAND.addr) : {};
+  const moment = t => '<div class="told"><span class="sh">as ' + esc(HANDLE) + ' lived it' + (t.ts && isIso(t.ts) ? ' · ' + esc(ago(t.ts)) : '') + '</span>' + esc(t.text) + '</div>';
+  const raw = b => '<div class="beat"><span class="bwho">' + esc(b.who) + '</span><span class="btext">' + esc(b.text) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>';
+  const rows = (narrating ? toldElsewhere().map(moment) : []).concat(beats.map(b => told[b.slot] ? moment(told[b.slot]) : raw(b)));
+  if (!rows.length){
     out.push('<p class="vnone">Nothing has happened here yet.</p>');
   } else {
     const KEEP = 12;
-    const older = beats.slice(0, Math.max(0, beats.length - KEEP)), recent = beats.slice(-KEEP);
-    const row = b => '<div class="beat"><span class="bwho">' + esc(b.who) + '</span><span class="btext">' + esc(b.text) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>' +
-      (sees[b.slot] ? '<div class="sees"><span class="sh">' + esc(HANDLE) + ' sees · yours alone</span>' + esc(sees[b.slot].text) + '</div>' : '');
-    if (older.length) out.push('<details class="earlier"><summary>earlier — ' + older.length + ' before these</summary>' + older.map(row).join('') + '</details>');
-    out.push(recent.map(row).join(''));
+    const older = rows.slice(0, Math.max(0, rows.length - KEEP)), recent = rows.slice(-KEEP);
+    if (older.length) out.push('<details class="earlier"><summary>earlier — ' + older.length + ' before these</summary>' + older.join('') + '</details>');
+    out.push(recent.join(''));
   }
   const declared = LIQUID ? declaredOf(LIQUID) : [];
   if (declared.length){
@@ -833,7 +857,7 @@ function renderRoom(){
     : '<div class="closed"><p>What ' + esc(HANDLE) + ' sees of each moment is ' + esc(HANDLE) + '\'s own, and so is the hand that says and makes it happen. The table keeps them between the character and its player, and this page keeps to that: they open to the character\'s key, which the beach checks.</p>' +
       '<p><button id="acc-open" type="button">' + esc(HANDLE) + ' is mine — open it</button></p></div>';
   return '<section class="sect"><h2>the room now</h2><div class="room"><div id="room-record">' + roomRecord() + '</div>' +
-    (OPEN ? '<div id="room-act">' + actBox() + '</div>' : '') + key + '</div></section>';
+    (OPEN ? '<div id="room-act">' + actBox() + '</div><div id="room-ways"></div>' : '') + key + '</div></section>';
 }
 function paintRecord(){ const box = $('room-record'); if (box) box.innerHTML = roomRecord(); }
 
@@ -892,6 +916,87 @@ async function declare(text){
   if (text.trim() && !(stands && stands.text === text)) return 'the table did not keep the line — say it again';
   return true;
 }
+/* the router, over MCP from the browser (its CORS is open and the session id exposed):
+   initialise, call one tool, hand back the text it answered with — the waker's router_call */
+const ROUTER = 'https://bsp.hermitcrab.me/mcp/v1';
+async function routerCall(tool, args){
+  const rpc = async (payload, sid) => {
+    const r = await fetch(ROUTER, { method:'POST', cache:'no-store',
+      headers: Object.assign({ 'Content-Type':'application/json', Accept:'application/json, text/event-stream' }, sid ? { 'mcp-session-id': sid } : {}),
+      body: JSON.stringify(payload) });
+    if (!r.ok) throw new Error('router ' + r.status);
+    return { sid: r.headers.get('mcp-session-id') || sid, body: await r.text() };
+  };
+  const init = await rpc({ jsonrpc:'2.0', id:1, method:'initialize', params:{ protocolVersion:'2024-11-05', capabilities:{}, clientInfo:{ name:'happyseaurchin-page', version:'1' } } });
+  await rpc({ jsonrpc:'2.0', method:'notifications/initialized' }, init.sid);
+  const res = await rpc({ jsonrpc:'2.0', id:2, method:'tools/call', params:{ name: tool, arguments: args } }, init.sid);
+  const m = res.body.match(/^data: (.*)$/m);
+  const d = JSON.parse(m ? m[1] : res.body);
+  return ((d.result && d.result.content) || []).map(c => c.text || '').join('\n');
+}
+/* THE WAYS — where this place leads, each with its address, read off the room's envelope as
+   the mirror reads it (kernel/envelope.ts parseWays): the only addresses a move may copy */
+function waysOf(envelope){
+  const ways = [];
+  let inWays = false;
+  for (const line of String(envelope || '').split('\n')){
+    if (line.startsWith('# ')){ inWays = /^# The ways\b/.test(line); continue; }
+    const m = inWays ? line.match(/^(\s*)\[(\d+)\]\s+(.*\S)\s*$/) : null;
+    if (m) ways.push({ addr: m[2], label: m[3] });
+  }
+  return ways;
+}
+const wayName = label => String(label || '').split(/\s[\u2014\u2013-]\s/)[0].replace(/\.\s*$/, '');
+async function loadWays(){
+  if (!$('room-ways')) return;
+  try {
+    const text = await routerCall('pscale_pool_engage', { agent_id: HANDLE, pool_url: BEACH, pool_name: STAND.addr, since_position: ROOM ? slottedEntries(ROOM).length : 0, face: 'character' });
+    WAYS = waysOf(text).filter(w => w.addr !== STAND.addr);
+  } catch(e){ WAYS = []; }
+  paintWays();
+}
+function paintWays(){
+  const box = $('room-ways'); if (!box) return;
+  if (!WAYS || !WAYS.length){ box.innerHTML = ''; return; }
+  box.innerHTML = '<div class="ways"><span class="why">or go —</span>' + WAYS.map((w, i) =>
+    '<button type="button" class="way" data-i="' + i + '" title="' + esc(w.label) + '">' + esc(wayName(w.label)) + '</button>').join('') + '</div>';
+  box.querySelectorAll('button.way').forEach(b => b.addEventListener('click', () => goThere(WAYS[+b.dataset.i])));
+}
+/* A WAY, TAPPED — the four-step move of grit 1.5, performed with the character's own key and
+   no mind in it, exactly as the mirror's kernel/play/move.ts performs it: the departure said
+   first so companions see it go (1.53), the leaving beat here, the position written and read
+   back, the room ahead founded if absent (1.57), the arriving beat there — and the page
+   follows the written position. A half-move is said as it stands, never papered over. */
+const LOCATION_RE = /(Location:\s*\*:[^\s]+:spatial:[\w-]+:)(\d+(?:\.\d+)?)/;
+async function goThere(way){
+  const hint = $('a-hint'), key = latchGet();
+  const say = (msg, cls) => { if (hint){ hint.innerHTML = msg || ''; hint.className = 'hint' + (cls ? ' ' + cls : ''); } };
+  if (!key || !way){ say('to move, open ' + esc(HANDLE) + ' with the key first', 'err'); return; }
+  const label = String(way.label || '').replace(/\s*\.\s*$/, ''), from = STAND.addr;
+  const beat = (addr, text) => writeBlock({ block: 'pool:' + addr, append: true, content: { '_': text, '1': HANDLE, '2': '', '3': new Date().toISOString(), '4': 'character' } });
+  const doors = [...document.querySelectorAll('button.way')];
+  doors.forEach(b => b.disabled = true);
+  say('setting off for ' + esc(wayName(way.label)) + '…');
+  try {
+    try { await declare('Setting off — for ' + label + '.'); } catch(e){}
+    let w = await beat(from, 'Sets off — for ' + label + '.');
+    if (!w.ok){ say('the leaving did not land — nothing has moved', 'err'); return; }
+    const pp = await readBlock('passport:' + HANDLE).catch(() => null);
+    const p3 = pp && typeof pp['3'] === 'string' ? pp['3'] : '';
+    if (!LOCATION_RE.test(p3)){ say(esc(HANDLE) + ' carries no written location — genesis never placed them, so a move has nothing to rewrite', 'err'); return; }
+    w = await writeBlock({ block: 'passport:' + HANDLE, spindle: '3', content: p3.replace(LOCATION_RE, (all, head) => head + way.addr), secret: key });
+    if (!w.ok){ say('the world would not accept the move — ' + esc(HANDLE) + ' stays where they are', 'err'); return; }
+    const back = await readBlock('passport:' + HANDLE).catch(() => null), at = back ? locationRef(back) : null;
+    if (!at || at.addr !== way.addr){ say('the move did not read back — treat ' + esc(HANDLE) + ' as not moved', 'err'); return; }
+    try { await routerCall('pscale_pool_engage', { agent_id: HANDLE, pool_url: BEACH, pool_name: way.addr, since_position: 0, purpose: 'pscale:grit/1' }); } catch(e){}
+    w = await beat(way.addr, 'Arrives — ' + label + '.');
+    try { await declare(''); } catch(e){}
+    await load();
+    if (!w.ok) say(esc(HANDLE) + ' has moved, but the arrival has not landed yet — say something here to announce them', 'err');
+  } finally {
+    doors.forEach(b => b.disabled = false);
+  }
+}
 /* asked of the doorman: POST /fold {handle, passphrase, room} — synchronous, the outcome returned */
 async function askTheDoorman(){
   let r;
@@ -942,7 +1047,7 @@ function wireAct(){
     const t = text.value.trim(), mine = myDeclared();
     if (t && !(mine && mine.text === t)){ if (!(await doDeclare())) return; }
     if (!myDeclared() && !(LIQUID && declaredOf(LIQUID).length)){ say('nothing is said yet — say what ' + esc(HANDLE) + ' does first'); return; }
-    busy(true); say(esc(HANDLE) + '’s doorman is weaving the moment — this can take half a minute…');
+    busy(true); say(esc(HANDLE) + '’s doorman is weaving the moment — this can take a minute…');
     const before = ROOM ? beatsOf(ROOM).length : 0;
     const a = await askTheDoorman();
     if (!a.reached){
@@ -950,12 +1055,16 @@ function wireAct(){
       say('The doorman could not be reached from this page — its door may not be open to this site yet. Your line still stands, said and not yet happened; make it happen in <a href="https://mirror.onen.ai/?world=' + encodeURIComponent(WORLD) + '&pool=' + encodeURIComponent(STAND.addr) + '">the mirror ↗</a>.', 'err');
       return;
     }
+    /* a move from words: the doorman's resolution let the character go along a way, and the
+       doorman walked it — the page follows the written position */
+    const pp = a.folded ? await readBlock('passport:' + HANDLE).catch(() => null) : null, at = pp ? locationRef(pp) : null;
+    if (at && at.addr !== STAND.addr){ text.value = ''; clearDraft(); await load(); const h = $('a-hint'); if (h){ h.textContent = a.detail; h.className = 'hint ok'; } return; }
     await rereadRoom().catch(() => {});
     paintRecord(); busy(false);
     if (!a.folded){ say(esc(a.detail || 'it did not happen'), 'err'); return; }
     text.value = ''; clearDraft(); busy(false);
     const d = doormanOf(DIAL);
-    say('it happened' + (d && d.render ? ' — ' + esc(HANDLE) + '’s own telling of it follows beneath the beat in a moment' : ''), 'ok');
+    say('it happened' + (d && d.render ? ' — ' + esc(HANDLE) + '’s telling of it takes the beat’s place in a moment' : ''), 'ok');
     /* the rendering rides the bell, a breath behind the beat — look for it for a minute and a half */
     if (d && d.render){
       for (let i = 0; i < 15; i++){
