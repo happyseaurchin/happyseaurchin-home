@@ -158,6 +158,15 @@
     background:linear-gradient(165deg,rgba(var(--solid-rgb),0.16) 0%,rgba(var(--solid-rgb),0.06) 100%);
     border:1px dashed rgba(var(--solid-rgb),0.5)}
   .rcard.gold:hover{border-color:var(--solid)}
+  /* PINNED where now is off this row (spliceGold): the pile stays on screen
+   * while the strip scrolls under it. Opaque, because cells pass beneath —
+   * the gradient keeps its face and the well behind it stops the show-through
+   * in either theme. */
+  .rcard.gold.pin-l,.rcard.gold.pin-r{position:sticky;z-index:3;
+    background:linear-gradient(165deg,rgba(var(--solid-rgb),0.16) 0%,rgba(var(--solid-rgb),0.06) 100%),rgb(var(--well-rgb));
+    box-shadow:0 0 12px 7px rgba(var(--well-rgb),0.72)}
+  .rcard.gold.pin-l{left:0}
+  .rcard.gold.pin-r{right:0}
   .rcard.gold .lab{color:var(--solid);font-size:0.92rem}
   .rcard.gold .lab .n{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;margin-left:auto;font-weight:400}
   .rcard.gold .say{color:var(--vapour-dim);min-height:0;-webkit-line-clamp:3}
@@ -554,7 +563,7 @@ const APEX = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 if (GROUND) BEACH = GROUND.origin + '/.well-known/pscale-beach';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
 let SINCE = 0;                       /* the marker: your last act, else 24h */
-let TODAY = null, TODAY_ADDR = '';
+let TODAY = null, TODAY_ADDR = '', NOW_ADDR = '';
 const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
 let CAST = null;                     /* sed:<family>-cast — member handles, or null while nobody has settled */
@@ -992,6 +1001,10 @@ async function load(){
   TODAY.band = Math.floor((TODAY.d - 1) / 7) + 1;
   TODAY.g = Math.floor((d.getUTCHours() * 3600 + d.getUTCMinutes() * 60 + d.getUTCSeconds()) / 9600) + 1;
   TODAY_ADDR = dayAddr(TODAY.y, TODAY.m0, TODAY.d);
+  /* the same moment at the finest rung the rack draws. Every row's cells are
+   * a fixed-width prefix of this, so a plain string compare against
+   * NOW_ADDR.slice(0, cell.length) is a chronological one. */
+  NOW_ADDR = gatherAddr(TODAY.y, TODAY.m0, TODAY.d, TODAY.g);
   if (first) Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, g: TODAY.g, level: 'd' });
 
   const [spine, index] = await Promise.all([readBlock('spine:' + VENTURE), readIndex()]);
@@ -1131,8 +1144,13 @@ function rcard(label, addr, isSel, isNow, data){
   const t = lensText(addr);
   const lv = (String(data).match(/data-lv="(\w+)"/) || [])[1];
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
+  /* data-addr carries the cell's own address into the markup. The rack already
+   * SHOWS it (the work lens prints wireAddr), but showing is not carrying:
+   * wireAddr strips trailing zeros, so the printed form cannot be compared.
+   * spliceGold reads this to find where now falls in a row that does not hold
+   * it, which is the one thing no other marker on the card can answer. */
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' +
-    (isNow ? 'data-now="1" ' : '') + data + '>' +
+    'data-addr="' + esc(addr) + '" ' + (isNow ? 'data-now="1" ' : '') + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
@@ -1254,20 +1272,49 @@ function buildRow(lv){
    * browsing away is no reason to stop showing it — and browsing is when a
    * person is most likely to be putting something into it.
    *
-   * So the anchor falls back: now if the row holds it, otherwise the selected
-   * cell, otherwise the end. Following the selection keeps the card where the
-   * eye already is, and its own label ('a week out') says it is a horizon
-   * rather than a neighbour of whatever cell it sits beside. Where now IS the
-   * selection — every row on load — nothing moves, and the gold still falls
-   * into its single vertical column. */
-  return spliceGold(cards, gcard(lv)).join('');
+   * The first fix anchored it to the SELECTION when now was absent, which kept
+   * it on screen but told a lie: standing in the 2030s put 'a year out' after
+   * 2037, as though the pile lived there. A pile is measured from now and from
+   * nowhere else — 'a year out' is 2027 whichever decade you are looking at
+   * (David, 2026-09-17). */
+  return spliceGold(cards, gcard(lv), NOW_ADDR).join('');
 }
-function spliceGold(cards, gold){
+/* WHERE THE GOLD SITS: WHERE NOW IS, OR WHERE NOW WOULD BE. One rule, three
+ * outcomes, and the third is the one that had to be found.
+ *
+ *   the row holds now      -> immediately after it, exactly as on load, which
+ *                             is what lines the gold up in a vertical column
+ *   the row is all LATER   -> now would fall before every cell: the far left
+ *   the row is all EARLIER -> now would fall after every cell: the far right
+ *
+ * A clock row is a complete sibling set, so a row that straddles now CONTAINS
+ * it — the three cases are exhaustive and the mid-row placement below is
+ * unreachable defence rather than a fourth behaviour.
+ *
+ * AND AT AN EDGE IT PINS. Placement alone would put the card at the end of a
+ * strip you are not scrolled to, which is being on the row without being on
+ * the screen — and the whole point is that a horizon you might drop something
+ * into stays reachable while you browse. Sticky costs two CSS rules. Where now
+ * is IN the row nothing pins, because there the card is already beside the one
+ * cell it is about. */
+function spliceGold(cards, gold, nowAddr){
   if (!gold) return cards;
-  let i = cards.findIndex(c => c.indexOf('data-now=') !== -1);
-  if (i < 0) i = cards.findIndex(c => c.indexOf('class="rcard sel') !== -1);
-  if (i < 0) i = cards.length - 1;
-  return cards.slice(0, i + 1).concat(gold, cards.slice(i + 1));
+  const put = (i, pin) => cards.slice(0, i + 1)
+    .concat(pin ? gold.replace('class="rcard gold"', 'class="rcard gold ' + pin + '"') : gold)
+    .concat(cards.slice(i + 1));
+  const now = cards.findIndex(c => c.indexOf('data-now=') !== -1);
+  if (now >= 0) return put(now, '');
+  /* the last cell earlier than now. Cells run in order and are fixed-width at
+   * their own rung, so comparing against that many digits of the beat address
+   * compares moments. */
+  const addrOf = c => (String(c).match(/data-addr="(\d+)"/) || [])[1] || '';
+  let i = -1;
+  for (let k = 0; k < cards.length; k++){
+    const a = addrOf(cards[k]);
+    if (!a || a >= String(nowAddr).slice(0, a.length)) break;
+    i = k;
+  }
+  return put(i, i < 0 ? 'pin-l' : (i === cards.length - 1 ? 'pin-r' : ''));
 }
 /* EVERY ROW CENTRES ON NOW — which is the one cell they all share, so centring
  * it lines the rows up with each other, and the golden cards that follow it

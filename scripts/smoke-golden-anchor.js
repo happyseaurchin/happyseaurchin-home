@@ -1,23 +1,30 @@
 // Where the golden card sits in a row, run against the REAL function lifted out of walk.html.
 //
-// The bug this exists to stop coming back: the gold rode the data-now marker
-// ALONE, so a row browsed off today — the day row while you stand in next
-// week, and the gathering row under it — had no anchor and dropped its pile
-// entirely, until a reload put the selection back on today. A pile is held
-// relative to now and its contents never change as you browse, so browsing
-// away is the worst possible reason to stop showing it.
+// THE RULE: the gold sits where NOW is, or where now WOULD be. A pile is
+// measured from now and nowhere else — "a year out" is 2027 whichever decade
+// you are looking at — so a row later than now takes it at the far left, and a
+// row earlier than now takes it at the far right.
+//
+// Two bugs live behind these checks, both found by David on the rack:
+//   2026-09-16  the gold rode the data-now marker ALONE, so a row browsed off
+//               today had no anchor and dropped its pile entirely.
+//   2026-09-17  the first fix anchored it to the SELECTION, which kept it on
+//               screen but put "a year out" after 2037 while standing in the
+//               2030s — on the row, and lying about where the pile is.
 const fs = require('fs');
 const path = require('path');
 const W = fs.readFileSync(path.resolve(__dirname, '..', 'walk.html'), 'utf8');
 const grab = (src, sig) => { const i = src.indexOf(sig); return src.slice(i, src.indexOf('\n}\n', i) + 2); };
 
-eval(grab(W, 'function spliceGold(cards, gold){'));
+eval(grab(W, 'function spliceGold(cards, gold, nowAddr){'));
 
-// Cells exactly as rcard emits them: the class string first, data-now only on now.
-const cell = (label, { sel, now } = {}) =>
+// now, at the rung the rack draws finest: 2026, season 3, month 3, band 3, day 3, gathering 6.
+const NOW = '202633326';
+// Cells exactly as rcard emits them — class first, data-addr always, data-now only on now.
+const cell = (addr, { sel, now } = {}) =>
   '<div class="rcard' + (sel ? ' sel' : '') + ' empty" role="button" tabindex="0" '
-  + (now ? 'data-now="1" ' : '') + 'data-lv="d" data-d="' + label + '">' + label + '</div>';
-const GOLD = '<div class="rcard gold" data-lv="pile" data-pile="2">tomorrow</div>';
+  + 'data-addr="' + addr + '" ' + (now ? 'data-now="1" ' : '') + 'data-lv="y">' + addr + '</div>';
+const GOLD = '<div class="rcard gold" data-lv="pile" data-pile="6">a year out</div>';
 
 let pass = true;
 const t = (label, got, want) => {
@@ -25,43 +32,62 @@ const t = (label, got, want) => {
   if (!ok) pass = false;
   console.log(`  ${ok ? '✓' : '✗'} ${label}` + (ok ? '' : `\n      got ${JSON.stringify(got)}\n      want ${JSON.stringify(want)}`));
 };
-/** index of the gold in a spliced row, or -1 */
-const goldAt = row => row.findIndex(c => c.indexOf('rcard gold') !== -1);
+const goldIx = row => row.findIndex(c => c.indexOf('rcard gold') !== -1);
+/** where the gold landed and how it is pinned, as one readable answer */
+const place = (cells, gold = GOLD) => {
+  const row = spliceGold(cells, gold, NOW);
+  const i = goldIx(row);
+  if (i < 0) return 'ABSENT';
+  const g = row[i];
+  const pin = /pin-l/.test(g) ? 'pin-l' : /pin-r/.test(g) ? 'pin-r' : '';
+  return (i === 0 ? 'first' : i === row.length - 1 ? 'last' : 'at ' + i) + (pin ? ' ' + pin : '');
+};
 
-console.log('\nthe golden card finds an anchor in every row:');
+console.log('\nthe gold sits where now is, or where now would be:');
 
-// 1. The ordinary case, and the one the column alignment depends on: now is
-//    also the selection, gold lands immediately after it.
-const onToday = [cell('15'), cell('16', { sel: true, now: true }), cell('17')];
-t('lands straight after now when the row holds now', goldAt(spliceGold(onToday, GOLD)), 2);
+// ── 1. now is in the row ───────────────────────────────────────────────────
+const thisDecade = [cell('2025'), cell('2026', { sel: true, now: true }), cell('2027')];
+t('straight after now, unpinned, when the row holds now', place(thisDecade), 'at 2');
 
-// 2. THE REGRESSION. Browsed to next week: no now anywhere in the row.
-const nextWeek = [cell('22'), cell('23', { sel: true }), cell('24')];
-t('still lands when the row has no now at all', goldAt(spliceGold(nextWeek, GOLD)) >= 0, true);
-t('follows the selection when now is absent', goldAt(spliceGold(nextWeek, GOLD)), 2);
+// now present but not selected — now still wins, which is what keeps the column
+const browsed = [cell('2025', { now: true }), cell('2026'), cell('2027', { sel: true })];
+t('now beats the selection when the row holds both', place(browsed), 'at 1');
 
-// 3. Now present but NOT selected — a row you have browsed within this week.
-//    Now still wins, because that is what keeps the gold in one column.
-const browsedWithin = [cell('15', { now: true }), cell('16'), cell('17', { sel: true })];
-t('now beats the selection when the row holds both', goldAt(spliceGold(browsedWithin, GOLD)), 1);
+// ── 2. the row is entirely LATER than now — David standing in the 2030s ────
+const thirties = ['2029', '2030', '2031', '2032', '2033', '2034', '2035', '2036', '2037', '2038', '2039']
+  .map(y => cell(y, { sel: y === '2037' }));
+t('far left when every cell is later than now', place(thirties), 'first pin-l');
+t('  and NOT beside the selection, which was the 2026-09-17 bug',
+  spliceGold(thirties, GOLD, NOW).findIndex(c => /rcard gold/.test(c)) === 0, true);
 
-// 4. Neither marker — defensive; the gold goes last rather than vanishing.
-const neither = [cell('1'), cell('2')];
-t('falls to the end when the row has neither marker', goldAt(spliceGold(neither, GOLD)), 2);
+const seasonsUnder37 = ['20371', '20372', '20373', '20374'].map(a => cell(a, { sel: a === '20374' }));
+t('every finer row under a later year goes far left too', place(seasonsUnder37), 'first pin-l');
+t('  and the month row under it as well',
+  place(['203741', '203742', '203743'].map(a => cell(a))), 'first pin-l');
 
-// 5. Exactly one gold, always. A second anchor rule that also matched would
-//    duplicate the pile, which reads as two piles at one rung.
-[onToday, nextWeek, browsedWithin, neither].forEach((row, i) =>
+// ── 3. the row is entirely EARLIER than now — a retrospective at 2025 ──────
+const seasonsUnder25 = ['20251', '20252', '20253', '20254'].map(a => cell(a, { sel: a === '20253' }));
+t('far right when every cell is earlier than now', place(seasonsUnder25), 'last pin-r');
+t('  and the month row under it as well',
+  place(['202531', '202532', '202533'].map(a => cell(a))), 'last pin-r');
+
+// the YEAR row of that retrospective still CONTAINS now, so it is case 1
+const twenties = ['2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029']
+  .map(y => cell(y, { sel: y === '2025', now: y === '2026' }));
+t('a row straddling now holds it, so it is never pinned', place(twenties), 'at 8');
+
+// ── 4. invariants that must hold however it lands ─────────────────────────
+[thisDecade, browsed, thirties, seasonsUnder25, twenties].forEach((row, i) =>
   t(`row ${i + 1} carries exactly one gold`,
-    spliceGold(row, GOLD).filter(c => c.indexOf('rcard gold') !== -1).length, 1));
+    spliceGold(row, GOLD, NOW).filter(c => c.indexOf('rcard gold') !== -1).length, 1));
 
-// 6. The cells themselves are untouched and keep their order — the gold is an
-//    insertion, never a replacement.
 t('every original cell survives, in order',
-  spliceGold(nextWeek, GOLD).filter(c => c.indexOf('rcard gold') === -1), nextWeek);
+  spliceGold(thirties, GOLD, NOW).filter(c => c.indexOf('rcard gold') === -1), thirties);
 
-// 7. No gold to place (a rung with no pile) leaves the row exactly as it was.
-t('a row with no pile is returned untouched', spliceGold(nextWeek, ''), nextWeek);
+t('a row with no pile is returned untouched', spliceGold(thirties, '', NOW), thirties);
+
+// a cell with no address must not throw or silently mis-place the pile
+t('an addressless row still places the gold', place([cell(''), cell('')]) !== 'ABSENT', true);
 
 console.log(pass ? '\nall green.\n' : '\nFAILED.\n');
 process.exit(pass ? 0 : 1);
