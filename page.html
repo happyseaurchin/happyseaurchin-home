@@ -86,6 +86,15 @@
   .beat .bwho{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:80px}
   .beat .btext{flex:1;min-width:0;color:var(--foam);font-size:1rem;white-space:pre-line}
   .beat .bago{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:none}
+  .sees{margin:0 0 8px 92px;padding:8px 12px;border-left:2px solid rgba(var(--solid-rgb),0.45);color:var(--vapour);font-size:0.98rem;white-space:pre-line}
+  .sees .sh{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--solid);margin:0 0 4px}
+  .declared{margin:10px 0 0;padding-top:8px;border-top:1px dashed var(--line-strong)}
+  .declared .dh{font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 2px}
+  .declared .btext{color:var(--vapour);font-style:italic}
+  .act{margin-top:12px;border-top:1px dashed var(--line-strong);padding-top:12px}
+  .act button{background:var(--solid)}
+  .act button.ghost{background:none;border:1px solid var(--line-strong);color:var(--vapour-dim)}
+  .act button.ghost:hover{color:var(--foam);border-color:var(--foam)}
   .earlier summary{cursor:pointer;font-family:var(--mono);font-size:11.5px;letter-spacing:0.08em;color:var(--vapour-dim);list-style:none;padding:6px 0}
   .earlier summary::-webkit-details-marker{display:none}
   .earlier summary::before{content:"▸ "} .earlier[open] summary::before{content:"▾ "}
@@ -192,6 +201,7 @@
     .beat .bwho{min-width:0;order:0}
     .beat .bago{order:1;margin-left:auto}
     .beat .btext{order:2;flex-basis:100%}
+    .sees{margin-left:0}
     #bar-world{display:none}
   }
 </style>
@@ -452,7 +462,11 @@ const CARRIED = (new URLSearchParams(location.search).get('h') || '').replace(/[
 let SPINE = null, FLOOR = 1, MIRRORS = {}, INDEX = [];
 /* a character's organs — read where present, each its own section */
 let PASSPORT = null, STAND = null, PLACE = null, ROOM = null, PRESENCE = null, HISTORY = null, WITNESSED = null, NIGHT = null, NIGHT_SPINE = null, KNOWS = null, PURPOSE = null;
-let OPEN = false;   /* the account shown — this device holds the character's key */
+let LIQUID = null;   /* what stands declared at the room and has not yet happened */
+let DIAL = null;     /* the doorman's dial — the character's own block at its table */
+let WAKER = 'https://waker-production.up.railway.app';   /* the doorman's door; ways:doorbell at the apex says otherwise when it moves */
+let OPEN = false;    /* the account shown — this device holds the character's key, proven against the passport */
+let WATCH = null;    /* the holder's quiet re-read of the room while the page is open */
 const cleanHandle = v => String(v || '').replace(/[^a-z0-9_-]/gi, '').trim();
 const rememberedName = () => { try { return cleanHandle(localStorage.getItem('render:who')); } catch(e){ return ''; } };
 
@@ -518,19 +532,69 @@ function hereNow(presence, addr){
     .filter(p => typeof p.who === 'string' && p.room === 'pool:' + addr && isIso(p.ts))
     .sort((a, b) => b.ts.localeCompare(a.ts));
 }
+const fieldOf = (e, k) => (e && typeof e === 'object' && typeof e[k] === 'string') ? e[k] : '';
+/* an accumulator's entries WITH the slot each stands at — the digit path from the root, an
+   underscore step a 0, leading zeros dropped: the beach's own slot names (9, then 11) */
+function slottedEntries(block){
+  const out = [];
+  (function walk(node, path){
+    if (!node || typeof node !== 'object') return;
+    if (node['_'] && typeof node['_'] === 'object') walk(node['_'], path + '0');
+    for (const d of digitKeys(node)){
+      const n = node[d];
+      if (isEntry(n)) out.push({ slot: (path + d).replace(/^0+/, ''), entry: n }); else walk(n, path + d);
+    }
+  })(block, '');
+  return out;
+}
 /* the beats as the record has them, oldest first — slot order, settled by the stamps when every beat carries one */
 function beatsOf(pool){
-  const b = entriesOf(pool).map((e, i) => ({ i, text: voiceOf(e), who: (e && typeof e['1'] === 'string') ? e['1'] : '', ts: (e && typeof e['3'] === 'string') ? e['3'] : '' }))
+  const b = slottedEntries(pool).map((x, i) => ({ i, slot: x.slot, text: voiceOf(x.entry), who: fieldOf(x.entry, '1'), ts: fieldOf(x.entry, '3') }))
     .filter(x => x.text && x.who);
   if (b.length && b.every(x => isIso(x.ts))) b.sort((x, y) => x.ts.localeCompare(y.ts) || x.i - y.i);
   return b;
+}
+/* what stands declared and has not yet happened — one line per author, the table's own view of intentions */
+function declaredOf(liquid){
+  return slottedEntries(liquid).map(x => ({ slot: x.slot, who: fieldOf(x.entry, '1'), text: voiceOf(x.entry) || '', ts: fieldOf(x.entry, '3') }))
+    .filter(d => d.who && d.text.trim());
+}
+/* the character's renderings of this room, keyed by the slot of the last beat each covers: an
+   account entry whose location reads pool:<room>:<slot> is the moment as the character lived
+   it, kept there by the doorman or the mirror (log:urb-hitl 16; xstream render-account.ts) */
+function renderingsFor(room){
+  const map = {};
+  const take = block => entriesOf(block).forEach(e => {
+    const text = fieldOf(e, '_'), m = fieldOf(e, '2').match(/^pool:(.+):(\d+)$/);
+    if (!text || !m || m[1] !== room) return;
+    const ts = fieldOf(e, '3');
+    if (!map[m[2]] || ts >= map[m[2]].ts) map[m[2]] = { text, ts };
+  });
+  take(WITNESSED); take(HISTORY);
+  return map;
+}
+/* the doorman, read off the character's own dial at its table: position 1 the switch, position
+   9 the behaviours — the HOLDER'S WORDS, which stand before the dash; what follows is gloss
+   (the waker's parse_behaviours and the mirror's card read the same way). Absent words read
+   as the page player's default: commit and render. No dial, no doorman. */
+function doormanOf(dial){
+  if (!dial || typeof dial !== 'object') return null;
+  const on = /^\s*on\b/i.test(lineOf(dial['1']) || '');
+  const head = (lineOf(dial['9']) || '').split(/\s[\u2014\u2013-]\s/)[0].toLowerCase().split(/\s+/).map(w => w.replace(/[.,;]+$/, ''));
+  const known = head.filter(w => ['act', 'every', 'commit', 'render'].includes(w));
+  const words = head.includes('none') ? [] : (known.length ? known : ['commit', 'render']);
+  return { on, commit: words.includes('commit'), render: words.includes('render'), act: words.includes('act') || words.includes('every') };
 }
 /* the character's own account — the legacy witnessed account first, then history, each in
    its own order. A bare 'lock' at a slot is a latch mark somebody left there, not an entry. */
 function accountOf(){
   const rows = [];
+  const shown = new Set((STAND && ROOM) ? beatsOf(ROOM).map(b => b.slot) : []);
   const take = block => entriesOf(block).forEach(e => {
     const text = voiceOf(e); if (!text || text.trim() === 'lock') return;
+    /* a rendering of this room stands beneath its beat, in the room above — not twice */
+    const m = STAND ? fieldOf(e, '2').match(/^pool:(.+):(\d+)$/) : null;
+    if (m && m[1] === STAND.addr && shown.has(m[2])) return;
     rows.push({ text, ts: (e && typeof e === 'object' && isIso(e['3'])) ? e['3'] : '' });
   });
   take(WITNESSED); take(HISTORY);
@@ -561,14 +625,16 @@ async function load(){
     presence: WORLD ? maybe('presence') : Promise.resolve(null),
     night:    WORLD ? maybe('night') : Promise.resolve(null),
     nightSpine: WORLD ? maybe('spine:night') : Promise.resolve(null),
+    dial:     WORLD ? maybe('wake:' + HANDLE) : Promise.resolve(null),
   };
   const mirrorReads = mirrorNames.map(n => readBlock(n).catch(() => null));
-  const [passport, now, spine, pool, knows, purpose, history, witnessed, keeper, presence, night, nightSpine] =
-    await Promise.all([reads.passport, reads.now, reads.spine, reads.pool, reads.knows, reads.purpose, reads.history, reads.witnessed, reads.keeper, reads.presence, reads.night, reads.nightSpine]);
+  const [passport, now, spine, pool, knows, purpose, history, witnessed, keeper, presence, night, nightSpine, dial] =
+    await Promise.all([reads.passport, reads.now, reads.spine, reads.pool, reads.knows, reads.purpose, reads.history, reads.witnessed, reads.keeper, reads.presence, reads.night, reads.nightSpine, reads.dial]);
   const mirrorBlocks = await Promise.all(mirrorReads);
   MIRRORS = {};
   mirrorNames.forEach((n, i) => { if (mirrorBlocks[i]) MIRRORS[n.slice(HANDLE.length + 1)] = mirrorBlocks[i]; });
   SPINE = spine; FLOOR = spine ? (floorOf(spine) || 1) : 1;
+  DIAL = dial;
   PASSPORT = passport; KNOWS = knows; PURPOSE = purpose; HISTORY = history; WITNESSED = witnessed; PRESENCE = presence; NIGHT = night; NIGHT_SPINE = nightSpine;
 
   if (!passport && !now && !spine && !pool && !knows && !purpose && !history && !witnessed){
@@ -591,8 +657,15 @@ async function load(){
     const map = await readPlace(STAND, keeper).catch(() => null);
     if (map) PLACE = Object.assign({ origin: map.origin, world: STAND.world }, placeAt(map, STAND) || {});
     if (has('pool:' + STAND.addr)) ROOM = await readBlock('pool:' + STAND.addr).catch(() => null);
+    LIQUID = has('liquid:pool:' + STAND.addr) ? await readBlock('liquid:pool:' + STAND.addr).catch(() => null) : null;
   }
   OPEN = !!latchGet();
+  if (WORLD && OPEN){
+    /* where the doorman's door is — the beach says, as the mirror reads it (ways:doorbell 2) */
+    const ways = await readBlock('ways:doorbell', APEX).catch(() => null);
+    const m = ways ? String(lineOf(ways['2']) || '').match(/https?:\/\/\S+\/enroll/) : null;
+    if (m) WAKER = m[0].replace(/\/enroll$/, '');
+  }
 
   const out = [];
   /* WHO — the passport: its opening line is the headline; then what it brings, what it looks for, and how it looks */
@@ -705,6 +778,8 @@ async function load(){
   if (pool || !WORLD) wireParlour(!!pool);
   wireNewPost();
   wireStory();
+  wireAct();
+  watchRoom();
   scrollToHash();
 
   const foot = [];
@@ -719,7 +794,8 @@ async function load(){
     foot.push('<span>reads passport · knows · purpose · witnessed · history' + (STAND ? ' · pool:' + esc(STAND.addr) + ' · presence' : '') + ' of ' + esc(HANDLE) + ' at ' + esc(host(BEACH)) +
       (STAND ? ' · the place from spatial:' + esc(STAND.world) + (PLACE ? ' at ' + esc(host(PLACE.origin)) : ' (not reached)') : '') +
       (NIGHT ? ' · the kept telling from night' : '') +
-      ' · one write: the journal, an append to history:' + esc(HANDLE) + ' under the key you type, born latched · nothing here acts</span>');
+      (STAND ? ' · declared lines from liquid:pool:' + esc(STAND.addr) + ' · the doorman\'s dial wake:' + esc(HANDLE) : '') +
+      ' · the holder\'s hand: the journal (an append to history:' + esc(HANDLE) + ', born latched), a declared line (its own slot in liquid:pool:&lt;room&gt;, staged as any client stages), and make-it-happen asked of the doorman (POST /fold at ' + esc(host(WAKER)) + ') · the page never commits a beat and never thinks</span>');
   }
   $('foot').innerHTML = foot.join('');
 }
@@ -764,22 +840,186 @@ function renderPlace(){
   return out.join('');
 }
 
-/* ── the room now — the beats, by handle, as the record has them ── */
-function renderRoom(){
+/* ── the room now — the beats, by handle, as the record has them; beneath a beat, for its
+   player alone, the moment as the character lived it (the rendering kept in the character's
+   own account); then what stands declared and has not yet happened — the table's own view
+   of intentions, shown to everyone as the table shows it ── */
+function roomRecord(){
   const out = [];
-  out.push('<section class="sect"><h2>the room now</h2><div class="room">');
   const beats = ROOM ? beatsOf(ROOM) : [];
+  const sees = (OPEN && STAND) ? renderingsFor(STAND.addr) : {};
   if (!beats.length){
     out.push('<p class="vnone">Nothing has happened here yet.</p>');
   } else {
     const KEEP = 12;
     const older = beats.slice(0, Math.max(0, beats.length - KEEP)), recent = beats.slice(-KEEP);
-    const row = b => '<div class="beat"><span class="bwho">' + esc(b.who) + '</span><span class="btext">' + esc(b.text) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>';
+    const row = b => '<div class="beat"><span class="bwho">' + esc(b.who) + '</span><span class="btext">' + esc(b.text) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>' +
+      (sees[b.slot] ? '<div class="sees"><span class="sh">' + esc(HANDLE) + ' sees · yours alone</span>' + esc(sees[b.slot].text) + '</div>' : '');
     if (older.length) out.push('<details class="earlier"><summary>earlier — ' + older.length + ' before these</summary>' + older.map(row).join('') + '</details>');
     out.push(recent.map(row).join(''));
   }
-  out.push('</div></section>');
+  const declared = LIQUID ? declaredOf(LIQUID) : [];
+  if (declared.length){
+    out.push('<div class="declared"><p class="dh">declared, not yet happened</p>' + declared.map(d =>
+      '<div class="beat"><span class="bwho">' + esc(d.who) + (OPEN && d.who.toLowerCase() === HANDLE.toLowerCase() ? ' · yours' : '') + '</span><span class="btext">' + esc(d.text) + '</span>' +
+      (isIso(d.ts) ? '<span class="bago">' + esc(ago(d.ts)) + '</span>' : '') + '</div>').join('') + '</div>');
+  }
   return out.join('');
+}
+function renderRoom(){
+  return '<section class="sect"><h2>the room now</h2><div class="room"><div id="room-record">' + roomRecord() + '</div>' +
+    (OPEN ? '<div id="room-act">' + actBox() + '</div>' : '') + '</div></section>';
+}
+function paintRecord(){ const box = $('room-record'); if (box) box.innerHTML = roomRecord(); }
+
+/* ── THE PLAYER'S HAND, from a page with no mind in it (the contract at log:urb-hitl 16):
+   DECLARE — the intention set down where the whole table sees it, staged through the beach
+   exactly as any client stages (one line per author, the window opened with its stamp when
+   it is the first); it has not happened. MAKE IT HAPPEN — asked of the character's doorman,
+   the mind nearby: it weaves what stands declared into one beat under the table's rules and
+   lands it, on the fuel its holder lent at enrolment; then, if it is set to, it tells the
+   moment as the character lived it, into the character's own account — shown beneath the
+   beat. The page itself never commits a beat and never thinks. ── */
+function doormanSays(d){
+  if (!d) return 'No doorman keeps ' + HANDLE + '’s door. What you declare stands for the table, and someone at the table makes it happen — or set a doorman in the mirror (the dot).';
+  if (!d.commit) return HANDLE + '’s doorman is not set to make things happen — someone at the table does, or change it in the mirror (the dot).';
+  return HANDLE + '’s doorman makes it happen when you ask' + (d.render ? ', and tells you each moment as ' + HANDLE + ' lived it' : '') + (d.on ? '' : ' (its door is otherwise off)') + '.';
+}
+function myDeclared(){ return LIQUID ? declaredOf(LIQUID).find(d => d.who.toLowerCase() === HANDLE.toLowerCase()) || null : null; }
+function actBox(){
+  const mine = myDeclared(), d = doormanOf(DIAL);
+  return '<div class="say act" id="act">' +
+    '<textarea id="a-text" placeholder="what ' + esc(HANDLE) + ' does or says next — declared to the table; it has not happened until it is made to happen">' + esc(mine ? mine.text : '') + '</textarea>' +
+    '<div class="row"><span class="why">a declared line stands where everyone at the table sees it · yours to change or take back until it happens</span>' +
+      '<button id="a-back" type="button" class="ghost"' + (mine ? '' : ' disabled') + '>take it back</button><button id="a-declare" type="button">declare</button></div>' +
+    '<div class="row"><span class="why" id="a-door">' + esc(doormanSays(d)) + '</span><button id="a-happen" type="button"' + (d && d.commit ? '' : ' disabled') + '>make it happen</button></div>' +
+    '<p class="hint" id="a-hint"></p></div>';
+}
+/* staging, as the router's own stageLiquid does it: a first line OPENS the window — the buffer
+   rebuilt whole with the open moment stamped at its underscore, which the fold and the dice
+   both read; a later line is surgical — the author's own slot by identity, else the first
+   free one, the arrival stamp at 6 kept across a revise; an empty line takes it back. A birth
+   is verified by reading back, never trusted. */
+async function declare(text){
+  const name = 'liquid:pool:' + STAND.addr, key = latchGet();
+  const fresh = await readBlock(name).catch(() => undefined);
+  if (fresh === undefined) return 'the beach did not answer — nothing declared';
+  const now = new Date().toISOString();
+  const slot = { '_': text, '1': HANDLE, '2': '', '3': now, '4': 'character', '6': now };
+  const live = fresh ? declaredOf(fresh) : [];
+  let body;
+  if (!fresh || (text.trim() && !live.length)){
+    const desc = 'Liquid pre-commit buffer for ' + name + ' (block-conventions:4.5) — one slot per author, overwriting; the social mirror of pending intentions before commit.';
+    body = { block: name, content: { '_': desc + (text.trim() ? ' Window opened ' + now + '.' : ''), '1': slot } };
+    if (fresh) body.confirm = true;
+  } else {
+    let mine = digitKeys(fresh).find(d => fieldOf(fresh[d], '1').toLowerCase() === HANDLE.toLowerCase()) || null;
+    if (mine){ const prior = fresh[mine]; const arrived = [fieldOf(prior, '6'), fieldOf(prior, '2'), fieldOf(prior, '3')].find(isIso); if (arrived) slot['6'] = arrived; }
+    else mine = '123456789'.split('').find(d => !(d in fresh)) || null;
+    if (!mine) return 'every place at the table is taken just now — nothing declared';
+    body = { block: name, spindle: mine, content: slot };
+  }
+  if (key) body.secret = key;
+  const w = await writeBlock(body);
+  if (!w.ok) return lockRequired(w) ? 'the table refused that key — nothing declared' : 'the beach refused it (' + w.status + ')';
+  LIQUID = await readBlock(name).catch(() => LIQUID);
+  const stands = myDeclared();
+  if (text.trim() && !(stands && stands.text === text)) return 'the table did not keep the line — declare it again';
+  return true;
+}
+/* asked of the doorman: POST /fold {handle, passphrase, room} — synchronous, the outcome returned */
+async function askTheDoorman(){
+  let r;
+  try {
+    r = await fetch(WAKER + '/fold', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ handle: HANDLE, passphrase: latchGet() || '', room: STAND.addr }) });
+  } catch(e){ return { reached: false }; }
+  let d = null; try { d = await r.json(); } catch(e){}
+  if (r.status === 429) return { reached: true, folded: false, detail: 'too many wrong keys were tried for ' + HANDLE + ' — the doorman waits an hour' };
+  if (!d) return { reached: true, folded: false, detail: 'the doorman answered nothing readable (' + r.status + ')' };
+  return { reached: true, folded: !!d.folded, detail: String(d.detail || d.status || '') };
+}
+async function rereadRoom(){
+  const get = (n, was) => readBlock(n).catch(() => was);
+  [ROOM, LIQUID, HISTORY, WITNESSED] = await Promise.all([
+    get('pool:' + STAND.addr, ROOM), get('liquid:pool:' + STAND.addr, LIQUID), get('history:' + HANDLE, HISTORY), get('witnessed:' + HANDLE, WITNESSED)]);
+}
+function wireAct(){
+  const text = $('a-text'), go = $('a-declare'), back = $('a-back'), happen = $('a-happen'), hint = $('a-hint');
+  if (!go) return;
+  const say = (msg, cls) => { hint.innerHTML = msg || ''; hint.className = 'hint' + (cls ? ' ' + cls : ''); };
+  const clearDraft = window.keepDraft ? keepDraft(text, 'page:' + host(BEACH) + ':' + HANDLE + ':act') : () => {};
+  if (window.dictate) dictate(text);
+  const busy = on => { go.disabled = on; happen.disabled = on || !(doormanOf(DIAL) || {}).commit; back.disabled = on || !myDeclared(); };
+  async function doDeclare(){
+    const t = text.value.trim();
+    if (!t){ text.focus(); say('the line first'); return false; }
+    busy(true); say('declaring…');
+    let res; try { res = await declare(t); } catch(e){ res = 'could not reach the beach — ' + esc(e.message || e); }
+    busy(false);
+    if (res !== true){ say(esc(res), 'err'); return false; }
+    clearDraft(); paintRecord();
+    say('declared — it stands for the table, and has not happened yet', 'ok');
+    return true;
+  }
+  go.addEventListener('click', doDeclare);
+  text.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') doDeclare(); });
+  back.addEventListener('click', async () => {
+    busy(true); say('taking it back…');
+    let res; try { res = await declare(''); } catch(e){ res = 'could not reach the beach — ' + esc(e.message || e); }
+    busy(false);
+    if (res !== true){ say(esc(res), 'err'); return; }
+    text.value = ''; clearDraft(); paintRecord(); busy(false);
+    say('taken back — nothing of yours stands declared', 'ok');
+  });
+  happen.addEventListener('click', async () => {
+    /* words in the box that are not yet declared are declared first — one press, both acts */
+    const t = text.value.trim(), mine = myDeclared();
+    if (t && !(mine && mine.text === t)){ if (!(await doDeclare())) return; }
+    if (!myDeclared() && !(LIQUID && declaredOf(LIQUID).length)){ say('nothing stands declared — say what ' + esc(HANDLE) + ' does first'); return; }
+    busy(true); say(esc(HANDLE) + '’s doorman is weaving the moment — this can take half a minute…');
+    const before = ROOM ? beatsOf(ROOM).length : 0;
+    const a = await askTheDoorman();
+    if (!a.reached){
+      busy(false);
+      say('The doorman could not be reached from this page — its door may not be open to this site yet. Your line still stands declared; make it happen in <a href="https://mirror.onen.ai/?world=' + encodeURIComponent(WORLD) + '&pool=' + encodeURIComponent(STAND.addr) + '">the mirror ↗</a>.', 'err');
+      return;
+    }
+    await rereadRoom().catch(() => {});
+    paintRecord(); busy(false);
+    if (!a.folded){ say(esc(a.detail || 'it did not happen'), 'err'); return; }
+    text.value = ''; clearDraft(); busy(false);
+    const d = doormanOf(DIAL);
+    say('it happened' + (d && d.render ? ' — ' + esc(HANDLE) + '’s own telling of it follows beneath the beat in a moment' : ''), 'ok');
+    /* the rendering rides the bell, a breath behind the beat — look for it for a minute and a half */
+    if (d && d.render){
+      for (let i = 0; i < 15; i++){
+        await new Promise(r => setTimeout(r, 6000));
+        await rereadRoom().catch(() => {});
+        const beats = ROOM ? beatsOf(ROOM) : [], last = beats.length ? beats[beats.length - 1].slot : null;
+        if (beats.length > before && last && renderingsFor(STAND.addr)[last]){ paintRecord(); if (document.activeElement !== $('j-text')) paintStory(); break; }
+      }
+    }
+  });
+}
+/* while its player has the page open, the room is re-read quietly when the table's own
+   index says something moved — one small read a quarter-minute, nothing when nothing moved */
+function watchRoom(){
+  if (WATCH){ clearInterval(WATCH); WATCH = null; }
+  if (!(WORLD && STAND && OPEN)) return;
+  let seen = null;
+  WATCH = setInterval(async () => {
+    if (document.visibilityState !== 'visible') return;
+    try {
+      const t = (await readIndex()).touched;
+      const sig = t ? ['pool:' + STAND.addr, 'liquid:pool:' + STAND.addr, 'history:' + HANDLE, 'witnessed:' + HANDLE].map(n => t[n] || '').join('|') : String(Date.now());
+      if (seen === null){ seen = sig; return; }
+      if (sig === seen) return;
+      seen = sig;
+      await rereadRoom(); paintRecord();
+      if (document.activeElement !== $('j-text') && !($('j-text') && $('j-text').value)) paintStory();
+    } catch(e){}
+  }, 15000);
 }
 
 /* ── the story so far ── */
@@ -814,7 +1054,7 @@ function renderStory(){
       '<p class="hint" id="j-hint"></p></div>');
     out.push('</div>');
   } else {
-    out.push('<div class="closed"><p>What ' + esc(HANDLE) + ' has seen and thought is ' + esc(HANDLE) + '\'s own. The table keeps it between the character and its player, and this page keeps to that.</p>' +
+    out.push('<div class="closed"><p>What ' + esc(HANDLE) + ' has seen and thought is ' + esc(HANDLE) + '\'s own. The table keeps it between the character and its player, and this page keeps to that: it opens to the character\'s key, which the beach checks.</p>' +
       '<p><button id="acc-open" type="button">' + esc(HANDLE) + ' is mine — open it</button></p></div>');
   }
   return out.join('');
@@ -824,14 +1064,35 @@ function paintStory(){
   box.innerHTML = renderStory();
   wireStory();
 }
+/* the key is PROVEN before anything opens: one plain line of the passport is read and written
+   back unchanged under the key — the doorman's own proof (never a new lock, nothing altered).
+   The beach answers for the key; an unlatched passport proves nothing, as it guards nothing. */
+async function proveKey(key){
+  const pp = await readBlock('passport:' + HANDLE).catch(() => undefined);
+  if (pp === undefined) return 'the beach did not answer — try again';
+  const d = pp ? digitKeys(pp).find(k => typeof pp[k] === 'string' && pp[k].trim()) : null;
+  if (!d) return HANDLE + ' has no passport line a key can be proven against';
+  const w = await writeBlock({ block: 'passport:' + HANDLE, spindle: d, content: pp[d], secret: key });
+  if (w.ok) return true;
+  return (lockRequired(w) || w.status === 403) ? 'that key does not open ' + HANDLE : 'the beach refused the proof (' + w.status + ')';
+}
 function wireStory(){
   const open = $('acc-open'), close = $('acc-close');
-  if (open) open.addEventListener('click', () => {
+  if (open) open.addEventListener('click', async () => {
     const v = prompt('This account is ' + HANDLE + '\'s own. If ' + HANDLE + ' is yours, enter the key you stepped in with (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return;
-    latchSet(v.trim()); OPEN = true; paintStory();
+    const label = open.textContent; open.disabled = true; open.textContent = 'checking the key…';
+    let res; try { res = await proveKey(v.trim()); } catch(e){ res = 'could not reach the beach — ' + (e.message || e); }
+    if (res !== true){
+      open.disabled = false; open.textContent = label;
+      let p = $('acc-refused'); if (!p){ p = document.createElement('p'); p.id = 'acc-refused'; p.className = 'hint err'; open.parentNode.after(p); }
+      p.textContent = res;
+      return;
+    }
+    latchSet(v.trim());
+    await load();
   });
-  if (close) close.addEventListener('click', e => { e.preventDefault(); latchSet(null); OPEN = false; paintStory(); });
+  if (close) close.addEventListener('click', e => { e.preventDefault(); latchSet(null); load(); });
   wireJournal();
 }
 
@@ -880,8 +1141,7 @@ function wireJournal(){
   const text = $('j-text'), go = $('j-go'), hint = $('j-hint');
   if (!go) return;
   const say = (msg, cls) => { hint.textContent = msg || ''; hint.className = 'hint' + (cls ? ' ' + cls : ''); };
-  const draftKey = 'draft:page:' + host(BEACH) + ':' + HANDLE + ':journal';
-  if (window.keepDraft) keepDraft(text, draftKey);
+  const clearDraft = window.keepDraft ? keepDraft(text, 'page:' + host(BEACH) + ':' + HANDLE + ':journal') : () => {};
   if (window.dictate) dictate(text);
   async function submit(){
     const t = text.value.trim();
@@ -891,7 +1151,7 @@ function wireJournal(){
     try { res = await journalWrite(t); } catch(e){ res = 'could not reach the beach — ' + (e.message || e); }
     go.disabled = false;
     if (res !== true){ say(res, 'err'); if (!OPEN) setTimeout(paintStory, 1800); return; }
-    try { localStorage.removeItem(draftKey); } catch(e){}
+    clearDraft();
     text.value = '';
     paintStory();
     const h = $('j-hint'); if (h){ h.textContent = 'written ✓ — it stands in your account'; h.className = 'hint ok'; }
@@ -1027,8 +1287,7 @@ function wirePosts(){
     const name = post.querySelector('.a-name'), text = post.querySelector('.a-text');
     const go = post.querySelector('.a-go'), hint = post.querySelector('.a-hint');
     const say = (msg, cls) => { hint.textContent = msg || ''; hint.className = 'hint a-hint' + (cls ? ' ' + cls : ''); };
-    const draftKey = 'draft:page:' + HANDLE + ':' + walk;
-    if (window.keepDraft) keepDraft(text, draftKey);
+    const clearDraft = window.keepDraft ? keepDraft(text, 'page:' + HANDLE + ':' + walk) : () => {};
     if (window.dictate) dictate(text);
     name.addEventListener('input', () => { const c = cleanHandle(name.value); if (c !== name.value) name.value = c; });
     /* the box shows what this reader already said here, once the name is known */
@@ -1046,7 +1305,8 @@ function wirePosts(){
       try { res = await writeReading(reader, walk, t); } catch(e){ res = 'could not reach the beach — ' + (e.message || e); }
       go.disabled = false;
       if (res !== true){ say(res, 'err'); return; }
-      try { localStorage.setItem('render:who', reader); localStorage.removeItem(draftKey); } catch(e){}
+      try { localStorage.setItem('render:who', reader); } catch(e){}
+      clearDraft();
       post.querySelector('.fold').innerHTML = '<p class="fh">what readers made of it</p>' + renderFold(walk);
       say('it stands beside the post, in your own reading — revise it here any time', 'ok');
     }
@@ -1086,8 +1346,7 @@ function wireNewPost(){
   const text = $('np-text'), go = $('np-go'), hint = $('np-hint');
   if (!go) return;
   const say = (msg, cls) => { hint.textContent = msg || ''; hint.className = 'hint' + (cls ? ' ' + cls : ''); };
-  const draftKey = 'draft:page:' + HANDLE + ':post';
-  if (window.keepDraft) keepDraft(text, draftKey);
+  const clearDraft = window.keepDraft ? keepDraft(text, 'page:' + HANDLE + ':post') : () => {};
   if (window.dictate) dictate(text);
   async function submit(){
     const t = text.value.trim();
@@ -1118,7 +1377,7 @@ function wireNewPost(){
     go.disabled = false;
     if (!w.ok){ say(lockRequired(w) ? 'the diary refused that key — happyseaurchin.com/key' : 'the beach refused it (' + w.status + ')', 'err'); return; }
     ownerLatchSet(key);
-    try { localStorage.removeItem(draftKey); } catch(e){}
+    clearDraft();
     text.value = '';
     say('posted ✓ — redrawing', 'ok');
     await load();
@@ -1132,8 +1391,7 @@ function wireParlour(exists){
   const name = $('p-name'), text = $('p-text'), go = $('p-go'), hint = $('p-hint');
   if (!go) return;
   const say = (msg, cls) => { hint.textContent = msg || ''; hint.className = 'hint' + (cls ? ' ' + cls : ''); };
-  const draftKey = 'draft:page:' + HANDLE + ':parlour';
-  if (window.keepDraft) keepDraft(text, draftKey);
+  const clearDraft = window.keepDraft ? keepDraft(text, 'page:' + HANDLE + ':parlour') : () => {};
   if (window.dictate) dictate(text);
   name.addEventListener('input', () => { const c = cleanHandle(name.value); if (c !== name.value) name.value = c; });
   async function submit(){
@@ -1151,7 +1409,8 @@ function wireParlour(exists){
       say(lockRequired(w) ? 'this parlour is latched — ' + HANDLE + ' opens it, or talk live in the mirror' : 'the beach refused it (' + w.status + ')', 'err');
       return;
     }
-    try { localStorage.setItem('render:who', who); localStorage.removeItem(draftKey); } catch(e){}
+    try { localStorage.setItem('render:who', who); } catch(e){}
+    clearDraft();
     text.value = '';
     say('left ✓ — it stands in the parlour', 'ok');
     const pool = await readBlock('pool:' + HANDLE).catch(() => null);
