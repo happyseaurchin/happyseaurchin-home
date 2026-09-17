@@ -251,6 +251,20 @@
   .cardenv .cwho{display:block;font-family:var(--mono);font-size:10px;letter-spacing:0.05em;color:var(--vapour-dim);margin-bottom:4px}
   .cardenv.you .cwho{color:var(--liquid)}
   .cardenv .ctext{font-size:13px;line-height:1.5;color:var(--vapour);white-space:pre-wrap}
+  /* the edit affordance rides the who-line, so it costs the card no height and
+   * appears only where the card is yours */
+  .cardenv .cwho{display:flex;align-items:center;gap:8px}
+  .cardenv .cedit{margin-left:auto;background:none;border:1px solid var(--line);border-radius:6px;
+    color:var(--vapour-dim);font-family:var(--mono);font-size:10px;letter-spacing:0.05em;
+    padding:2px 8px;cursor:pointer}
+  .cardenv .cedit:hover{border-color:var(--liquid);color:var(--liquid)}
+  .cardenv textarea.cbox{width:100%;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);
+    border-radius:8px;color:var(--vapour);font:inherit;font-size:13px;line-height:1.5;padding:9px 11px;
+    min-height:96px;resize:vertical}
+  .cardenv .row{display:flex;gap:8px;justify-content:flex-end;margin-top:7px}
+  .cardenv .row button{background:var(--liquid);border:none;border-radius:7px;color:var(--abyss);
+    font-family:var(--mono);font-size:11px;letter-spacing:0.04em;padding:7px 12px;cursor:pointer}
+  .cardenv .row .ccancel{background:none;border:1px solid var(--line);color:var(--vapour-dim)}
   .hlink{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);border-bottom:none;margin-left:6px}
   .hlink:hover{color:var(--liquid)}
   .addwrap{border-top:1px solid var(--line);padding-top:10px}
@@ -1569,6 +1583,115 @@ function wireEnter(el, go){
 }
 function openGatherSheet(){ SHEET = { gather: true }; paintSheet(); $('sheet-veil').classList.remove('hidden'); }
 function closeSheet(){ SHEET = null; $('sheet-veil').classList.add('hidden'); }
+/* ── THE PILE SHEET'S OWN HAND ──────────────────────────────────────────────
+ * A horizon you are looking at is the one place a card can be added with
+ * NOTHING COMPUTED. Every other mint on this page derives the pile from the
+ * rung you happen to stand on (aimAndPile), which is the translation that
+ * surprised David on 2026-09-14 — minting at a Wednesday and finding the card
+ * at today. Here the pile IS the sheet, so 'a week out' means a week out.
+ *
+ * WHAT THIS SHEET DOES AND DOES NOT DO, ruled 2026-09-17: you put things in
+ * here and you fix what you put in. Taking out and moving between piles stay
+ * in the hand — drop, re-pile and finish are one family of retirements and
+ * splitting one off to live here would be the ragged half. There is no DEAL
+ * either, and that is a fact rather than a preference: a deal prefills from
+ * what stands AT A POINT, and a pile has no address to stand at. */
+function cardEnv(c, i){
+  const mine = c.who === HANDLE;
+  return '<div class="cardenv' + (mine ? ' you' : '') + '" data-ci="' + i + '">' +
+    '<span class="cwho">' + esc(whoName(c.who)) +
+    (mine ? '<button class="cedit" data-ci="' + i + '" title="change the words — the card keeps its pile, its aim and its state">edit</button>' : '') +
+    '</span><div class="ctext">' + esc(c.text) +
+    (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</div></div>';
+}
+/* THE EDIT IS A READ, A CHANGE AND A WRITE OF THE WHOLE NODE — never a bare
+ * string at the card's address. A string does land (it merges into an occupied
+ * node's underscore on the wire, which is why appendCard wraps its own), but
+ * it cannot carry the stamp, and field 3 is 'the stamp of the last change'
+ * (function:ahead:2) — an edit that leaves it stale makes the card lie about
+ * when it was last touched. Reading first also means the conditions written
+ * back are the ones that are actually there, rather than the ones this page
+ * happens to have compiled. */
+async function saveCardText(card, text){
+  const name = 'ahead:' + HANDLE;
+  const blk = await readBlock(name).catch(() => null);
+  if (!blk) return { ok: false, data: { error: 'your hand is not on the beach' } };
+  let node = blk;
+  for (const ch of String(card.addr)){
+    node = (ch === '0') ? (node && node['_']) : (node && node[ch]);
+    if (node === undefined) return { ok: false, data: { error: 'that card is no longer at ' + card.addr } };
+  }
+  /* a bare string in a pile is legal (function:ahead:2) — it becomes a node
+   * the moment it is stamped, and nothing is lost because it held nothing */
+  const next = (node && typeof node === 'object') ? Object.assign({}, node) : {};
+  next['_'] = text;
+  next['3'] = new Date().toISOString().slice(0, 16) + 'Z';
+  return writeWithLatch({ block: name, spindle: card.addr, content: next }, name);
+}
+/* the sheet's boxes, wired after the innerHTML that built them. Both carry a
+ * kept draft and dictation, because every write box on this site does (CLAUDE.md
+ * 4 and 5) — and an edit box is the case the draft rule was written for: the
+ * sheet is rebuilt by paintSheet on any landing, and a paragraph half-typed
+ * into another card's box would go with it. */
+function wirePileSheet(p, cs){
+  const mint = $('pile-go'), box = $('pile-text');
+  if (box){
+    const clear = keepDraft(box, 'ahead:' + HANDLE + ':' + p);
+    if (window.dictate) dictate(box);
+    const go = async () => {
+      if (BUSY) return;
+      const t = box.value.trim();
+      if (!t){ toast('a card needs words', true); return; }
+      BUSY = true; mint.disabled = true;
+      try {
+        const w = await appendCard({ '_': t, '2': VENTURE, '3': new Date().toISOString().slice(0,16) + 'Z', '5': '/walk' }, p);
+        /* A FULL PILE IS THE ONE PLACE THIS SHEET RUNS OUT, and it says so
+         * rather than failing quietly: nine live cards is a pile's ceiling
+         * (function:ahead:1) and the way through is a retirement, which lives
+         * in the hand. The signpost is the honest answer to 'why can I not
+         * add here', and the reason this sheet needs no drop of its own. */
+        if (w.full) toast('this pile holds nine already — finish or let one go in your hand', true);
+        else if (w.ok){ clear(); toast('✓ in your hand ' + pileLabel(p)); await load(); paintSheet(); }
+        else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
+      } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
+      finally { BUSY = false; const g = $('pile-go'); if (g) g.disabled = false; }
+    };
+    if (mint) mint.addEventListener('click', go);
+    wireEnter(box, go);
+  }
+  /* EDIT IN PLACE: the card's own words swapped for a box, and only for a card
+   * that is yours. The beach enforces that anyway — ahead:<who> answers to its
+   * holder's latch — so hiding the button elsewhere is honesty, not a gate. */
+  document.querySelectorAll('#sh-body .cedit').forEach(btn => btn.addEventListener('click', () => {
+    const c = cs[+btn.dataset.ci];
+    if (!c) return;
+    const env = btn.closest('.cardenv'), body = env.querySelector('.ctext');
+    if (env.querySelector('textarea')) return;
+    body.innerHTML = '<textarea class="cbox"></textarea>' +
+      '<div class="row"><button class="ccancel">cancel</button><button class="csave">save</button></div>';
+    const tb = body.querySelector('textarea');
+    tb.value = c.text;
+    const clear = keepDraft(tb, 'ahead:' + HANDLE + ':edit:' + c.addr);
+    if (window.dictate) dictate(tb);
+    tb.focus();
+    body.querySelector('.ccancel').addEventListener('click', () => { clear(); paintSheet(); });
+    const save = async () => {
+      if (BUSY) return;
+      const t = tb.value.trim();
+      if (!t){ toast('a card needs words', true); return; }
+      if (t === c.text){ clear(); paintSheet(); return; }
+      BUSY = true;
+      try {
+        const w = await saveCardText(c, t);
+        if (w.ok){ clear(); toast('✓ changed'); await load(); paintSheet(); }
+        else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
+      } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
+      finally { BUSY = false; }
+    };
+    body.querySelector('.csave').addEventListener('click', save);
+    wireEnter(tb, save);
+  }));
+}
 function paintSheet(){
   if (!SHEET) return;
   if (GROUND){ paintGroundSheet(); return; }
@@ -1584,12 +1707,24 @@ function paintSheet(){
     $('sh-body').innerHTML =
       '<span class="silent">A pile is how far ahead a thing is held, never a date — these carry no day of their own, and they stand here until they are done or let go. Toward <b>' + esc(VENTURE) + '</b>.</span>' +
       (cs.length
-        ? cs.map(c => '<div class="cardenv' + (c.who === HANDLE ? ' you' : '') + '"><span class="cwho">' + esc(whoName(c.who)) +
-            '</span><div class="ctext">' + esc(c.text) + (c.held ? ' <span class="silent">· ' + esc(c.held) + '</span>' : '') + '</div></div>').join('')
+        ? cs.map((c, i) => cardEnv(c, i)).join('')
         : '<span class="silent">nobody holds anything ' + esc(pileLabel(p)) + ' toward ' + esc(VENTURE) + ' yet</span>') +
       (HANDLE
-        ? '<p class="mnote">a card is minted, re-piled and finished in the hand · <a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a></p>'
+        ? '<div class="addwrap"><div class="mintbox">' +
+            '<div class="sub">hold something ' + esc(pileLabel(p)) + ' — one doable thing</div>' +
+            '<textarea id="pile-text" placeholder="in your own words…"></textarea>' +
+            '<div class="row"><button id="pile-go">mint card</button></div>' +
+            /* NOTHING IS COMPUTED HERE and the note says so, because everywhere
+             * else on this page it is: the rung you stand on picks the pile. */
+            '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(p)) + '</b> — the pile you are looking at, no date and nothing translated.</p>' +
+            '<div class="mnote">re-piled, let go and finished in the hand · ' +
+            '<a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a> · ' +
+            /* the flick carries the FIELD, so it opens this venture's cards
+             * rather than the whole hand — the shape /found and /view already
+             * link by (found.html 519) */
+            '<a class="hlink" href="/next/' + encodeURIComponent(HANDLE) + '?field=' + encodeURIComponent(VENTURE) + '">flick →</a></div></div></div>'
         : '<p class="mnote">say who you are at the top of the page to hold cards of your own</p>');
+    if (HANDLE) wirePileSheet(p, cs);
     return;
   }
   if (SHEET.gather){
