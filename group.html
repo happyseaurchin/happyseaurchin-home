@@ -809,19 +809,24 @@ const mentions = (text, name) => !!name && new RegExp('(^|[^a-z0-9])' + name.toL
 const spokenOf = b => { const t = shownText(b.text); return b.who && !mentions(t, b.who) ? b.who + '. ' + t : t; };
 function readAloud(){
   if (REC){ hint('someone is speaking — read when they are done'); return; }
-  const rooms = listenRooms(), lines = [];
-  const many = rooms.filter(a => newBeats(a).length).length > 1;
-  let any = false;
+  /* in the order things HAPPENED, across every room the table listens to — a move is heard
+     where it happened, then where the party arrived — the place said whenever it changes */
+  const rooms = listenRooms(), lines = [], items = [];
+  rooms.forEach((addr, ri) => newBeats(addr).forEach((b, bi) => items.push({ addr, b, ri, bi })));
+  items.sort((x, y) => (isIso(x.b.ts) && isIso(y.b.ts) && x.b.ts !== y.b.ts) ? x.b.ts.localeCompare(y.b.ts) : (x.ri - y.ri) || (x.bi - y.bi));
+  const many = new Set(items.map(i => i.addr)).size > 1;
+  let at = null;
+  for (const it of items){
+    if (many && it.addr !== at){ lines.push('At ' + (nameOf(ROOMS[it.addr].place) || 'the place') + '.'); at = it.addr; }
+    lines.push(spokenOf(it.b));
+  }
   for (const addr of rooms){
     const fresh = newBeats(addr);
     if (!fresh.length) continue;
-    any = true;
-    if (many) lines.push('At ' + (nameOf(ROOMS[addr].place) || 'the place') + '.');
-    fresh.forEach(b => lines.push(spokenOf(b)));
     store(heardHome(addr), fresh[fresh.length - 1].slot);
     if (!partyIn(addr).length) LEFT.delete(addr);
   }
-  if (!any){
+  if (!items.length){
     /* nothing new: the last moment where the party stands, again */
     for (const addr of rooms){ const b = ROOMS[addr].pool ? beatsOf(ROOMS[addr].pool) : []; if (b.length) lines.push(spokenOf(b[b.length - 1])); }
   }
