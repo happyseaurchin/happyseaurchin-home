@@ -49,7 +49,7 @@
   .sect p b{color:var(--foam);font-weight:600}
 
   .world{background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.55) 0%,rgba(var(--card-rgb),0.55) 100%);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 10px;scroll-margin-top:16px}
-  .world .name{font-family:var(--display);font-weight:700;font-size:1.3rem;line-height:1.2;margin:0}
+  .world .name{font-family:var(--display);font-weight:700;font-size:1.3rem;line-height:1.2;margin:0;overflow-wrap:anywhere}
   .world .kind{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:2px 0 10px}
   .world .acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
   .world .acts a,.world .acts button{border:1px solid var(--line-strong);border-radius:8px;color:var(--vapour);font-family:var(--mono);font-size:12px;padding:8px 12px;background:none}
@@ -71,6 +71,12 @@ details.walk[open] summary::before{content:'▾ '}
   .world .roster{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:10px 0 0;line-height:1.8}
   .world .roster a{color:var(--foam);border-bottom:1px dashed rgba(var(--solid-rgb),0.5)}
   .world .roster a:hover{color:var(--liquid);border-color:var(--liquid)}
+  .world .roster + .acts{margin-top:10px}
+  .world .more{display:inline-block;margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--vapour);border-bottom:1px dashed rgba(var(--liquid-rgb),0.45)}
+  .world .more:hover{color:var(--liquid);border-color:var(--liquid)}
+  .world .kind + .more{margin-top:0}
+  .up{font-family:var(--mono);font-size:11.5px;margin:0 0 12px}
+  .up a{border-bottom:none;color:var(--vapour-dim)} .up a:hover{color:var(--liquid)}
   .state{font-family:var(--mono);font-size:12.5px;color:var(--vapour-dim);padding:10px 0}
 
   .walk{border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 10px}
@@ -95,7 +101,7 @@ details.walk[open] summary::before{content:'▾ '}
 
 <div class="bar">
   <span class="dot"></span>
-  <span><b>rpg</b> · the worlds that stand</span>
+  <span id="bar-where"><b>rpg</b> · the worlds that stand</span>
   <span class="spacer"></span>
   <a href="/welcome">welcome</a>
   <button id="btn-theme" title="light or dark">◐</button>
@@ -103,6 +109,27 @@ details.walk[open] summary::before{content:'▾ '}
 
 <main class="wrap">
 
+<div id="v-world" class="hidden">
+  <header class="head">
+    <p class="up"><a href="/rpg">← the worlds</a></p>
+    <h1 id="w-name"></h1>
+    <p id="w-line"></p>
+    <p class="prov">read live from the beach as this page opens</p>
+  </header>
+  <section class="sect">
+    <h2 id="w-h2">the tables playing it</h2>
+    <div id="w-tables"><p class="state">asking the beach…</p></div>
+  </section>
+  <section class="sect hidden" id="w-host">
+    <details class="walk">
+      <summary><h3>Host a table of your own.</h3></summary>
+      <p id="w-host-say"></p>
+      <p>Give your players its link. When the game is done, leave the table; playing again is a new table, not a reset.</p>
+    </details>
+  </section>
+</div>
+
+<div id="v-list">
   <header class="head">
     <h1>Worlds that <span class="cool">stand.</span></h1>
     <p>Pick a world. Each has an <b>open table</b> where anyone can sit and play now.</p>
@@ -145,6 +172,7 @@ details.walk[open] summary::before{content:'▾ '}
     <h2>never played?</h2>
     <p><a href="/play">How tabletop play works</a> — and what changes when the storyteller's seat is held by an assistant that never gets tired.</p>
   </section>
+</div>
 
 </main>
 
@@ -201,15 +229,18 @@ function ago(iso){
 /* ── the register: '<name> → <route> → <room>' per entry; a route beginning '/' is a
    scenario kept on this beach, anything else a world at its own address. An OPEN TABLE is
    listed beside its scenario as '<scenario>-open' — the standing table anyone may sit at. ── */
+function registerRows(block){
+  return entriesOf(block).map(voiceOf).filter(Boolean).map(s => {
+    const f = s.split('→').map(t => t.trim());
+    return { name: f[0] || '', route: f[1] || '', room: f[2] || '' };
+  }).filter(w => /^[a-z0-9-]+$/i.test(w.name));
+}
 async function renderWorlds(){
   const box = $('w-list');
   let block = null;
   try { block = await readBlock('worlds'); }
   catch(e){ box.innerHTML = '<p class="state">the register could not be read just now — ' + esc(e.message || e) + '</p>'; return; }
-  const rows = entriesOf(block).map(voiceOf).filter(Boolean).map(s => {
-    const f = s.split('→').map(t => t.trim());
-    return { name: f[0] || '', route: f[1] || '', room: f[2] || '' };
-  }).filter(w => /^[a-z0-9-]+$/i.test(w.name));
+  const rows = registerRows(block);
   if (!rows.length){ box.innerHTML = '<p class="state">no world stands in the register today</p>'; return; }
   const opens = new Map(rows.filter(w => /-open$/.test(w.name)).map(w => [w.name.replace(/-open$/, ''), w]));
   const worlds = rows.filter(w => !/-open$/.test(w.name));
@@ -227,6 +258,7 @@ async function renderWorlds(){
         '<button type="button" data-say="' + esc(say) + '">with your assistant</button>' +
       '</div>' +
       '<p class="roster" data-table="' + esc(open.name) + '">who stands here — asking the table…</p>' +
+      '<a class="more" href="/rpg/' + encodeURIComponent(w.name) + '">all its tables →</a>' +
       '<code class="hidden">' + esc(say) + '</code>' +
       '<p class="hint hidden">say that to your assistant — it takes you to the gate, then makes your character, then in</p>' +
       '<details class="host"><summary>host a private table of ' + esc(w.name) + '</summary>' +
@@ -239,6 +271,7 @@ async function renderWorlds(){
     return '<div class="world" id="' + esc(w.name) + '">' +
       '<p class="name">' + esc(w.name) + '</p>' +
       '<p class="kind">' + (own ? 'a world at its own address' : 'a scenario') + ' · no open table — ask its host</p>' +
+      '<a class="more" href="/rpg/' + encodeURIComponent(w.name) + '">' + (own ? 'where its groups stand →' : 'all its tables →') + '</a>' +
     '</div>';
   };
   box.innerHTML = playable.map(card).join('') +
@@ -277,6 +310,105 @@ async function renderRosters(){
   }));
 }
 
+/* ── one world's own page, /rpg/<name>. A scenario is played as copies: every table of
+   it stands at the same place and tells a story of its own, so its page lists them —
+   each table the beach has seen played (?tables), newest beat first, with who stands
+   there (the table's own index) and the room its latest voice landed in, named from the
+   scenario's place. A table belongs to the scenario its name begins with, as the world
+   genome names them (<scenario>-<group>). A world at its own address is one world where
+   groups stand at places across it, not copies — its page is where they will show. ── */
+function floorOf(block){
+  let n = 0, node = block;
+  while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
+  return n;
+}
+/* an address as a pool names it → the digits walked: padded left to the floor, trailing zeros dropped */
+function walkOf(addr, floor){
+  let s = String(addr);
+  if (s.length < floor) s = '0'.repeat(floor - s.length) + s;
+  return s.replace(/0+$/, '');
+}
+function walkTo(block, walk){
+  let n = block;
+  for (const ch of walk){ if (!n || typeof n !== 'object') return undefined; n = ch === '0' ? n['_'] : n[ch]; }
+  return n;
+}
+/* a place is named by the words its own line opens with, before the dash; a room is
+   told with the place it stands in ('The Slip › The crossing') */
+function roomName(place, room){
+  if (room === 'pool:gate') return 'the gate';
+  const addr = room.replace(/^pool:/, '');
+  if (place && /^[0-9]+$/.test(addr)){
+    const walk = walkOf(addr, floorOf(place));
+    const names = [];
+    for (let i = Math.max(1, walk.length - 1); i <= walk.length; i++){
+      const name = (voiceOf(walkTo(place, walk.slice(0, i))) || '').split(' — ')[0].trim();
+      if (name && name.length <= 40) names.push(name);
+    }
+    if (names.length) return names.join(' › ');
+  }
+  return 'room ' + addr;
+}
+async function readFrom(surface, name){
+  const r = await fetch(APEX + surface + '/.well-known/pscale-beach' + (name ? '?block=' + encodeURIComponent(name) : ''), { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (!r.ok) throw new Error(String(r.status));
+  return r.json();
+}
+async function renderAt(name){
+  document.title = name + ' — RPG';
+  $('w-name').textContent = name;
+  $('bar-where').innerHTML = '<a href="/rpg"><b>rpg</b></a> · ' + esc(name);
+  const box = $('w-tables');
+  let rows = [];
+  try { rows = registerRows(await readBlock('worlds')); }
+  catch(e){ box.innerHTML = '<p class="state">the register could not be read just now — ' + esc(e.message || e) + '</p>'; return; }
+  const scenarios = rows.filter(r => r.route.startsWith('/') && !/-open$/.test(r.name)).map(r => r.name);
+  const scenarioOf = t => scenarios.filter(s => t.startsWith(s + '-')).sort((a, b) => b.length - a.length)[0];
+  const w = rows.find(r => r.name === name && !/-open$/.test(r.name));
+  if (!w){
+    const home = scenarioOf(name);
+    $('w-line').innerHTML = home
+      ? esc(name) + ' is a table of <a href="/rpg/' + encodeURIComponent(home) + '">' + esc(home) + '</a>.'
+      : 'No world called ' + esc(name) + ' stands in the register.';
+    $('w-h2').parentNode.classList.add('hidden');
+    return;
+  }
+  if (!w.route.startsWith('/')){
+    $('w-line').textContent = 'An open world: one world, not copies of a scenario. Groups here do not each play a table of their own — they stand at places across it, dotted about its corners.';
+    $('w-h2').textContent = 'where its groups stand';
+    box.innerHTML = '<p class="state">not drawn yet</p>';
+    document.querySelector('#v-world .prov').classList.add('hidden');
+    return;
+  }
+  $('w-line').textContent = 'Every table playing ' + name + ', newest beat first. Each is its own copy of the scenario: the same place, a story of its own.';
+  $('w-host-say').innerHTML = 'An Author\'s job, done once. Ask your assistant to open the world under your name — <code>' + esc("pscale_play(world='" + name + "', handle='<you>')") + '</code> — and follow walk 2 of what it hands back. That makes the table.';
+  $('w-host').classList.remove('hidden');
+  let played = null;
+  try { played = (await (await fetch(BEACH + '?tables', { headers:{Accept:'application/json'}, cache:'no-store' })).json()).tables; } catch(e){ /* below */ }
+  if (!Array.isArray(played)){ box.innerHTML = '<p class="state">the beach did not list its tables just now</p>'; return; }
+  const mine = played.filter(t => !scenarios.includes(t.name) && scenarioOf(t.name) === name);
+  if (!mine.length){ box.innerHTML = '<p class="state">no table of ' + esc(name) + ' has been played lately</p>'; return; }
+  let place = null;
+  try { place = await readFrom(w.route, 'spatial:' + name); } catch(e){ /* rooms keep their numbers */ }
+  const whoAt = await Promise.all(mine.map(t => readFrom('/w/' + t.name).then(idx =>
+    (idx.blocks || []).filter(b => b.startsWith('passport:')).map(b => b.slice(9)).filter(n => /^[a-z0-9_-]+$/i.test(n)).sort((a, b) => a.localeCompare(b))
+  ).catch(() => null)));
+  box.innerHTML = mine.map((t, i) => {
+    const open = t.name === name + '-open';
+    const addr = t.room.replace(/^pool:/, '');
+    const door = 'https://mirror.onen.ai/?world=' + encodeURIComponent(t.name) + (open || !/^[0-9]+$/.test(addr) ? '' : '&pool=' + encodeURIComponent(addr));
+    const names = whoAt[i];
+    return '<div class="world">' +
+      '<p class="name">' + esc(t.name) + '</p>' +
+      '<p class="kind">' + (open ? 'open table · anyone may sit · ' : '') + (names && names.length ? 'last beat ' : 'last written ') + esc(ago(t.touched)) + ' · ' + esc(roomName(place, t.room)) + '</p>' +
+      '<p class="roster">' + (names == null ? 'who stands here — the table did not answer'
+        : names.length ? 'standing here: ' + names.map(n => '<a href="/page/' + encodeURIComponent(n) + '?world=' + encodeURIComponent(t.name) + '">' + esc(n) + '</a>').join(' · ')
+        : 'nobody stands here yet') + '</p>' +
+      '<div class="acts"><a ' + (open ? 'class="play" ' : '') + 'href="' + door + '">' + (open ? 'play now ↗' : 'in the mirror ↗') + '</a></div>' +
+    '</div>';
+  }).join('');
+}
+
 /* ── who has said which game they want — the room's committed lines, newest first ── */
 async function renderRoom(){
   let pool = null;
@@ -291,8 +423,15 @@ async function renderRoom(){
     : '<p class="state">nobody has said which game they want yet — yours would be the first line</p>';
 }
 
-renderWorlds();
-renderRoom();
+const AT = (location.pathname.match(/^\/rpg\/([a-z0-9-]+)\/?$/i) || [])[1];
+if (AT){
+  $('v-list').classList.add('hidden');
+  $('v-world').classList.remove('hidden');
+  renderAt(AT.toLowerCase());
+} else {
+  renderWorlds();
+  renderRoom();
+}
 
 const CARRIED = (new URLSearchParams(location.search).get('h') || '').replace(/[^a-z0-9 _-]/gi, '').trim() || null;
 /* the tables' own menu — the open tables, the mirror, how the game plays — never a person's */
