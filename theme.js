@@ -523,6 +523,7 @@
     '.dd__menu .here{color:var(--foam)}' +
     '.dd__who{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--solid);padding:4px 8px 7px;border-bottom:1px solid var(--line);margin-bottom:4px}' +
     '.dd__rule{height:1px;background:var(--line);margin:7px 4px}' +
+    '.dd__lab{font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;color:var(--vapour-dim);padding:6px 8px 2px}' +
     /* acts keep the bar\'s own register — a button still looks like a button */
     '.dd__menu button{width:100%;text-align:left}' +
     '.dd__edit{width:100%;text-align:center;background:none;border:none;border-top:1px solid var(--line);'+
@@ -1165,14 +1166,51 @@
     d.className = 'dd'; d.setAttribute('data-doors', '');
     var s = document.createElement('summary');
     s.textContent = 'go ▾';
-    s.title = 'this handle’s pages, and the places to glance at';
+    s.title = cfg.world ? 'this table, and the open tables' : 'this handle’s pages, and the places to glance at';
     d.appendChild(s);
 
     var menu = document.createElement('div');
     menu.className = 'dd__menu';
 
+    /* A CHARACTER IN A WORLD keeps none of a person's places — no now, no here, no
+     * hands, no list of its own — so a world page's menu is the world's: this
+     * character's page, the others at the same table (read off the table's own
+     * index, as /rpg reads it), the table in the mirror, and the open tables.
+     * Nothing to choose, so no editor. The catalogue across worlds — earth's and a
+     * fantasy world's alike — is a later pass; this is the table's shape now. */
+    var CAST = null;
+    function paintWorld(){
+      var who = document.createElement('span');
+      who.className = 'dd__who'; who.textContent = cfg.handle + ' · ' + cfg.world;
+      menu.appendChild(who);
+      var cur = document.createElement('span');
+      cur.className = 'here'; cur.textContent = cfg.handle + '’s page'; cur.setAttribute('aria-current', 'page');
+      menu.appendChild(cur);
+      var others = (CAST || []).filter(function(n){ return n.toLowerCase() !== String(cfg.handle).toLowerCase(); });
+      if (others.length){
+        var lab = document.createElement('span');
+        lab.className = 'dd__lab'; lab.textContent = 'at this table';
+        menu.appendChild(lab);
+        others.forEach(function(n){
+          var a = document.createElement('a');
+          a.href = '/page/' + encodeURIComponent(n) + '?world=' + encodeURIComponent(cfg.world);
+          a.textContent = n;
+          menu.appendChild(a);
+        });
+      }
+      var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
+      var m = document.createElement('a');
+      m.href = 'https://mirror.onen.ai/?world=' + encodeURIComponent(cfg.world);
+      m.textContent = 'the table in the mirror ↗';
+      menu.appendChild(m);
+      var t = document.createElement('a');
+      t.href = '/rpg'; t.textContent = 'the open tables';
+      menu.appendChild(t);
+    }
+
     function paint(){
       menu.innerHTML = '';
+      if (cfg.world){ paintWorld(); return; }
       var a = arrange(cfg.here), lastGroup = null;
       /* whose pages these are — the first line, so "now" reads as this handle's now */
       if (cfg.handle){
@@ -1297,7 +1335,16 @@
      * the default is everything — and saving from there writes all fourteen as the
      * reader's own list, silently replacing the four they chose. Reading is safe to
      * do optimistically; writing is not, and on a phone that gap is real. */
-    doorsRead = cfg.handle
+    if (cfg.world && cfg.beach){
+      readIndex(cfg.beach).then(function(blocks){
+        CAST = blocks.filter(function(b){ return b.indexOf('passport:') === 0; })
+          .map(function(b){ return b.slice(9); })
+          .filter(function(n){ return /^[a-z0-9_-]+$/i.test(n); })
+          .sort(function(x, y){ return x.localeCompare(y); });
+        paint();
+      }).catch(function(){});
+    }
+    doorsRead = (cfg.handle && !cfg.world)
       ? readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
           if (list && list.length){
             STATED_DOORS = list;
