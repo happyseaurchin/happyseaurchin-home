@@ -1166,7 +1166,7 @@
     d.className = 'dd'; d.setAttribute('data-doors', '');
     var s = document.createElement('summary');
     s.textContent = 'go ▾';
-    s.title = cfg.world ? 'this table, and the open tables' : 'this handle’s pages, and the places to glance at';
+    s.title = cfg.world ? 'this table, and the open tables' : cfg.rpg ? 'the tables and the mirror' : 'this handle’s pages, and the places to glance at';
     d.appendChild(s);
 
     var menu = document.createElement('div');
@@ -1183,9 +1183,20 @@
       var who = document.createElement('span');
       who.className = 'dd__who'; who.textContent = cfg.handle + ' · ' + cfg.world;
       menu.appendChild(who);
-      var cur = document.createElement('span');
-      cur.className = 'here'; cur.textContent = cfg.handle + '’s page'; cur.setAttribute('aria-current', 'page');
-      menu.appendChild(cur);
+      /* the character's own pages at this world — the one stood on marked as here */
+      [['page', '’s page', '/page/'], ['passport', '’s passport', '/passport/']].forEach(function(own){
+        if (own[0] !== 'page' && own[0] !== cfg.here) return;
+        if (own[0] === cfg.here){
+          var cur = document.createElement('span');
+          cur.className = 'here'; cur.textContent = cfg.handle + own[1]; cur.setAttribute('aria-current', 'page');
+          menu.appendChild(cur);
+          return;
+        }
+        var go = document.createElement('a');
+        go.href = own[2] + encodeURIComponent(cfg.handle) + '?world=' + encodeURIComponent(cfg.world);
+        go.textContent = cfg.handle + own[1];
+        menu.appendChild(go);
+      });
       var others = (CAST || []).filter(function(n){ return n.toLowerCase() !== String(cfg.handle).toLowerCase(); });
       if (others.length){
         var lab = document.createElement('span');
@@ -1208,9 +1219,30 @@
       menu.appendChild(t);
     }
 
+    /* THE TABLES' OWN PAGES, standing in no one world (/rpg): the open tables, the
+     * mirror where the tables are played, and the page that says how the game goes.
+     * A character is reached from its table's line on the page itself. */
+    function paintRpg(){
+      var who = document.createElement('span');
+      who.className = 'dd__who'; who.textContent = 'the tables';
+      menu.appendChild(who);
+      [['rpg', 'the open tables', '/rpg'], ['mirror', 'the mirror ↗', 'https://mirror.onen.ai/'], ['play', 'how the game plays', '/play']].forEach(function(p){
+        if (p[0] === cfg.here){
+          var cur = document.createElement('span');
+          cur.className = 'here'; cur.textContent = p[1]; cur.setAttribute('aria-current', 'page');
+          menu.appendChild(cur);
+          return;
+        }
+        var a = document.createElement('a');
+        a.href = p[2]; a.textContent = p[1];
+        menu.appendChild(a);
+      });
+    }
+
     function paint(){
       menu.innerHTML = '';
       if (cfg.world){ paintWorld(); return; }
+      if (cfg.rpg){ paintRpg(); return; }
       var a = arrange(cfg.here), lastGroup = null;
       /* whose pages these are — the first line, so "now" reads as this handle's now */
       if (cfg.handle){
@@ -1344,7 +1376,7 @@
         paint();
       }).catch(function(){});
     }
-    doorsRead = (cfg.handle && !cfg.world)
+    doorsRead = (cfg.handle && !cfg.world && !cfg.rpg)
       ? readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
           if (list && list.length){
             STATED_DOORS = list;
