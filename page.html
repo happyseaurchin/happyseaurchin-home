@@ -554,17 +554,29 @@ function declaredOf(liquid){
 /* the character's renderings of this room, keyed by the slot of the last beat each covers: an
    account entry whose location reads pool:<room>:<slot> is the moment as the character lived
    it, kept there by the doorman or the mirror (log:urb-hitl 16; xstream render-account.ts) */
+/* A telling is never older than the moment it tells (the mirror's coveredCount, xstream-bsp
+   #323): a beat stamped later than the telling, a minute allowed for clocks, is another moment
+   at the same slot — pool:100:1, told at 10:20 into a room that did not yet stand, must not
+   claim the arrival the Village came to hold at 11:22 (2026-09-18). */
+const TOLD_SKEW_MS = 60000;
 function renderingsFor(room){
   const map = {};
+  const beatAt = {};
+  if (ROOM && STAND && STAND.addr === room) beatsOf(ROOM).forEach(b => { beatAt[b.slot] = Date.parse(b.ts || ''); });
   const take = block => entriesOf(block).forEach(e => {
     const text = fieldOf(e, '_'), m = fieldOf(e, '2').match(/^pool:(.+):(\d+)$/);
     if (!text || !m || m[1] !== room) return;
-    const ts = fieldOf(e, '3');
+    const ts = fieldOf(e, '3'), told = Date.parse(ts || ''), beat = beatAt[m[2]];
+    if (Number.isFinite(beat) && Number.isFinite(told) && told < beat - TOLD_SKEW_MS) return;
     if (!map[m[2]] || ts >= map[m[2]].ts) map[m[2]] = { text, ts };
   });
   take(WITNESSED); take(HISTORY);
   return map;
 }
+/* the record is never rewritten, but a line the story shows drops a stray WAY line — the
+   machinery a resolution's move once left standing in a beat (the mirror's own rule, #321) */
+const isWayLine = l => /^\s*WAY\b/.test(l) || /^\s*way\s*[:\-\u2014]?\s*(?:to\s+)?(?:pool:)?\[?\d+(?:\.\d+)?\]?\s*\.?\s*$/i.test(l);
+const shownText = t => String(t || '').split('\n').filter(l => !isWayLine(l)).join('\n').trim();
 /* the doorman, read off the character's own dial at its table: position 1 the switch, position
    9 the behaviours — the HOLDER'S WORDS, which stand before the dash; what follows is gloss
    (the waker's parse_behaviours and the mirror's card read the same way). Absent words read
@@ -833,7 +845,7 @@ function roomRecord(){
   const narrating = !!(OPEN && STAND);
   const told = narrating ? renderingsFor(STAND.addr) : {};
   const moment = t => '<div class="told"><span class="sh">as ' + esc(HANDLE) + ' lived it' + (t.ts && isIso(t.ts) ? ' · ' + esc(ago(t.ts)) : '') + '</span>' + esc(t.text) + '</div>';
-  const raw = b => '<div class="beat"><span class="bwho">' + esc(b.who) + '</span><span class="btext">' + esc(b.text) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>';
+  const raw = b => '<div class="beat"><span class="bwho">' + esc(b.who) + '</span><span class="btext">' + esc(shownText(b.text)) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>';
   const rows = (narrating ? toldElsewhere().map(moment) : []).concat(beats.map(b => told[b.slot] ? moment(told[b.slot]) : raw(b)));
   if (!rows.length){
     out.push('<p class="vnone">Nothing has happened here yet.</p>');
