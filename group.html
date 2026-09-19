@@ -52,9 +52,14 @@
   /* EACH CHARACTER ITS COLOUR — the phone laid between the players, each taps their own colour
      (David, 2026-09-19); a colour is kept for its character, so it never moves when another leaves */
   .tile{position:relative;min-width:0;min-height:0;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;
-    --c:#6b7a86;--ct:#fff;color:var(--ct);border:1px solid rgba(0,0,0,0.16);background:var(--c);
+    --c:#6b7a86;--ct:#fff;color:var(--foam);border:1px solid color-mix(in srgb,var(--c) 55%,transparent);
+    background:color-mix(in srgb,var(--c) 26%,var(--deep));
+    box-shadow:0 2px 10px rgba(0,0,0,0.12);transition:opacity .2s,filter .2s}
+  /* PASTEL UNTIL SAID, the full colour once the line is recorded (David, 2026-09-19) — and while
+     the microphone is live, so the one speaking shows */
+  .tile.said,.tile.on{color:var(--ct);border-color:rgba(0,0,0,0.16);background:var(--c);
     background:linear-gradient(160deg,color-mix(in srgb,var(--c) 80%,#fff) 0%,var(--c) 46%,color-mix(in srgb,var(--c) 82%,#000) 100%);
-    box-shadow:0 2px 10px rgba(0,0,0,0.16);transition:opacity .2s,filter .2s}
+    box-shadow:0 2px 12px rgba(0,0,0,0.2)}
   .tile .mic{flex:1;min-height:0;width:100%;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:4px;background:none;border:none;color:inherit;text-align:left;padding:12px 14px;position:relative}
   .tile .dg{position:absolute;top:8px;right:10px;font-family:var(--mono);font-size:12px;color:inherit;opacity:0.8;border:1px solid currentColor;border-radius:5px;padding:1px 6px}
   .tile .nm{font-family:var(--display);font-weight:800;font-size:clamp(1.05rem,4.2vmin,2.2rem);line-height:1.05;max-width:100%;overflow:hidden;text-overflow:ellipsis}
@@ -77,7 +82,8 @@
   .tile .dictate{display:none !important}
   .tile .ext{display:none}
   .x .tile{background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.55) 0%,rgba(var(--card-rgb),0.55) 100%);color:var(--foam);border:1px solid var(--line-strong)}
-  .x .tile .mic{flex:none;justify-content:flex-start;padding:10px 12px 8px;background:var(--c);color:var(--ct)}
+  .x .tile .mic{flex:none;justify-content:flex-start;padding:10px 12px 8px;background:color-mix(in srgb,var(--c) 26%,var(--deep));color:var(--foam)}
+  .x .tile.said .mic,.x .tile.on .mic{background:var(--c);color:var(--ct)}
   .x .tile.add .mic{background:none;color:var(--vapour-dim)}
   .x .tile .nm{font-size:clamp(1rem,3vmin,1.5rem)}
   .x .tile .line{display:block;flex:1;min-height:40px;margin:8px 10px 0;resize:none;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:8px;color:var(--foam);font-family:var(--body);font-size:16px;line-height:1.4;padding:8px 10px;outline:none}
@@ -129,7 +135,14 @@
   .cast .sw{width:24px;height:24px;border-radius:7px;background:var(--c);flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.18)}
   .cast .cn{font-family:var(--display);font-weight:700;font-size:1rem;color:var(--foam)}
   .cast .cl{flex:1;min-width:0;font-family:var(--mono);font-size:11px;color:var(--vapour-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .panel .cast .rm{background:none;border:1px solid var(--line-strong);color:var(--vapour);font-weight:400;font-size:12px;padding:6px 10px}
+  .panel .cast .ic{flex:none;width:36px;height:36px;padding:0;border-radius:8px;background:none;border:1px solid var(--line-strong);color:var(--vapour);font-weight:400;font-size:16px;line-height:1}
+  .panel .cast .ic:hover{color:var(--foam);border-color:var(--liquid)}
+  .panel .cast .ic.on{color:var(--liquid);border-color:var(--liquid)}
+  .cast .keyrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 4px;padding:8px;border:1px solid var(--line);border-top:none;border-radius:0 0 10px 10px}
+  .panel .cast .keyrow input{flex:1;min-width:150px;margin:0}
+  .panel .cast .keyrow .go{padding:10px 14px}
+  .cast .keyrow .kh{flex-basis:100%;margin:2px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  .cast .keyrow .kh.ok{color:var(--solid)} .cast .keyrow .kh.err{color:var(--liquid)}
   .panel .pick{display:flex;align-items:baseline;gap:8px;padding:9px 0 5px;cursor:pointer;color:var(--foam)}
   .panel .pick span{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
   .panel .opts{padding:2px 0 4px 24px}
@@ -692,21 +705,54 @@ async function proveKey(h, key){
   if (w.ok) return true;
   return (lockRequired(w) || w.status === 403) ? 'that key does not open ' + h : 'the beach refused the proof (' + w.status + ')';
 }
+const sameBeach = (a, b) => { const n = o => String(o || '').replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase(); return n(a) === n(b); };
+const otherDoor = (h, e) => e.mode === 'character' ? h + '’s doorman keeps another table' : h + '’s name is enrolled as another kind of doorman';
+async function enrolOne(h, key){
+  try {
+    const r = await fetch(WAKER + '/enroll', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ handle: h, passphrase: key, mode: 'character', beach: BEACH }) });
+    if (r.ok) return true;
+    if (r.status === 429) return 'too many wrong keys were tried for ' + h + ' — the doorman waits an hour';
+    const d = await r.json().catch(() => null);
+    return d && d.detail ? String(d.detail) : 'the doorman could not be set for ' + h;
+  } catch(e){ return 'the doorman’s door did not answer'; }
+}
 async function enrolDoormen(list){
   let enrolled = [];
   try { const r = await fetch(WAKER + '/health', { cache:'no-store' }); if (r.ok) enrolled = (await r.json()).enrolments || []; } catch(e){ return; }
-  const norm = o => String(o || '').replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase();
   for (const h of (list || PARTY).filter(x => keyOf(x))){
     const e = enrolled.find(x => String(x.handle).toLowerCase() === h.toLowerCase());
-    if (e && e.mode === 'character' && norm(e.beach) === norm(BEACH)) continue;
-    if (e){ NOTE[h] = e.mode === 'character' ? h + '’s doorman keeps another table' : h + '’s name is enrolled as another kind of doorman'; continue; }
-    try {
-      const r = await fetch(WAKER + '/enroll', { method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ handle: h, passphrase: keyOf(h), mode: 'character', beach: BEACH }) });
-      const d = await r.json().catch(() => null);
-      NOTE[h] = r.ok ? '' : (d && d.detail ? String(d.detail) : 'the doorman could not be set for ' + h);
-    } catch(e){ NOTE[h] = 'the doorman’s door did not answer'; }
+    if (e && e.mode === 'character' && sameBeach(e.beach, BEACH)) continue;
+    if (e){ NOTE[h] = otherDoor(h, e); continue; }
+    const done = await enrolOne(h, keyOf(h));
+    NOTE[h] = done === true ? '' : done;
   }
+}
+/* THE DOORMAN RE-KEYED — a doorman holds the key its character was enrolled with, and when the
+   passport's key changes after that, every make it happen is refused ('the passphrase does not
+   match') and each refusal counts toward the doorman's hour (found live on Ugarth, 2026-09-19).
+   A key is proven against the passport, kept on this device, and handed to the doorman — never
+   over a doorman that keeps another table or is another kind of doorman. */
+async function rekey(h, key){
+  if (!key) return 'no key for ' + h + ' on this device — options → edit characters → ✎';
+  const proof = await proveKey(h, key);
+  if (proof !== true) return proof;
+  keySet(h, key); LAST_KEY = key; delete NOTE[h];
+  let e;
+  try { const r = await fetch(WAKER + '/health', { cache:'no-store' }); e = r.ok ? (((await r.json()).enrolments || []).find(x => String(x.handle).toLowerCase() === h.toLowerCase()) || null) : undefined; } catch(err){ e = undefined; }
+  if (e === undefined) return 'the key opens ' + h + ', but the doorman’s door did not answer';
+  if (e && !(e.mode === 'character' && sameBeach(e.beach, BEACH))) return 'the key opens ' + h + ', but ' + otherDoor(h, e);
+  const done = await enrolOne(h, key);
+  return done === true ? true : 'the key opens ' + h + ', but ' + done;
+}
+/* the doorman's refusals, in a player's words */
+function plainRefusal(h, detail){
+  const d = String(detail || '');
+  if (/not set to commit/.test(d)) return h + '’s doorman is set not to make moments happen — switch its commit on in the mirror’s Doormen card';
+  if (/passphrase does not match|key does not match/.test(d)) return 'the key here does not open ' + h + ' — options → edit characters → ✎';
+  if (/too many failed proofs|too many wrong keys/.test(d)) return 'too many wrong keys were tried for ' + h + ' — the doorman waits an hour';
+  if (/no fuel/.test(d)) return h + '’s doorman has no key to think with — it needs an API key at enrolment';
+  return d || 'it did not happen';
 }
 /* ADD — a name and its key; the tile appears once the key opens the passport. The key field
    keeps the last key given, so a party made under one shared key only types names. */
@@ -716,13 +762,39 @@ function castHTML(){
     const addr = STAND[h] && STAND[h].addr;
     const where = !keyOf(h) ? 'not opened yet' : addr ? 'at ' + (nameOf((ROOMS[addr] || {}).place || '') || addr) : 'stands nowhere yet';
     return '<div class="who" style="' + colourStyle(h) + '"><span class="sw"></span><span class="cn">' + esc(h) + '</span><span class="cl">' + colourOf(h)[0] + ' · ' + (i + 1) + ' · ' + esc(where) + '</span>' +
-      '<button type="button" class="rm" data-h="' + esc(h) + '" title="take ' + esc(h) + ' off this screen — the character stays at the table">remove</button></div>';
+      '<button type="button" class="ic ked" data-h="' + esc(h) + '" title="' + esc(h) + '’s key on this device — see it, change it, check it" aria-label="' + esc(h) + '’s key">✎</button>' +
+      '<button type="button" class="ic rm" data-h="' + esc(h) + '" title="take ' + esc(h) + ' off this screen — the character stays at the table" aria-label="take ' + esc(h) + ' off this screen">×</button></div>' +
+      '<div class="keyrow hidden" data-for="' + esc(h) + '"><input type="password" class="kv" value="' + esc(keyOf(h) || '') + '" placeholder="' + esc(h) + '’s key" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="' + esc(h) + '’s key">' +
+      '<button type="button" class="ic eye" title="show the key" aria-label="show the key">👁</button><button type="button" class="go ck">check</button>' +
+      '<p class="kh">the key ' + esc(h) + ' was made with — checked against ' + esc(h) + '’s passport, then given to ' + esc(h) + '’s doorman</p></div>';
   }).join('');
 }
 function paintCast(){
   const el = $('cast'); if (!el) return;
   hues(); el.innerHTML = castHTML();
   el.querySelectorAll('.rm').forEach(b => b.addEventListener('click', () => dropPlayer(b.dataset.h)));
+  el.querySelectorAll('.ked').forEach(b => b.addEventListener('click', () => {
+    const row = el.querySelector('.keyrow[data-for="' + b.dataset.h + '"]'); if (!row) return;
+    const open = row.classList.toggle('hidden') === false; b.classList.toggle('on', open);
+    if (open){ const i = row.querySelector('.kv'); try { i.focus({ preventScroll: true }); } catch(e){ i.focus(); } }
+  }));
+  el.querySelectorAll('.keyrow').forEach(row => {
+    const h = row.dataset.for, input = row.querySelector('.kv'), eye = row.querySelector('.eye'), ck = row.querySelector('.ck'), kh = row.querySelector('.kh');
+    eye.addEventListener('click', () => { const shown = input.type === 'text'; input.type = shown ? 'password' : 'text'; eye.classList.toggle('on', !shown); eye.title = shown ? 'show the key' : 'hide the key'; });
+    const check = async () => {
+      const key = input.value.trim();
+      if (!key){ kh.textContent = 'the key first'; kh.className = 'kh err'; return; }
+      ck.disabled = true; kh.textContent = 'checking it against ' + h + '’s passport…'; kh.className = 'kh';
+      let res; try { res = await rekey(h, key); } catch(e){ res = 'could not reach the beach'; }
+      ck.disabled = false;
+      if (res !== true){ kh.textContent = res; kh.className = 'kh err'; return; }
+      kh.textContent = 'it opens ' + h + ' — kept on this device, and ' + h + '’s doorman holds it now'; kh.className = 'kh ok';
+      await readAll(); if (STAND[h]) await readEnvelope(STAND[h].addr);
+      repaint();
+    };
+    ck.addEventListener('click', check);
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') check(); });
+  });
 }
 function openAdd(name){
   bindKeys(false); hint('');
@@ -889,15 +961,32 @@ async function makeItHappen(){
     const here = partyIn(addr).filter(h => keyOf(h));
     const order = LAST[addr] && here.includes(LAST[addr]) ? [LAST[addr]].concat(here.filter(h => h !== LAST[addr])) : here;
     hint('the doorman is weaving the moment' + (rooms.length > 1 ? ' at ' + esc(nameOf(ROOMS[addr].place) || addr) : '') + ' — talk among yourselves…', 'busy');
-    let a = null;
+    let a = null, who = null;
     for (const h of order){
+      who = h;
       a = await fold(h, addr, here.filter(x => x !== h));
+      /* a doorman holding an older key, or none: the key this table holds is proven, handed to
+         it, and the moment asked for once more — nothing has happened yet, so nothing doubles */
+      if (a.reached && !a.folded && /passphrase does not match|no character's doorman is enrolled/.test(a.detail)){
+        hint(esc(h) + '’s doorman is taking the key this table holds…', 'busy');
+        const fixed = await rekey(h, keyOf(h));
+        if (fixed === true){ hint('the doorman is weaving the moment — talk among yourselves…', 'busy'); a = await fold(h, addr, here.filter(x => x !== h)); }
+        else a.detail = fixed;
+      }
       if (!a.reached || a.folded) break;
-      if (!/no character's doorman is enrolled|not set to commit|passphrase does not match/.test(a.detail)) break;
+      if (!/no character's doorman is enrolled|not set to commit|passphrase does not match|does not open/.test(a.detail)) break;
     }
     if (!a || !a.reached){ told.push('the doorman could not be reached — what was said still stands'); continue; }
-    if (!a.folded) told.push(a.detail || 'it did not happen');
-    else { partyIn(addr).forEach(h => FRESH.add(h)); delete LAST[addr]; if (a.left && a.left.length) told.push(a.left.join('; ')); }
+    if (!a.folded) told.push(plainRefusal(who, a.detail));
+    else {
+      partyIn(addr).forEach(h => FRESH.add(h)); delete LAST[addr];
+      /* a party member left out for an older key, or no doorman, is set right for the next moment */
+      for (const line of (a.left || [])){
+        const m = String(line).match(/^the key does not match (.+)'s enrolment$/) || String(line).match(/^(.+) has no character's doorman enrolled/);
+        if (m && keyOf(m[1])){ const fixed = await rekey(m[1], keyOf(m[1])); told.push(m[1] + ' sat this one out — ' + (fixed === true ? 'its doorman holds this table’s key now' : fixed)); }
+        else told.push(line);
+      }
+    }
   }
   await readAll();
   await Promise.all(roomOrder().map(readEnvelope));
