@@ -32,13 +32,15 @@
   .bar b{color:var(--foam)}
   .bar .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .bar .spacer{flex:1}
-  /* the play's own controls ride the play surface, not the site's bar (whose buttons the
-     shell gathers behind 'options') */
-  .tools{flex:none;display:flex;gap:8px;justify-content:flex-end}
-  .tools button.ctl{background:none;border:1px solid var(--line);border-radius:7px;color:var(--vapour-dim);font-size:12px;line-height:1;padding:7px 10px}
-  .tools button.ctl:hover{color:var(--foam);border-color:var(--line-strong)}
-  .tools button.ctl.on{color:var(--abyss);background:var(--liquid);border-color:var(--liquid)}
-  .bound{flex:none;margin:0 12px;padding:5px 10px;border-radius:6px;background:rgba(var(--liquid-rgb),0.14);border:1px solid rgba(var(--liquid-rgb),0.45);font-family:var(--mono);font-size:11.5px;color:var(--foam);text-align:center}
+  /* the play's own controls sit in the bar, where the shell gathers them behind 'options', so
+     everything beneath the bar is the table */
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .bar button.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+  .bar .bound{flex:none;padding:3px 9px;border-radius:999px;background:rgba(var(--liquid-rgb),0.16);border:1px solid rgba(var(--liquid-rgb),0.5);color:var(--foam);font-size:11px;letter-spacing:0.04em;white-space:nowrap}
+  /* bound, the keys that still work glow on the tiles and the acts */
+  .keyed .tile .dg{color:var(--liquid);border-color:var(--liquid)}
+  .keyed .act .big .k{opacity:1}
 
   /* THE RECTANGLE — a square of tiles, and the two acts beside it (landscape) or beneath it
      (portrait); sized by the page, never scrolled */
@@ -99,8 +101,11 @@
   .more .ctlrow select{flex:1;min-width:120px;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:6px;color:var(--foam);font-family:var(--mono);font-size:11.5px;padding:5px}
   .more .ctlrow button{background:none;border:1px solid var(--line-strong);border-radius:6px;color:var(--vapour);font-size:11.5px;padding:4px 8px}
 
-  .hint{flex:none;margin:0 12px 6px;min-height:1.3em;font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);text-align:center}
-  .hint.ok{color:var(--solid)} .hint.err{color:var(--liquid)}
+  /* what the table has to say floats over it for a moment and is gone — it never takes a row */
+  .hint{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:15;width:max-content;max-width:min(88vw,560px);margin:0;padding:8px 16px;border-radius:16px;background:rgb(var(--well-rgb));border:1px solid var(--line-strong);box-shadow:0 8px 28px rgba(0,0,0,0.32);font-family:var(--mono);font-size:11.5px;line-height:1.4;color:var(--vapour);text-align:center;pointer-events:none;opacity:0;transition:opacity .3s}
+  .hint.show{opacity:1}
+  .hint.seam{bottom:auto;transform:translate(-50%,-50%)}
+  .hint.ok{color:var(--solid)} .hint.err{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
 
   /* adding a character — a name and a key, proven before the tile appears */
   .veil{position:fixed;inset:0;z-index:20;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px}
@@ -126,17 +131,15 @@
   <div class="bar">
     <span class="dot"></span>
     <span class="where">the table · <b id="bar-world">—</b></span>
+    <span class="bound hidden" id="bound" title="1–9 speak for each character · M makes it happen · H hears it · Esc frees the keyboard">keys bound · Esc frees</span>
     <span class="spacer"></span>
+    <button type="button" class="ctl" id="c-add" title="add a character — its name and its key">add a character</button>
+    <button type="button" class="ctl" id="c-view" title="the words — what each said, who plays, what happened" aria-pressed="false">show the words</button>
+    <button type="button" class="ctl" id="c-keys" title="bind the keyboard — 1–9 speak for each character, M makes it happen, H hears it; Esc frees it" aria-pressed="false">bind the keyboard</button>
   </div>
-  <div class="bound hidden" id="bound">keyboard bound — <b>1–9</b> speak · <b>M</b> make it happen · <b>H</b> hear it · <b>Esc</b> releases</div>
   <main class="stage hidden" id="stage">
     <section class="grid" id="grid" aria-label="the characters"></section>
     <section class="acts" id="acts">
-      <div class="tools">
-        <button type="button" class="ctl" id="c-add" title="add a character — its name and its key">+ add</button>
-        <button type="button" class="ctl" id="c-view" title="show the words — what each heard, what stands said, what happened" aria-pressed="false">⤢ words</button>
-        <button type="button" class="ctl" id="c-keys" title="bind the keyboard — 1–9 speak for each character, M makes it happen, H hears it; Esc releases it" aria-pressed="false">⌨ keys</button>
-      </div>
       <div class="act">
         <button type="button" class="big" id="happen"><span class="k">M</span><span class="t">make it happen</span><span class="s" id="happen-s"></span></button>
         <div class="more" id="happen-more"></div>
@@ -166,11 +169,12 @@
    One rectangle: a tile per character (one alone, 2×2 up to 3×3) and two acts beside it —
    MAKE IT HAPPEN and HEAR IT. Compact for playing: tap a tile, or press its digit with the
    keyboard bound, and speak for that character; tap again to stop — the line is staged
-   under that character in the room it stands in, and its roll lands on the tile. Expanded
-   (⤢) for the words: each tile shows what it heard, make it happen lists the players and
-   what stands said, hear it shows what happened. A character joins by its name and key
-   (+), each proven against its own passport. The page never resolves a beat and never
-   thinks: the doorman folds, the device's own voice reads. ── */
+   under that character in the room it stands in, and its roll lands on the tile. The words
+   (options → show the words): each tile shows what it heard, make it happen lists the players
+   and what stands said, hear it shows what happened. A character joins by its name and key
+   (the + tile, or options), each proven against its own passport. Everything beneath the bar
+   is the table; the page never resolves a beat and never thinks: the doorman folds, the
+   device's own voice reads. ── */
 const APEX = 'https://beach.happyseaurchin.com';
 const wk = origin => origin.replace(/\/+$/, '') + '/.well-known/pscale-beach';
 let BEACH = APEX, WORLD_PARAM = null, WORLD = null;
@@ -434,7 +438,17 @@ function showState(title, body){
   $('state-title').textContent = title; $('state-body').innerHTML = body;
   $('state').classList.remove('hidden');
 }
-function hint(msg, cls){ const h = $('hint'); if (!h) return; h.innerHTML = msg || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); }
+/* a word from the table: shown, then gone — an error stays longer, and 'busy' stays until the
+   next word replaces it */
+let HINT_T = null;
+function hint(msg, cls){
+  const h = $('hint'); if (!h) return;
+  clearTimeout(HINT_T);
+  h.innerHTML = msg || ''; h.classList.remove('ok', 'err', 'busy', 'show');   /* its place (seam) is layout's */
+  if (cls) h.classList.add(cls);
+  if (msg) h.classList.add('show');
+  if (msg && cls !== 'busy') HINT_T = setTimeout(() => h.classList.remove('show'), cls === 'err' ? 9000 : 5000);
+}
 
 /* read every character's passport and every room the party stands in */
 async function readAll(){
@@ -467,18 +481,27 @@ function newBeats(addr){
 function saidBy(addr, h){ const r = ROOMS[addr]; return (r && r.liquid ? declaredOf(r.liquid) : []).find(d => d.who.toLowerCase() === h.toLowerCase()) || null; }
 const allSaid = () => roomOrder().flatMap(a => (ROOMS[a] && ROOMS[a].liquid ? declaredOf(ROOMS[a].liquid) : []).map(d => Object.assign({ addr: a }, d)));
 
-/* ── THE RECTANGLE — the square of tiles sized to the screen: beside the acts when the screen
-   is wider than tall, above them when taller; one alone, two side by side, 2×2, then 3×3 ── */
+/* ── THE RECTANGLE — the tiles beside the acts when the screen is wider than tall, above them
+   when taller; one alone, two side by side, 2×2, then 3×3. The tiles always run the screen's
+   full short side and are square wherever the acts still keep a third of the long side; on a
+   screen nearer square they give way and narrow, so nothing is ever left empty ── */
 function gridShape(n){ return n <= 1 ? [1, 1] : n === 2 ? [2, 1] : n <= 4 ? [2, 2] : [3, 3]; }
 function layout(){
   const stage = $('stage'); if (stage.classList.contains('hidden')) return;
   const r = stage.getBoundingClientRect(), cs = getComputedStyle(stage);
   const W = r.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
   const H = r.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-  const wide = W >= H;
+  const wide = W >= H, long = wide ? W : H, short = wide ? H : W, gap = 10;
   stage.classList.toggle('wide', wide); stage.classList.toggle('tall', !wide);
-  const side = Math.max(140, Math.floor(wide ? Math.min(H, (W - 10) * 0.62) : Math.min(W, (H - 10) * 0.62)));
-  $('grid').style.width = side + 'px'; $('grid').style.height = side + 'px';
+  const acts = Math.max(120, Math.round(long * 0.34));
+  const along = Math.floor(Math.max(120, Math.min(short, long - gap - acts)));
+  $('grid').style.width = (wide ? along : Math.floor(short)) + 'px';
+  $('grid').style.height = (wide ? Math.floor(short) : along) + 'px';
+  /* a word from the table sits on the seam between the tiles and the acts, where neither holds
+     its label — at the foot when they stand side by side, across the join when stacked */
+  const h = $('hint');
+  h.classList.toggle('seam', !wide);
+  h.style.top = wide ? '' : Math.round($('grid').getBoundingClientRect().bottom + gap / 2) + 'px';
 }
 function tileState(h){
   const addr = STAND[h] && STAND[h].addr, said = addr ? saidBy(addr, h) : null;
@@ -528,7 +551,7 @@ function renderGrid(){
 function happenMore(){
   const out = [];
   out.push('<p class="at">the players</p>');
-  if (!PARTY.length) out.push('<p class="quiet">nobody yet — + adds a character by its name and key</p>');
+  if (!PARTY.length) out.push('<p class="quiet">nobody yet — add a character by its name and key</p>');
   PARTY.forEach((h, i) => out.push('<div class="row"><span class="who">' + (i + 1) + ' · ' + esc(h) + '</span><span class="txt">' + esc(keyOf(h) ? (STAND[h] ? 'at ' + (nameOf((ROOMS[STAND[h].addr] || {}).place || '') || STAND[h].addr) : 'stands nowhere yet') : 'not opened — tap its tile to give its key') + '</span><button type="button" class="drop" data-h="' + esc(h) + '" title="take ' + esc(h) + ' off this table’s screen (the character stays at the table)">×</button></div>'));
   out.push('<div class="ctlrow"><button type="button" id="m-add">+ add a character</button></div>');
   const said = allSaid();
@@ -568,6 +591,7 @@ function paintHear(){
 function render(){
   $('app').classList.toggle('x', EXPANDED);
   $('c-view').classList.toggle('on', EXPANDED); $('c-view').setAttribute('aria-pressed', EXPANDED ? 'true' : 'false');
+  $('c-view').textContent = EXPANDED ? 'hide the words' : 'show the words';
   $('stage').classList.remove('hidden'); $('state').classList.add('hidden');
   renderGrid(); renderActs(); layout();
 }
@@ -636,7 +660,7 @@ async function addGo(){
   if (!PARTY.some(x => x.toLowerCase() === h.toLowerCase())) PARTY.push(h);
   saveParty();
   closeAdd();
-  hint(esc(h) + ' is at the table — setting its doorman…');
+  hint(esc(h) + ' is at the table — setting its doorman…', 'busy');
   await enrolDoormen([h]);
   await readAll();
   if (STAND[h]) await readEnvelope(STAND[h].addr);
@@ -776,7 +800,7 @@ async function makeItHappen(){
   for (const addr of rooms){
     const here = partyIn(addr).filter(h => keyOf(h));
     const order = LAST[addr] && here.includes(LAST[addr]) ? [LAST[addr]].concat(here.filter(h => h !== LAST[addr])) : here;
-    hint('the doorman is weaving the moment' + (rooms.length > 1 ? ' at ' + esc(nameOf(ROOMS[addr].place) || addr) : '') + ' — talk among yourselves…');
+    hint('the doorman is weaving the moment' + (rooms.length > 1 ? ' at ' + esc(nameOf(ROOMS[addr].place) || addr) : '') + ' — talk among yourselves…', 'busy');
     let a = null;
     for (const h of order){
       a = await fold(h, addr, here.filter(x => x !== h));
@@ -802,7 +826,7 @@ const LOCATION_RE = /(Location:\s*\*:[^\s]+:spatial:[\w-]+:)(\d+(?:\.\d+)?)/;
 async function goThere(movers, addr, way){
   const label = String(way.label || '').replace(/\s*\.\s*$/, '');
   const beat = (a, text, h) => writeBlock({ block: 'pool:' + a, append: true, content: { '_': text, '1': h, '2': '', '3': new Date().toISOString(), '4': 'character' } });
-  BUSY = true; hint('setting off for ' + esc(wayName(way.label)) + '…');
+  BUSY = true; hint('setting off for ' + esc(wayName(way.label)) + '…', 'busy');
   const moved = [];
   try {
     for (const h of movers){
@@ -846,10 +870,12 @@ function pickVoice(){
     vs.find(v => /Google UK English|Daniel|Serena|Arthur|Martha/i.test(v.name)) || vs.find(v => v.default) || vs[0] || null;
 }
 /* NO SILENT WAKE-UP LINE. A silent word spoken on the first touch, to let a phone speak later
-   on its own, was itself what jammed the voice: the touch that asked to HEAR spoke the silent
-   word, cleared it half-spoken, and the lines after it never started (Chrome, 2026-09-19). A
-   press of hear it is the touch that wakes the voice; 'hear each moment as it lands' speaks on
-   its own once the voice has been heard once. */
+   on its own, was itself what jammed the voice: a blank line at no volume that never finishes,
+   and every line after it waits (Chrome, 2026-09-19). The wait reached past this page: Chrome
+   keeps ONE queue of speech for all its pages, a stuck line holds every site's voice, and only
+   the site that queued it (or quitting the browser) can clear it — so boot clears this site's
+   own, in case an older copy of this page left one. A press of hear it is the touch that wakes
+   the voice; 'hear each moment as it lands' speaks on its own once the voice has been heard. */
 function stopSpeech(){
   TURN++;
   if (canSpeak() && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel();
@@ -862,8 +888,8 @@ function chunks(text){
   if (cur.trim()) out.push(cur.trim());
   return out;
 }
-/* the browser holds speech while its page is hidden (a phone locked, a window behind) —
-   that is waiting, not failing */
+/* a phone may hold speech while its page is hidden (locked, another app in front) — that is
+   waiting, not failing; a desktop browser speaks hidden or not */
 const unseen = () => document.visibilityState === 'hidden';
 function speak(lines){
   if (!canSpeak() || !lines.length) return false;
@@ -891,7 +917,7 @@ function speak(lines){
       setTimeout(() => {
         if (started || turn !== TURN || unseen()) return;
         stopSpeech();
-        hint('the voice did not start — check this device’s sound, or pick another voice (⤢ words, then hear it)', 'err');
+        hint('the voice did not start — quit the browser and open it again to free its voice; the words are under options', 'err');
       }, 2500);
     };
     setTimeout(watch, 3000);
@@ -945,10 +971,10 @@ function paintVoices(){
    happen) and H (hear it); Esc releases it, and the keyboard is a keyboard again ── */
 function bindKeys(on){
   BOUND = !!on;
-  $('bound').classList.toggle('hidden', !BOUND);
+  $('bound').classList.toggle('hidden', !BOUND); $('app').classList.toggle('keyed', BOUND);
   $('c-keys').classList.toggle('on', BOUND); $('c-keys').setAttribute('aria-pressed', BOUND ? 'true' : 'false');
+  $('c-keys').textContent = BOUND ? 'free the keyboard' : 'bind the keyboard';
   if (BOUND && document.activeElement && document.activeElement.blur) document.activeElement.blur();
-  layout();
 }
 window.addEventListener('keydown', e => {
   if (!BOUND) return;
@@ -1045,11 +1071,11 @@ async function boot(){
   $('add-no').addEventListener('click', closeAdd);
   ['add-name', 'add-key'].forEach(id => $(id).addEventListener('keydown', e => { if (e.key === 'Enter') addGo(); if (e.key === 'Escape') closeAdd(); }));
   window.addEventListener('resize', layout);
-  if (canSpeak()){ pickVoice(); speechSynthesis.onvoiceschanged = () => { pickVoice(); paintVoices(); }; }
+  if (canSpeak()){ try { speechSynthesis.cancel(); } catch(e){} pickVoice(); speechSynthesis.onvoiceschanged = () => { pickVoice(); paintVoices(); }; }
   if (PARTY.some(h => keyOf(h))){ await enrolDoormen(); }
   await Promise.all(roomOrder().map(readEnvelope));
   repaint();
-  hint(PARTY.length ? (PARTY.some(h => keyOf(h)) ? 'tap a character — or ⌨ and press its number — and speak for them' : 'tap a character to open it with its key') : 'add the first character — its name and its key');
+  hint(PARTY.length ? (PARTY.some(h => keyOf(h)) ? 'tap a character and speak for them — or bind the keyboard, under options' : 'tap a character to open it with its key') : 'add the first character — its name and its key');
   watch();
 }
 boot();
