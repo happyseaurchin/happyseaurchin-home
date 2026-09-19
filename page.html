@@ -457,7 +457,9 @@ let PASSPORT = null, STAND = null, PLACE = null, ROOM = null, PRESENCE = null, H
 let LIQUID = null;   /* what stands declared at the room and has not yet happened */
 let DIAL = null;     /* the doorman's dial — the character's own block at its table */
 let WAYS = null;     /* where the room leads, as the router's room envelope names it (grit 1.51) */
-let WAKER = 'https://waker-production.up.railway.app';   /* the doorman's door; ways:doorbell at the apex says otherwise when it moves */
+/* ?waker= is honoured on localhost only — a local doorman for testing, as the group page takes it */
+const DEV_WAKER = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? (new URLSearchParams(location.search).get('waker') || '').replace(/\/+$/, '') : '';
+let WAKER = DEV_WAKER || 'https://waker-production.up.railway.app';   /* the doorman's door; ways:doorbell at the apex says otherwise when it moves */
 let OPEN = false;    /* the hand open — this device holds the character's key, proven against the passport */
 let WATCH = null;    /* the holder's quiet re-read of the room while the page is open */
 const cleanHandle = v => String(v || '').replace(/[^a-z0-9_-]/gi, '').trim();
@@ -651,7 +653,7 @@ async function load(){
     /* where the doorman's door is — the beach says, as the mirror reads it (ways:doorbell 2) */
     const ways = await readBlock('ways:doorbell', APEX).catch(() => null);
     const m = ways ? String(lineOf(ways['2']) || '').match(/https?:\/\/\S+\/enroll/) : null;
-    if (m) WAKER = m[0].replace(/\/enroll$/, '');
+    if (m && !DEV_WAKER) WAKER = m[0].replace(/\/enroll$/, '');
   }
 
   const out = [];
@@ -866,7 +868,7 @@ function roomRecord(){
 }
 function renderRoom(){
   const key = OPEN
-    ? '<p class="keyline"><a href="#" id="acc-close" title="forget the key on this device">not mine — close it</a></p>'
+    ? '<p class="keyline"><a href="#" id="acc-rekey" title="enter ' + esc(HANDLE) + '\'s key again — checked against the passport, kept on this device, and given to ' + esc(HANDLE) + '\'s doorman">change the key</a> · <a href="#" id="acc-close" title="forget the key on this device">not mine — close it</a></p>'
     : '<div class="closed"><p>What ' + esc(HANDLE) + ' sees of each moment is ' + esc(HANDLE) + '\'s own, and so is the hand that says and makes it happen. The table keeps them between the character and its player, and this page keeps to that: they open to the character\'s key, which the beach checks.</p>' +
       '<p><button id="acc-open" type="button">' + esc(HANDLE) + ' is mine — open it</button></p></div>';
   return '<section class="sect"><h2>the room now</h2><div class="room"><div id="room-record">' + roomRecord() + '</div>' +
@@ -1010,8 +1012,49 @@ async function goThere(way){
     doors.forEach(b => b.disabled = false);
   }
 }
-/* asked of the doorman: POST /fold {handle, passphrase, room} — synchronous, the outcome returned */
+/* asked of the doorman: POST /fold {handle, passphrase, room} — synchronous, the outcome returned.
+   A doorman still holding an older key (the passport's key changed after it was enrolled), or
+   none at all, is handed the key this page holds — proven against the passport first — and
+   asked once more; nothing has happened yet, so nothing doubles (found live on Ugarth,
+   2026-09-19: 'the passphrase does not match', from this page and the group page alike). */
 async function askTheDoorman(){
+  let a = await foldOnce();
+  if (a.reached && !a.folded && /passphrase does not match|no character's doorman is enrolled/.test(a.detail)){
+    const fixed = await rekeyDoorman(latchGet() || '');
+    if (fixed === true) a = await foldOnce();
+    else a.detail = fixed;
+  }
+  if (a.reached && !a.folded) a.detail = plainRefusal(a.detail);
+  return a;
+}
+const sameBeach = (a, b) => { const n = o => String(o || '').replace(/^https?:\/\//, '').replace(/\/+$/, '').toLowerCase(); return n(a) === n(b); };
+async function rekeyDoorman(key){
+  if (!key) return 'no key for ' + HANDLE + ' on this device';
+  const proof = await proveKey(key);
+  if (proof !== true) return proof;
+  let e;
+  try { const r = await fetch(WAKER + '/health', { cache:'no-store' }); e = r.ok ? (((await r.json()).enrolments || []).find(x => String(x.handle).toLowerCase() === HANDLE.toLowerCase()) || null) : undefined; } catch(err){ e = undefined; }
+  if (e === undefined) return 'the key opens ' + HANDLE + ', but the doorman’s door did not answer';
+  if (e && !(e.mode === 'character' && sameBeach(e.beach, BEACH))) return 'the key opens ' + HANDLE + ', but ' + (e.mode === 'character' ? HANDLE + '’s doorman keeps another table' : HANDLE + '’s name is enrolled as another kind of doorman');
+  try {
+    const r = await fetch(WAKER + '/enroll', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ handle: HANDLE, passphrase: key, mode: 'character', beach: BEACH }) });
+    if (r.ok) return true;
+    if (r.status === 429) return 'too many wrong keys were tried for ' + HANDLE + ' — the doorman waits an hour';
+    const d = await r.json().catch(() => null);
+    return 'the key opens ' + HANDLE + ', but ' + (d && d.detail ? String(d.detail) : 'the doorman did not take it (' + r.status + ')');
+  } catch(err){ return 'the key opens ' + HANDLE + ', but the doorman’s door did not answer'; }
+}
+/* the doorman's refusals, in a player's words */
+function plainRefusal(detail){
+  const d = String(detail || '');
+  if (/not set to commit/.test(d)) return HANDLE + '’s doorman is set not to make moments happen — switch its commit on in the mirror’s Doormen card';
+  if (/passphrase does not match/.test(d)) return 'the key here does not open ' + HANDLE + ' — change the key, below';
+  if (/too many failed proofs|too many wrong keys/.test(d)) return 'too many wrong keys were tried for ' + HANDLE + ' — the doorman waits an hour';
+  if (/no fuel/.test(d)) return HANDLE + '’s doorman has no key to think with — it needs an API key at enrolment';
+  return d;
+}
+async function foldOnce(){
   let r;
   try {
     r = await fetch(WAKER + '/fold', { method:'POST', headers:{'Content-Type':'application/json'},
@@ -1142,6 +1185,22 @@ function wireKey(){
     await load();
   });
   if (close) close.addEventListener('click', e => { e.preventDefault(); latchSet(null); load(); });
+  /* CHANGE THE KEY — a key entered again is proven against the passport, kept, and handed to the
+     doorman, so a key changed since the doorman was enrolled stops being refused */
+  const rekey = $('acc-rekey');
+  if (rekey) rekey.addEventListener('click', async e => {
+    e.preventDefault();
+    const v = prompt(HANDLE + '\'s key — checked against the passport, kept on this device, and given to ' + HANDLE + '\'s doorman (check the first letter: phones capitalise it):', '');
+    if (v === null || !v.trim()) return;
+    const say = (m, err) => { let p = $('acc-refused'); if (!p){ p = document.createElement('p'); p.id = 'acc-refused'; rekey.parentNode.after(p); } p.className = 'hint ' + (err ? 'err' : 'ok'); p.textContent = m; };
+    say('checking the key…');
+    let res; try { res = await rekeyDoorman(v.trim()); } catch(err){ res = 'could not reach the beach — ' + (err.message || err); }
+    if (res !== true && !/^the key opens /.test(res)){ say(res, true); return; }
+    latchSet(v.trim());
+    await load();
+    if (res === true){ const q = $('a-hint'); if (q){ q.textContent = 'the key is ' + HANDLE + '\'s — kept here, and ' + HANDLE + '\'s doorman holds it now'; q.className = 'hint ok'; } }
+    else { const q = $('a-hint'); if (q){ q.textContent = res; q.className = 'hint err'; } }
+  });
 }
 
 /* the character's key, remembered on this device (the /now latch pattern). The storage name
