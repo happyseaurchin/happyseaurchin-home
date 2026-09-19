@@ -138,6 +138,9 @@
   .panel .cast .ic{flex:none;width:36px;height:36px;padding:0;border-radius:8px;background:none;border:1px solid var(--line-strong);color:var(--vapour);font-weight:400;font-size:16px;line-height:1}
   .panel .cast .ic:hover{color:var(--foam);border-color:var(--liquid)}
   .panel .cast .ic.on{color:var(--liquid);border-color:var(--liquid)}
+  .panel .cast .ic.mk.on{color:var(--solid);border-color:var(--solid)}
+  .cast .maker{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:0 0 6px}
+  .cast .maker b{color:var(--foam);font-weight:400}
   .cast .keyrow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:-2px 0 4px;padding:8px;border:1px solid var(--line);border-top:none;border-radius:0 0 10px 10px}
   .panel .cast .keyrow input{flex:1;min-width:150px;margin:0}
   .panel .cast .keyrow .go{padding:10px 14px}
@@ -177,6 +180,8 @@
     <span class="spacer"></span>
     <button type="button" class="ctl" id="c-add" title="the characters at this table — add one by its name and key, or take one off this screen">edit characters</button>
     <button type="button" class="ctl" id="c-narr" title="who reads aloud what happened — this device’s own voice, or a narrator on your own key">choose the narrator</button>
+    <button type="button" class="ctl" id="c-autonarr" data-keep-open title="read each moment aloud the moment it happens" aria-pressed="true">auto-narrate: on</button>
+    <button type="button" class="ctl" id="c-autocommit" data-keep-open title="make it happen by itself once every character here has spoken" aria-pressed="true">auto-commit: on</button>
     <button type="button" class="ctl" id="c-view" title="the words — what each said, who plays, what happened" aria-pressed="false">show the words</button>
     <button type="button" class="ctl" id="c-keys" title="bind the keyboard — 1–9 speak for each character, M makes it happen, H hears it; Esc frees it" aria-pressed="false">bind the keyboard</button>
   </div>
@@ -223,7 +228,6 @@
     <select id="n-evoice" aria-label="the ElevenLabs voice"><option value="">the key first — then your voices</option></select>
   </div>
   <div class="ctlrow"><span>slower</span><input id="n-rate" type="range" min="0.7" max="1.3" step="0.05" aria-label="how fast it reads"><span>faster</span></div>
-  <label class="chk"><input type="checkbox" id="n-auto"> hear each moment as it lands</label>
   <div class="row"><button type="button" class="no" id="n-test">hear a line</button><button type="button" class="go" id="n-done">done</button></div>
   <p class="ph" id="n-hint"></p>
 </div></div>
@@ -618,7 +622,7 @@ function tileHTML(h, i){
 function paintTile(h){
   const t = document.querySelector('.tile[data-h="' + h + '"]'); if (!t) return;
   const addr = STAND[h] && STAND[h].addr, said = addr ? saidBy(addr, h) : null, die = said ? (DICE[addr] || {})[h.toLowerCase()] : null;
-  t.classList.toggle('closed', !keyOf(h)); t.classList.toggle('on', REC === h); t.classList.toggle('said', REC !== h && !!said);
+  t.classList.toggle('closed', !keyOf(h)); t.classList.toggle('on', REC === h); t.classList.toggle('said', REC !== h && (!!said || NOTE[h] === 'saying…'));
   $('stage').classList.toggle('rec', !!REC);
   const st = t.querySelector('[data-st]'); if (st) st.textContent = tileState(h);
   const d = t.querySelector('[data-die]');
@@ -756,12 +760,19 @@ function plainRefusal(h, detail){
 }
 /* ADD — a name and its key; the tile appears once the key opens the passport. The key field
    keeps the last key given, so a party made under one shared key only types names. */
+/* WHO MAKES IT HAPPEN — one doorman makes each moment: the last character to speak in that room,
+   unless one is pinned here with ★ (that character's doorman — and the key it pays with — makes
+   every moment where it stands). Kept for this table on this device. */
+const makerHome = () => 'group:maker:' + host(BEACH);
+function maker(){ const m = (store(makerHome()) || '').toLowerCase(); return m ? PARTY.find(h => h.toLowerCase() === m) || null : null; }
 function castHTML(){
   if (!PARTY.length) return '<p class="quiet">nobody at this screen yet</p>';
-  return PARTY.map((h, i) => {
+  const pin = maker();
+  return '<p class="maker">who makes it happen: <b>' + (pin ? esc(pin) + '’s doorman' : 'the last to speak') + '</b>' + (pin ? ' — ★ again to let the last to speak make it' : ' — ★ a character to have its doorman make every moment') + '</p>' + PARTY.map((h, i) => {
     const addr = STAND[h] && STAND[h].addr;
     const where = !keyOf(h) ? 'not opened yet' : addr ? 'at ' + (nameOf((ROOMS[addr] || {}).place || '') || addr) : 'stands nowhere yet';
     return '<div class="who" style="' + colourStyle(h) + '"><span class="sw"></span><span class="cn">' + esc(h) + '</span><span class="cl">' + colourOf(h)[0] + ' · ' + (i + 1) + ' · ' + esc(where) + '</span>' +
+      '<button type="button" class="ic mk' + (pin === h ? ' on' : '') + '" data-h="' + esc(h) + '" title="' + (pin === h ? 'let the last to speak make it happen again' : 'have ' + esc(h) + '’s doorman make every moment') + '" aria-pressed="' + (pin === h) + '" aria-label="' + esc(h) + '’s doorman makes it happen">★</button>' +
       '<button type="button" class="ic ked" data-h="' + esc(h) + '" title="' + esc(h) + '’s key on this device — see it, change it, check it" aria-label="' + esc(h) + '’s key">✎</button>' +
       '<button type="button" class="ic rm" data-h="' + esc(h) + '" title="take ' + esc(h) + ' off this screen — the character stays at the table" aria-label="take ' + esc(h) + ' off this screen">×</button></div>' +
       '<div class="keyrow hidden" data-for="' + esc(h) + '"><input type="password" class="kv" value="' + esc(keyOf(h) || '') + '" placeholder="' + esc(h) + '’s key" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="' + esc(h) + '’s key">' +
@@ -773,6 +784,7 @@ function paintCast(){
   const el = $('cast'); if (!el) return;
   hues(); el.innerHTML = castHTML();
   el.querySelectorAll('.rm').forEach(b => b.addEventListener('click', () => dropPlayer(b.dataset.h)));
+  el.querySelectorAll('.mk').forEach(b => b.addEventListener('click', () => { store(makerHome(), maker() === b.dataset.h ? null : b.dataset.h); paintCast(); }));
   el.querySelectorAll('.ked').forEach(b => b.addEventListener('click', () => {
     const row = el.querySelector('.keyrow[data-for="' + b.dataset.h + '"]'); if (!row) return;
     const open = row.classList.toggle('hidden') === false; b.classList.toggle('on', open);
@@ -890,7 +902,18 @@ let SAYQ = Promise.resolve();
 function inTurn(fn){ const p = SAYQ.then(fn); SAYQ = p.catch(() => {}); return p; }
 function sayLater(h){
   NOTE[h] = 'saying…'; paintTile(h);
-  return inTurn(async () => { await wait(800); return sayNow(h); }).then(ok => { if (ok) rollAfter(h); });
+  return inTurn(async () => { await wait(800); return sayNow(h); }).then(ok => { if (ok){ rollAfter(h); autoCommitIfReady(); } });
+}
+/* AUTO-COMMIT (options) — once every character this screen holds a key for has a line standing,
+   and no microphone is live, the moment is made without anyone pressing; on unless switched off.
+   A character whose player sits this one out holds it back — make it happen still works by hand */
+function autoCommit(){ return store('group:autocommit') !== '0'; }
+function autoCommitIfReady(){
+  if (!autoCommit() || BUSY || REC) return;
+  const players = PARTY.filter(h => keyOf(h) && STAND[h] && STAND[h].addr);
+  if (!players.length || !players.every(h => saidBy(STAND[h].addr, h))) return;
+  hint('everyone has spoken — making it happen…', 'busy');
+  makeItHappen();
 }
 /* the roll is read after the line lands, outside the queue — only the writes wait their turn */
 async function rollAfter(h){
@@ -948,6 +971,7 @@ async function fold(h, addr, others){
 }
 async function makeItHappen(){
   if (BUSY) return;
+  if (auto() && NARR.kind !== 'device' && narrReady()) wakeAudio();
   if (REC){ const prev = REC; stopMic(prev); REC = null; paintTile(prev); sayLater(prev); }
   await SAYQ;   /* every line in flight lands before the fold reads the room */
   await readAll();
@@ -959,7 +983,8 @@ async function makeItHappen(){
   const told = [];
   for (const addr of rooms){
     const here = partyIn(addr).filter(h => keyOf(h));
-    const order = LAST[addr] && here.includes(LAST[addr]) ? [LAST[addr]].concat(here.filter(h => h !== LAST[addr])) : here;
+    const pin = maker(), first = pin && here.includes(pin) ? pin : LAST[addr] && here.includes(LAST[addr]) ? LAST[addr] : null;
+    const order = first ? [first].concat(here.filter(h => h !== first)) : here;
     hint('the doorman is weaving the moment' + (rooms.length > 1 ? ' at ' + esc(nameOf(ROOMS[addr].place) || addr) : '') + ' — talk among yourselves…', 'busy');
     let a = null, who = null;
     for (const h of order){
@@ -1040,7 +1065,8 @@ async function goThere(movers, addr, way){
    started within a few seconds says so, never pretends. ── */
 const canSpeak = () => 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
 let VOICE = null, RATE = parseFloat(store('group:rate') || '1') || 1, HELD = [], TURN = 0;
-function auto(){ return store('group:auto') === '1'; }
+/* AUTO-NARRATE (options): each moment read aloud as soon as it happens — on unless switched off */
+function auto(){ return store('group:auto') !== '0'; }
 function voiceList(){ return canSpeak() ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : []; }
 function pickVoice(){
   const vs = voiceList(), saved = store('group:voice');
@@ -1211,7 +1237,7 @@ function openNarrator(){
   $('n-okey').value = NARR.openai.key || ''; $('n-ekey').value = NARR.eleven.key || '';
   $('n-ovoice').innerHTML = OPENAI_VOICES.map(v => '<option' + (v === (NARR.openai.voice || 'fable') ? ' selected' : '') + '>' + v + '</option>').join('');
   $('n-ostyle').value = NARR.openai.style || OPENAI_STYLE;
-  $('n-rate').value = RATE; $('n-auto').checked = auto();
+  $('n-rate').value = RATE;
   delete $('n-evoice').dataset.loaded;
   paintVoices(); nsay('');
   $('nveil').classList.remove('hidden');
@@ -1262,7 +1288,6 @@ function wireNarrator(){
   $('n-ekey').addEventListener('change', () => { delete $('n-evoice').dataset.loaded; elevenVoices(); });
   $('n-dvoice').addEventListener('change', e => { store('group:voice', e.target.value); pickVoice(); });
   $('n-rate').addEventListener('change', e => { RATE = parseFloat(e.target.value) || 1; store('group:rate', String(RATE)); });
-  $('n-auto').addEventListener('change', e => store('group:auto', e.target.checked ? '1' : null));
   $('n-test').addEventListener('click', async () => {
     const line = ['The table is listening. What happens next is yours to say.'];
     if (SPEAKING) stopSpeech();
@@ -1406,6 +1431,11 @@ async function boot(){
   $('hear').addEventListener('click', hearIt);
   $('c-add').addEventListener('click', () => openAdd(''));
   $('c-narr').addEventListener('click', openNarrator);
+  const paintSwitches = () => [['c-autonarr', 'auto-narrate', auto()], ['c-autocommit', 'auto-commit', autoCommit()]].forEach(([id, word, on]) => {
+    $(id).textContent = word + ': ' + (on ? 'on' : 'off'); $(id).classList.toggle('on', on); $(id).setAttribute('aria-pressed', on ? 'true' : 'false'); });
+  $('c-autonarr').addEventListener('click', () => { store('group:auto', auto() ? '0' : null); paintSwitches(); });
+  $('c-autocommit').addEventListener('click', () => { store('group:autocommit', autoCommit() ? '0' : null); paintSwitches(); if (autoCommit()) autoCommitIfReady(); });
+  paintSwitches();
   wireNarrator();
   $('c-view').addEventListener('click', () => { EXPANDED = !EXPANDED; store('group:expanded', EXPANDED ? '1' : null); repaint(); });
   $('c-keys').addEventListener('click', () => bindKeys(!BOUND));
