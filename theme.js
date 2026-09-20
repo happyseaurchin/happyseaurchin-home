@@ -99,7 +99,11 @@
       a.href = href; a.textContent = text;
       p.appendChild(a);
     }
-    if (first !== 'welcome') door('https://happyseaurchin.com/welcome', 'come in \u2192');
+    /* WITHHELD WHERE THE PAGE IS ITSELF THE COMING-IN \u2014 /welcome, and the entrance,
+       which asks the same question one rung earlier and holds /welcome as one of
+       its six ways in. A door in the foot of the door is the confusion the
+       entrance was built to end. */
+    if (first !== 'welcome' && first.indexOf('entrance') !== 0) door('https://happyseaurchin.com/welcome', 'come in \u2192');
     /* EVERY FIELD — the index of them all. Named for what it SHOWS, never for the
        route that happens to serve it: '/tree' is the plumbing and a reader never
        has to meet the word. Withheld on the index itself, where it would offer
