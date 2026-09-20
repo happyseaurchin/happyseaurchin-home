@@ -554,6 +554,7 @@ async function readAll(){
     r.pool = pool; r.liquid = liquid;
     if (!r.place && partyIn(addr).length){ const h = partyIn(addr)[0]; const map = await readPlace(STAND[h], KEEPER).catch(() => null); r.place = placeLine(map, STAND[h]) || ''; }
     if (store(heardHome(addr)) === null) store(heardHome(addr), lastBefore(r.pool ? beatsOf(r.pool) : [], SINCE));
+    await readTold(addr).catch(() => {});
   }
 }
 /* the room's envelope, for its ways and its dice — asked as one of the party standing there */
@@ -567,6 +568,29 @@ async function readEnvelope(addr){
     DICE[addr] = env.dice;
   } catch(e){}
 }
+/* THE TABLE'S TELLING — one narration of the moment, composed for everyone at
+   this screen and kept in each character's account (bsp-mcp tiers, soft with a
+   party). The table hears the telling; the resolution stays the record beneath
+   it. Held by beat, from the doorman's own answer and from the accounts on a
+   later visit, so a reload still hears what was told. */
+const TOLD = {};
+const toldKey = (addr, slot) => addr + ':' + slot;
+function toldOf(addr, slot){ return TOLD[toldKey(addr, slot)] || null; }
+/* the accounts of whoever is played here: every entry located at pool:<addr>:<slot> */
+async function readTold(addr){
+  const who = partyIn(addr)[0]; if (!who) return;
+  for (const organ of ['history:' + who, 'witnessed:' + who]){
+    const acc = await readBlock(organ).catch(() => null);
+    if (!acc) continue;
+    slottedEntries(acc).forEach(x => {
+      const at = fieldOf(x.entry, '2'), text = voiceOf(x.entry);
+      const m = typeof at === 'string' ? at.match(/^pool:(.+):(\d+)$/) : null;
+      if (m && text) TOLD[toldKey(m[1], m[2])] = text;
+    });
+    return;
+  }
+}
+
 function newBeats(addr){
   const r = ROOMS[addr]; const heard = store(heardHome(addr)) || '0';
   return (r && r.pool ? beatsOf(r.pool) : []).filter(b => slotAfter(b.slot, heard));
@@ -1003,6 +1027,7 @@ async function makeItHappen(){
     for (const h of order){
       who = h;
       a = await fold(h, addr, here.filter(x => x !== h));
+      if (a && a.told && a.slot) TOLD[toldKey(addr, a.slot)] = a.told;   /* the doorman hands the table's telling straight back */
       /* a doorman holding an older key, or none: the key this table holds is proven, handed to
          it, and the moment asked for once more — nothing has happened yet, so nothing doubles */
       if (a.reached && !a.folded && /passphrase does not match|no character's doorman is enrolled/.test(a.detail)){
@@ -1329,7 +1354,7 @@ function hearIt(){
   let at = null;
   for (const it of items){
     if (many && it.addr !== at){ lines.push('At ' + (nameOf(ROOMS[it.addr].place) || 'the place') + '.'); at = it.addr; }
-    lines.push(spokenOf(it.b));
+    lines.push(toldOf(it.addr, it.b.slot) || spokenOf(it.b));
   }
   for (const addr of rooms){
     const fresh = newBeats(addr);
@@ -1338,7 +1363,7 @@ function hearIt(){
     if (!partyIn(addr).length) LEFT.delete(addr);
   }
   if (!items.length){
-    for (const addr of roomOrder()){ const b = ROOMS[addr].pool ? beatsOf(ROOMS[addr].pool) : []; if (b.length) lines.push(spokenOf(b[b.length - 1])); }
+    for (const addr of roomOrder()){ const b = ROOMS[addr].pool ? beatsOf(ROOMS[addr].pool) : []; if (b.length){ const last = b[b.length - 1]; lines.push(toldOf(addr, last.slot) || spokenOf(last)); } }
   }
   if (!lines.length){ hint('nothing has happened yet'); return; }
   if (!speak(lines)) hint('this browser has no voice to read with — the words stand in the expanded view', 'err');
