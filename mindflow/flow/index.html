@@ -601,9 +601,19 @@ const OPT = { scale: 'shared', stack: 'stability', labels: 'on', colour: 'lodest
 const GEOM = { colW: 24, replyW: 14, pitch: 260, replyAt: 0.58, marginL: 96, marginR: 70, top: 34, bottom: 30, H: 540, gap: 1.2, sharesPad: 11 };
 let RUNS = [];
 
+// In strata mode "by stability" gathers each stratum into ONE band — physics, then biology, then
+// chemistry: how to use the medium changes least, the loop's law next, the compound for the task
+// most — so the three shares read as three blocks of colour, never as stripes scattered through
+// the lodestone's order. Spans with no stratum keep their lodestone rank beneath. Lodestone mode
+// sorts exactly as before.
+const STRATUM_RANK = { physics: 0, biology: 1, chemistry: 2 };
 function stackSpans(spans) {
   const arr = spans.map((s, i) => ({ s, i }));
-  if (OPT.stack === 'stability') arr.sort((a, b) => (STACK_RANK[dimOf(a.s)] ?? 8) - (STACK_RANK[dimOf(b.s)] ?? 8) || a.i - b.i);
+  const rank = (s) => STACK_RANK[dimOf(s)] ?? 8;
+  if (OPT.stack === 'stability' && OPT.colour === 'strata') {
+    const band = (s) => { const st = stratumOf(s); return st ? STRATUM_RANK[st.key] : 3; };
+    arr.sort((a, b) => band(a.s) - band(b.s) || rank(a.s) - rank(b.s) || a.i - b.i);
+  } else if (OPT.stack === 'stability') arr.sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i);
   return arr.map(x => x.s);
 }
 /* The rung colours carry meaning and are the same in both themes — with one
