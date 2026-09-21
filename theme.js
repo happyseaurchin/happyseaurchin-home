@@ -480,6 +480,8 @@
     ['page',         'page',     'handle'],
     ['passport',     'passport', 'handle'],
     ['hands',        'hands',    'handle'],
+    /* every handle that spends a key, and the model each uses (David, 2026-09-21) */
+    ['models',       'models',   'handle'],
     ['projects',     'walk',     'family'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
