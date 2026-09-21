@@ -105,6 +105,7 @@
   .col-kind { font-size: 9px; fill: var(--fl-dim2); }
   .col-total { font-size: 10px; fill: var(--fl-axis); font-variant-numeric: tabular-nums; }
   .col-est { fill: var(--fl-dim3); }
+  .col-shares { font-size: 8.5px; fill: var(--fl-dim3); }
   /* the span's outline is the ground showing between stacked spans */
   .span { stroke: var(--fl-card); stroke-width: 1; cursor: pointer; }
   .span:hover { stroke: var(--fl-text); stroke-width: 1.2; }
@@ -171,6 +172,9 @@
     <span class="k" style="margin-left:10px">theme</span>
     <button data-theme-set="light">light</button>
     <button data-theme-set="dark">dark</button>
+    <span class="k" style="margin-left:10px">colour</span>
+    <button data-colour="lodestone" class="active">lodestone</button>
+    <button data-colour="strata">physics · chemistry · biology</button>
   </div>
   <p id="live" hidden>live — re-reading every few seconds, redrawing only when the document changes</p>
   <div id="status"></div>
@@ -205,6 +209,17 @@ const DIMS = {
   'thinking': { name: 'thinking', color: '#d9d3e8', line: 'thought, drawn where it happened and not carried forward' },
   'loop':     { name: 'in-loop',  color: '#7fb0b0', line: 'work done across the tool turns of one wake — counted, not logged per turn' },
 };
+// physics · chemistry · biology — David's three-strata metaphor (2026-09-21), an alternative
+// colouring to the lodestone rungs above, toggled beside them rather than replacing them:
+// PHYSICS is how to use pscale and the tool, CHEMISTRY the compound composed for the task,
+// BIOLOGY the loop — its law and the role worn for the call. Hues are reused outright from
+// DIMS (ground, intention, situation) so a span that already reads true in one grouping keeps
+// a colour a returning reader has seen before.
+const STRATA = {
+  physics:   { name: 'physics',   color: '#4a6fa5', line: 'how to use pscale and the tool' },
+  chemistry: { name: 'chemistry', color: '#d08a2e', line: 'the compound composed for the task' },
+  biology:   { name: 'biology',   color: '#3f9a5a', line: 'the loop: its law and the role worn for the call' },
+};
 const STACK_RANK = { harness: 0, '7': 1, '1': 2, '2': 3, '3': 4, '5': 5, '4': 6, '6': 7, tool: 8, output: 9, call: 10, loop: 11, thinking: 12 };
 const RUNG_LINES = {
   '1.1': 'a shell is a mind\'s persistent structure while the cognition passing through it stays fluid',
@@ -238,6 +253,13 @@ const REF_RUNG = [
   [/^(gap|task|the ask|prompt|pending|user)/, '6.1'],
   [/^(lodestone|function|compile|frame:)/, '7.3'],
 ];
+// Fallback only, for a span whose own line does not name its stratum (the RPG readings do; see
+// adaptFlowBlock's spanOf below, which parses it rather than adding a field to the block shape).
+// This infers physics/chemistry/biology from the lodestone dimension the span already answers
+// to. It is the page's second editorial act after REF_RUNG above — and, like that one, David's
+// to re-rule, not a fact about the lodestone.
+const DIM_STRATUM = { '2': 'physics', '7': 'biology', '1': 'biology', '3': 'chemistry', '4': 'chemistry', '5': 'chemistry', '6': 'chemistry' };
+const STRATUM_LINE_RE = /— (PHYSICS|CHEMISTRY|BIOLOGY) —/;
 function rungFor(name) {
   if (!name) return null;
   const n = String(name).toLowerCase();
@@ -249,6 +271,15 @@ function dimOf(span) {
   if (span.rung) return span.rung[0];
   if (span.cls === 'prompt') return '6';
   return 'tool';
+}
+// A span's stratum: its own line if it named one (set on the span by adaptFlowBlock's spanOf),
+// else the DIM_STRATUM table above, keyed by the same dimension dimOf already resolves — so a
+// span whose class is harness/tool/output/call/thinking/loop (dimOf returns the class itself,
+// never a digit) has no stratum and stays neutral in strata mode.
+function stratumOf(span) {
+  if (span.stratum) return { key: span.stratum, fromLine: true };
+  const s = DIM_STRATUM[dimOf(span)];
+  return s ? { key: s, fromLine: false } : null;
 }
 const CHARS_PER_TOKEN = 4;
 const est = (chars) => (chars || 0) / CHARS_PER_TOKEN;
@@ -481,7 +512,9 @@ function adaptFlowBlock(block, name) {
   const wakes = digitKeys(block).map(k => block[k]).filter(w => w && typeof w === 'object' && w['1'] && typeof w['1'] === 'object');
   const spanOf = (v, key, cls, side) => {
     const chars = Number(v['2']) || 0; const flag = String(v['4'] || '');
-    return { key, label: v['1'] + (flag === 'unresolved' ? ' — unresolved' : ''), ref: v['1'], rung: v['3'] || null, cls, chars, tokens: Math.max(1, Math.round(est(chars))), text: v._ || '', side, new: flag === 'new', changed: flag === 'changed', unresolved: flag === 'unresolved' };
+    const text = v._ || '';
+    const named = STRATUM_LINE_RE.exec(text);
+    return { key, label: v['1'] + (flag === 'unresolved' ? ' — unresolved' : ''), ref: v['1'], rung: v['3'] || null, cls, chars, tokens: Math.max(1, Math.round(est(chars))), text, side, new: flag === 'new', changed: flag === 'changed', unresolved: flag === 'unresolved', stratum: named ? named[1].toLowerCase() : null };
   };
   const moments = []; let probes = 0;
   wakes.forEach((wk, i) => {
@@ -561,13 +594,26 @@ function toRows(data, name) {
 // ───────────────────────────────────────────────────────────────────────────
 // Renderer — columns and ribbons.
 // ───────────────────────────────────────────────────────────────────────────
-const OPT = { scale: 'shared', stack: 'stability', labels: 'on' };
-const GEOM = { colW: 24, replyW: 14, pitch: 260, replyAt: 0.58, marginL: 96, marginR: 70, top: 34, bottom: 30, H: 540, gap: 1.2 };
+const OPT = { scale: 'shared', stack: 'stability', labels: 'on', colour: 'lodestone' };
+// sharesPad: extra headroom a WINDOW column's header reserves in strata mode for the per-window
+// physics/chemistry/biology shares line; unused (0) in lodestone mode, which is why lodestone
+// mode's pixels are untouched by its presence.
+const GEOM = { colW: 24, replyW: 14, pitch: 260, replyAt: 0.58, marginL: 96, marginR: 70, top: 34, bottom: 30, H: 540, gap: 1.2, sharesPad: 11 };
 let RUNS = [];
 
+// In strata mode "by stability" gathers each stratum into ONE band — physics, then biology, then
+// chemistry: how to use the medium changes least, the loop's law next, the compound for the task
+// most — so the three shares read as three blocks of colour, never as stripes scattered through
+// the lodestone's order. Spans with no stratum keep their lodestone rank beneath. Lodestone mode
+// sorts exactly as before.
+const STRATUM_RANK = { physics: 0, biology: 1, chemistry: 2 };
 function stackSpans(spans) {
   const arr = spans.map((s, i) => ({ s, i }));
-  if (OPT.stack === 'stability') arr.sort((a, b) => (STACK_RANK[dimOf(a.s)] ?? 8) - (STACK_RANK[dimOf(b.s)] ?? 8) || a.i - b.i);
+  const rank = (s) => STACK_RANK[dimOf(s)] ?? 8;
+  if (OPT.stack === 'stability' && OPT.colour === 'strata') {
+    const band = (s) => { const st = stratumOf(s); return st ? STRATUM_RANK[st.key] : 3; };
+    arr.sort((a, b) => band(a.s) - band(b.s) || rank(a.s) - rank(b.s) || a.i - b.i);
+  } else if (OPT.stack === 'stability') arr.sort((a, b) => rank(a.s) - rank(b.s) || a.i - b.i);
   return arr.map(x => x.s);
 }
 /* The rung colours carry meaning and are the same in both themes — with one
@@ -582,27 +628,46 @@ const isDark = () => document.documentElement.getAttribute('data-theme') === 'da
 const rungColor = (key) => (isDark() && DARK_RUNG[key]) || (DIMS[key] || DIMS.tool).color;
 
 function spanColor(span, shadeIndex) {
-  const key = dimOf(span);
-  const c = d3.color(rungColor(key));
+  const strat = OPT.colour === 'strata' ? stratumOf(span) : null;
+  const base = strat ? STRATA[strat.key].color : rungColor(dimOf(span));
+  const c = d3.color(base);
   const k = shadeIndex % 3;
   return k === 0 ? c.formatHex() : k === 1 ? c.brighter(0.55).formatHex() : c.darker(0.45).formatHex();
 }
 function fmt(n) { return n === null || n === undefined ? '—' : n.toLocaleString('en-GB'); }
+// The three shares shown under a WINDOW column's label in strata mode: token share of only the
+// spans that carry a stratum (harness/tool/output/call/thinking/loop spans are skipped, same as
+// the neutral colouring they keep). Null when nothing in the window has a stratum.
+function strataShares(moment) {
+  const sums = { physics: 0, chemistry: 0, biology: 0 }; let tot = 0;
+  for (const s of moment.spans) {
+    const strat = stratumOf(s); if (!strat) continue;
+    sums[strat.key] += s.tokens || 0; tot += s.tokens || 0;
+  }
+  if (!tot) return null;
+  const pct = (n) => Math.round(n * 100 / tot);
+  return `physics ${pct(sums.physics)}% · chemistry ${pct(sums.chemistry)}% · biology ${pct(sums.biology)}%`;
+}
 
 // Windows are the main columns, one pitch apart; a reply sits between two windows and is
 // drawn ABOVE the persistence ribbons — the harness, the currents, the earlier fetches carry
 // window to window, never through the reply. The reply receives the window whole (the grey
 // band) and feeds the next window what it emitted: its text, its calls, its writes.
-function layoutRun(run, tokensPerPx) {
-  const cols = []; let wi = 0;
+function layoutRun(run, tokensPerPx, topPad) {
+  const cols = []; let wi = 0; const top = GEOM.top + (topPad || 0);
   run.moments.forEach((m, ci) => {
     const spans = stackSpans(m.spans);
     const isWindow = m.kind === 'window';
     const x = isWindow ? GEOM.marginL + wi * GEOM.pitch : GEOM.marginL + Math.max(wi - 1, 0) * GEOM.pitch + GEOM.pitch * GEOM.replyAt;
     if (isWindow) wi++;
-    let y = GEOM.top; const shade = new Map();
+    let y = top; const shade = new Map();
     const placed = spans.map(s => {
-      const dim = dimOf(s); const idx = shade.get(dim) || 0; shade.set(dim, idx + 1);
+      // Grouped for shading (base/brighter/darker) by whatever key it is coloured by: the raw
+      // dimension in lodestone mode, or its stratum in strata mode — so spans folded into the
+      // same stratum from different dimensions still alternate shade rather than blurring solid.
+      const strat = OPT.colour === 'strata' && stratumOf(s);
+      const dim = strat ? strat.key : dimOf(s);
+      const idx = shade.get(dim) || 0; shade.set(dim, idx + 1);
       const h = Math.max((s.tokens || 0) / tokensPerPx, 1.2);
       const p = { span: s, y0: y, y1: y + h, color: spanColor(s, idx), col: ci, m };
       y += h + GEOM.gap; return p;
@@ -660,13 +725,14 @@ function renderAll() {
     const expanded = OPT.scale === 'shared' && !!run.expanded;
     const tokensPerPx = (OPT.scale === 'shared' && !expanded ? maxTok : runMax) / GEOM.H;
     const magnify = expanded ? maxTok / runMax : 1;
-    const cols = layoutRun(run, tokensPerPx);
+    const topPad = OPT.colour === 'strata' ? GEOM.sharesPad : 0;
+    const cols = layoutRun(run, tokensPerPx, topPad);
     const windows = cols.filter(c => c.isWindow);
     const lastCol = cols[cols.length - 1];
     const width = lastCol.x + lastCol.w + GEOM.marginR + (lastCol.isWindow ? 0 : 40);
     // The row is as tall as what was placed: minimum heights and gaps make a window of many
     // thin spans taller than its tokens alone, so the extent is measured, never assumed.
-    const extentBottom = Math.max(GEOM.top + 24, ...cols.map(c => c.placed.length ? c.placed[c.placed.length - 1].y1 : GEOM.top));
+    const extentBottom = Math.max(GEOM.top + topPad + 24, ...cols.map(c => c.placed.length ? c.placed[c.placed.length - 1].y1 : GEOM.top + topPad));
     const rowH = Math.ceil(extentBottom - GEOM.top);
     const height = GEOM.top + rowH + GEOM.bottom + 40;
     const box = host.append('div').attr('class', 'run');
@@ -725,6 +791,10 @@ function renderAll() {
       const g = svg.append('g');
       g.append('text').attr('class', 'col-label').attr('x', c.x + c.w / 2).attr('y', GEOM.top - 18).attr('text-anchor', 'middle').text(c.m.label);
       g.append('text').attr('class', 'col-kind').attr('x', c.x + c.w / 2).attr('y', GEOM.top - 7).attr('text-anchor', 'middle').text(c.isWindow ? 'window' : 'emitted');
+      if (c.isWindow && OPT.colour === 'strata') {
+        const shares = strataShares(c.m);
+        if (shares) g.append('text').attr('class', 'col-shares').attr('x', c.x + c.w / 2).attr('y', GEOM.top + topPad - 8).attr('text-anchor', 'middle').text(shares);
+      }
       const labelRoom = c.isWindow ? GEOM.pitch * GEOM.replyAt - c.w - 12 : GEOM.pitch * (1 - GEOM.replyAt) - c.w - 12;
       for (const p of c.placed) {
         g.append('rect').attr('class', 'span' + (c.m.ghost ? ' ghost' : '')).attr('x', c.x).attr('y', p.y0).attr('width', c.w).attr('height', Math.max(p.y1 - p.y0, 0.8))
@@ -749,13 +819,36 @@ function renderAll() {
 }
 function renderLegend() {
   const L = d3.select('#legend'); L.selectAll('*').remove();
-  L.append('div').text('colour — which rung of the lodestone a span answers to (hover any span for its exact rung):');
+  const strataMode = OPT.colour === 'strata';
+  L.append('div').text(strataMode
+    ? "colour — David's three strata (hover any span: its own line may name it; otherwise the table beside REF_RUNG infers it from the lodestone rung):"
+    : 'colour — which rung of the lodestone a span answers to (hover any span for its exact rung):');
   const dims = L.append('div').attr('class', 'dims');
-  for (const k of ['7', '1', '2', '3', '5', '4', '6', 'harness', 'tool', 'call', 'output', 'loop', 'thinking']) {
-    const d = DIMS[k]; const row = dims.append('div');
-    row.append('span').attr('class', 'sw').style('background', rungColor(k));
-    row.append('b').text(d.name + (/^\d$/.test(k) ? ` (lodestone ${k})` : '') + ' — ');
-    row.append('span').text(d.line);
+  if (strataMode) {
+    for (const k of ['physics', 'chemistry', 'biology']) {
+      const d = STRATA[k]; const row = dims.append('div');
+      row.append('span').attr('class', 'sw').style('background', d.color);
+      row.append('b').text(d.name + ' — ');
+      row.append('span').text(d.line);
+    }
+    // Only the neutral classes actually standing in what is loaded — not the full six, since
+    // strata mode is meant to read shorter than the lodestone legend above it.
+    const present = new Set();
+    for (const run of RUNS) for (const m of run.moments) for (const s of m.spans) { if (!stratumOf(s)) present.add(dimOf(s)); }
+    for (const k of ['harness', 'tool', 'call', 'output', 'loop', 'thinking']) {
+      if (!present.has(k)) continue;
+      const d = DIMS[k]; const row = dims.append('div');
+      row.append('span').attr('class', 'sw').style('background', rungColor(k));
+      row.append('b').text(d.name + ' — ');
+      row.append('span').text(d.line);
+    }
+  } else {
+    for (const k of ['7', '1', '2', '3', '5', '4', '6', 'harness', 'tool', 'call', 'output', 'loop', 'thinking']) {
+      const d = DIMS[k]; const row = dims.append('div');
+      row.append('span').attr('class', 'sw').style('background', rungColor(k));
+      row.append('b').text(d.name + (/^\d$/.test(k) ? ` (lodestone ${k})` : '') + ' — ');
+      row.append('span').text(d.line);
+    }
   }
   L.append('div').attr('class', 'marks').html('ribbons — <b>solid</b>: carried unchanged · <b>dashed, paler</b>: carried, content changed · <b>wedge at the left</b>: entered here (a fetched result, a mark that moved) · <b>grey band</b>: the window read whole before the reply · <b>dashed column</b>: a projected next window, the recorded writes landed on it. Column totals: measured tokens, or ≈ estimated from characters at four a token. Under a shared scale a small run stays small — that is the comparison; the expand button in its header magnifies that one run and says by how much. Stack "by stability" puts the slow rungs at the top so the unbroken band reads as one; "as the prompt reads" keeps the order the mind actually received.');
 }
@@ -765,8 +858,10 @@ const tip = document.getElementById('tip');
 function showTip(ev, span, moment, extra) {
   const dim = dimOf(span); const d = DIMS[dim] || DIMS.tool;
   const rungLine = span.rung && RUNG_LINES[span.rung] ? `<div class="rung">lodestone ${span.rung} — ${RUNG_LINES[span.rung]}</div>` : span.rung ? `<div class="rung">lodestone ${span.rung}</div>` : '';
+  const strat = OPT.colour === 'strata' ? stratumOf(span) : null;
+  const strataLine = strat ? `<div class="rung">${strat.key} — ${STRATA[strat.key].line}${strat.fromLine ? '' : ' (stratum inferred from its lodestone rung)'}</div>` : '';
   tip.innerHTML = `<div class="h">${escapeHtml(span.label || span.key)}</div>` +
-    `<div class="dim">${d.name}${/^\d$/.test(dim) ? ' · lodestone ' + dim : ''} · ${moment.kind}${moment.label ? ' · ' + escapeHtml(moment.label) : ''}</div>` + rungLine +
+    `<div class="dim">${d.name}${/^\d$/.test(dim) ? ' · lodestone ' + dim : ''} · ${moment.kind}${moment.label ? ' · ' + escapeHtml(moment.label) : ''}</div>` + strataLine + rungLine +
     `<div>${span.chars !== null && span.chars !== undefined ? fmt(span.chars) + ' chars · ' : ''}${fmt(span.tokens)} tokens${moment.measured ? '' : ' (≈)'}${extra ? ' · ' + extra : ''}</div>` +
     (span.text ? `<div style="color:#bbb;margin-top:3px">${escapeHtml(String(span.text).slice(0, 220))}${String(span.text).length > 220 ? '…' : ''}</div>` : '');
   tip.style.display = 'block';
@@ -889,6 +984,7 @@ function setTheme(t, fromReader) {
 document.querySelectorAll('#panel button[data-theme-set]').forEach(b => b.onclick = () => setTheme(b.getAttribute('data-theme-set'), true));
 document.querySelectorAll('#panel button[data-scale]').forEach(b => b.onclick = () => { OPT.scale = b.getAttribute('data-scale'); setActive('data-scale', OPT.scale); setParam('scale', OPT.scale); renderAll(); });
 document.querySelectorAll('#panel button[data-stack]').forEach(b => b.onclick = () => { OPT.stack = b.getAttribute('data-stack'); setActive('data-stack', OPT.stack); setParam('stack', OPT.stack); renderAll(); });
+document.querySelectorAll('#panel button[data-colour]').forEach(b => b.onclick = () => { OPT.colour = b.getAttribute('data-colour'); setActive('data-colour', OPT.colour); setParam('colour', OPT.colour); renderAll(); });
 let resizeTimer = null;
 window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderAll, 150); });
 document.querySelectorAll('#panel button[data-labels]').forEach(b => b.onclick = () => { OPT.labels = b.getAttribute('data-labels'); setActive('data-labels', OPT.labels); renderAll(); });
@@ -902,6 +998,7 @@ document.getElementById('file').addEventListener('change', async (ev) => {
   const src = params.get('source');
   if (params.get('scale') === 'fit') { OPT.scale = 'fit'; setActive('data-scale', 'fit'); }
   if (params.get('stack') === 'window') { OPT.stack = 'window'; setActive('data-stack', 'window'); }
+  if (params.get('colour') === 'strata') { OPT.colour = 'strata'; setActive('data-colour', 'strata'); }
   let list = src ? src.split(',').map(s => s.trim()).filter(Boolean) : ['egg-one', 'mirror', 'session'];
   if (list.includes('all')) list = ['egg-one', 'mirror', 'session'];
   const known = Object.keys(SOURCES).find(k => list.length === 1 && list[0] === k);
