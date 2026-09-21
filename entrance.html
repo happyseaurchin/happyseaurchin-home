@@ -14,12 +14,14 @@
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
 <style>
-  /* ENTRANCE 2 — TWO QUESTIONS, one at a time. Where /entrance1 lays every way in
-     on one screen, this asks which world first and how present second, and each
-     choice opens to everything the block holds about it: what it is like, who
-     hears you and how soon, and the line to copy. Same block, same words; the
-     address of a cell is the page's own query, so /entrance2?at=2.1 is a link an
-     email can carry straight to one way in. */
+  /* THE ENTRANCE — TWO QUESTIONS, one at a time: which world, then how present
+     you want to be in it. Each choice opens to everything the block holds about
+     it — what it is like, who hears you and how soon, and the line to copy. The
+     words are the block `entrance` at the beach and never this file, so they
+     change by a write rather than a deploy. A cell's block address is the page's
+     own query, so /entrance?at=2.1 is a link an email can carry straight to one
+     way in. Every way OUT opens in a new tab: a person who has come this far
+     should still have the door behind them when they come back. */
   *{box-sizing:border-box} html,body{margin:0}
   body{
     font-family:var(--body); color:var(--foam); font-size:17.5px; line-height:1.55;
@@ -110,7 +112,6 @@
   <span class="dot"></span>
   <span><b>entrance</b> · happyseaurchin.com</span>
   <span class="spacer"></span>
-  <a href="/entrance1">all of it on one screen →</a>
   <button type="button" id="btn-words" aria-pressed="false" title="open every choice at once">show the words</button>
   <button id="btn-theme" title="light or dark">◐</button>
 </div>
@@ -119,16 +120,14 @@
   <header class="head">
     <p class="step" id="step">first question</p>
     <h1 id="title">Where do you want to <span class="cool">be?</span></h1>
-    <p id="lede">Two questions and you are somewhere. Nothing to join, no account, no email.</p>
+    <p id="lede">Two questions and an immersive experience. Nothing to join, no account, no email.</p>
   </header>
   <div class="choices" id="choices"><p class="loading">reading the entrance…</p></div>
   <button class="back" id="back" hidden>← back</button>
 </main>
 
 <div class="foot">
-  <span id="cell-addr">entrance</span>
-  <a href="/entrance1">all of it on one screen →</a>
-  <a href="/explain?block=entrance">the words, as a block →</a>
+  <a href="/explain?block=entrance" target="_blank" rel="noopener">this page as a block on the beach →</a>
 </div>
 
 <script>
@@ -183,7 +182,7 @@ function cellHTML(addr, lab, feel, where, what, who, say, cool){
   return '<section class="choice ' + (cool ? 'cool' : 'hot') + (shut ? ' shut' : '') + '" data-at="' + esc(addr) + '">' +
     '<div class="plate">' +
       (where
-        ? '<a class="go" href="' + esc(where) + '"><span class="lab">' + esc(lab) + '</span>' + (feel ? '<span class="feel">' + esc(feel) + '</span>' : '') + '</a>'
+        ? '<a class="go" href="' + esc(where) + '" target="_blank" rel="noopener"><span class="lab">' + esc(lab) + '</span>' + (feel ? '<span class="feel">' + esc(feel) + '</span>' : '') + '</a>'
         : '<button type="button" class="go"><span class="lab">' + esc(lab) + '</span>' + (feel ? '<span class="feel">' + esc(feel) + '</span>' : '') + '</button>') +
       '<button type="button" class="more" aria-label="what this is"><span>⌄</span></button>' +
     '</div>' +
@@ -204,20 +203,24 @@ function render(){
   if (!WORLD){
     $('step').textContent = 'first question';
     $('title').innerHTML = 'Where do you want to <span class="cool">be?</span>';
-    $('lede').textContent = 'Two questions and you are somewhere. Nothing to join, no account, no email.';
+    $('lede').textContent = 'Two questions and an immersive experience. Nothing to join, no account, no email.';
     $('back').hidden = true;
-    $('cell-addr').textContent = 'entrance';
     box.innerHTML = t.worlds.map(d => {
       const said = saying(voiceOf(BLOCK[d]));
+      /* A WORLD'S SENTENCES ARE SPENT IN ORDER by the rungs that show them: the
+         first is the line it wears HERE, the second is the line it wears once
+         you are inside it, and the rest is what more there is to say. One
+         underscore, read by three rungs, and no position spent on any of it. */
       const first = firstSentence(said.line);
-      const rest = said.line.slice(first.length).trim();
+      const after = said.line.slice(first.length).trim();
+      const rest = after.slice(firstSentence(after).length).trim();
       /* a world is not a destination — its plate asks the second question */
       return '<section class="choice hot" data-at="' + d + '" data-world="' + d + '">' +
         '<div class="plate">' +
           '<button type="button" class="go"><span class="lab">' + esc(said.lab) + '</span><span class="feel">' + esc(first) + '</span></button>' +
           '<button type="button" class="more" aria-label="what this is"><span>⌄</span></button>' +
         '</div>' +
-        '<div class="words"><p>' + esc(rest || first) + '</p><p class="at">entrance:' + d + '</p></div>' +
+        '<div class="words"><p>' + esc(rest || after || first) + '</p><p class="at">entrance:' + d + '</p></div>' +
       '</section>';
     }).join('') + t.sides.map(d => {
       const said = saying(voiceOf(BLOCK[d]));
@@ -227,9 +230,8 @@ function render(){
     const w = BLOCK[WORLD], said = saying(voiceOf(w));
     $('step').textContent = 'second question · ' + said.lab.toLowerCase();
     $('title').innerHTML = 'How present do you want to <span class="cool">be?</span>';
-    $('lede').textContent = firstSentence(said.line);
+    $('lede').textContent = firstSentence(said.line.slice(firstSentence(said.line).length).trim()) || firstSentence(said.line);
     $('back').hidden = false;
-    $('cell-addr').textContent = 'entrance:' + WORLD + ' · ' + said.lab.toLowerCase();
     box.innerHTML = digitKeys(w).map(k => {
       const c = w[k], s = saying(voiceOf(c));
       return cellHTML(WORLD + '.' + k, s.lab, s.line, leaf(c,'1'), leaf(c,'2'), leaf(c,'3'), leaf(c,'4'), false);
