@@ -100,38 +100,12 @@ function ago(iso, now){
   if (s < 129600) return Math.round(s/3600) + ' h ago';
   return Math.round(s/86400) + ' days ago';
 }
-const tail = n => n.slice(n.lastIndexOf(':') + 1);
-const fold = s => s.toLowerCase().replace(/[\s\-_]/g, '');
-function edits(a, b){
-  if (Math.abs(a.length - b.length) > 2) return 9;
-  let prev = Array.from({length: b.length + 1}, (_, i) => i);
-  for (let i = 1; i <= a.length; i++){
-    const cur = [i];
-    for (let j = 1; j <= b.length; j++)
-      cur.push(Math.min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + (a[i-1] !== b[j-1] ? 1 : 0)));
-    prev = cur;
-  }
-  return prev[b.length];
-}
-
-/* every last segment, and how many blocks stand under it */
-function standing(blocks){
-  const m = new Map();
-  for (const b of blocks) if (b.includes(':')) { const t = tail(b); m.set(t, (m.get(t) || 0) + 1); }
-  return m;
-}
-/* the better-standing name this one is a letter from, if any */
+/* the measure is the site's one copy, in theme.js (window.pscaleNames) */
+const { standing, near: nearName } = window.pscaleNames;
+/* the better-standing name this block's last segment is a letter from, if any */
 function nearOf(name, stand){
   if (!name.includes(':') || /^(archive|sed|grain):/.test(name)) return null;
-  const t = tail(name), f = fold(t), mine = stand.get(t) || 0;
-  let best = null;
-  for (const [o, n] of stand){
-    if (o === t || n <= mine) continue;
-    const same = fold(o) === f;
-    if (!same && (Math.min(t.length, o.length) < 5 || edits(f, fold(o)) > 2)) continue;
-    if (!best || n > best.n) best = { name: o, n, same };
-  }
-  return best;
+  return nearName(window.pscaleNames.tail(name), stand);
 }
 
 function rowHtml(name, when, now, near, extra, act){
@@ -175,11 +149,11 @@ async function read(){
     (apart.length ? listHtml(apart.map(b => rowHtml(b, (born && born[b]) || touched[b], now, near.get(b), '', true)), 'm-apart')
                   : '<p class="absent">none</p>');
 
-  h += '<h2>What arrived <span>' + (born ? Object.keys(born).length + ' stamped' : 'not stamped here') + '</span></h2>';
+  h += '<h2>What arrived <span>' + (born ? Object.keys(born).length + ' stamped' : 'none stamped yet') + '</span></h2>';
   h += born
     ? '<p class="what">When a write first found no block at a name. A block that was here before this beach began stamping births carries no stamp.</p>' +
       listHtml(newest(born).map(b => rowHtml(b, born[b], now, near.get(b), aside(b))), 'm-born')
-    : '<p class="absent">This beach does not stamp births yet, so nothing can say what arrived — only what changed, below.</p>';
+    : '<p class="absent">No birth is stamped here yet. Either nothing has arrived since this beach began stamping births, or its door does not stamp them — the index cannot tell the two apart. What changed is below.</p>';
 
   h += '<h2>What changed <span>' + Object.keys(touched).length + ' of ' + blocks.length + ' stamped</span></h2>' +
     '<p class="what">When each block was last written. A block untouched since this beach began stamping carries no stamp.</p>' +

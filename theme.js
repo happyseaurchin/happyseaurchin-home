@@ -1396,3 +1396,109 @@
     return d;
   };
 })();
+
+/* ── The name line — where a typed handle stands on this beach. ─────────────
+ * A beach is an open commons: any hand may bring a block into being, so every
+ * page that says something under a handle mints <family>:<handle> on its first
+ * say — and a slipped letter in the handle mints a permanent block beside the
+ * one it meant (now:happyhedsgehog beside now:happyhedgehog, set aside
+ * 2026-09-21; bsp-mcp proposals/2026-09-21-tidying-and-spam.md 2.4). The one
+ * moment that can be caught without ever interrupting a say is the moment a
+ * person types their handle, so this wires one quiet line under the handle box
+ * of every page that has one (#ask-handle, or #h) — and it is NEVER a gate: the
+ * page's own button works exactly as before, and a newcomer, who is by
+ * definition a name standing nowhere, is told nothing at all.
+ *
+ * It speaks only when the typed name is a letter or two — or only a capital, a
+ * space or a hyphen — from a name standing in MORE blocks than it does. The
+ * measure is the LAST segment of each block name, and the question is "does
+ * this name stand ANYWHERE here", never "has it a passport": a person may have
+ * a shell, a pool and an ear and no passport at all. One index read per page,
+ * made when the box is first touched, paid by the reader's own browser.
+ *
+ * window.pscaleNames is the measure itself, shared with /lately so the site
+ * holds one copy. (The mirror carries the same measure in TypeScript:
+ * xstream-bsp src/kernel/name-standing.ts.) ── */
+(function(){
+  var APEX = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+  function tail(n){ return n.slice(n.lastIndexOf(':') + 1); }
+  function fold(s){ return s.toLowerCase().replace(/[\s\-_]/g, ''); }
+  function edits(a, b){
+    if (Math.abs(a.length - b.length) > 2) return 9;
+    var prev = [], i, j;
+    for (j = 0; j <= b.length; j++) prev.push(j);
+    for (i = 1; i <= a.length; i++){
+      var cur = [i];
+      for (j = 1; j <= b.length; j++)
+        cur.push(Math.min(prev[j] + 1, cur[j-1] + 1, prev[j-1] + (a[i-1] !== b[j-1] ? 1 : 0)));
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  /* every last segment, and how many blocks stand under it — archives, collectives
+   * and grains lend none: their tails are dates and pair ids, not names */
+  function standing(blocks){
+    var m = new Map();
+    blocks.forEach(function(b){
+      if (b.indexOf(':') < 0 || /^(archive|sed|grain):/.test(b)) return;
+      var t = tail(b); m.set(t, (m.get(t) || 0) + 1);
+    });
+    return m;
+  }
+  /* the best-standing name a typed one is a letter from, if it stands in MORE blocks */
+  function near(name, stand){
+    var f = fold(name), mine = stand.get(name) || 0, best = null;
+    stand.forEach(function(n, o){
+      if (o === name || n <= mine) return;
+      var same = fold(o) === f;
+      if (!same && (Math.min(name.length, o.length) < 5 || edits(f, fold(o)) > 2)) return;
+      if (!best || n > best.n) best = { name: o, n: n, same: same };
+    });
+    return best ? { name: best.name, n: best.n, same: best.same, mine: mine } : null;
+  }
+  window.pscaleNames = { tail: tail, standing: standing, near: near };
+
+  document.addEventListener('DOMContentLoaded', function(){
+    var box = document.getElementById('ask-handle') || document.getElementById('h');
+    if (!box) return;
+    box.setAttribute('autocapitalize', 'none');
+    box.setAttribute('autocorrect', 'off');
+    box.setAttribute('spellcheck', 'false');
+    var line = document.createElement('p');
+    line.hidden = true;
+    line.style.cssText = 'margin:8px 0 0;font-family:var(--mono);font-size:11.5px;line-height:1.6;letter-spacing:.03em;color:var(--vapour-dim)';
+    /* below the row the box sits in, so a flex bar keeps its shape */
+    (box.parentElement || box).insertAdjacentElement('afterend', line);
+
+    var stand = null, asked = false;
+    function say(){
+      var name = box.value.trim();
+      var hit = stand && name.length >= 3 ? near(name, stand) : null;
+      if (!hit){ line.hidden = true; return; }
+      line.textContent = '';
+      line.appendChild(document.createTextNode(hit.mine
+        ? name + ' stands in ' + hit.mine + ' block' + (hit.mine === 1 ? '' : 's') + ' here, a near name in more. Did you mean '
+        : 'nothing stands under ' + name + ' here. Did you mean '));
+      var pick = document.createElement('a');
+      pick.href = '#'; pick.textContent = hit.name;
+      pick.addEventListener('click', function(e){
+        e.preventDefault();
+        box.value = hit.name;
+        box.dispatchEvent(new Event('input', { bubbles: true }));
+        box.focus();
+      });
+      line.appendChild(pick);
+      line.appendChild(document.createTextNode('? Or carry on, if this name is yours.'));
+      line.hidden = false;
+    }
+    function ask(){
+      if (asked) return; asked = true;
+      fetch(APEX, { cache: 'no-store' }).then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(ix){ if (ix && ix.blocks){ stand = standing(ix.blocks); say(); } })
+        .catch(function(){ /* the page stands without it */ });
+    }
+    box.addEventListener('focus', ask);
+    box.addEventListener('input', function(){ ask(); say(); });
+    if (box.value) ask();
+  });
+})();
