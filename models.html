@@ -40,6 +40,11 @@
   .seg button:hover{color:var(--foam)}
   .seg button[aria-pressed="true"]{background:rgba(var(--liquid-rgb),0.18);color:var(--liquid)}
   .seg button:disabled{opacity:.4;cursor:default}
+  .ask{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .ask input{flex:1 1 200px;min-width:0;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:6px;color:var(--foam);font-family:var(--mono);font-size:13px;padding:9px 10px}
+  .ask button{background:rgba(var(--liquid-rgb),0.16);border:1px solid rgba(var(--liquid-rgb),0.4);border-radius:6px;color:var(--liquid);font-family:var(--mono);font-size:12.5px;padding:9px 12px;cursor:pointer}
+  .ask button.quiet{background:none;border-color:var(--line);color:var(--vapour-dim)}
+  .ask span{flex:1 1 100%;font-size:13.5px;color:var(--vapour)}
   .note{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin-top:10px;min-height:1.2em}
   .note.ok{color:var(--liquid)} .note.bad{color:var(--warn,#e0a15a)}
   .x{background:none;border:0;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;cursor:pointer;padding:2px 4px}
@@ -82,7 +87,7 @@
 
   <p class="foot">
     This page never asks for an API key and cannot see one. Your key stays where you gave it — in the mirror, or deposited with a doorman — and this page only says which model it is asked for.<br>
-    A setting is one line in the handle's own block — <b>position 7 of its dial</b> — the line its doorman already reads, so it holds from any device. Anyone may read a dial, as they may read any block here; only changing one asks for the handle's passphrase (once per tab, or once per device with <b>keep passphrases on this device</b>, under <b>options</b>). Which handles are yours is written nowhere.<br>
+    A setting is one named line in the handle's own block — <b>beneath position 9 of its dial</b>, its doorman's behaviours — so it holds from any device and every door reads the same word. Anyone may read a dial, as they may read any block here; only changing one asks for the handle's passphrase (once per tab, or once per device with <b>keep passphrases on this device</b>, under <b>options</b>). Which handles are yours is written nowhere.<br>
     Every model that writes words here is Anthropic's: the mirror and the doormen call no other provider yet. Playing through an LLM app of your own with the connector uses that app's model and no key at all.
   </p>
 </div>
@@ -92,8 +97,12 @@
  * David, 2026-09-21: "a list of characters/agents/users/mirror/anything that
  * uses my llm api keys! and I can set the model… basic/medium/advanced."
  *
- * A SETTING LIVES WHERE THE DOOR ALREADY READS IT: position 7 of the handle's
- * dial — "the mind that answers here" — the keeper's own mind named beneath it.
+ * A SETTING LIVES WHERE THE DOORS READ IT: named lines BENEATH POSITION 9 of the
+ * handle's dial — its doorman's behaviours — 'mind basic', 'keeper haiku'. It
+ * stood at position 7 until the evening this page shipped, when 7 was found to be
+ * a genus agent's flow switch as well; David ruled the doorman's the one to move.
+ * An old line at 7 is still read, and kept in step when it is a mind, so a door
+ * that has not yet moved hears the same word.
  *
  * THE PAGE FINDS WHERE A HANDLE LIVES; a person is never asked. (The first cut
  * asked, in a field whose words did not fit it; left empty it looked for Ugarth
@@ -203,33 +212,62 @@
 
   /* What position 7 says. `mine` is false when the line is something else
    * altogether — a switch, a note — and then nothing is offered or written. */
-  function readSeven(seven){
-    var out = { mind:null, keeper:null, mine:true, says:'' }, text = voice(seven).trim();
-    var first = text.split(/[\s,—–:]+/)[0].toLowerCase();
-    if (BY[first]) out.mind = BY[first].tier;
-    else if (/^claude-/.test(first)) out.mind = 'other:' + first;
-    else if (text && !/\bmind\b/i.test(text)){ out.mine = false; out.says = text; }
-    if (seven && typeof seven === 'object') Object.keys(seven).forEach(function(k){
-      if (k === '_' || typeof seven[k] !== 'string') return;
-      var p = seven[k].trim().split(/[\s,]+/);
-      if (p.length >= 2 && p[0].toLowerCase() === 'keeper') out.keeper = BY[p[1].toLowerCase()] ? BY[p[1].toLowerCase()].tier : 'other:' + p[1];
+  var tierOf = function(w){ w = String(w || '').toLowerCase(); return BY[w] ? BY[w].tier : (w ? 'other:' + w : null); };
+  function named(node, into){
+    if (node && typeof node === 'object') Object.keys(node).forEach(function(k){
+      if (k === '_' || typeof node[k] !== 'string') return;
+      var p = node[k].trim().split(/[\s,]+/), w = p[0].toLowerCase();
+      if (p.length >= 2 && (w === 'mind' || w === 'keeper')) into[w] = tierOf(p[1]);
     });
+  }
+  /* What a dial says of its minds. `old7` is true when position 7 still holds a
+   * mind line (a dial written before the move) — and only then is 7 ever written. */
+  function readMinds(root){
+    var out = { mind:null, keeper:null, old7:false }, seven = root && root['7'], text = voice(seven).trim();
+    var first = text.split(/[\s,—–:]+/)[0].toLowerCase();
+    if (BY[first] || /^claude-/.test(first) || (/\bmind\b/i.test(text) && !/^(on|off)\b/i.test(text))){
+      out.old7 = true;
+      if (BY[first] || /^claude-/.test(first)) out.mind = tierOf(first);
+      named(seven, out);
+    }
+    var got = {}; named(root && root['9'], got);
+    if (got.mind) out.mind = got.mind;
+    if (got.keeper) out.keeper = got.keeper;
     return out;
   }
-  /* Position 7 written whole (a write at a node replaces it), every exception
-   * that was there carried across: only the two lines this page sets change. */
-  function sevenNode(seven, mind, keeper){
-    var was = (seven && typeof seven === 'object') ? seven : {}, t = BY[mind], node = {};
-    node._ = t ? t.nick + ' — ' + t.tier + ': the mind that answers here, wherever this handle speaks. Beneath me, an exception for one act: \'keeper sonnet\', \'render haiku\', \'commit opus\'. Set at happyseaurchin.com/models; mine to change.' : voice(seven);
-    var slot = 1;
+  /* Position 9 written WHOLE (a write at a node replaces it): the behaviours'
+   * own line kept exactly, every other named line carried across, and the two
+   * this page sets put first. Where no behaviours stand, the underscore opens on
+   * a word that is none of them — the doorman reads the words before the first
+   * dash as the behaviours, so 'every act' there would switch a doorman on. */
+  function nineNode(nine, mind, keeper){
+    var was = (nine && typeof nine === 'object') ? nine : { _: typeof nine === 'string' ? nine : '' };
+    var node = { _: was._ || 'models — beneath, the model this handle is answered by, one named line each (happyseaurchin.com/models).' };
+    var lines = [], t = BY[mind], kt = BY[keeper];
+    if (t) lines.push('mind ' + t.nick + ' — ' + t.tier + ': the model that answers for me wherever I speak, unless one is named beside this line. Set at happyseaurchin.com/models; mine to change.');
+    if (kt) lines.push('keeper ' + kt.nick + ' — ' + kt.tier + ': the model that sets the world after each moment at my table.');
     Object.keys(was).sort().forEach(function(k){
       if (k === '_' || typeof was[k] !== 'string') return;
-      if (was[k].trim().split(/[\s,]+/)[0].toLowerCase() === 'keeper') return;
-      node[String(slot++)] = was[k];
+      var w = was[k].trim().split(/[\s,]+/)[0].toLowerCase();
+      if ((w === 'mind' && t) || (w === 'keeper' && kt)) return;
+      lines.push(was[k]);
     });
-    var kt = BY[keeper];
-    if (kt && slot <= 9) node[String(slot)] = 'keeper ' + kt.nick + ' — ' + kt.tier + ': the mind that sets the world after each moment at my table.';
-    return Object.keys(node).length === 1 ? node._ : node;
+    lines.slice(0, 9).forEach(function(v, i){ node[String(i + 1)] = v; });
+    return node;
+  }
+  /* A passphrase is PROVEN before a dial is ever created with it: the handle's
+   * passport is read and one line of it written back unchanged under the key —
+   * the doorman's own proof. Without it anyone could found wake:<your handle>
+   * under a key of theirs and set your mirror for you. */
+  function prove(r, key){
+    return get(r.beach, 'passport:' + r.handle).then(function(pp){
+      if (!pp || typeof pp !== 'object') return { ok:false, why:'no passport called ' + r.handle + ' stands there, so there is nothing to prove the passphrase against' };
+      var k = Object.keys(pp).sort().filter(function(x){ return /^[1-9]$/.test(x) && typeof pp[x] === 'string'; })[0];
+      if (!k) return { ok:false, why:'that passport has no plain line to prove against' };
+      return post(r.beach, { block: 'passport:' + r.handle, spindle: k, content: pp[k], secret: key }).then(function(w){
+        return w.ok ? { ok:true } : { ok:false, why:'that passphrase does not open ' + r.handle + ' — nothing was changed' };
+      });
+    });
   }
 
   function seg(current, onPick){
@@ -266,10 +304,10 @@
 
     get(r.beach, dial.block).then(function(block){
       var root = block ? walk(block, dial.inner) : null;
-      var seven = root && typeof root === 'object' ? root['7'] : null;
-      var now = readSeven(seven);
-      var isDial = !block || (root && typeof root === 'object' && (/dial/i.test(voice(root)) || now.mind || /^(on|off)\b/i.test(voice(root['1']).trim())));
-      var writable = isDial && now.mine && !(dm && dm.mode === 'genus');
+      var rootObj = root && typeof root === 'object' ? root : null;
+      var now = readMinds(rootObj);
+      var isDial = !block || (rootObj && (/dial/i.test(voice(rootObj)) || now.mind || now.old7 || /^(on|off)\b/i.test(voice(rootObj['1']).trim())));
+      var writable = isDial && !(dm && dm.mode === 'genus');
 
       /* WHAT RUNS NOW — said whether or not anything is set */
       if (dm && dm.mode === 'genus'){
@@ -285,36 +323,50 @@
       }
       if (!writable){
         note.textContent = (dm && dm.mode === 'genus') ? 'Nothing to set: a genus agent has no single model.'
-          : !isDial ? 'This handle keeps something else at ' + dial.block + ', so nothing is written there from here.'
-          : 'Position 7 of this dial holds something else (“' + now.says.slice(0, 60) + '…”), so nothing is written there from here.';
+          : 'This handle keeps something else at ' + dial.block + ', so nothing is written there from here.';
         return;
       }
-      function save(mind, keeper){
-        var key = keyOf(r);
-        if (!key){
-          key = prompt('The passphrase for ' + r.handle + ' — it proves this handle is yours to set. (Not an API key.)');
-          if (key === null || !key.trim()) return;
-          key = key.trim();
-        }
+      var bad = function(why){ dropKey(r); note.className = 'note bad'; note.textContent = why; };
+      var refused = function(w){ return (w.data && (w.data.code === 'lock_required' || /secret|lock/i.test(String(w.data.error || '')))) ? 'that passphrase does not open ' + r.handle + ' — nothing was changed' : 'not saved: ' + ((w.data && w.data.error) || ('HTTP ' + w.status)); };
+      function write(mind, keeper, key){
         note.className = 'note'; note.textContent = 'saving…';
-        var content = sevenNode(seven, mind, keeper);
-        var body = block
-          ? { block: dial.block, spindle: addr(dial.inner + '7'), content: content, secret: key }
-          : { block: dial.block, content: { '_': 'THE DIAL of ' + r.handle + ' — which mind answers for this handle, set by its holder. No door is answered from here: position 1 stands absent, which reads as off.', '7': content }, secret: key, new_lock: key };
-        post(r.beach, body).then(function(w){
-          if (!w.ok){
-            dropKey(r); note.className = 'note bad';
-            note.textContent = (w.data && (w.data.code === 'lock_required' || /secret|lock/i.test(String(w.data.error || '')))) ? 'that passphrase does not open this handle — nothing was changed' : 'not saved: ' + ((w.data && w.data.error) || ('HTTP ' + w.status));
-            return;
-          }
+        var nine = nineNode(rootObj && rootObj['9'], mind, keeper);
+        var step = block
+          ? post(r.beach, { block: dial.block, spindle: addr(dial.inner + '9'), content: nine, secret: key })
+          : prove(r, key).then(function(pv){
+              if (!pv.ok) return { ok:false, said: pv.why };
+              return post(r.beach, { block: dial.block, content: { '_': 'THE DIAL of ' + r.handle + ' — which model answers for this handle, set by its holder. No door is answered from here: position 1 stands absent, which reads as off.', '9': nine }, secret: key, new_lock: key });
+            });
+        step.then(function(w){
+          if (!w.ok){ bad(w.said || refused(w)); return; }
           holdKey(r, key);
-          get(r.beach, dial.block).then(function(b2){
-            var back = readSeven((walk(b2, dial.inner) || {})['7']);
+          /* an old line at 7 is kept in step — only ever where 7 IS a mind */
+          var t = BY[mind];
+          var also = (block && now.old7 && t)
+            ? post(r.beach, { block: dial.block, spindle: addr(dial.inner + '7'), content: t.nick + ' — ' + t.tier + ': kept in step with the line beneath 9, where the model now stands (happyseaurchin.com/models).', secret: key })
+            : Promise.resolve(null);
+          also.then(function(){ return get(r.beach, dial.block); }).then(function(b2){
+            var back = readMinds(walk(b2, dial.inner) || null);
             var good = back.mind === mind && (keeper ? back.keeper === keeper : true);
             paintRow(r, host, dm);
             setTimeout(function(){ var n = host.querySelector('.note'); if (n){ n.className = good ? 'note ok' : 'note bad'; n.textContent = good ? 'saved, and read back.' : 'written, but it did not read back as set — look at ' + dial.block; } }, 900);
           });
         });
+      }
+      /* THE PASSPHRASE IS ASKED FOR IN THE ROW — masked, where a password manager
+       * can fill it — never in a browser prompt that shows it in the clear. */
+      function save(mind, keeper){
+        var held = keyOf(r);
+        if (held){ write(mind, keeper, held); return; }
+        var old = host.querySelector('.ask'); if (old) old.remove();
+        var f = el('form', 'ask'); f.autocomplete = 'on';
+        f.appendChild(el('span', '', 'To set ' + r.handle + ' to ' + (keeper && keeper !== (now.keeper || 'basic') ? 'the world\'s hand ' + keeper : mind) + ', its passphrase — the one that opens ' + r.handle + '\'s own blocks, not an API key:'));
+        var u = document.createElement('input'); u.type = 'text'; u.name = 'username'; u.autocomplete = 'username'; u.value = r.handle; u.hidden = true; f.appendChild(u);
+        var pw = document.createElement('input'); pw.type = 'password'; pw.name = 'password'; pw.autocomplete = 'current-password'; pw.placeholder = 'passphrase for ' + r.handle; pw.required = true; f.appendChild(pw);
+        var go = el('button', '', 'save'); go.type = 'submit'; f.appendChild(go);
+        var no = el('button', 'quiet', 'cancel'); no.type = 'button'; no.addEventListener('click', function(){ f.remove(); }); f.appendChild(no);
+        f.addEventListener('submit', function(e){ e.preventDefault(); var k = pw.value.trim(); if (!k) return; f.remove(); write(mind, keeper, k); });
+        host.insertBefore(f, note); pw.focus();
       }
       var own = function(v){ return v && v.indexOf('other:') !== 0 ? v : null; };
       var a = el('div', 'set'); a.appendChild(el('label', '', 'its model'));
