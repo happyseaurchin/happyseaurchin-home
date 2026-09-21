@@ -510,6 +510,14 @@ const blockNameOf = (ref) => String(ref).split(' ')[0].replace(/(:-?\d+(\.\d+)?)
 function adaptFlowBlock(block, name) {
   const handle = (/the window of ([A-Za-z0-9_-]+)/.exec(block._ || '') || [])[1] || 'genus';
   const wakes = digitKeys(block).map(k => block[k]).filter(w => w && typeof w === 'object' && w['1'] && typeof w['1'] === 'object');
+  // A PLAY block records no reply and never will: the router composes the call
+  // and the door runs it on its own key, so nothing comes back through the
+  // producer (bsp-mcp src/flow-play.ts). A genus block does record one. The
+  // block's own lines say which, so read them rather than guess — calling a
+  // play window 'awaiting its reply' promises one that is never coming, and
+  // calling a composed call a 'wake' names it as something it is not.
+  const noReplies = wakes.length > 0 && wakes.every(w => !w['2'] && /no reply recorded/.test(w._ || ''));
+  const NOUN = noReplies ? 'call' : 'wake';
   const spanOf = (v, key, cls, side) => {
     const chars = Number(v['2']) || 0; const flag = String(v['4'] || '');
     const text = v._ || '';
@@ -533,7 +541,7 @@ function adaptFlowBlock(block, name) {
     // was composed and not woken (the clock's due-gate probes for free) or never folded — say which.
     const composedOnly = !wk['2'] && /no reply followed/.test(wk._ || '');
     if (composedOnly) probes++;
-    moments.push({ id: `w${i}`, label: `wake ${i + 1}${when && !isNaN(when) ? ' · ' + when.toISOString().slice(5, 16).replace('T', ' ') : ''}${composedOnly ? ' · composed only' : ''}`, kind: 'window', tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
+    moments.push({ id: `w${i}`, label: `${NOUN} ${i + 1}${when && !isNaN(when) ? ' · ' + when.toISOString().slice(5, 16).replace('T', ' ') : ''}${composedOnly ? ' · composed only' : ''}`, kind: 'window', tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
     const reply = wk['2']; if (!reply || typeof reply !== 'object') return;
     const out = [];
     const writes = reply['1'] || {};
@@ -554,14 +562,14 @@ function adaptFlowBlock(block, name) {
     for (const w of lastOut.spans) for (const k of (w.feeds || [])) { const t = by.get(k); if (t) { t.changed = true; t.chars += w.chars || 0; t.tokens += w.tokens; } }
     moments.push({ id: 'wnext', label: 'next window (projected)', kind: 'window', ghost: true, tokens: spans.reduce((s, x) => s + x.tokens, 0), measured: false, spans });
   }
-  const pending = wakes.length && !wakes[wakes.length - 1]['2'];
+  const pending = !noReplies && wakes.length && !wakes[wakes.length - 1]['2'];
   const notes = [
-    `${handle} — the window as composed, published by its own door to flow:${handle} (${name}); ${wakes.length} wake${wakes.length === 1 ? '' : 's'} standing${pending ? ', the newest awaiting its reply' : ''}${probes ? `; ${probes} composed only — the door composed and did not wake (the clock's due-gate probes for free and spends only when something is due), or the wake never folded` : ''}.`,
+    `${handle} — the window as composed, published by its own door to flow:${handle} (${name}); ${wakes.length} ${NOUN}${wakes.length === 1 ? '' : 's'} standing${noReplies ? ', each composed by the router and run by the door on its own key, so no reply passes through here' : ''}${pending ? ', the newest awaiting its reply' : ''}${probes ? `; ${probes} composed only — the door composed and did not wake (the clock's due-gate probes for free and spends only when something is due), or the wake never folded` : ''}.`,
     'Labels, addresses and sizes only: a span is a reference to a public block and its size; no text is carried, so the peek shows the line and the address.',
     'Window heights are estimated from characters (four a token): the router that composes the window never makes the inference call. Flags come from the block itself — the producer fingerprints each part and marks what entered or changed since the previous window.',
     block['9'] && block['9']._ ? String(block['9']._) : '',
   ].filter(Boolean);
-  return { label: `${handle} — ${wakes.length} wake${wakes.length === 1 ? '' : 's'}, read from the beach`, notes, moments };
+  return { label: `${handle} — ${wakes.length} ${NOUN}${wakes.length === 1 ? '' : 's'}, read from the beach`, notes, moments };
 }
 
 // Recognise a loaded thing and make rows of it.
