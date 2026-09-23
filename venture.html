@@ -19,9 +19,11 @@
      The plan comes down the spine from this decade to today, and beside each rung
      stands what each person has said AT that rung — never a pile of notes, never
      an address, a digit or a block name (function:beach-venture 6). Silence at a
-     rung is shown as silence. The page ends in the venture's open room: a line
-     written here lands there, signed, nothing to sign up for. Every word is read
-     live from the beach, so the page moves when the venture does. */
+     rung is shown as silence. The page ends with a STATEMENT: one entry in the
+     writer's own mirror, at the rung they choose — today unless they pick
+     another — so it appears on the ladder beside everyone else's. The pool is
+     the venture's chat, and it lives in the mirror (the link under the card),
+     never written from here. Every word is read live from the beach. */
   *{box-sizing:border-box} html,body{margin:0}
   body{
     font-family:var(--body); color:var(--foam); font-size:18.5px; line-height:1.6;
@@ -103,6 +105,14 @@
   .hint.ok{color:var(--liquid)} .hint.err{color:var(--solid)}
   .landed{margin:12px 0 0;padding:10px 14px;border-left:3px solid var(--liquid);background:rgba(var(--liquid-rgb),0.08);border-radius:8px}
   .landed[hidden]{display:none}
+  .at{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+  .at label{position:relative;font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour);
+    border:1px solid var(--line-strong);border-radius:999px;padding:5px 11px;cursor:pointer;user-select:none}
+  .at input{position:absolute;opacity:0;pointer-events:none}
+  .at label:has(input:checked){border-color:rgba(var(--liquid-rgb),0.6);background:rgba(var(--liquid-rgb),0.14);color:var(--foam)}
+  .at label:has(input:focus-visible){outline:2px solid var(--liquid);outline-offset:2px}
+  .card #key{flex:0 1 170px}
+  .talk{margin:18px 0 0;color:var(--vapour)}
 
   .ways{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:0;padding:0;list-style:none}
   .ways a{display:block;border:1px solid var(--line-strong);border-radius:14px;padding:14px 16px;color:var(--foam);
@@ -154,13 +164,16 @@
       <p class="attract">Coordination by attraction — the whole experiment is whether the right people arrive because it's worth arriving for.</p>
       <div class="card">
         <textarea id="note" data-dictate placeholder="What I'll bring…" aria-label="what you would bring"></textarea>
+        <div class="at" id="at" role="radiogroup" aria-label="where your statement stands"></div>
         <div class="row">
-          <input id="who" placeholder="your name" spellcheck="false" autocapitalize="off" aria-label="your name">
-          <button id="post" type="button">Walk in</button>
+          <input id="who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">
+          <input id="key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key">
+          <button id="post" type="button">Put it on the venture</button>
         </div>
-        <p class="hint" id="hint">It lands in the venture's open room, signed with your name. Nothing to join, no account.</p>
+        <p class="hint" id="hint">One statement, in your own mirror of the venture, at the rung you choose. The first time, pick a name and invent a key: the key keeps it yours. Nothing to join, no account.</p>
         <p class="landed" id="landed" hidden></p>
       </div>
+      <p class="talk">Want to talk it over? <a href="https://mirror.onen.ai/?pool=beach-venture" target="_blank" rel="noopener">The venture's chat is live in the mirror →</a></p>
     </div>
   </section>
 
@@ -188,7 +201,6 @@
 'use strict';
 const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 const FAMILY = 'beach-venture';
-const ROOM = 'pool:beach-venture';
 const $ = id => document.getElementById(id);
 const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : s; return d.innerHTML; };
 const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
@@ -259,8 +271,14 @@ function spineHTML(text, word){
 /* one index read serves both the hands and the money block */
 const INDEX = readIndex().then(ix => (ix.blocks || []).map(b => typeof b === 'string' ? b : (b && b.name) || ''));
 
-async function renderLadder(){
-  const [spine, names] = await Promise.all([readBlock('spine:' + FAMILY), INDEX]);
+function floorOf(block){
+  let n = 0, node = block;
+  while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
+  return n;
+}
+async function renderLadder(also){
+  const [spine, listed] = await Promise.all([readBlock('spine:' + FAMILY), INDEX]);
+  const names = (also || []).map(h => FAMILY + ':' + h).filter(n => !listed.includes(n)).concat(listed);
   if (!spine) { $('ladder').innerHTML = '<li class="loading">the venture has no spine yet.</li>'; return; }
   const hands = names
     .filter(n => n.startsWith(FAMILY + ':') && n.split(':').length === 2)
@@ -303,32 +321,60 @@ INDEX.then(names => names.includes('flip-the-script:' + FAMILY) ? readBlock('fli
 
 renderLadder().catch(e => { $('ladder').innerHTML = '<li class="loading">' + esc('could not read the venture: ' + e.message) + '</li>'; });
 
-/* WALK IN — one line into the venture's open room, signed; the beach allocates
-   the slot and stamps the time. Nothing is read back but the line itself. */
+/* A STATEMENT — one entry in the writer's OWN mirror of the venture
+   (beach-venture:<name>) at the rung they choose, today unless they pick
+   another: the family's law (function:beach-venture 2). Writing again at the
+   same rung replaces it — a mirror is edited in place. A first statement founds
+   the mirror latched to the writer's key, exactly as /walk founds one (rule R1:
+   creating with new_lock needs no prior secret); after that the key proves it
+   is theirs. The key is kept on this device under the name /next, /hands and
+   /walk already share, so it is typed once. */
 (function(){
-  const post = $('post'), note = $('note'), who = $('who'), hint = $('hint'), landed = $('landed');
+  const post = $('post'), note = $('note'), who = $('who'), key = $('key'), hint = $('hint'), landed = $('landed');
+  const home = n => 'next-latch:' + FAMILY + ':' + n;
+  const kept = n => { try { return localStorage.getItem(home(n)) || localStorage.getItem('mirror-latch:' + FAMILY + ':' + n); } catch(e){ return null; } };
+  $('at').innerHTML = RUNGS.slice().reverse().map((r, i) =>
+    '<label><input type="radio" name="rung" value="' + r.at + '"' + (i === 0 ? ' checked' : '') + '><span>' + esc(r.word) + '</span></label>').join('');
   let saved = null; try { saved = localStorage.getItem('venture:who'); } catch(e){}
   if (saved) who.value = saved;
-  function submit(){
+  const keyHint = () => { const n = who.value.trim(); key.placeholder = n && kept(n) ? 'key kept on this device' : 'your key'; };
+  who.addEventListener('input', keyHint); keyHint();
+  async function write(body){
+    const r = await fetch(ORIGIN, { method:'POST', cache:'no-store',
+      headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify(body) });
+    let d = null; try { d = await r.json(); } catch(e){}
+    return { ok: r.ok, status: r.status, data: d };
+  }
+  const refused = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+  function say(cls, text){ hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = text; }
+  async function submit(){
     const text = note.value.trim(); if (!text) { note.focus(); return; }
-    const name = who.value.trim() || 'someone';
-    post.disabled = true; hint.className = 'hint'; hint.textContent = 'walking in…';
-    fetch(ORIGIN + '?block=' + encodeURIComponent(ROOM), {
-      method:'POST', cache:'no-store', headers:{ 'Content-Type':'application/json', Accept:'application/json' },
-      body: JSON.stringify({ block: ROOM, content: { _: text, '1': name, '2': '' }, append: true })
-    }).then(r => r.json().then(d => ({ ok: r.ok, d })))
-      .then(res => {
-        post.disabled = false;
-        if (res.ok){
-          try { localStorage.setItem('venture:who', who.value.trim()); } catch(e){}
-          hint.className = 'hint ok';
-          hint.textContent = 'You are in. It stands in the venture’s open room, where those keeping the venture read it when they next look.';
-          landed.textContent = '“' + text + '” — ' + name; landed.hidden = false; note.value = '';
-        } else {
-          hint.className = 'hint err';
-          hint.textContent = (res.d && res.d.error) ? res.d.error : 'couldn’t add that just now.';
-        }
-      }).catch(e => { post.disabled = false; hint.className = 'hint err'; hint.textContent = 'couldn’t reach the beach — ' + e.message; });
+    const name = who.value.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,31}$/.test(name)) { say('err', 'Pick a name of 2 to 32 letters, digits, - or _ — it is how your statement is signed.'); who.focus(); return; }
+    const secret = key.value.trim() || kept(name) || '';
+    if (!secret) { say('err', 'Enter your key — or, the first time, invent one. It keeps your statement yours (phones capitalise the first letter).'); key.focus(); return; }
+    const chosen = document.querySelector('#at input:checked');
+    const rung = RUNGS.find(r => chosen && r.at === chosen.value) || RUNGS[RUNGS.length - 1];
+    const block = FAMILY + ':' + name;
+    post.disabled = true; say('', 'putting it on the venture…');
+    try {
+      if (!(await readBlock(block))){
+        const fl = floorOf(await readBlock('spine:' + FAMILY)) || 10;
+        let root = 'MIRROR — ' + name + "'s readings on the " + FAMILY + ' temporal spine (spine:' + FAMILY + '), at the spine’s own addresses: own doings at each horizon, in own words, revisable forever. Sovereign; silence at an address is honest absence. First entry written from /venture.';
+        for (let i = 0; i < fl; i++) root = { '_': root };
+        const born = await write({ block, content: root, new_lock: secret });
+        if (!born.ok) throw new Error((born.data && born.data.error) || 'your mirror could not be founded');
+      }
+      const w = await write({ block, spindle: rung.at, content: text, secret });
+      if (refused(w)){ say('err', 'That name’s statements are latched to another key. If it is yours, check the key (phones capitalise the first letter); if not, choose another name.'); post.disabled = false; return; }
+      if (!w.ok) throw new Error((w.data && w.data.error) || ('the beach said ' + w.status));
+      try { localStorage.setItem(home(name), secret); localStorage.setItem('venture:who', name); } catch(e){}
+      key.value = ''; keyHint();
+      say('ok', 'It stands on the venture at ' + rung.word.toLowerCase() + ' — ' + rung.date + '. Writing again at the same rung replaces it.');
+      landed.textContent = '“' + text + '” — ' + name; landed.hidden = false; note.value = '';
+      await renderLadder([name]);
+    } catch(e){ say('err', 'couldn’t put that on the venture — ' + e.message); }
+    post.disabled = false;
   }
   post.addEventListener('click', submit);
   note.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); });
