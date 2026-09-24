@@ -509,6 +509,21 @@
   ];
   var GROUPS = [WORK, GLANCE, WITH];
 
+  /* THE SITE'S OWN PAGES — the ways in and the places to look around, standing in
+   * no one's handle and no one world. Three kinds of bar, one menu each (David,
+   * 2026-09-24): a person's pages list that person's places, the tables list the
+   * tables, and these list each other. [page, label] — the path is the page. */
+  var SITE = [
+    ['entrance',    'the entrance'],
+    ['welcome',     'come in'],
+    ['connect',     'connect your AI'],
+    ['experiences', 'experiences'],
+    ['tree',        'every field'],
+    ['found',       'found a field'],
+    ['lately',      'lately'],
+    ['news',        'news']
+  ];
+
   var CSS = '' +
     '.dd{position:relative;flex:none}' +
     '.dd>summary{list-style:none;cursor:pointer;border:1px solid var(--line);border-radius:4px;' +
@@ -1228,7 +1243,8 @@
     d.className = 'dd'; d.setAttribute('data-doors', '');
     var s = document.createElement('summary');
     s.textContent = 'go ▾';
-    s.title = cfg.world ? 'this table, and the open tables' : cfg.rpg ? 'the tables and the mirror' : 'this handle’s pages, and the places to glance at';
+    s.title = cfg.world ? 'this table, and the open tables' : cfg.rpg ? 'the tables and the mirror'
+      : cfg.site ? 'the ways in, and the places to look around' : 'this handle’s pages, and the places to glance at';
     d.appendChild(s);
 
     var menu = document.createElement('div');
@@ -1301,10 +1317,38 @@
       });
     }
 
+    /* THE SITE'S OWN PAGES (SITE, above): each other, the one stood on marked as
+     * here; across a rule the mirror and the tables; and a walker who arrived
+     * carrying a handle keeps the way back to their own now, so the chain of
+     * doors is not broken by passing through. Nothing to choose, so no editor. */
+    function paintSite(){
+      var who = document.createElement('span');
+      who.className = 'dd__who'; who.textContent = 'happyseaurchin.com';
+      menu.appendChild(who);
+      function door(p){
+        if (p[0] === cfg.here){
+          var cur = document.createElement('span');
+          cur.className = 'here'; cur.textContent = p[1]; cur.setAttribute('aria-current', 'page');
+          menu.appendChild(cur);
+          return;
+        }
+        var a = document.createElement('a');
+        a.href = p[2] || '/' + p[0]; a.textContent = p[1];
+        menu.appendChild(a);
+      }
+      function rule(){ var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r); }
+      SITE.forEach(door);
+      rule();
+      door(['mirror', 'the mirror ↗', 'https://mirror.onen.ai/']);
+      door(['rpg', 'the tables', '/rpg']);
+      if (cfg.handle){ rule(); door(['now', cfg.handle + '’s now', '/now/' + encodeURIComponent(cfg.handle)]); }
+    }
+
     function paint(){
       menu.innerHTML = '';
       if (cfg.world){ paintWorld(); return; }
       if (cfg.rpg){ paintRpg(); return; }
+      if (cfg.site){ paintSite(); return; }
       var a = arrange(cfg.here), lastGroup = null;
       /* whose pages these are — the first line, so "now" reads as this handle's now */
       if (cfg.handle){
@@ -1438,7 +1482,7 @@
         paint();
       }).catch(function(){});
     }
-    doorsRead = (cfg.handle && !cfg.world && !cfg.rpg)
+    doorsRead = (cfg.handle && !cfg.world && !cfg.rpg && !cfg.site)
       ? readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
           if (list && list.length){
             STATED_DOORS = list;
