@@ -94,6 +94,7 @@
   .fam h3{font-family:var(--mono);font-size:12.5px;letter-spacing:0.08em;margin:0 0 6px;font-weight:700}
   .fam h3 a{color:var(--foam);border-bottom:none} .fam h3 a:hover{color:var(--liquid)}
   .fam h3 .rungtag{font-weight:400;color:var(--vapour-dim);letter-spacing:0.1em;text-transform:uppercase;font-size:10.5px;margin-left:8px}
+  .fam h3 a.pool{font-weight:400;color:var(--vapour-dim);letter-spacing:0.06em;font-size:11px;margin-left:10px}
   .fam .line{margin:4px 0;display:flex;gap:10px}
   .fam .line .who{flex:none;font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim);width:52px;text-align:right;padding-top:3px}
   .fam .line .what{flex:1;min-width:0;margin:0;white-space:pre-wrap}
@@ -615,6 +616,11 @@ async function renderProjects(){
     box.innerHTML = '<p class="hand-quiet">no chosen projects yet — pick them from the project row on the walk or recency page<span class="work"> (lists:' + esc(HANDLE) + ' branch 1)</span>.</p>';
     return;
   }
+  /* each project's CHAT — its pool, the one place talk carries no rung — beside
+     its name, read from the index so a project with no room offers none */
+  const index = fetch(BEACH, { headers:{ Accept:'application/json' }, cache:'no-store' })
+    .then(r => r.json()).then(j => new Set((j.blocks || []).map(b => typeof b === 'string' ? b : (b && b.name) || '')))
+    .catch(() => new Set());
   const reads = await Promise.all(names.map(async f => {
     const [spine, mine] = await Promise.all([
       readBlock('spine:' + f).catch(() => null),
@@ -622,6 +628,7 @@ async function renderProjects(){
     ]);
     return { f, spine, mine };
   }));
+  const pools = await index;
   const c = CLOCK;
   box.innerHTML = '';
   reads.forEach(({ f, spine, mine }) => {
@@ -631,7 +638,9 @@ async function renderProjects(){
     el.className = 'fam';
     el.innerHTML =
       '<h3><a href="/walk/' + encodeURIComponent(f) + '/' + encodeURIComponent(HANDLE) + '">' + esc(f) + '</a>' +
-      '<span class="rungtag">' + esc(tag) + '</span></h3>' +
+      '<span class="rungtag">' + esc(tag) + '</span>' +
+      (pools.has('pool:' + f) ? '<a class="pool" href="https://mirror.onen.ai/?pool=' + encodeURIComponent(f) +
+        '" target="_blank" rel="noopener" title="' + esc(f) + '’s chat — talk with no rung on it">pool ↗</a>' : '') + '</h3>' +
       '<div class="line"><span class="who">field</span>' + (s
         ? '<p class="what">' + esc(s.text) + '</p>'
         : '<p class="what quiet">the field is quiet here</p>') + '</div>' +

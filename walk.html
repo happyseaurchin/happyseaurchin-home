@@ -199,6 +199,7 @@
     border:1px solid var(--line);border-radius:5px;padding:2px 7px;flex:none}
   .mlink:hover{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
   body.mirrorlinks .mlink{display:inline-block}
+  body:not(.mirrorlinks) #mast-pool{display:none}
   body.mirrorlinks .bar #btn-mirror{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}
   .bar button.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.4)}
 
@@ -362,7 +363,7 @@
   <span class="spacer"></span>
   <button id="btn-lens" title="flick the cards between the spine’s words and your own">show my voice</button>
   <button id="btn-latch" title="your keeper key for this spine — lets you edit what’s written">add my latch-key</button>
-  <button id="btn-mirror" title="show links to the mirror — the live shared surface">mirror buttons</button>
+  <button id="btn-mirror" title="show links into the mirror — each rung’s own room — and to the project’s pool, its chat">mirror &amp; pool buttons</button>
   <button id="btn-display" title="rows, counts, addresses, whose voices count — your reading posture, kept on this device">display settings</button>
   <button id="btn-theme" title="light or dark">◐</button>
   <button id="btn-refresh" title="re-read the beach">↻</button>
@@ -410,6 +411,7 @@
     <p>Slide sideways through the rows; tap a card to stand there. The counts say who has spoken and what is held; the popup holds the words, the voices, and — with your handle in the URL — your own writing.</p>
     <p class="stamp" id="mast-since"></p>
     <p class="stamp" id="mast-venture" hidden><a href="/venture">the venture, in the open →</a></p>
+    <p class="stamp" id="mast-pool" hidden><a target="_blank" rel="noopener">the pool ↗</a> — this project’s chat, talk with no rung on it</p>
   </div>
 
   <section id="review">
@@ -578,8 +580,8 @@ const HANDLE_FROM_PATH = ((_wm && _wm[2] && decodeURIComponent(_wm[2])) || _wq.g
 const GROUND = VENTURE === 'here' ? { origin: 'https://earth.beach.happyseaurchin.com', world: 'earth', floor: 11 } : null;
 const APEX = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 if (GROUND) BEACH = GROUND.origin + '/.well-known/pscale-beach';
-let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [];
-let SINCE = 0;                       /* the marker: your last act, else 24h */
+let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [], POOL_STANDS = false;
+let SINCE = 0;                      /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '', NOW_ADDR = '';
 const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
@@ -1050,6 +1052,7 @@ async function load(){
   CAST = castMembers(await readBlock('sed:' + VENTURE + '-cast').catch(() => null));
 
   const pool = await readBlock('pool:' + VENTURE).catch(() => null);
+  POOL_STANDS = !!pool;
   POOL_VOICES = [];
   /* slots past nine sit at two-digit paths (11, 12 …) and older ones inside the
    * supernest wrap — a digit child with no voice of its own is a container: recurse */
@@ -1095,6 +1098,11 @@ function render(){
   /* /venture is this family's page in the open — the plan rung by rung, every
      voice beside it — and this walk is its workings, so it points back there */
   $('mast-venture').hidden = VENTURE !== 'beach-venture';
+  /* the mirror links name a POINT — a rung's own room; the pool is the one PLACE,
+     the whole project's chat. The same option shows both, and the pool's link
+     only where its room stands, so it never opens an empty one */
+  $('mast-pool').hidden = !POOL_STANDS;
+  $('mast-pool').firstElementChild.href = poolUrl();
   if (HANDLE) $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
   else $('mast-since').textContent = 'walking as anyone — say who you are at the top of the page to write where you stand';
   $('foot-work').innerHTML = '<br><br><b>the blocks</b> — spine:' + esc(VENTURE) + ' · ' + esc(VENTURE) + ':&lt;handle&gt; · tree:' + esc(VENTURE) + ':&lt;handle&gt; · pool:' + esc(VENTURE) +
@@ -2110,7 +2118,7 @@ async function loadGround(){
   const vNames = blocks.filter(b => b.startsWith('identity:') && b !== 'identity:' + GROUND.world && nameOk(b.slice(9)));
   const got = await Promise.all(vNames.map(n => readBlock(n).catch(() => null)));
   MIRRORS = vNames.map((n, i) => [n.slice(9), got[i]]).filter(x => x[1]);
-  DECKS = []; POOL_VOICES = []; CAST = null;
+  DECKS = []; POOL_VOICES = []; POOL_STANDS = false; CAST = null;
   MYADD = HANDLE ? await readBlock('spatial:' + HANDLE).catch(() => null) : null;
   if (first){
     STAND = gJump(await gStandpoint());
