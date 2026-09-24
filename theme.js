@@ -543,6 +543,17 @@
     '.dd__mv:disabled{opacity:0.25;cursor:default}' +
     '.dd__foot{display:flex;gap:8px;white-space:nowrap}' +
     '.dd__foot .dd__edit{flex:1}' +
+    /* the share-forward card — the page's own ground, and the code on white so any camera reads it */
+    '.sf{border:1px solid var(--line-strong);border-radius:12px;background:rgb(var(--well-rgb));color:var(--foam);' +
+      'padding:0;width:min(300px,calc(100vw - 32px));text-align:center;box-shadow:0 12px 40px rgba(0,0,0,0.4)}' +
+    '.sf__in{padding:26px 22px 22px}' +
+    '.sf::backdrop{background:rgba(0,0,0,0.5)}' +
+    '.sf__x{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--vapour-dim);' +
+      'font-size:14px;line-height:1;padding:6px;cursor:pointer}' +
+    '.sf__x:hover{color:var(--foam)}' +
+    '.sf__line{font-family:var(--body);font-size:17px;line-height:1.4;margin:0 0 18px}' +
+    '.sf__qr,.sf__qr:hover{display:inline-block;border:none;border-radius:8px;overflow:hidden;line-height:0}' +
+    '.sf__qr img{display:block;width:200px;height:200px}' +
     '@media print{.dd{display:none}}';
 
   var styled = false;
@@ -659,11 +670,13 @@
    * needs to know this happened.
    *
    * ONE control stays a control: a dropdown holding a single thing is worse than
-   * the thing, so /now keeps 'display' and /earth keeps 'workings' in the bar.
+   * the thing. Since 2026-09-24 every bar carries 'share forward' beside the
+   * light-and-dark switch, so every bar gathers.
    * ────────────────────────────────────────────────────────────────────────── */
   function gatherActs(){
     var mount = document.querySelector('.bar');
     if (!mount || document.getElementById('dd-acts')) return;
+    shareAct(mount);
     var btns = [].filter.call(mount.children, function(e){ return e.tagName === 'BUTTON'; });
     if (btns.length < 2) return;
     style(); wire();
@@ -684,6 +697,49 @@
   }
   /* after the page's own script, so a control created at boot is caught too */
   document.addEventListener('DOMContentLoaded', gatherActs);
+
+  /* ── share forward ─────────────────────────────────────────────────────────
+   * The Sqale invite that passes the magic-mirror on (David, 2026-09-24): one
+   * act in every bar, laid in before the gathering counts so it always stands
+   * under 'options' and never loose in a bar. The act opens a card holding the
+   * code a friend scans off this screen, and the same invite is one tap for
+   * whoever holds it. The same line and the same code stand in the mirror's
+   * question card. The code is a static file, fetched only when the card opens.
+   * ────────────────────────────────────────────────────────────────────────── */
+  var SHARE_FORWARD = 'https://app.sqale.co/invite/CWnW336J44mlPdtWnTC7Ie3Pp5jjCG';
+  var shareCard = null;
+  function shareAct(mount){
+    if (document.getElementById('btn-share-forward')) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'btn-share-forward';
+    b.textContent = 'share forward';
+    b.title = 'pass the magic-mirror on — a code a friend can scan';
+    b.addEventListener('click', openShare);
+    mount.appendChild(b);
+  }
+  function openShare(){
+    style();
+    if (!shareCard){
+      shareCard = document.createElement('dialog');
+      shareCard.className = 'sf';
+      shareCard.setAttribute('aria-label', 'share forward the magic-mirror');
+      shareCard.innerHTML = '<div class="sf__in">' +
+        '<button type="button" class="sf__x" aria-label="close">✕</button>' +
+        '<p class="sf__line">Turn the internet into a beach — ' +
+          '<a href="' + SHARE_FORWARD + '" target="_blank" rel="noopener">share forward</a> the magic-mirror!</p>' +
+        '<a class="sf__qr" href="' + SHARE_FORWARD + '" target="_blank" rel="noopener" ' +
+          'title="tap to open the invite — or hold it up for a friend to scan">' +
+          '<img src="/assets/share-forward.svg" width="200" height="200" ' +
+          'alt="QR code for the invite that shares the magic-mirror forward"></a></div>';
+      shareCard.querySelector('.sf__x').addEventListener('click', function(){ shareCard.close(); });
+      /* the card fills the dialog, so only a tap on the dimmed page around it
+       * lands on the dialog itself — that closes it, as Escape does */
+      shareCard.addEventListener('click', function(e){ if (e.target === shareCard) shareCard.close(); });
+      document.body.appendChild(shareCard);
+    }
+    if (shareCard.showModal) shareCard.showModal();
+    else window.open(SHARE_FORWARD, '_blank', 'noopener');
+  }
 
   /* ── the projects you are in ───────────────────────────────────────────────
    * There is no directory page and none is needed: YOUR PROJECTS ARE THE FAMILIES
