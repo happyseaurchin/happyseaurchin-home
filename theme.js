@@ -518,6 +518,7 @@
     ['welcome',     'come in'],
     ['connect',     'connect your AI'],
     ['experiences', 'experiences'],
+    ['animations',  'animations'],
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
