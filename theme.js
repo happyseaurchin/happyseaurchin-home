@@ -1608,3 +1608,68 @@
     if (box.value) ask();
   });
 })();
+
+/* ── A name opens its page. ─────────────────────────────────────────────────
+ * Wherever a page draws a person's name beside what they said — a reading at an
+ * address, a reader's answer, a line left in a parlour, a voice at a table — the
+ * name is the way to that person's page: /page/<name>, with ?world=<table> when
+ * it was said at a table. That page is written for the visitor — who they are,
+ * today's line, their posts, and their parlour at the foot — and all of it reads
+ * and answers with no key. Never the mirror, which needs a key and an
+ * introduction, and never the passport, which is written to its holder (David,
+ * 2026-09-26).
+ *
+ * Only a name that STANDS becomes a link — one holding a block /page draws from
+ * (a passport, a now, a diary, a parlour; at a table also what the character
+ * knows, wants, did and saw) — because a name typed into a keyless box, or a
+ * person a keeper voices, has no page, and a link to "nobody by that name" is a
+ * dead end. A page marks each name it draws with data-name (and data-world at a
+ * table) and calls nameLinks(root) after it paints — or once, with { watch: true },
+ * for a box it repaints from many places; the beach's index is read once per page
+ * per beach, or handed in by a page that already holds it ({ blocks }). A name
+ * already linked is left as it is, so repainting is free. ── */
+(function(){
+  var APEX = 'https://beach.happyseaurchin.com';
+  var OWN = ['passport:', 'now:', 'spine:', 'pool:'];
+  var AT_A_TABLE = OWN.concat(['stash:', 'knows:', 'purpose:', 'history:', 'witnessed:']);
+  var asked = {};
+  function blocksAt(origin){
+    if (!asked[origin]) asked[origin] = fetch(origin + '/.well-known/pscale-beach', { headers:{ Accept:'application/json' }, cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(ix){ return (ix && ix.blocks) || []; })
+      .catch(function(){ return []; });
+    return asked[origin];
+  }
+  function hrefOf(name, world){
+    var enc = encodeURIComponent;
+    /* a static preview serves page.html by name; the site serves /page/<name> */
+    return /\.html$/.test(location.pathname)
+      ? '/page.html?handle=' + enc(name) + (world ? '&world=' + enc(world) : '')
+      : '/page/' + enc(name) + (world ? '?world=' + enc(world) : '');
+  }
+  window.nameLinks = function(root, opts){
+    opts = opts || {};
+    if (opts.watch && root && !root.hasAttribute('data-names-watched')){
+      root.setAttribute('data-names-watched', '');
+      var again = { origin: opts.origin, blocks: opts.blocks, world: opts.world };
+      new MutationObserver(function(){ window.nameLinks(root, again); }).observe(root, { childList: true, subtree: true });
+    }
+    var marked = (root || document).querySelectorAll('[data-name]:not([data-named])');
+    if (!marked.length) return;
+    var ready = opts.blocks ? Promise.resolve(opts.blocks) : blocksAt(opts.origin || APEX);
+    ready.then(function(blocks){
+      var has = new Set(blocks);
+      Array.prototype.forEach.call(marked, function(el){
+        el.setAttribute('data-named', '');
+        var name = el.getAttribute('data-name'), world = el.getAttribute('data-world') || opts.world || '';
+        if (!name || !(world ? AT_A_TABLE : OWN).some(function(p){ return has.has(p + name); })) return;
+        var a = document.createElement('a');
+        a.className = 'name-link';
+        a.href = hrefOf(name, world);
+        a.title = name + '’s page';
+        while (el.firstChild) a.appendChild(el.firstChild);
+        el.appendChild(a);
+      });
+    });
+  };
+})();
