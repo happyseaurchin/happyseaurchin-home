@@ -482,6 +482,9 @@
     ['hands',        'hands',    'handle'],
     /* every handle that spends a key, and the model each uses (David, 2026-09-21) */
     ['models',       'models',   'handle'],
+    /* how the beach reaches this handle — /push/<handle> forwards to the push
+     * engine's own page, which must stand at its own address (David, 2026-09-26) */
+    ['notifications','push',     'handle'],
     ['projects',     'walk',     'family'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
