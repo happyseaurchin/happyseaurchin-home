@@ -55,6 +55,7 @@
   .who{color:var(--vapour);margin:0 0 8px;font-size:1.05rem}
   .who.first{color:var(--foam);font-size:1.12rem}
   .who.look{font-style:italic}
+  .who.look .to-parlour{font-style:normal;font-family:var(--mono);font-size:12px;letter-spacing:.04em;white-space:nowrap}
   .who b{color:var(--foam);font-weight:600}
   .whoq{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--liquid);margin:12px 0 4px}
 
@@ -420,6 +421,11 @@ function pageHref(extra){
   return (onSite ? '/page/' + encodeURIComponent(HANDLE) : location.pathname) + (s ? '?' + s : '');
 }
 const postHref = d => location.origin + pageHref() + '#post-' + d;
+/* A NAME OPENS ITS PAGE (theme.js nameLinks): every name drawn here but this page's own
+   is marked, and the ones standing at this beach become links to their own page —
+   handed the index this page has already read, so it costs no second read */
+const nameTag = n => n && n.toLowerCase() !== HANDLE.toLowerCase() ? ' data-name="' + esc(n).replace(/"/g, '&quot;') + '"' : '';
+const linkNames = el => { if (el && window.nameLinks) nameLinks(el, { blocks: INDEX, world: WORLD ? WORLD_PARAM : '' }); };
 function ago(iso){
   const ms = Date.now() - Date.parse(iso); if (!isFinite(ms)) return '';
   const m = Math.round(ms / 60000); if (m < 2) return 'just now'; if (m < 60) return m + ' min ago';
@@ -664,7 +670,7 @@ async function load(){
   if (passport){
     const who = voiceOf(passport), offers = voiceOf(passport['1']), needs = voiceOf(passport['2']), look = lookOf(passport);
     if (who) out.push('<p class="who first">' + esc(who) + '</p>');
-    if (look) out.push('<p class="who look">' + esc(look) + '</p>');
+    if (look) out.push('<p class="who look">' + esc(look) + (WORLD ? '' : ' <a class="to-parlour" href="#parlour">the parlour ↓</a>') + '</p>');
     if (offers) out.push('<p class="whoq">what ' + esc(HANDLE) + ' brings</p><p class="who">' + esc(offers) + '</p>');
     if (needs) out.push('<p class="whoq">what ' + esc(HANDLE) + ' is looking for</p><p class="who">' + esc(needs) + '</p>');
   } else {
@@ -761,6 +767,7 @@ async function load(){
     '</div></section>');
 
   $('main').innerHTML = out.join('');
+  linkNames($('main'));
   $('main').classList.remove('hidden'); $('state').classList.add('hidden');
   wirePosts();
   if (pool || !WORLD) wireParlour(!!pool);
@@ -823,7 +830,7 @@ function renderPlace(){
     out.push('<p class="line quiet">' + esc(HANDLE) + ' stands in ' + esc(STAND.world) + ', but its map did not answer.</p>');
   }
   const here = PRESENCE ? hereNow(PRESENCE, STAND.addr) : [];
-  if (here.length) out.push('<p class="here">here now: ' + here.map(p => esc(p.who) + ' <span style="color:var(--vapour-dim)">(' + esc(ago(p.ts)) + ')</span>').join(' · ') + '</p>');
+  if (here.length) out.push('<p class="here">here now: ' + here.map(p => '<span' + nameTag(p.who) + '>' + esc(p.who) + '</span> <span style="color:var(--vapour-dim)">(' + esc(ago(p.ts)) + ')</span>').join(' · ') + '</p>');
   out.push('</div></section>');
   return out.join('');
 }
@@ -850,7 +857,7 @@ function roomRecord(){
   const narrating = !!(OPEN && STAND);
   const told = narrating ? renderingsFor(STAND.addr) : {};
   const moment = t => '<div class="told"><span class="sh">as ' + esc(HANDLE) + ' lived it' + (t.ts && isIso(t.ts) ? ' · ' + esc(ago(t.ts)) : '') + '</span>' + esc(t.text) + '</div>';
-  const raw = b => '<div class="beat"><span class="bwho">' + esc(b.who) + '</span><span class="btext">' + esc(shownText(b.text)) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>';
+  const raw = b => '<div class="beat"><span class="bwho"' + nameTag(b.who) + '>' + esc(b.who) + '</span><span class="btext">' + esc(shownText(b.text)) + '</span>' + (b.ts && isIso(b.ts) ? '<span class="bago">' + esc(ago(b.ts)) + '</span>' : '') + '</div>';
   const rows = (narrating ? toldElsewhere().map(moment) : []).concat(beats.map(b => told[b.slot] ? moment(told[b.slot]) : raw(b)));
   if (!rows.length){
     out.push('<p class="vnone">Nothing has happened here yet.</p>');
@@ -863,7 +870,7 @@ function roomRecord(){
   const declared = LIQUID ? declaredOf(LIQUID) : [];
   if (declared.length){
     out.push('<div class="declared"><p class="dh">said, not yet happened</p>' + declared.map(d =>
-      '<div class="beat"><span class="bwho">' + esc(d.who) + (OPEN && d.who.toLowerCase() === HANDLE.toLowerCase() ? ' · yours' : '') + '</span><span class="btext">' + esc(d.text) + '</span>' +
+      '<div class="beat"><span class="bwho"><span' + nameTag(d.who) + '>' + esc(d.who) + '</span>' + (OPEN && d.who.toLowerCase() === HANDLE.toLowerCase() ? ' · yours' : '') + '</span><span class="btext">' + esc(d.text) + '</span>' +
       (isIso(d.ts) ? '<span class="bago">' + esc(ago(d.ts)) + '</span>' : '') + '</div>').join('') + '</div>');
   }
   return out.join('');
@@ -876,7 +883,7 @@ function renderRoom(){
   return '<section class="sect"><h2>the room now</h2><div class="room"><div id="room-record">' + roomRecord() + '</div>' +
     (OPEN ? '<div id="room-act">' + actBox() + '</div><div id="room-ways"></div>' : '') + key + '</div></section>';
 }
-function paintRecord(){ const box = $('room-record'); if (box) box.innerHTML = roomRecord(); }
+function paintRecord(){ const box = $('room-record'); if (box){ box.innerHTML = roomRecord(); linkNames(box); } }
 
 /* ── THE PLAYER'S HAND, from a page with no mind in it (the contract at log:urb-hitl 16):
    SAY — the intention set down where the whole table sees it, staged through the beach
@@ -1250,10 +1257,10 @@ function renderFold(d){
   for (const who of Object.keys(MIRRORS).sort()){
     const mnode = walkTo(MIRRORS[who], d);
     const t = shallowVoice(mnode);
-    if (t) rows.push('<div class="frow"><span class="fwho">' + esc(who) + '</span><span class="ftext">' + esc(t) + '</span></div>');
+    if (t) rows.push('<div class="frow"><span class="fwho"' + nameTag(who) + '>' + esc(who) + '</span><span class="ftext">' + esc(t) + '</span></div>');
     else if (mnode && typeof mnode === 'object'){
       const deep = digitKeys(mnode).map(p => ({ p, t: voiceOf(mnode[p]) })).filter(x => x.t);
-      for (const x of deep) rows.push('<div class="frow"><span class="fwho">' + esc(who) + '</span><span class="ftext"><span class="at">at ' + esc(fmtAddr(d + x.p, FLOOR)) + '</span>' + esc(x.t) + '</span></div>');
+      for (const x of deep) rows.push('<div class="frow"><span class="fwho"' + nameTag(who) + '>' + esc(who) + '</span><span class="ftext"><span class="at">at ' + esc(fmtAddr(d + x.p, FLOOR)) + '</span>' + esc(x.t) + '</span></div>');
     }
   }
   return rows.length ? rows.join('') : '<p class="fnone">Nobody has answered this one yet — yours would be the first.</p>';
@@ -1266,9 +1273,14 @@ function renderVoices(pool){
   })).filter(v => v.text && v.who && v.who.length <= 40 && v.ts && isFinite(Date.parse(v.ts)));
   voices.sort((a, b) => b.ts.localeCompare(a.ts));
   if (!voices.length) return '<p class="vnone">Nothing in the parlour yet — the first line is yours.</p>';
-  /* a parlour line is shown as a glance — the whole of a long one lives in the room itself */
-  return voices.slice(0, 5).map(v => '<div class="vrow"><span class="vwho">' + esc(v.who) + '</span><span class="vtext">' + esc(short(v.text, 320)) + '</span><span class="vago">' + esc(ago(v.ts)) + '</span></div>').join('') +
-    (voices.length > 5 ? '<p class="vnone">' + voices.length + ' in all — the newest 5 shown · <a href="https://mirror.onen.ai/?pool=' + encodeURIComponent(HANDLE) + '">all of them, live ↗</a></p>' : '');
+  /* a parlour line is shown as a glance, the newest five. ALL OF THEM opens every line
+     whole on this page rather than in the mirror, where a visitor with no key meets a dead
+     end; the mirror keeps its one door, 'talk with … live', among the doors (David, 2026-09-26) */
+  const all = new URLSearchParams(location.search).get('parlour') === 'all';
+  return (all ? voices : voices.slice(0, 5)).map(v => '<div class="vrow"><span class="vwho"' + nameTag(v.who) + '>' + esc(v.who) + '</span><span class="vtext">' + esc(all ? v.text : short(v.text, 320)) + '</span><span class="vago">' + esc(ago(v.ts)) + '</span></div>').join('') +
+    (voices.length > 5 ? '<p class="vnone">' + voices.length + ' in all · ' + (all
+      ? '<a href="' + esc(pageHref()) + '#parlour">the newest 5 →</a>'
+      : 'the newest 5 shown · <a href="' + esc(pageHref('parlour=all')) + '#parlour">all of them →</a>') + '</p>' : '');
 }
 
 /* ── the reader's mirror — the /now latch pattern: born locked under a key the reader
@@ -1359,6 +1371,7 @@ function wirePosts(){
       try { localStorage.setItem('render:who', reader); } catch(e){}
       clearDraft();
       post.querySelector('.fold').innerHTML = '<p class="fh">what readers made of it</p>' + renderFold(walk);
+      linkNames(post);
       say('it stands beside the post, in your own reading — revise it here any time', 'ok');
     }
     go.addEventListener('click', submit);
@@ -1382,9 +1395,12 @@ function wirePosts(){
 
 /* a linked post scrolls into view once the page has drawn it */
 function scrollToHash(){
-  const m = (location.hash || '').match(/^#post-([1-9]\d*)$/);
-  if (!m) return;
-  const el = document.getElementById('post-' + m[1]);
+  /* the page is drawn after it loads, so the browser's own jump finds nothing: a post by
+     its address, and #parlour — where every name on the site leads a visitor who wants
+     to leave a line — to the parlour's section, its heading in view */
+  const h = location.hash || '', m = h.match(/^#post-([1-9]\d*)$/);
+  const el = m ? document.getElementById('post-' + m[1])
+    : h === '#parlour' && $('parlour') ? $('parlour').closest('section') : null;
   if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
 }
 
@@ -1466,6 +1482,7 @@ function wireParlour(exists){
     say('left ✓ — it stands in the parlour', 'ok');
     const pool = await readBlock('pool:' + HANDLE).catch(() => null);
     $('voices').innerHTML = renderVoices(pool);
+    linkNames($('voices'));
   }
   go.addEventListener('click', submit);
   text.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); });
