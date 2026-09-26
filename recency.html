@@ -276,9 +276,20 @@ const OPENED = new Set();         /* quiet clock rungs unfolded by tap — sessi
 const $ = id => document.getElementById(id);
 /* ONE SPELLING. The block parameter is gone with the parked-block era it came
  * from: the mirror reads a family from any of its blocks and files them all
- * under spine:<field>, so naming a member only gave one place a second chip. */
-const mirrorUrl = addr => 'https://mirror.onen.ai/?block=' +
-  encodeURIComponent('spine:' + FAMILY) + (addr ? '&at=' + (MODE === 'clock' ? pad10(addr) : String(addr)) : '');
+ * under spine:<field>, so naming a member only gave one place a second chip.
+ * AND A MIRROR LINK NAMES A PLACE (David, 2026-09-24): at a spine's root the
+ * mirror lists the hands and takes no line, so with no part in focus a clock
+ * opens today — the mirror resolves the word — and a tree, which has no today,
+ * offers no mirror door until a part is chosen ('' — the callers hide it). */
+const mirrorUrl = addr => {
+  const at = addr ? (MODE === 'clock' ? pad10(addr) : String(addr)) : (MODE === 'clock' ? 'today' : '');
+  return at ? 'https://mirror.onen.ai/?block=' + encodeURIComponent('spine:' + FAMILY) + '&at=' + at : '';
+};
+function aimMirrorDoor(addr){
+  const url = mirrorUrl(addr);
+  $('b-mirror').hidden = !url;
+  if (url) $('b-mirror').href = url;
+}
 
 /* ── parts and labels (identical to /where) ── */
 function clockLabel(addr){
@@ -679,7 +690,7 @@ function drawPanel(){
   const addr = FOCUS;
   const prior = document.getElementById('say-t');
   const wasTyping = !!prior && document.activeElement === prior;
-  $('b-mirror').href = mirrorUrl(addr);          /* the bar's mirror door follows the focus */
+  aimMirrorDoor(addr);                           /* the bar's mirror door follows the focus */
   const word = addr ? textAt(SPINE, addr) : voice(SPINE);
   const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text);
   /* the rest of the count, one row per hand — a count is people, so the panel
@@ -720,8 +731,9 @@ function drawPanel(){
     rows.push('<div class="saybox"><textarea id="say-t" rows="2" placeholder="your voice at ' + esc(addr ? labelFor(addr) : FAMILY) + ' …"></textarea><button id="say-b">say</button></div>' +
       '<p class="sayhint">lands in ' + esc(FAMILY + ':' + HANDLE) + ' at this very part, revisable forever — Enter says, Shift+Enter breaks a line</p>');
   }
+  const partMirror = mirrorUrl(addr);
   rows.push('<div class="plinks">' +
-    '<a target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">this part in the mirror ↗</a>' +
+    (partMirror ? '<a target="_blank" rel="noopener" href="' + esc(partMirror) + '">' + (addr ? 'this part' : 'today') + ' in the mirror ↗</a>' : '') +
     '<a target="_blank" rel="noopener" href="/walk/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">walk this field ↗</a>' +
     (HANDLE && word ? '<button id="p-deal" title="one card in your hand, aimed here — pile by rung">deal this as a card</button>' : '') +
     '</div>');
@@ -947,6 +959,7 @@ async function sweepSlow(){
   const blocks = (index && index.blocks) || [];
   /* the mirror door follows the focus — a point; the pool is the whole project's
      chat, offered only where its room stands */
+  if (FOCUS === null || FOCUS === undefined) aimMirrorDoor('');   /* the mode is known only now */
   $('b-pool').hidden = !blocks.includes('pool:' + FAMILY);
   TOUCHED =(index && index.touched && typeof index.touched === 'object') ? index.touched : null;
   const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
@@ -1057,7 +1070,7 @@ async function tick(){
 }
 async function start(){
   $('b-fam').textContent = FAMILY;
-  $('b-mirror').href = mirrorUrl('');
+  aimMirrorDoor('');
   $('b-pool').href = 'https://mirror.onen.ai/?pool=' + encodeURIComponent(FAMILY);
   $('b-reread').addEventListener('click', () => { void reread(); });
   $('wh').innerHTML = 'One reading then stillness — <span style="font-family:var(--mono)">↻ re-read</span> fetches the beach again; the page never polls. ' +
