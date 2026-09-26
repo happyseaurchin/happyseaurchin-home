@@ -55,6 +55,9 @@
   .film__meta{margin-top:auto;padding:10px 18px 16px;font-family:var(--mono);font-size:11px;line-height:1.55;letter-spacing:0.03em;color:var(--vapour-dim)}
   .empty,.loading{color:var(--vapour-dim);font-style:italic;padding:10px 0;margin:0}
   .add{margin:30px 0 0;max-width:56ch;color:var(--vapour);font-size:1.02rem}
+  /* a shelf is one group of the block, headed by the group's own line */
+  .shelf + .shelf{margin-top:48px}
+  .shelf__line{margin:-8px 0 22px;max-width:62ch;color:var(--vapour);font-size:1.02rem}
 
   .site-foot{border-top:1px solid var(--line);margin-top:24px;padding:34px 0 66px}
   .foot-tag{font-family:var(--body);font-style:italic;color:var(--vapour-dim);font-size:1rem;max-width:48ch;margin:0}
@@ -87,15 +90,14 @@
   <div class="wrap">
     <p class="hero__kicker"><span class="dot"></span> read live from the beach</p>
     <h1>The beach, <span class="warm">moving</span>.</h1>
-    <p class="lede">Short films of how the beach works. Each one is a page of its own, so you can <b>watch it here</b>, <b>send it to a friend</b>, or meet it again <b>inside the page it explains</b>.</p>
+    <p class="lede">Short films of how the beach works, and the styles they could be drawn in. Each one is a page of its own, so you can <b>watch it here</b>, <b>send it to a friend</b>, or meet it again <b>inside the page it explains</b>.</p>
   </div>
 </header>
 
 <main>
   <section class="section">
     <div class="wrap">
-      <p class="eyebrow">The films</p>
-      <div id="films" class="films"><p class="loading">Reading the films…</p></div>
+      <div id="shelves"><p class="loading">Reading the films…</p></div>
       <p class="add">Made one of your own? Put it anywhere on the web and <a href="/at/weft">leave its link for weft</a>. It joins this gallery as one line on the beach, and nothing here needs rebuilding.</p>
     </div>
   </section>
@@ -141,12 +143,36 @@
       (who ? '<div class="film__meta">' + esc(who) + '</div>' : '') + '</a>';
   }
 
-  var box = document.getElementById('films');
+  // The words at a group's underscore head its shelf (walked down the chain once the group supernests).
+  function voice(n){ while (n && typeof n === 'object') n = n._; return typeof n === 'string' ? n.trim() : ''; }
+  // Each group at the root is a shelf; a film standing at the root itself shelves first, unheaded.
+  function shelves(block){
+    var out = [], loose = [];
+    (function root(node){
+      if (!node || typeof node !== 'object') return;
+      if (node._ && typeof node._ === 'object') root(node._);
+      for (var k = 1; k <= 9; k++){
+        var c = node[k];
+        if (isFilm(c)) loose.push(c);
+        else if (c && typeof c === 'object'){ var f = []; collect(c, f); if (f.length) out.push({ line: voice(c), films: f }); }
+      }
+    })(block);
+    if (loose.length) out.unshift({ line: '', films: loose });
+    return out;
+  }
+  function shelf(s){
+    var cut = s.line.indexOf(' — '), head = cut > 0 ? s.line.slice(0, cut) : s.line, rest = cut > 0 ? s.line.slice(cut + 3) : '';
+    return '<section class="shelf">' + (head ? '<p class="eyebrow">' + esc(head) + '</p>' : '') +
+      (rest ? '<p class="shelf__line">' + esc(rest.replace(/^./, function(c){ return c.toUpperCase(); })) + '</p>' : '') +
+      '<div class="films">' + s.films.map(tile).join('') + '</div></section>';
+  }
+
+  var box = document.getElementById('shelves');
   fetch(BEACH + '/.well-known/pscale-beach?block=' + encodeURIComponent(BLOCK), { cache:'no-store', headers:{ Accept:'application/json' } })
     .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('the beach answered ' + r.status)); })
     .then(function(block){
-      var films = []; collect(block, films);
-      box.innerHTML = films.length ? films.map(tile).join('') : '<p class="empty">No films yet.</p>';
+      var s = shelves(block);
+      box.innerHTML = s.length ? s.map(shelf).join('') : '<p class="empty">No films yet.</p>';
     })
     .catch(function(e){ box.innerHTML = '<p class="empty">Couldn’t read the films just now — ' + esc(e.message) + '.</p>'; });
 
