@@ -108,12 +108,10 @@
   <section class="door warm" id="door-passport">
     <p class="lab">a passport</p>
     <h2>Who you are, on the beach.</h2>
-    <p>The name you go by, one line about you, and a key of your own. Readable by anyone, yours to change; no account, no email. Say where you are if you like, as closely as you like — a country, a town, a street — and you stand there on the globe; leave it empty and you stand on Earth.</p>
+    <p>The name you go by, one line about you, and a key of your own. Readable by anyone, yours to change; no account, no email. It puts you on the globe at Earth; say where you are in the earth card below, as closely as you like.</p>
     <div class="say">
       <input id="p-name" placeholder="the name you will go by — one word" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
       <textarea id="p-line" data-dictate placeholder="one line, as a stranger should meet you"></textarea>
-      <input id="p-where" placeholder="where you are, if you want to say — a country, a town, a street…" autocomplete="off" maxlength="160">
-      <p class="quiet" id="p-where-at"></p>
       <input id="p-key" placeholder="a key of your own — any words you will remember" autocomplete="off" spellcheck="false" autocapitalize="none">
       <div class="row">
         <span class="why">the key makes these words yours to change later — kept on this device, not recoverable if lost · <a href="/key">/key</a></span>
@@ -143,9 +141,19 @@
   <section class="door" id="door-earth">
     <p class="lab">earth</p>
     <h2>Where you are.</h2>
-    <p>Not a game: the real world, mapped by address, with everyone who has said where they are standing on it. Your passport puts you on Earth; make it as close as you like — a country, a town, a street, a house, a room.</p>
-    <a class="act" id="e-here" href="/here">stand where you are</a>
-    <p class="quiet"><a href="/globe">the globe — who is where →</a></p>
+    <p>Not a game: the real world, mapped by address, with everyone who has said where they are standing on it. Your passport puts you on Earth; say where you are, as closely as you like, and you stand there.</p>
+    <div class="say">
+      <input id="e-name" placeholder="your name — as your passport spells it" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
+      <input id="e-where" placeholder="where you are — a country, a town, a street…" autocomplete="off" maxlength="160">
+      <p class="quiet" id="e-where-at"></p>
+      <div class="row">
+        <span class="why">written into your own passport — its key serves here, so you are asked once</span>
+        <button id="e-go" type="button">stand there</button>
+      </div>
+    </div>
+    <p class="hint" id="e-hint"></p>
+    <div class="landed hidden" id="e-landed"></div>
+    <p class="quiet"><a id="e-here" href="/here">your house or your room: walk the map →</a> &nbsp;·&nbsp; <a href="/globe">the globe — who is where →</a></p>
   </section>
 
   <section class="door" id="door-game">
@@ -430,7 +438,6 @@ function placeFor(map, words){
 }
 async function foundPassport(){
   const name = cleanHandle($('p-name').value), line = $('p-line').value.trim(), key = $('p-key').value.trim();
-  const where = $('p-where').value.replace(/\s+/g, ' ').trim();
   const say = (m, cls) => { const h = $('p-hint'); h.textContent = m || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); };
   const landed = html => { $('p-landed').innerHTML = html; $('p-landed').classList.remove('hidden'); };
   if (!name){ $('p-name').focus(); say('the name first — one word, yours'); return; }
@@ -448,31 +455,64 @@ async function foundPassport(){
   const near = names.filter(n => editDistance(n.toLowerCase(), lc) <= 2).slice(0, 3);
   if (near.length && WARNED !== name){ WARNED = name; $('p-go').disabled = false;
     say('near spellings already on the beach: ' + near.join(', ') + ' — if one is yours, open /passport/<that name>; if not, press found it again', 'err'); return; }
-  let stood = null;
-  if (where){ try { stood = placeFor(await earthMap(), where); } catch(e){} }
-  const three = where ? 'Location: *:https://earth.beach.happyseaurchin.com:spatial:earth:' + (stood ? stood.addr : '30000000000') + ' — ' + where : EARTH;
-  const w = await writeBlock({ block: 'passport:' + name, content: { '_': line, '3': three }, new_lock: key });
+  const w = await writeBlock({ block: 'passport:' + name, content: { '_': line, '3': EARTH }, new_lock: key });
   $('p-go').disabled = false;
   if (!w.ok){ say(w.status === 409 ? 'a passport named ' + name + ' already stands' : 'the beach refused it (' + w.status + ')', 'err'); return; }
   try { localStorage.setItem('passport-latch:' + name, key); localStorage.setItem('render:who', name); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
-  say(''); $('p-key').value = ''; $('p-line').value = ''; $('p-where').value = ''; $('p-where-at').textContent = '';
+  say(''); $('p-key').value = ''; $('p-line').value = '';
   const h = encodeURIComponent(name);
-  const stands = stood ? 'You stand at <b>' + esc(stood.name) + '</b> on the globe.'
-    : where ? 'You stand on Earth for now; tonight\'s pass places “' + esc(where) + '” and replies in your parlour.'
-    : 'You stand on Earth.';
-  landed('Your passport stands, <b>' + esc(name) + '</b>. ' + stands + '<br>' +
+  landed('Your passport stands, <b>' + esc(name) + '</b>. You stand on Earth.<br>' +
     '<a href="/passport/' + h + '">open it — add what you offer and would welcome →</a> &nbsp;·&nbsp; ' +
-    '<a href="/here/' + h + '">' + (stood ? 'make it closer →' : 'say where, as closely as you like →') + '</a> &nbsp;·&nbsp; say what today is, below');
-  $('w-name').value = name; $('w-line').focus();
+    '<a href="#door-earth">say where you are, below →</a> &nbsp;·&nbsp; say what today is, below');
+  $('w-name').value = name; $('e-name').value = name; $('w-line').focus();
 }
 $('p-go').addEventListener('click', foundPassport);
 $('p-name').addEventListener('input', () => { const c = cleanHandle($('p-name').value); if (c !== $('p-name').value) $('p-name').value = c; });
 $('p-key').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); foundPassport(); } });
+/* ── the earth card: stand where you say, in your own passport. Position 3 keeps the words before
+   'Location:' and the clause after it is replaced, as /here does; the passport's key serves,
+   remembered on this device, and is asked for once when it is not. ── */
+async function standThere(){
+  const name = cleanHandle($('e-name').value), where = $('e-where').value.replace(/\s+/g, ' ').trim();
+  const say = (m, cls) => { const h = $('e-hint'); h.textContent = m || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); };
+  if (!name){ $('e-name').focus(); say('your name first — as your passport spells it'); return; }
+  if (!where){ $('e-where').focus(); say('and where you are — a country, a town, a street'); return; }
+  $('e-go').disabled = true; say('placing you…');
+  const done = (m, cls) => { $('e-go').disabled = false; say(m, cls); };
+  const pp = await readBlock('passport:' + name).catch(() => undefined);
+  if (pp === undefined) return done('the beach did not answer — nothing written', 'err');
+  if (pp === null) return done('no passport under ' + name + ' yet — found one above, then say where', 'err');
+  let stood = null; try { stood = placeFor(await earthMap(), where); } catch(e){}
+  const v3 = pp['3'], p3 = typeof v3 === 'string' ? v3 : (v3 && typeof v3._ === 'string' ? v3._ : '');
+  const before = p3.split(/\s*\bLocation:/i)[0].trim();
+  const body = { block: 'passport:' + name, spindle: '3',
+    content: (before ? before + ' ' : '') + 'Location: *:https://earth.beach.happyseaurchin.com:spatial:earth:' + (stood ? stood.addr : '30000000000') + ' — ' + where };
+  let key = null; try { key = localStorage.getItem('passport-latch:' + name); } catch(e){}
+  if (key) body.secret = key;
+  let w = await writeBlock(body);
+  if (lockRequired(w)){
+    const v = prompt('passport:' + name + ' is latched — enter your key (kept on this device; check the first letter — phones capitalise it):');
+    if (v === null || !v.trim()) return done('nothing written');
+    body.secret = v.trim(); w = await writeBlock(body);
+    if (w.ok) try { localStorage.setItem('passport-latch:' + name, v.trim()); } catch(e){}
+  }
+  if (!w.ok) return done(lockRequired(w) ? 'that key does not open ' + name + '\'s passport — nothing written' : 'the beach refused it (' + w.status + ')', 'err');
+  done('');
+  try { localStorage.setItem('render:who', name); } catch(e){}
+  const h = encodeURIComponent(name);
+  $('e-landed').innerHTML = (stood ? 'You stand at <b>' + esc(stood.name) + '</b> on the globe.'
+      : 'You stand on Earth for now; tonight\'s pass places “' + esc(where) + '” and replies in your parlour.') +
+    '<br><a href="/globe/' + h + '">see yourself on the globe →</a> &nbsp;·&nbsp; <a href="/here/' + h + '">closer, on the map →</a>';
+  $('e-landed').classList.remove('hidden');
+}
+$('e-go').addEventListener('click', standThere);
+$('e-name').addEventListener('input', () => { const c = cleanHandle($('e-name').value); if (c !== $('e-name').value) $('e-name').value = c; });
+$('e-where').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); standThere(); } });
 let WHERE_T = null;
-$('p-where').addEventListener('input', () => {
+$('e-where').addEventListener('input', () => {
   clearTimeout(WHERE_T);
   WHERE_T = setTimeout(async () => {
-    const w = $('p-where').value.replace(/\s+/g, ' ').trim(), at = $('p-where-at');
+    const w = $('e-where').value.replace(/\s+/g, ' ').trim(), at = $('e-where-at');
     if (!w){ at.textContent = ''; return; }
     let s = null; try { s = placeFor(await earthMap(), w); } catch(e){}
     at.textContent = s ? 'on the globe at ' + s.shown : 'not on the map yet — you stand on Earth, and tonight\'s pass places it';
@@ -481,7 +521,7 @@ $('p-where').addEventListener('input', () => {
 if (window.keepDraft) keepDraft($('p-line'), 'draft:welcome:passport');
 /* a name carried in — from a gate that found no passport under it — is set down here */
 const ASKED = cleanHandle(new URLSearchParams(location.search).get('h'));
-if (ASKED){ $('p-name').value = ASKED; $('w-name').value = ASKED; }
+if (ASKED){ $('p-name').value = ASKED; $('w-name').value = ASKED; $('e-name').value = ASKED; }
 
 /* ── the worlds that stand — read from the register at render, never a copied list ── */
 async function renderWorlds(){
@@ -510,7 +550,7 @@ $('conn-copy').addEventListener('click', async () => {
    alone knows: a walker who arrived carrying a handle keeps it */
 const CARRIED = (new URLSearchParams(location.search).get('h') || '').replace(/[^a-z0-9 _-]/gi, '').trim() || null;
 let KNOWN = null; try { KNOWN = cleanHandle(localStorage.getItem('render:who')) || null; } catch(e){}
-if (CARRIED || KNOWN) $('e-here').href = '/here/' + encodeURIComponent(CARRIED || KNOWN);
+if (CARRIED || KNOWN){ $('e-here').href = '/here/' + encodeURIComponent(CARRIED || KNOWN); if (!$('e-name').value) $('e-name').value = CARRIED || KNOWN; }
 if (window.siteDoors) siteDoors({ handle: CARRIED || KNOWN, here: 'welcome', site: true });
 })();
 </script>
