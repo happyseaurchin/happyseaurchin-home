@@ -108,10 +108,12 @@
   <section class="door warm" id="door-passport">
     <p class="lab">a passport</p>
     <h2>Who you are, on the beach.</h2>
-    <p>The name you go by, one line about you, and a key of your own. Readable by anyone, yours to change; no account, no email. It puts you on the map at Earth; then say where you are, as closely as you like — a country, a town, a street, a house, a room — and what today is.</p>
+    <p>The name you go by, one line about you, and a key of your own. Readable by anyone, yours to change; no account, no email. Say where you are if you like, as closely as you like — a country, a town, a street — and you stand there on the globe; leave it empty and you stand on Earth.</p>
     <div class="say">
       <input id="p-name" placeholder="the name you will go by — one word" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
       <textarea id="p-line" data-dictate placeholder="one line, as a stranger should meet you"></textarea>
+      <input id="p-where" placeholder="where you are, if you want to say — a country, a town, a street…" autocomplete="off" maxlength="160">
+      <p class="quiet" id="p-where-at"></p>
       <input id="p-key" placeholder="a key of your own — any words you will remember" autocomplete="off" spellcheck="false" autocapitalize="none">
       <div class="row">
         <span class="why">the key makes these words yours to change later — kept on this device, not recoverable if lost · <a href="/key">/key</a></span>
@@ -389,8 +391,46 @@ let WARNED = null;
    person is on the globe from the first moment and /here only ever makes it finer — a country,
    a town, a street, a house or a single room, as precise as they choose (David, 2026-09-27). */
 const EARTH = 'Location: *:https://earth.beach.happyseaurchin.com:spatial:earth:30000000000 — Earth';
+/* WHERE, in their own words and never a number: the map's own place names (spatial:earth) are found
+   in what they wrote, and the finest name that agrees with the others is where they stand. Only world
+   rungs are matched, a street at the finest: a house or a room is a person's own place, never found
+   from a stranger's words. Their words ride whole after the address, so tonight's pass can add what
+   the map lacks and reply; two places answering equally, or none, leave them on Earth with the words. */
+const EARTH_WIRE = 'https://earth.beach.happyseaurchin.com/.well-known/pscale-beach';
+let MAP = null;
+async function earthMap(){
+  if (!MAP){ const r = await fetch(EARTH_WIRE + '?block=' + encodeURIComponent('spatial:earth'), { headers:{Accept:'application/json'}, cache:'no-store' }); MAP = r.ok ? await r.json() : {}; }
+  return MAP;
+}
+const voiceOfNode = n => typeof n === 'string' ? n : (n && typeof n._ === 'string' ? n._ : '');
+const nameOfVoice = v => v.split(' — ')[0].trim();
+const plain = t => ' ' + t.toLowerCase().replace(/^the /, '').replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+function placeFor(map, words){
+  const said = plain(words), hits = [];
+  (function walk(node, path){
+    if (!node || typeof node !== 'object' || path.length >= 9) return;
+    const kids = Object.keys(node).filter(k => /^[1-9]$/.test(k)).map(k => [k, node[k]]);
+    if (path.length && node._ && typeof node._ === 'object') kids.push(['0', node._]);   /* undecided ground */
+    for (const [d, n] of kids){
+      const at = path.concat(d), name = plain(nameOfVoice(voiceOfNode(n)));
+      if (name.trim().length > 2 && said.includes(name)) hits.push(at.join(''));
+      walk(n, at);
+    }
+  })(map, []);
+  if (!hits.length) return null;
+  const agree = h => hits.filter(o => o !== h && h.startsWith(o)).length;
+  hits.sort((a, b) => agree(b) - agree(a) || b.length - a.length);
+  const best = hits[0];
+  if (hits.some(h => h !== best && agree(h) === agree(best) && h.length === best.length)) return null;
+  let width = 1; for (let n = map; n && n._ && typeof n._ === 'object'; n = n._) width++;
+  const names = []; let n = map;
+  for (const d of best){ n = n && typeof n === 'object' ? n[d === '0' ? '_' : d] : null; names.push(nameOfVoice(voiceOfNode(n))); }
+  const shown = [names[names.length - 1], best.length > 5 ? names[4] : '', best.length > 3 ? names[2] : ''].filter((x, i, a) => x && a.indexOf(x) === i);
+  return { addr: best + '0'.repeat(Math.max(0, width - best.length)), name: names[names.length - 1], shown: shown.join(', ') };
+}
 async function foundPassport(){
   const name = cleanHandle($('p-name').value), line = $('p-line').value.trim(), key = $('p-key').value.trim();
+  const where = $('p-where').value.replace(/\s+/g, ' ').trim();
   const say = (m, cls) => { const h = $('p-hint'); h.textContent = m || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); };
   const landed = html => { $('p-landed').innerHTML = html; $('p-landed').classList.remove('hidden'); };
   if (!name){ $('p-name').focus(); say('the name first — one word, yours'); return; }
@@ -408,20 +448,36 @@ async function foundPassport(){
   const near = names.filter(n => editDistance(n.toLowerCase(), lc) <= 2).slice(0, 3);
   if (near.length && WARNED !== name){ WARNED = name; $('p-go').disabled = false;
     say('near spellings already on the beach: ' + near.join(', ') + ' — if one is yours, open /passport/<that name>; if not, press found it again', 'err'); return; }
-  const w = await writeBlock({ block: 'passport:' + name, content: { '_': line, '3': EARTH }, new_lock: key });
+  let stood = null;
+  if (where){ try { stood = placeFor(await earthMap(), where); } catch(e){} }
+  const three = where ? 'Location: *:https://earth.beach.happyseaurchin.com:spatial:earth:' + (stood ? stood.addr : '30000000000') + ' — ' + where : EARTH;
+  const w = await writeBlock({ block: 'passport:' + name, content: { '_': line, '3': three }, new_lock: key });
   $('p-go').disabled = false;
   if (!w.ok){ say(w.status === 409 ? 'a passport named ' + name + ' already stands' : 'the beach refused it (' + w.status + ')', 'err'); return; }
   try { localStorage.setItem('passport-latch:' + name, key); localStorage.setItem('render:who', name); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
-  say(''); $('p-key').value = ''; $('p-line').value = '';
+  say(''); $('p-key').value = ''; $('p-line').value = ''; $('p-where').value = ''; $('p-where-at').textContent = '';
   const h = encodeURIComponent(name);
-  landed('Your passport stands, <b>' + esc(name) + '</b>.<br>' +
+  const stands = stood ? 'You stand at <b>' + esc(stood.name) + '</b> on the globe.'
+    : where ? 'You stand on Earth for now; tonight\'s pass places “' + esc(where) + '” and replies in your parlour.'
+    : 'You stand on Earth.';
+  landed('Your passport stands, <b>' + esc(name) + '</b>. ' + stands + '<br>' +
     '<a href="/passport/' + h + '">open it — add what you offer and would welcome →</a> &nbsp;·&nbsp; ' +
-    '<a href="/here/' + h + '">you stand on Earth — say where, as closely as you like →</a> &nbsp;·&nbsp; say what today is, below');
+    '<a href="/here/' + h + '">' + (stood ? 'make it closer →' : 'say where, as closely as you like →') + '</a> &nbsp;·&nbsp; say what today is, below');
   $('w-name').value = name; $('w-line').focus();
 }
 $('p-go').addEventListener('click', foundPassport);
 $('p-name').addEventListener('input', () => { const c = cleanHandle($('p-name').value); if (c !== $('p-name').value) $('p-name').value = c; });
 $('p-key').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); foundPassport(); } });
+let WHERE_T = null;
+$('p-where').addEventListener('input', () => {
+  clearTimeout(WHERE_T);
+  WHERE_T = setTimeout(async () => {
+    const w = $('p-where').value.replace(/\s+/g, ' ').trim(), at = $('p-where-at');
+    if (!w){ at.textContent = ''; return; }
+    let s = null; try { s = placeFor(await earthMap(), w); } catch(e){}
+    at.textContent = s ? 'on the globe at ' + s.shown : 'not on the map yet — you stand on Earth, and tonight\'s pass places it';
+  }, 350);
+});
 if (window.keepDraft) keepDraft($('p-line'), 'draft:welcome:passport');
 /* a name carried in — from a gate that found no passport under it — is set down here */
 const ASKED = cleanHandle(new URLSearchParams(location.search).get('h'));
