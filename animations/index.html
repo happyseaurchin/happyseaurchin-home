@@ -58,6 +58,23 @@
   /* a shelf is one group of the block, headed by the group's own line */
   .shelf + .shelf{margin-top:48px}
   .shelf__line{margin:-8px 0 22px;max-width:62ch;color:var(--vapour);font-size:1.02rem}
+  /* the lead: a film standing at the root of the block heads the page and plays in place;
+     its own page loads in a frame only when someone presses play */
+  .lead{margin:0 0 56px}
+  .lead__stage{position:relative;aspect-ratio:3/2;border:1px solid var(--line);border-radius:6px;overflow:hidden;
+    background:linear-gradient(180deg,#3E7278 0%,#78A8A9 22%,#BCB7A4 22%,#C7BAA1 68%,#DDD0B7 68%)}
+  .lead__stage img,.lead__stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;object-fit:cover}
+  /* playing, the frame is as tall as a film's own column: a square stage as wide as the frame allows, words and controls beneath */
+  .lead__stage.on{aspect-ratio:auto;height:min(calc(100vw + 270px),870px)}
+  .lead__go{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);cursor:pointer;
+    font-family:var(--mono);font-size:14px;letter-spacing:0.14em;text-transform:uppercase;
+    color:#EFF6F5;background:rgba(6,23,30,0.72);border:1px solid rgba(239,246,245,0.4);border-radius:999px;padding:15px 26px 15px 22px}
+  .lead__go::before{content:"\25B6";margin-right:12px}
+  .lead__go:hover,.lead__go:focus-visible{color:#EFF6F5;background:rgba(6,23,30,0.9);border-color:#EFF6F5;outline:none}
+  .lead__cap{padding:18px 2px 0}
+  .lead__cap h2{font-family:var(--display);font-weight:700;font-size:clamp(1.5rem,3.2vw,2.1rem);line-height:1.12;margin:0 0 8px;color:var(--foam)}
+  .lead__cap p{margin:0 0 8px;max-width:62ch;color:var(--vapour);font-size:1.02rem}
+  .lead__cap .film__meta{padding:0;font-size:11px;color:var(--vapour-dim)}
 
   .site-foot{border-top:1px solid var(--line);margin-top:24px;padding:34px 0 66px}
   .foot-tag{font-family:var(--body);font-style:italic;color:var(--vapour-dim);font-size:1rem;max-width:48ch;margin:0}
@@ -132,20 +149,36 @@
     try { var x = new URL(u); if (x.host === location.host || x.host === 'happyseaurchin.com') return { href: x.pathname + x.search + x.hash, here: true }; } catch(e){}
     return { href: u, here: false };
   }
+  // A film's parts: its title and what it shows (either side of the spaced dash), where it plays, its still, who made it.
+  function parts(f){
+    var line = f._.trim(), cut = line.indexOf(' — '), to = local(web(f['1']));
+    return { title: cut > 0 ? line.slice(0, cut) : line,
+      shows: cut > 0 ? line.slice(cut + 3).replace(/^./, function(c){ return c.toUpperCase(); }) : '',
+      href: to.href, here: to.here, still: web(f['2']) ? local(web(f['2'])).href : '',
+      who: typeof f['3'] === 'string' ? f['3'] : '' };
+  }
   function tile(f){
-    var line = f._.trim(), cut = line.indexOf(' — '),
-        title = cut > 0 ? line.slice(0, cut) : line, shows = cut > 0 ? line.slice(cut + 3).replace(/^./, function(c){ return c.toUpperCase(); }) : '',
-        to = local(web(f['1'])), href = to.href, here = to.here,
-        still = web(f['2']) ? local(web(f['2'])).href : '', who = typeof f['3'] === 'string' ? f['3'] : '';
-    return '<a class="film" href="' + esc(href) + '"' + (here ? '' : ' target="_blank" rel="noopener"') + '>' +
-      '<div class="film__still">' + (still ? '<img src="' + esc(still) + '" alt="" loading="lazy">' : '') + '<span class="play">watch</span></div>' +
-      '<div class="film__cap"><h2>' + esc(title) + '</h2>' + (shows ? '<p>' + esc(shows) + '</p>' : '') + '</div>' +
-      (who ? '<div class="film__meta">' + esc(who) + '</div>' : '') + '</a>';
+    var p = parts(f);
+    return '<a class="film" href="' + esc(p.href) + '"' + (p.here ? '' : ' target="_blank" rel="noopener"') + '>' +
+      '<div class="film__still">' + (p.still ? '<img src="' + esc(p.still) + '" alt="" loading="lazy">' : '') + '<span class="play">watch</span></div>' +
+      '<div class="film__cap"><h2>' + esc(p.title) + '</h2>' + (p.shows ? '<p>' + esc(p.shows) + '</p>' : '') + '</div>' +
+      (p.who ? '<div class="film__meta">' + esc(p.who) + '</div>' : '') + '</a>';
+  }
+  // The lead shows its still until someone presses play, then its own page in a frame.
+  // A film kept on another site opens there instead, since that site may refuse to be framed.
+  function lead(f){
+    var p = parts(f), out = p.here ? '' : ' target="_blank" rel="noopener"';
+    return '<section class="lead"><div class="lead__stage">' + (p.still ? '<img src="' + esc(p.still) + '" alt="">' : '') +
+      (p.here ? '<button class="lead__go" type="button" data-play="' + esc(p.href) + '" data-title="' + esc(p.title) + '">Play</button>'
+              : '<a class="lead__go" href="' + esc(p.href) + '"' + out + '>Play</a>') + '</div>' +
+      '<div class="lead__cap"><h2>' + esc(p.title) + '</h2>' + (p.shows ? '<p>' + esc(p.shows) + '</p>' : '') +
+      (p.who ? '<p class="film__meta">' + esc(p.who) + '</p>' : '') +
+      '<p><a href="' + esc(p.href) + '"' + out + '>Open it on its own page</a></p></div></section>';
   }
 
   // The words at a group's underscore head its shelf (walked down the chain once the group supernests).
   function voice(n){ while (n && typeof n === 'object') n = n._; return typeof n === 'string' ? n.trim() : ''; }
-  // Each group at the root is a shelf; a film standing at the root itself shelves first, unheaded.
+  // Each group at the root is a shelf; a film standing at the root itself leads the page, above the shelves.
   function shelves(block){
     var out = [], loose = [];
     (function root(node){
@@ -157,7 +190,7 @@
         else if (c && typeof c === 'object'){ var f = []; collect(c, f); if (f.length) out.push({ line: voice(c), films: f }); }
       }
     })(block);
-    if (loose.length) out.unshift({ line: '', films: loose });
+    out.lead = loose;
     return out;
   }
   function shelf(s){
@@ -172,9 +205,15 @@
     .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('the beach answered ' + r.status)); })
     .then(function(block){
       var s = shelves(block);
-      box.innerHTML = s.length ? s.map(shelf).join('') : '<p class="empty">No films yet.</p>';
+      box.innerHTML = s.lead.length || s.length ? s.lead.map(lead).join('') + s.map(shelf).join('') : '<p class="empty">No films yet.</p>';
     })
     .catch(function(e){ box.innerHTML = '<p class="empty">Couldn’t read the films just now — ' + esc(e.message) + '.</p>'; });
+  box.addEventListener('click', function(e){
+    var go = e.target.closest('button.lead__go'); if (!go) return;
+    var stage = go.parentNode, frame = document.createElement('iframe');
+    frame.src = go.getAttribute('data-play'); frame.title = go.getAttribute('data-title'); frame.allow = 'fullscreen';
+    stage.classList.add('on'); stage.replaceChildren(frame); frame.focus();
+  });
 
   document.getElementById('src').innerHTML = 'reading live from the beach · <a href="/render?beach=beach.happyseaurchin.com&amp;block=' + BLOCK + '">the block itself</a>';
 })();
