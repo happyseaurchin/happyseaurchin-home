@@ -274,13 +274,20 @@ async function ensureMirror(){
   let latch = null;
   try { latch = localStorage.getItem(latchKey()) || localStorage.getItem('passport-latch:' + HANDLE); } catch(e){}
   if (!latch){
-    const v = prompt('First voicing founds your mirror, locked to you.\nInvent a key that is yours alone (kept on this device — check the first letter: phones capitalise it):');
+    const v = prompt('First voicing founds your mirror, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return false;
     latch = v.trim();
   }
   let root = 'MIRROR — ' + HANDLE + "'s own now on the canonical clock (spine:now), at the clock's self-same addresses: the current at each rung, in " + HANDLE + "'s own words, revisable forever. Sovereign; silence at a rung is honest absence — the coarser rung above still frames it.";
   for (let i = 0; i < 10; i++) root = { '_': root };
-  const w = await writeBlock({ block: name, content: root, new_lock: latch });
+  let w = await writeBlock({ block: name, content: root, new_lock: latch });
+  /* THE BEACH BINDS A BLOCK NAMED FOR A HANDLE TO THAT PASSPORT'S KEY (handle_bound, pscale-beach #77, 2026-09-28): a key invented here is refused for a passport-holder, so ask once for the passport's own key and found under it */
+  if (!w.ok && w.data && w.data.code === 'handle_bound'){
+    const v = prompt('The beach binds ' + name + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
+    if (v === null || !v.trim()) return false;
+    latch = v.trim();
+    w = await writeBlock({ block: name, content: root, new_lock: latch });
+  }
   if (!w.ok){ hint('the mirror could not be born (' + w.status + ')', 'err'); return false; }
   localStorage.setItem(latchKey(), latch);
   MIRROR = root; MIRROR_OK = true;

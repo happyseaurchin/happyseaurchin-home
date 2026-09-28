@@ -461,6 +461,9 @@ async function editCard(c, text){
 /* the latch key follows the BLOCK and is named exactly as /next names it, so a
  * key set on one surface is a key set on the other — one hand, one key per block */
 const latchKey = block => 'next-latch:' + block;
+/* the passport's own key, kept on this device by /welcome and /here — the one the beach
+ * binds every block named for the handle to (handle_bound, pscale-beach #77) */
+const passportLatch = () => { try { return localStorage.getItem('passport-latch:' + HANDLE) || null; } catch(e){ return null; } };
 
 /* A BLOCK A PERSON WRITES IS BORN LATCHED TO THEM — the act /now already makes at
  * a mirror's first voicing ("First voicing founds your mirror, locked to you").
@@ -472,13 +475,20 @@ async function foundLatched(block, content){
   /* new_lock rides EVERY founding, held key or fresh one: a secret alone proves
    * authority over a block that already exists and locks nothing on one being
    * born, so the held-key path founding open was the same fault wearing a key. */
-  let key = localStorage.getItem(latchKey(block));
+  let key = localStorage.getItem(latchKey(block)) || passportLatch();
   if (!key){
-    const v = prompt('This founds ' + (block.startsWith('ahead:') ? 'your hand — the cards you hold' : 'your mirror') + ', locked to you.\nInvent a key that is yours alone (kept on this device — check the first letter: phones capitalise it):');
+    const v = prompt('This founds ' + (block.startsWith('ahead:') ? 'your hand — the cards you hold' : 'your mirror') + ', locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     key = v.trim();
   }
-  const w = await writeBlock({ block, content, new_lock: key });
+  let w = await writeBlock({ block, content, new_lock: key });
+  /* THE BEACH BINDS A BLOCK NAMED FOR A HANDLE TO THAT PASSPORT'S KEY (handle_bound, pscale-beach #77, 2026-09-28): a key invented here is refused for a passport-holder, so ask once for the passport's own key and found under it */
+  if (!w.ok && w.data && w.data.code === 'handle_bound'){
+    const v = prompt('The beach binds ' + block + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    key = v.trim();
+    w = await writeBlock({ block, content, new_lock: key });
+  }
   if (w.ok) localStorage.setItem(latchKey(block), key);
   return w;
 }
@@ -492,7 +502,14 @@ async function foundLatched(block, content){
  * key prompt below takes over. */
 async function offerLatch(block){
   try { if (sessionStorage.getItem('latch-declined:' + block)) return null; } catch(e){ return null; }
-  const v = prompt(block + ' is not protected yet — anyone can rewrite it.\nSet a key that is yours alone (kept on this device), or cancel to leave it open:');
+  /* the passport's key closes it without a question — it is the only key the beach
+   * accepts on a block named for a passport-holder (handle_bound) */
+  const pk = passportLatch();
+  if (pk){
+    const w0 = await writeBlock({ block, new_lock: pk });
+    if (w0.ok){ localStorage.setItem(latchKey(block), pk); return pk; }
+  }
+  const v = prompt(block + ' is not protected yet — anyone can rewrite it.\nEnter your key — the one your passport uses, if you have one (kept on this device) — or cancel to leave it open:');
   if (v === null || !v.trim()){ try { sessionStorage.setItem('latch-declined:' + block, '1'); } catch(e){} return null; }
   const key = v.trim();
   const w = await writeBlock({ block, new_lock: key });

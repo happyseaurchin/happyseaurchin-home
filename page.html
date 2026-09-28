@@ -1287,7 +1287,7 @@ function renderVoices(pool){
    invents, remembered on this device; the same key serves /walk and /recency ── */
 const readerLatchHome = reader => 'mirror-latch:' + HANDLE + ':' + reader;
 function readerLatchGet(reader){
-  try { return localStorage.getItem(readerLatchHome(reader)) || localStorage.getItem('next-latch:' + HANDLE + ':' + reader) || null; } catch(e){ return null; }
+  try { return localStorage.getItem(readerLatchHome(reader)) || localStorage.getItem('next-latch:' + HANDLE + ':' + reader) || localStorage.getItem('passport-latch:' + reader) || null; } catch(e){ return null; }
 }
 function readerLatchSet(reader, v){ try { localStorage.setItem(readerLatchHome(reader), v); } catch(e){} }
 async function ensureReaderMirror(reader){
@@ -1297,13 +1297,20 @@ async function ensureReaderMirror(reader){
   if (existing) return true;
   let latch = readerLatchGet(reader);
   if (!latch){
-    const v = prompt('Your first answer founds your own reading of ' + HANDLE + "'s posts, locked to you.\nInvent a key that is yours alone (kept on this device — check the first letter: phones capitalise it):");
+    const v = prompt('Your first answer founds your own reading of ' + HANDLE + "'s posts, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):");
     if (v === null || !v.trim()) return 'nothing written';
     latch = v.trim();
   }
   let root = 'MIRROR — ' + reader + "'s readings of " + HANDLE + "'s posts (spine:" + HANDLE + '), at the posts’ own addresses: one reading per post, in ' + reader + "'s own words, revisable forever. Sovereign; silence at a post is honest absence.";
   for (let i = 0; i < FLOOR; i++) root = { '_': root };
-  const w = await writeBlock({ block: name, content: root, new_lock: latch });
+  let w = await writeBlock({ block: name, content: root, new_lock: latch });
+  /* THE BEACH BINDS A BLOCK NAMED FOR A HANDLE TO THAT PASSPORT'S KEY (handle_bound, pscale-beach #77, 2026-09-28): a key invented here is refused for a passport-holder, so ask once for the passport's own key and found under it */
+  if (!w.ok && w.data && w.data.code === 'handle_bound'){
+    const v = prompt('The beach binds ' + name + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
+    if (v === null || !v.trim()) return 'nothing written';
+    latch = v.trim();
+    w = await writeBlock({ block: name, content: root, new_lock: latch });
+  }
   if (!w.ok) return 'your reading could not be founded (' + w.status + ')';
   readerLatchSet(reader, latch);
   return true;
@@ -1407,7 +1414,7 @@ function scrollToHash(){
 /* ── the owner's post — the /now latch pattern: the same key across their estate,
    kept on this device; the diary is founded by its first post, born locked ── */
 const ownerLatchHome = () => 'now-latch:' + HANDLE;
-function ownerLatchGet(){ try { return localStorage.getItem(ownerLatchHome()) || null; } catch(e){ return null; } }
+function ownerLatchGet(){ try { return localStorage.getItem(ownerLatchHome()) || localStorage.getItem('passport-latch:' + HANDLE) || null; } catch(e){ return null; } }
 function ownerLatchSet(v){ try { localStorage.setItem(ownerLatchHome(), v); } catch(e){} }
 function wireNewPost(){
   const text = $('np-text'), go = $('np-go'), hint = $('np-hint');
@@ -1423,12 +1430,20 @@ function wireNewPost(){
     try {
       if (!SPINE){
         if (!key){
-          const v = prompt('Your first post founds your diary, locked to you.\nEnter the key you use for your now, or invent one (kept on this device — check the first letter: phones capitalise it):');
+          const v = prompt('Your first post founds your diary, locked to you.\nEnter your key — the one your passport uses (kept on this device — check the first letter: phones capitalise it):');
           if (v === null || !v.trim()){ go.disabled = false; say('nothing posted'); return; }
           key = v.trim();
         }
         const root = HANDLE + "'s open diary — the spine of the family named " + HANDLE + '. Each numbered position is one post in ' + HANDLE + "'s own voice, revisable; the depth beneath a post is its parts. A reader answers at the same address in their own mirror " + HANDLE + ':<their-name> — the box beneath each post does it; the fold at the bare name ' + HANDLE + ' lays every reading beside the post. Rendered at happyseaurchin.com/page/' + HANDLE + '. Anything not located at a post belongs in pool:' + HANDLE + ', the parlour.';
-        w = await writeBlock({ block: 'spine:' + HANDLE, content: { '_': root, '1': { '_': t, '3': new Date().toISOString() } }, new_lock: key });
+        const founding = { block: 'spine:' + HANDLE, content: { '_': root, '1': { '_': t, '3': new Date().toISOString() } }, new_lock: key };
+        w = await writeBlock(founding);
+        /* THE BEACH BINDS A BLOCK NAMED FOR A HANDLE TO THAT PASSPORT'S KEY (handle_bound, pscale-beach #77, 2026-09-28): a key invented here is refused for a passport-holder, so ask once for the passport's own key and found under it */
+        if (!w.ok && w.data && w.data.code === 'handle_bound'){
+          const v = prompt('The beach binds spine:' + HANDLE + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
+          if (v === null || !v.trim()){ go.disabled = false; say('nothing posted'); return; }
+          key = v.trim(); founding.new_lock = key;
+          w = await writeBlock(founding);
+        }
       } else {
         const body = { block: 'spine:' + HANDLE, append: true, content: { '_': t } };
         if (key) body.secret = key;
