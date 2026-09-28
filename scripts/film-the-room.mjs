@@ -194,16 +194,42 @@ async function facesOf(origin, handles) {
   }
   return out;
 }
+// the place: the table's keeper names where it is placed (keeper:scene 3, PLACING: *:<origin>:spatial:<world>:<address>);
+// the room's own line in that register, with its parent's, is the picture's setting — read once per room
+function starRef(s) { const m = String(s || '').match(/\*:(https?:\/\/\S+?):((?:[a-z][a-z0-9_-]*:)*[a-z][a-z0-9_-]*):([0-9.]+)\s*$/i); return m ? { origin: m[1], block: m[2], addr: m[3] } : null; }
+function linesTo(block, addr) {
+  const lines = [], digits = String(addr).replace('.', '').split('');
+  let node = block;
+  for (const d of digits) {
+    let next = node && node[d];
+    if (next === undefined && node && node._ && typeof node._ === 'object') { node = node._; next = node[d]; }
+    if (next === undefined) break;
+    node = next;
+    const v = voiceOf(node); if (v) lines.push(v);
+  }
+  return lines;
+}
+async function placeOf(origin, room) {
+  try {
+    const keeper = await readBlock(origin, 'keeper:scene');
+    const ref = starRef(keeper && (typeof keeper['3'] === 'string' ? keeper['3'] : voiceOf(keeper['3'])));
+    if (!ref) return '';
+    const register = await readBlock(ref.origin, ref.block);
+    const lines = linesTo(register, room || ref.addr);
+    return lines.slice(-2).join(' ').slice(0, 600);
+  } catch { return ''; }
+}
 // who is in the moment: the speaker, the handles it wove, and every character named in its text
 function castOf(beat, handles) {
   const named = new Set([beat.who, ...String(beat.woven || '').split(/[,\s]+/)].filter(Boolean));
   for (const h of handles) if (new RegExp('\\b' + h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(beat.text)) named.add(h);
   return handles.filter(h => [...named].some(n => n.toLowerCase() === h.toLowerCase()));
 }
-function composeShot(beat, cast, looks, style) {
+function composeShot(beat, cast, looks, style, place) {
   const who = cast.map(h => `${h}: ${looks[h] || 'as described'}`).join(' · ');
   return [
     beat.text.length > 1100 ? beat.text.slice(0, 1100) + '…' : beat.text,
+    place ? `The place — ${place}` : '',
     cast.length ? `In frame — ${who}.` : '',
     `The picture is ${style}`,
     cast.length ? 'Each person shown must have the face of their reference photograph, exactly, in period dress.' : '',
@@ -408,9 +434,9 @@ async function verbFaces(origin) {
   }
 }
 
-async function renderBeat(origin, room, beat, handles, looks, faces, style, wantClip, seconds) {
+async function renderBeat(origin, room, beat, handles, looks, faces, style, wantClip, seconds, place) {
   const cast = castOf(beat, handles);
-  const prompt = composeShot(beat, cast, looks, style);
+  const prompt = composeShot(beat, cast, looks, style, place);
   const faceUrls = cast.map(h => faces[h]).filter(Boolean);
   const base = path.join(WORK, `beat-${beat.slot.replace(/\./g, '_')}`);
   log(`\n[${room}:${beat.slot}] ${beat.who} — ${firstSentence(beat.text)}\n  in frame: ${cast.join(', ') || 'nobody named'}${faceUrls.length ? ` (${faceUrls.length} face${faceUrls.length > 1 ? 's' : ''} as reference)` : ''}`);
@@ -437,6 +463,8 @@ async function verbWatch(origin) {
   const style = ARGS.style || process.env.STYLE || (await readBlock(origin, 'style:' + (ARGS.world || '')).then(s => voiceOf(s)).catch(() => null)) || DEFAULT_STYLE;
   const stateFile = path.join(WORK, 'watched.json');
   const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { done: [] };
+  const place = await placeOf(origin, room);
+  if (place) log(`the place: ${place.slice(0, 160)}${place.length > 160 ? '…' : ''}`);
   log(`watching pool:${room} at ${origin} every ${every / 1000}s as ${AGENT} — ${HF ? 'Higgsfield' : GK ? 'Gemini' : OK ? 'OpenAI' : 'the free service'}${wantClip ? ', with a clip per moment' : ''}${DRY ? ' (dry run — nothing is made or written)' : ''}`);
   if (!DRY) await ensureBook(origin, 'gallery:' + AGENT, `The picture-book of ${AGENT} at this table — what ${AGENT} made, one entry per still: the caption is the moment it renders, 1 the maker, 2 the address rendered (pool:<room>:<slot> for a moment), 3 when, 4 the link a viewer renders. Links only; the bytes live at the maker's sink (ways:stills). The room's pictures are read across every book here by address.`);
   for (;;) {
@@ -451,7 +479,7 @@ async function verbWatch(origin) {
         const looks = Object.fromEntries(handles.map(h => [h, lookOf(pps[h])]));
         const faces = await facesOf(origin, handles);
         for (const beat of todo) {
-          try { await renderBeat(origin, room, beat, handles, looks, faces, style, wantClip, seconds); if (!DRY) { state.done.push(`pool:${room}:${beat.slot}`); fs.writeFileSync(stateFile, JSON.stringify(state)); } }
+          try { await renderBeat(origin, room, beat, handles, looks, faces, style, wantClip, seconds, place); if (!DRY) { state.done.push(`pool:${room}:${beat.slot}`); fs.writeFileSync(stateFile, JSON.stringify(state)); } }
           catch (e) { log(`  [${beat.slot}] failed: ${e.message}`); }
         }
       } else log(`${new Date().toISOString().slice(11, 19)} nothing new (${beats.length} moments, ${rendered.size} rendered)`);

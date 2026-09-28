@@ -328,7 +328,17 @@
   }
   function composeShot(text,cast,looks,style){
     var who=cast.map(function(h){return h+': '+(looks[h]||'as described');}).join(' · ');
-    return [text.length>1100?text.slice(0,1100)+'…':text, cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?'Each person shown must have the face of their reference photograph, exactly, in period dress.':''].filter(Boolean).join(' ');
+    return [text.length>1100?text.slice(0,1100)+'…':text, PLACE?'The place — '+PLACE:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?'Each person shown must have the face of their reference photograph, exactly, in period dress.':''].filter(Boolean).join(' ');
+  }
+  // the place: the table's keeper names where it is placed (keeper:scene 3, PLACING: *:<origin>:spatial:<world>:<address>);
+  // the room's own line in that register, with its parent's, is the picture's setting — read once per room
+  var PLACE='';
+  function starRef(s){var m=String(s||'').match(/\*:(https?:\/\/\S+?):((?:[a-z][a-z0-9_-]*:)*[a-z][a-z0-9_-]*):([0-9.]+)\s*$/i);return m?{origin:m[1],block:m[2],addr:m[3]}:null;}
+  function linesTo(block,addr){var lines=[],node=block;String(addr).replace('.','').split('').forEach(function(d){if(!node)return;var next=node[d];if(next===undefined&&node._&&typeof node._==='object'){node=node._;next=node[d];}if(next===undefined){node=null;return;}node=next;var v=voiceOf(node);if(v)lines.push(v);});return lines;}
+  function readPlace(){
+    return readBlock('keeper:scene').then(function(k){var ref=starRef(k&&(typeof k['3']==='string'?k['3']:voiceOf(k['3'])));if(!ref)return '';
+      return fetch(ref.origin.replace(/\/+$/,'')+'/.well-known/pscale-beach?block='+encodeURIComponent(ref.block),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(reg){return reg?linesTo(reg,ROOM||ref.addr).slice(-2).join(' ').slice(0,600):'';});
+    }).catch(function(){return '';});
   }
   function facesOf(handles){
     return Promise.all(handles.map(function(h){return readBlock('gallery:'+h).then(function(b){var f=b?stillsOf(b).filter(function(s){return s.at==='passport:'+h+':3';}).pop():null;if(f)FACES[h]=f.img;}).catch(function(){});}));
@@ -482,7 +492,8 @@
       var ready=Promise.resolve();
       if(MODE==='room'){
         ready=readIndex().then(function(idx){HANDLES=(idx.blocks||[]).filter(function(b){return b.indexOf('passport:')===0;}).map(function(b){return b.slice(9);});return facesOf(HANDLES);}).catch(function(){})
-          .then(function(){return readBlock(STYLE_BLOCK).then(function(s){WORLD_STYLE=voiceOf(s);}).catch(function(){});}).then(renderFaces);
+          .then(function(){return readBlock(STYLE_BLOCK).then(function(s){WORLD_STYLE=voiceOf(s);}).catch(function(){});})
+          .then(function(){return readPlace().then(function(p){PLACE=p;});}).then(renderFaces);
       }
       ready.then(function(){render();setInterval(render,20000);});
     });
