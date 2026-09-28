@@ -85,6 +85,12 @@
 
   .foot{max-width:640px;margin:0 auto;padding:26px 18px 44px;font-family:var(--mono);font-size:11px;letter-spacing:0.05em;color:var(--vapour-dim);display:flex;gap:14px;flex-wrap:wrap;line-height:1.9}
   .foot a{border-bottom:none;color:var(--vapour-dim)} .foot a:hover{color:var(--liquid)}
+  .offers{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+  .offers button{background:none;border:1px solid var(--line);border-radius:999px;padding:6px 12px;color:var(--vapour);font-family:var(--mono);font-size:12px;cursor:pointer}
+  .offers button.on{border-color:var(--liquid);color:var(--foam)}
+  #p-offer-note a{color:var(--liquid)}
+  #p-offer-note .join{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  #p-offer-note .join input{flex:1;min-width:200px}
 </style>
 </head>
 <body>
@@ -109,6 +115,15 @@
     <p class="lab">a passport</p>
     <h2>Who you are, on the beach.</h2>
     <p>The name you go by, one line about you, and a key of your own. Readable by anyone, yours to change; no account, no email. It puts you on the globe at Earth; say where you are in the earth card below, as closely as you like.</p>
+    <!-- THE ONE QUESTION, THREE OFFERS — asked before anything is minted. Offers, never kinds:
+         a person can take all three in turn (bsp-mcp #447 §6; the beach's conventions 2.13). -->
+    <div class="offers" id="p-offers" aria-label="which of three are you here for">
+      <span class="quiet">here…</span>
+      <button type="button" class="on" data-offer="self">as yourself</button>
+      <button type="button" data-offer="start">starting something</button>
+      <button type="button" data-offer="join">joining something already being made</button>
+    </div>
+    <p class="hint" id="p-offer-note"></p>
     <div class="say">
       <input id="p-name" placeholder="the name you will go by — one word" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
       <textarea id="p-line" data-dictate placeholder="one line, as a stranger should meet you"></textarea>
@@ -388,6 +403,45 @@ $('w-name').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.prevent
 $('w-name').addEventListener('input', () => { const c = cleanHandle($('w-name').value); if (c !== $('w-name').value) $('w-name').value = c; });
 try { const who = cleanHandle(localStorage.getItem('render:who')); if (who) $('w-name').value = who; } catch(e){}
 if (window.keepDraft) keepDraft($('w-line'), 'draft:welcome:now');
+
+/* ── THE ONE QUESTION, THREE OFFERS — asked before anything is minted (bsp-mcp #447 §6; the
+   beach's conventions 2.13). As themselves: the passport below. Starting something — a studio,
+   a project, a community — is a family, never a passport, founded at /found. Joining something
+   already being made founds nothing but their own mirror in that family, born with their first
+   line on its walk; a passport first, since the beach binds a mirror to its holder's key. Offers,
+   never kinds: the buttons choose what shows, and nothing is written by choosing. ── */
+(function offers(){
+  const box = $('p-offers'); if (!box) return;
+  const note = $('p-offer-note'), form = document.querySelector('#door-passport .say');
+  const who = () => { let w = ''; try { w = localStorage.getItem('render:who') || ''; } catch(e){} return cleanHandle(w) || cleanHandle($('p-name').value); };
+  function show(which){
+    box.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.offer === which));
+    form.classList.toggle('hidden', which !== 'self');
+    $('p-hint').classList.toggle('hidden', which !== 'self');
+    if (which === 'self'){ note.innerHTML = ''; return; }
+    if (which === 'start'){
+      note.innerHTML = 'A studio, a project or a community is a <b>family</b>, never a passport: a spine for its addresses, a law for how it is read, a room, and your own mirror in it. It takes no passport and no now — it is heard through its people, <i>Dwayne, for Glass Lantern</i>. <a href="/found">Found it at /found →</a>' + (who() ? '' : ' — as yourself first, so the family has a founder with a key of their own.');
+      return;
+    }
+    note.innerHTML = 'Joining something already being made founds nothing but <b>your own mirror</b> in it: open the family\'s walk as yourself and write your first line where you stand. A line beneath the family in your lists then says how you stand to it — <i>as member, for Community Recovery</i>.' +
+      '<span class="join"><input id="j-family" placeholder="the family\'s name — e.g. beach-venture" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="60"><button id="j-go" type="button">open its walk</button></span>' +
+      '<span class="quiet" id="j-hint"></span>';
+    $('j-go').addEventListener('click', joinWalk);
+    $('j-family').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); joinWalk(); } });
+  }
+  async function joinWalk(){
+    const fam = ($('j-family').value || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
+    const h = who(), hint = $('j-hint');
+    if (!fam){ $('j-family').focus(); hint.textContent = 'the family\'s name first'; return; }
+    if (!h){ show('self'); $('p-hint').textContent = 'a passport first, so your mirror is born under your own key — then come back to join'; $('p-name').focus(); return; }
+    hint.textContent = 'looking…';
+    let stands = true;
+    try { const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' }); const d = r.ok ? await r.json() : null; stands = ((d && d.blocks) || []).includes('spine:' + fam); } catch(e){}
+    if (!stands){ hint.innerHTML = 'no family named <b>' + esc(fam) + '</b> stands on the beach — check the spelling, or <a href="/found">found it →</a>'; return; }
+    location.href = '/walk/' + encodeURIComponent(fam) + '/' + encodeURIComponent(h);
+  }
+  box.querySelectorAll('button').forEach(b => b.addEventListener('click', () => show(b.dataset.offer)));
+})();
 
 /* ── the founding act: a passport at the apex, born locked to the key. THE ONE PLACE on the
    site a passport is founded (2026-09-16) — /passport/<name> with no passport sends here
