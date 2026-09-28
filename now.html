@@ -723,13 +723,20 @@ async function ensureMirror(){
   if (existing){ MIRROR = existing; MIRROR_OK = floorOf(existing) === 10; return MIRROR_OK; }
   let latch = readLatch();
   if (!latch){
-    const v = prompt('First voicing founds your mirror, locked to you.\nInvent a key that is yours alone (kept on this device — check the first letter: phones capitalise it):');
+    const v = prompt('First voicing founds your mirror, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return false;
     latch = v.trim();
   }
   let root = 'MIRROR — ' + HANDLE + "'s own now on the canonical clock (spine:now), at the clock's self-same addresses: the current at each rung, in " + HANDLE + "'s own words, revisable forever. Sovereign; silence at a rung is honest absence — the coarser rung above still frames it.";
   for (let i = 0; i < 10; i++) root = { '_': root };
-  const w = await writeBlock({ block: name, content: root, new_lock: latch });
+  let w = await writeBlock({ block: name, content: root, new_lock: latch });
+  /* THE BEACH BINDS A BLOCK NAMED FOR A HANDLE TO THAT PASSPORT'S KEY (handle_bound, pscale-beach #77, 2026-09-28): a key invented here is refused for a passport-holder, so ask once for the passport's own key and found under it */
+  if (!w.ok && w.data && w.data.code === 'handle_bound'){
+    const v = prompt('The beach binds ' + name + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
+    if (v === null || !v.trim()) return false;
+    latch = v.trim();
+    w = await writeBlock({ block: name, content: root, new_lock: latch });
+  }
   if (!w.ok){ toast('the mirror could not be born (' + w.status + ')'); return false; }
   localStorage.setItem(latchKey(), latch);
   MIRROR = root; MIRROR_OK = true;
@@ -895,12 +902,20 @@ async function writeCardToHand(entry, pile){
      * the founding asks for a key once and locks in the same write (rule R1:
      * creating with new_lock needs no prior secret). Declining declines the
      * founding: an unprotected one is not the fallback. */
+    if (!latch) latch = readLatch();     /* the key the now and the passport already use on this device */
     if (!latch){
-      const v = prompt('This founds your hand — the cards you hold, locked to you.\nInvent a key that is yours alone (kept on this device — check the first letter: phones capitalise it):');
+      const v = prompt('This founds your hand — the cards you hold, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
       if (v === null || !v.trim()) return false;
       latch = v.trim();
     }
-    const born = await writeBlock({ block: name, content: { '_': root }, new_lock: latch });
+    let born = await writeBlock({ block: name, content: { '_': root }, new_lock: latch });
+    /* THE BEACH BINDS A BLOCK NAMED FOR A HANDLE TO THAT PASSPORT'S KEY (handle_bound, pscale-beach #77, 2026-09-28): a key invented here is refused for a passport-holder, so ask once for the passport's own key and found under it */
+    if (!born.ok && born.data && born.data.code === 'handle_bound'){
+      const v = prompt('The beach binds ' + name + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
+      if (v === null || !v.trim()) return false;
+      latch = v.trim();
+      born = await writeBlock({ block: name, content: { '_': root }, new_lock: latch });
+    }
     if (!born.ok) return false;
     localStorage.setItem(home, latch);
   }

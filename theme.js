@@ -897,9 +897,10 @@
         content[String(digit)] = branch;
 
         var key = null;
-        try { key = localStorage.getItem(latchFor(handle)); } catch(e){}
+        /* the passport's own key first: the beach binds lists:<handle> to it (handle_bound) */
+        try { key = localStorage.getItem(latchFor(handle)) || localStorage.getItem('passport-latch:' + handle); } catch(e){}
         if (!key){
-          key = prompt('Your key for ' + name + ' — invent one now if this is the first time; it keeps these lists yours to edit:');
+          key = prompt('Your key for ' + name + ' — the one your passport uses, if you have one; it keeps these lists yours to edit:');
           if (key === null || !key.trim()) return { ok:false, quiet:true };
           key = key.trim();
         }
@@ -908,8 +909,9 @@
 
         return post(origin, body).then(function(w){
           if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} return w; }
-          if (!lockRequired(w)) return w;
-          var v = prompt('That key was refused for ' + name + '. Try again:');
+          var bound = !w.ok && w.data && w.data.code === 'handle_bound';
+          if (!lockRequired(w) && !bound) return w;
+          var v = prompt(bound ? 'The beach binds ' + name + " to your passport's key — enter that key:" : 'That key was refused for ' + name + '. Try again:');
           if (v === null || !v.trim()) return { ok:false, quiet:true };
           body.secret = v.trim(); body.new_lock = v.trim();
           return post(origin, body).then(function(w2){
