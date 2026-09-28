@@ -240,9 +240,26 @@
   function lookOf(pp){var l=pp&&typeof pp['3']==='string'?pp['3']:(voiceOf(pp&&pp['3'])||'');return l.replace(/\s*Location:\s*\*:\S+/i,'').trim();}
   function when(ts){var t=Date.parse(ts);if(!isFinite(t))return '';var s=(Date.now()-t)/1000;if(s<90)return 'just now';if(s<5400)return Math.round(s/60)+' min ago';if(s<172800)return Math.round(s/3600)+' hours ago';return new Date(t).toISOString().slice(0,10);}
   var firstSentence=function(t){return (String(t).split(/(?<=[.!?…])\s/)[0]||String(t)).slice(0,160);};
-  // every book at this surface, each maker's own
-  function books(){return readIndex().then(function(idx){var names=((idx&&idx.blocks)||[]).filter(function(b){return b.indexOf('gallery:')===0;}).sort();return Promise.all(names.map(function(n){return readBlock(n).then(function(b){return b?{name:n,block:b}:null;}).catch(function(){return null;});})).then(function(a){return a.filter(Boolean);});});}
-  function roomStills(){return books().then(function(bs){var out=[];bs.forEach(function(b){stillsOf(b.block,b.name).forEach(function(s){if(s.at==='pool:'+ROOM||s.at.indexOf('pool:'+ROOM+':')===0)out.push(s);});});return out;});}
+  // field 2 is a LOCAL address when the book stands at the surface it pictures, or a full REFERENCE
+  // (*:<origin>:<block>:<address>, the star optional) when the book stands elsewhere — the apex is a
+  // maker's home, and a book there addresses out to the tables it pictures
+  function refOf(at){var s=String(at||'').replace(/^\*:/,'');var m=s.match(/^(https?:\/\/\S+?):([a-z][a-z0-9_ .:-]*)$/i);return m?{origin:m[1].replace(/\/+$/,''),local:m[2]}:{origin:'',local:s};}
+  function worldOf(origin){var m=origin.match(/\/w\/([^\/?#]+)/);if(m)return m[1];try{return new URL(origin).host.split('.')[0];}catch(e){return origin;}}
+  // every book at a surface, each maker's own
+  function booksAt(origin){var o=(origin||BEACH).replace(/\/+$/,'');var w=function(b){return o+'/.well-known/pscale-beach'+(b?'?block='+encodeURIComponent(b):'')+(b?'&':'?')+'_t='+Date.now();};
+    return fetch(w(''),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(idx){var names=((idx&&idx.blocks)||[]).filter(function(b){return b.indexOf('gallery:')===0;}).sort();
+      return Promise.all(names.map(function(n){return fetch(w(n),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(b){return b?{name:n,block:b,origin:o}:null;}).catch(function(){return null;});})).then(function(a){return a.filter(Boolean);});}).catch(function(){return [];});}
+  function books(){return booksAt(BEACH);}
+  // the room's pictures: the books at the table (local addresses), and the books at the apex that reference this table
+  function roomStills(){
+    var here=BEACH.replace(/\/+$/,''), isRoom=function(local){return local==='pool:'+ROOM||local.indexOf('pool:'+ROOM+':')===0;};
+    return Promise.all([booksAt(here),here===APEX?Promise.resolve([]):booksAt(APEX)]).then(function(r){
+      var out=[];
+      r[0].forEach(function(b){stillsOf(b.block,b.name).forEach(function(s){var ref=refOf(s.at);if((!ref.origin||ref.origin===here)&&isRoom(ref.local)){s.local=ref.local;out.push(s);}});});
+      r[1].forEach(function(b){stillsOf(b.block,b.name).forEach(function(s){var ref=refOf(s.at);if(ref.origin===here&&isRoom(ref.local)){s.local=ref.local;s.home=APEX;out.push(s);}});});
+      return out;
+    });
+  }
   // ── display ──
   var HANDLES=[], FACES={};
   function embed(url){
@@ -255,18 +272,21 @@
   function roomLink(room){var q=new URLSearchParams();if(WORLD)q.set('world',WORLD);else if(LEGACY_BEACH)q.set('beach',LEGACY_BEACH);q.set('room',room);return (/\.html$/.test(location.pathname)?'/gallery.html?':'/gallery?')+q.toString();}
   function renders(at){
     if(!at)return '';
-    var m=at.match(/^pool:(\d+(?:\.\d+)?)(?::(\d+(?:\.\d+)?))?$/);
-    if(m)return m[2]?'<a href="'+roomLink(m[1])+'">moment '+esc(m[2])+' at '+esc(m[1])+'</a>':'<a href="'+roomLink(m[1])+'">the room at '+esc(m[1])+'</a>';
-    var p=at.match(/^passport:([^:]+):3$/); if(p)return 'the face of '+esc(p[1]);
-    var w=at.match(/^witnessed:([^:]+):(.+)$/); if(w)return 'as '+esc(w[1])+' saw it, '+esc(w[2]);
-    var r=at.match(/^roster:[^:]+:(\d+)/); if(r)return 'role '+esc(r[1]);
-    var s=at.match(/^spatial:[^:]+:(.+)$/); if(s)return 'the place at '+esc(s[1]);
-    return esc(at);
+    var ref=refOf(at), a=ref.local, where=ref.origin&&ref.origin!==BEACH.replace(/\/+$/,'')?' · '+esc(worldOf(ref.origin)):'';
+    var link=function(room){var q=new URLSearchParams();if(ref.origin)q.set('world',worldOf(ref.origin));else if(WORLD)q.set('world',WORLD);else if(LEGACY_BEACH)q.set('beach',LEGACY_BEACH);q.set('room',room);return (/\.html$/.test(location.pathname)?'/gallery.html?':'/gallery?')+q.toString();};
+    var m=a.match(/^pool:(\d+(?:\.\d+)?)(?::(\d+(?:\.\d+)?))?$/);
+    if(m)return '<a href="'+link(m[1])+'">'+(m[2]?'moment '+esc(m[2])+' at '+esc(m[1]):'the room at '+esc(m[1]))+where+'</a>';
+    var p=a.match(/^passport:([^:]+):3$/); if(p)return 'the face of '+esc(p[1])+where;
+    var w=a.match(/^witnessed:([^:]+):(.+)$/); if(w)return 'as '+esc(w[1])+' saw it, '+esc(w[2])+where;
+    var r=a.match(/^roster:[^:]+:(\d+)/); if(r)return 'role '+esc(r[1])+where;
+    var s=a.match(/^spatial:[^:]+:(.+)$/); if(s)return 'the place at '+esc(s[1])+where;
+    return esc(a)+where;
   }
   function shotHTML(s,showBook){
+    var door=s.home===APEX?(/\.html$/.test(location.pathname)?'/gallery.html?handle='+encodeURIComponent(s.book.slice(8)):'/gallery/'+encodeURIComponent(s.book.slice(8))):bookLink(s.book.slice(8));
     return '<figure class="shot"><div class="shot__frame"><img loading="lazy" alt="'+esc(s.cap||'a scene')+'" src="'+esc(s.img)+'"></div>'+
       (s.cap?'<figcaption class="shot__cap">'+esc(s.cap)+'</figcaption>':'')+
-      '<div class="shot__meta">'+(s.who?'<span class="who">'+(showBook&&s.book?'<a href="'+bookLink(s.book.slice(8))+'">'+esc(s.who)+'</a>':esc(s.who))+'</span>':'')+(s.at?'<span>'+renders(s.at)+'</span>':'')+(s.ts?'<span>'+esc(when(s.ts))+'</span>':'')+'</div></figure>';
+      '<div class="shot__meta">'+(s.who?'<span class="who">'+(showBook&&s.book?'<a href="'+door+'">'+esc(s.who)+'</a>':esc(s.who))+'</span>':'')+(s.at?'<span>'+renders(s.at)+'</span>':'')+(s.ts?'<span>'+esc(when(s.ts))+'</span>':'')+'</div></figure>';
   }
   function filmHTML(film){return '<p class="eyebrow">The film of the room</p><figure class="film"><div class="frame">'+embed(film.img)+'</div><figcaption>'+esc(film.cap)+(film.who?' · '+esc(film.who):'')+(film.ts?' · '+esc(when(film.ts)):'')+'</figcaption></figure>';}
   function renderFaces(){
@@ -280,7 +300,7 @@
     roomStills().then(function(all){
         var films=all.filter(function(s){return isVideo(s.img);}), shots=all.filter(function(s){return !isVideo(s.img);});
         shots.sort(function(a,b){return String(b.ts).localeCompare(String(a.ts));});
-        var film=films.filter(function(s){return s.at==='pool:'+ROOM;}).sort(function(a,b){return String(a.ts).localeCompare(String(b.ts));}).pop();
+        var film=films.filter(function(s){return s.local==='pool:'+ROOM;}).sort(function(a,b){return String(a.ts).localeCompare(String(b.ts));}).pop();
         filmEl.innerHTML=film?filmHTML(film):'';
         var makers=[];shots.forEach(function(s){if(s.who&&makers.indexOf(s.who)<0)makers.push(s.who);});
         document.getElementById('eyebrow').textContent=shots.length?('The stills — '+shots.length+(makers.length?' · by '+makers.join(', '):'')):'The stills';
@@ -428,7 +448,7 @@
       });
     }
     function moments(){return readBlock('pool:'+ROOM).then(function(p){return p?beatsOf(p):[];});}
-    function rendered(){return roomStills().then(function(all){var d={};all.forEach(function(s){d[s.at]=1;});return d;}).catch(function(){return {};});}
+    function rendered(){return roomStills().then(function(all){var d={};all.forEach(function(s){d[s.local||s.at]=1;});return d;}).catch(function(){return {};});}
     function go(){
       var prov=provider.value, k=key.value.trim(), sc=scene.value.trim()||'bubble:gal-1', sh=shot.value.trim();
       if(prov!=='free' && !k){say('paste your '+prov+' key, or switch to Free.','err');return;}
