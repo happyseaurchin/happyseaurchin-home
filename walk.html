@@ -28,6 +28,10 @@
   button:focus-visible,[tabindex]:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
 
   /* the workings — addresses, block names, acts — hidden from characters, one tap for authors */
+  #mast-join .join{display:inline-flex;gap:6px;flex-wrap:wrap;align-items:center;margin-left:6px}
+  #mast-join input{font-family:var(--mono);font-size:12px;padding:4px 8px;border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--foam);min-width:240px}
+  #mast-join button{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:6px;background:none;color:var(--vapour);padding:4px 10px;cursor:pointer}
+  #mast-join button.linkish{border:none;padding:0 4px}
   .work{display:none}
   body.workings .work{display:revert}
 
@@ -411,6 +415,7 @@
     <p>Slide sideways through the rows; tap a card to stand there. The counts say who has spoken and what is held; the popup holds the words, the voices, and — with your handle in the URL — your own writing.</p>
     <p class="stamp" id="mast-since"></p>
     <p class="stamp" id="mast-form" hidden></p>
+    <p class="stamp" id="mast-join" hidden></p>
     <p class="stamp" id="mast-venture" hidden><a href="/venture">the venture, in the open →</a></p>
     <p class="stamp" id="mast-pool" hidden><a target="_blank" rel="noopener">the pool ↗</a> — this project’s chat, talk with no rung on it</p>
   </div>
@@ -1107,8 +1112,56 @@ async function load(){
   if (!own) SINCE = Date.now() - 24 * 3600 * 1000;
 
   /* CAST arrives with this load — the cast-lens dial can only take effect now */
+  await readMyLine();
   applyDisplay();
   render();
+}
+
+/* ── THE JOIN DOOR — the third answer at the welcome, on the walk itself (bsp-mcp #447 §6;
+ * the beach's conventions 2.13 and 2.131). Joining something already being made founds
+ * nothing but your own mirror in it and a line beneath the family in your own lists saying
+ * how you stand to it — 'as coordinator, for Community Recovery'. The door reads what
+ * stands: no mirror yet → join; a mirror but no listing → list it; listed → your line,
+ * editable. The line lives at the rung's 2 in lists:<handle> (theme.js siteRelation);
+ * the mirror is founded as any first voicing founds it, locked to the passport's key. ── */
+let MYLINE = null;      /* { listed, line } for HANDLE at this family, from lists:<handle> */
+async function readMyLine(){
+  MYLINE = null;
+  if (!HANDLE || GROUND || !window.siteRelation) return;
+  const items = await siteRelation.read('https://beach.happyseaurchin.com', HANDLE).catch(() => null);
+  const me = (items || []).find(x => x.name === VENTURE);
+  MYLINE = { listed: !!me, line: me ? me.line : '' };
+}
+function renderJoin(){
+  const el = $('mast-join'); if (!el) return;
+  if (!HANDLE || GROUND || !window.siteRelation){ el.hidden = true; return; }
+  const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
+  const box = (label, placeholder, value) => '<span class="join"><input id="join-line" placeholder="' + esc(placeholder) + '" value="' + esc(value || '') + '" maxlength="160"><button id="join-go" type="button">' + esc(label) + '</button></span>';
+  el.hidden = false;
+  if (!mine){
+    el.innerHTML = 'not yet in ' + esc(VENTURE) + ' — <b>join</b>: your mirror is founded here, locked to you, and the family is listed as yours with how you stand to it ' + box('join', 'as member, for ' + VENTURE, '');
+  } else if (!MYLINE || !MYLINE.listed){
+    el.innerHTML = 'you hold a mirror here — <b>list it</b> as yours, with how you stand to it ' + box('list it', 'as member, for ' + VENTURE, '');
+  } else {
+    el.innerHTML = 'you, here: <b>' + esc(MYLINE.line || '(no line yet — say how you stand to it)') + '</b> <button id="join-edit" type="button" class="linkish" title="change the line">✎</button><span id="join-editbox" hidden>' + box('save', 'as coordinator, for ' + VENTURE, MYLINE.line) + '</span>';
+    $('join-edit').addEventListener('click', () => { $('join-editbox').hidden = !$('join-editbox').hidden; if (!$('join-editbox').hidden) $('join-line').focus(); });
+  }
+  const go = $('join-go'); if (go) go.addEventListener('click', joinFamily);
+  const inp = $('join-line'); if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); joinFamily(); } });
+}
+async function joinFamily(){
+  const line = ($('join-line').value || '').trim();
+  const go = $('join-go'); if (go) go.disabled = true;
+  const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
+  if (!mine){
+    const born = await ensureVentureMirror();
+    if (!born.ok){ if (go) go.disabled = false; if (!born.quiet) toast('the mirror could not be founded' + (born.data && (born.data.error || born.data.code) ? ' — ' + (born.data.error || born.data.code) : '')); return; }
+  }
+  const w = await siteRelation.write('https://beach.happyseaurchin.com', HANDLE, VENTURE, line).catch(() => null);
+  if (go) go.disabled = false;
+  if (!w || !w.ok){ if (!(w && w.quiet)) toast('the line could not be written' + (w && w.data && (w.data.error || w.data.code) ? ' — ' + (w.data.error || w.data.code) : '')); return; }
+  toast(line ? 'listed — ' + line : 'listed');
+  location.reload();
 }
 
 /* ── render ── */
@@ -1148,6 +1201,7 @@ function render(){
   $('mast-pool').firstElementChild.href = poolUrl();
   if (HANDLE) $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
   else $('mast-since').textContent = 'walking as anyone — say who you are at the top of the page to write where you stand';
+  renderJoin();
   $('foot-work').innerHTML = '<br><br><b>the blocks</b> — spine:' + esc(VENTURE) + ' · ' + esc(VENTURE) + ':&lt;handle&gt; · tree:' + esc(VENTURE) + ':&lt;handle&gt; · pool:' + esc(VENTURE) +
     '<br><b>the address</b> — one number: on a clock family the sundial (2026322600 reads Thursday 13 August 2026, to the day); on a tree, the digits walked.';
   renderRack();
