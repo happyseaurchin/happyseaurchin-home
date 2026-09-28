@@ -346,9 +346,15 @@
     HANDLES.forEach(function(h){if(new RegExp('\\b'+h.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(beat.text))named[h.toLowerCase()]=1;});
     return HANDLES.filter(function(h){return named[h.toLowerCase()];});
   }
+  // THE RECIPE lives at the beach, not here: ways:stills 6 says how a shot is composed, and its lines
+  // beneath are the words every seat uses verbatim — 6.1 the look when a world has none, 6.2 the line
+  // that binds a face to its reference, 6.3 what a still never carries. The page only assembles, in
+  // the order the recipe states; the text below is the fallback if the beach cannot be read.
+  var RECIPE={look:DEFAULT_LOOK,bind:'Each person shown must have the face of their reference photograph, exactly, in period dress.',never:'No text or lettering, no modern objects, nothing overtly fantastical.'};
+  function readRecipe(){return fetch(APEX+'/.well-known/pscale-beach?block=ways:stills',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(w){var six=w&&w['6'];if(!six||typeof six!=='object')return;var l=voiceOf(six['1']),b=voiceOf(six['2']),n=voiceOf(six['3']);if(l)RECIPE.look=l;if(b)RECIPE.bind=b;if(n)RECIPE.never=n;}).catch(function(){});}
   function composeShot(text,cast,looks,style){
     var who=cast.map(function(h){return h+': '+(looks[h]||'as described');}).join(' · ');
-    return [text.length>1100?text.slice(0,1100)+'…':text, PLACE?'The place — '+PLACE:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?'Each person shown must have the face of their reference photograph, exactly, in period dress.':''].filter(Boolean).join(' ');
+    return [text.length>1100?text.slice(0,1100)+'…':text, PLACE?'The place — '+PLACE:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', RECIPE.never].filter(Boolean).join(' ');
   }
   // the place: the table's keeper names where it is placed (keeper:scene 3, PLACING: *:<origin>:spatial:<world>:<address>);
   // the room's own line in that register, with its parent's, is the picture's setting — read once per room
@@ -429,7 +435,7 @@
     }catch(e){scene.value=ROOM||'bubble:gal-1';}
     function who(){return whoIn.value.replace(/[^a-z0-9 _.-]/gi,'').trim()||'observer';}
     function say(m,cls){hint.className='make__hint'+(cls?' '+cls:'');hint.textContent=m;}
-    function styleText(){return styleIn.value.trim()||WORLD_STYLE||DEFAULT_LOOK;}
+    function styleText(){return styleIn.value.trim()||WORLD_STYLE||RECIPE.look;}
     // one moment → one still in the maker's book, addressed to the moment
     function renderMoment(beat,prov,k){
       var pps={};
@@ -513,7 +519,7 @@
       if(MODE==='room'){
         ready=readIndex().then(function(idx){HANDLES=(idx.blocks||[]).filter(function(b){return b.indexOf('passport:')===0;}).map(function(b){return b.slice(9);});return facesOf(HANDLES);}).catch(function(){})
           .then(function(){return readBlock(STYLE_BLOCK).then(function(s){WORLD_STYLE=voiceOf(s);}).catch(function(){});})
-          .then(function(){return readPlace().then(function(p){PLACE=p;});}).then(renderFaces);
+          .then(function(){return readPlace().then(function(p){PLACE=p;});}).then(readRecipe).then(renderFaces);
       }
       ready.then(function(){render();setInterval(render,20000);});
     });
