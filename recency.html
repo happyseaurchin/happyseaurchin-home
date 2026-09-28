@@ -131,6 +131,7 @@
   <div class="head">
     <h1>The <span class="cool">recency</span></h1>
     <p class="meta"><span id="m-fam">—</span> · <span id="m-mode">—</span> · <b id="m-live">—</b></p>
+    <p class="whisper" id="m-form"></p>
     <p class="meta hidden" id="controls">
       <span id="lensrow" class="hidden">show · <button class="lbtn on" data-lens="all">everyone</button><button class="lbtn" data-lens="mine">mine</button></span>
       <span id="actrow" class="hidden">heat · <button class="tbtn on" data-tf="all">voices</button><button class="tbtn" data-tf="week">active 7 days</button><button class="tbtn" data-tf="today">active today</button></span>
@@ -259,6 +260,7 @@ if (window.siteDoors) siteDoors({ handle: HANDLE, family: FAMILY, here: 'recency
 if (window.siteProjects) siteProjects({ handle: HANDLE, family: FAMILY, page: 'recency' });
 
 let SPINE = null, MODE = 'tree';
+let LAW = null, LAWREF = '';       /* the family's law — function:<name>, or the operator its pool mounts (tree 9.1) */
 let MIRRORS = [];                 /* [handle, block] */
 let OCC = [];                     /* {who, addr} — every standing voicing, addr stripped */
 let PRESENT = [];                 /* {who, place, ts, fresh, at} — the last quarter hour */
@@ -694,7 +696,13 @@ function drawPanel(){
   const wasTyping = !!prior && document.activeElement === prior;
   aimMirrorDoor(addr);                           /* the bar's mirror door follows the focus */
   const word = addr ? textAt(SPINE, addr) : voice(SPINE);
-  const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text);
+  /* AT THE ROOT A MIRROR'S TOP LINE IS ITS DESCRIPTION, NOT A VOICE AT A PART — and
+   * the line a page writes when it founds a mirror ("MIRROR — …") is nobody's
+   * voice at all. It was listed here as the person's, and its own holder read it as
+   * someone writing in his name (David, 2026-09-28; forms proposal §3.1). A top line
+   * the holder wrote themselves still shows, as what it is. */
+  const isBorn = t => /^MIRROR \u2014 /.test(t);
+  const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text && (addr || !isBorn(x.text)));
   /* the rest of the count, one row per hand — a count is people, so the panel
    * names every person it counted: the exact lines above, and each remaining
    * hand with where it stands, the parts clickable. (Restored 2026-09-02;
@@ -712,10 +720,11 @@ function drawPanel(){
   const rows = [];
   rows.push('<p class="paddr"><b>' + esc(addr ? labelFor(addr) : FAMILY) + '</b><span class="work">' + esc(addr ? (MODE === 'clock' ? pad10(addr) : addr) : '·') + '</span></p>');
   rows.push(word ? '<p class="ptext">' + esc(word) + '</p>' : '<p class="ptext absent">the spine has no words at this part</p>');
-  rows.push('<div class="subhead">voices at this part</div>' + (exact.length ? exact.map(x =>
+  rows.push('<div class="subhead">' + (addr ? 'voices at this part' : 'top lines \u2014 each hand\u2019s own description of its mirror') + '</div>' + (exact.length ? exact.map(x =>
     '<div class="vline"><span class="who"' + nameAttr(x.who) + '>' + esc(x.who) + '</span><p>' + esc(short(x.text, 400)) + '</p></div>').join('')
     : '<div class="vline"><span class="who"></span><p class="ptext absent" style="margin:0">' +
-      (deeper.size ? 'none exactly here — the count stands deeper:' : 'no voice stands at or beneath this part') + '</p></div>'));
+      (addr ? (deeper.size ? 'none exactly here — the count stands deeper:' : 'no voice stands at or beneath this part')
+            : (deeper.size ? 'no hand has written its own top line \u2014 the readings stand at the parts:' : 'no hand has written a top line, and no reading stands at any part yet')) + '</p></div>'));
   if (deeper.size){
     rows.push('<div class="subhead">voices deeper in</div>' + [...deeper.entries()]
       .sort((a, b) => a[0].localeCompare(b[0])).map(([who, addrs]) => {
@@ -976,11 +985,21 @@ const placeIsHere = place => place === FAMILY || place === 'spine:' + FAMILY ||
   place === 'pool:' + FAMILY || (typeof place === 'string' && place.startsWith(FAMILY + ':'));
 
 async function sweepSlow(){
-  const [spine, index] = await Promise.all([readBlock('spine:' + FAMILY), readIndex()]);
+  /* the law is read with the spine: a family declares itself at function:<name>
+   * (ways:founding 2.2), and the page speaks in the law's words rather than its own
+   * (bsp-mcp proposals/2026-09-28-forms-a-family-declares-its-law §3.1) */
+  const [spine, index, law] = await Promise.all([readBlock('spine:' + FAMILY), readIndex(), readBlock('function:' + FAMILY).catch(() => null)]);
   if (!spine) throw new Error('spine:' + FAMILY + ' is not on the beach');
   SPINE = spine;
   MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
+  LAW = law; LAWREF = law ? 'function:' + FAMILY : '';
   const blocks = (index && index.blocks) || [];
+  /* or the library operator its pool mounts as a bare reference (tree 9.1) */
+  if (!LAW && blocks.includes('pool:' + FAMILY)){
+    const pool = await readBlock('pool:' + FAMILY).catch(() => null);
+    const mount = (pool && voice(pool) || '').trim();
+    if (/^function:[a-z0-9-]+$/i.test(mount)){ LAW = await readBlock(mount).catch(() => null); LAWREF = LAW ? mount : ''; }
+  }
   /* the mirror door follows the focus — a point; the pool is the whole project's
      chat, offered only where its room stands */
   if (FOCUS === null || FOCUS === undefined) aimMirrorDoor('');   /* the mode is known only now */
@@ -1005,6 +1024,16 @@ async function sweepSlow(){
   }
   $('m-fam').textContent = 'the ' + FAMILY + ' field · ' + MIRRORS.length + (MIRRORS.length === 1 ? ' hand' : ' hands');
   $('m-mode').textContent = MODE === 'clock' ? 'the shared clock' : 'its own branches';
+  /* THE FORM SPEAKS FOR THE FAMILY — the law's opening line in the family's own
+   * words; a family with no law is drawn bare and told how to give itself a form.
+   * David chose the word (2026-09-28): form. */
+  const mf = $('m-form');
+  if (LAW){
+    const line = voice(LAW) || '';
+    mf.innerHTML = '<b>its form</b> \u2014 ' + esc(short(line, 300)) + ' <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>';
+  } else {
+    mf.innerHTML = '<b>no form yet</b> \u2014 spine:' + esc(FAMILY) + ' stands with no law, so the dial is drawn bare; its keeper gives it a form by writing function:' + esc(FAMILY) + ' \u2014 what the family is, what a line means, how the fold reads (<a href="/walk/' + esc(FAMILY) + (HANDLE ? '/' + esc(HANDLE) : '') + '">the walk</a> says the same).';
+  }
 }
 async function sweepPresence(){
   const p = await readBlock('presence').catch(() => null);

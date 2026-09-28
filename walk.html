@@ -410,6 +410,7 @@
     <h1 id="mast-title">A family, <span class="cool">walked</span>.</h1>
     <p>Slide sideways through the rows; tap a card to stand there. The counts say who has spoken and what is held; the popup holds the words, the voices, and — with your handle in the URL — your own writing.</p>
     <p class="stamp" id="mast-since"></p>
+    <p class="stamp" id="mast-form" hidden></p>
     <p class="stamp" id="mast-venture" hidden><a href="/venture">the venture, in the open →</a></p>
     <p class="stamp" id="mast-pool" hidden><a target="_blank" rel="noopener">the pool ↗</a> — this project’s chat, talk with no rung on it</p>
   </div>
@@ -418,7 +419,7 @@
     <div class="band-head">
       <p class="eyebrow">the rows</p>
       <h2 id="band-title">Walk the family.</h2>
-      <p>Slide sideways through time; tap a card to stand there. Each row follows the one above it — the year you choose decides the months you see, down to the day. A card says what the venture has written for that time; the small counts say who has spoken there and what is held toward it.</p>
+      <p>Slide sideways through the rows; tap a card to stand there. Each row follows the one above it; the small counts say who has spoken there and what is held toward it.</p>
     </div>
     <p class="toward" id="toward"></p>
     <div class="rack" id="rack">
@@ -585,6 +586,7 @@ const GROUND = VENTURE === 'here' ? { origin: 'https://earth.beach.happyseaurchi
 const APEX = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 if (GROUND) BEACH = GROUND.origin + '/.well-known/pscale-beach';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [], POOL_STANDS = false;
+let LAW = null, LAWREF = '';        /* the family's law — function:<name>, or the operator its pool mounts (tree 9.1) */
 let SINCE = 0;                      /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '', NOW_ADDR = '';
 const SEL = {};
@@ -1040,9 +1042,13 @@ async function load(){
   NOW_ADDR = gatherAddr(TODAY.y, TODAY.m0, TODAY.d, TODAY.g);
   if (first) Object.assign(SEL, { y: TODAY.y, m0: TODAY.m0, band: TODAY.band, d: TODAY.d, g: TODAY.g, level: 'd' });
 
-  const [spine, index] = await Promise.all([readBlock('spine:' + VENTURE), readIndex()]);
+  /* THE LAW IS READ WITH THE SPINE. A family declares itself at function:<name>
+   * (ways:founding 2.2), and the page speaks in the law's words rather than its own
+   * (bsp-mcp proposals/2026-09-28-forms-a-family-declares-its-law §3.1). */
+  const [spine, index, law] = await Promise.all([readBlock('spine:' + VENTURE), readIndex(), readBlock('function:' + VENTURE).catch(() => null)]);
   if (!spine) throw new Error('spine:' + VENTURE + ' is not on the beach');
   SPINE = spine;
+  LAW = law; LAWREF = law ? 'function:' + VENTURE : '';
   /* the same page walks every family: a floor-10 sundial spine as time, any other as its own branches */
   MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
   if (MODE === 'tree' && first){
@@ -1067,6 +1073,12 @@ async function load(){
 
   const pool = await readBlock('pool:' + VENTURE).catch(() => null);
   POOL_STANDS = !!pool;
+  /* a family with no law of its own may mount a library operator at its pool's
+   * opening line — the bare reference alone (tree 9.1) — and that is its law */
+  if (!LAW && pool){
+    const mount = (voice(pool) || '').trim();
+    if (/^function:[a-z0-9-]+$/i.test(mount)){ LAW = await readBlock(mount).catch(() => null); LAWREF = LAW ? mount : ''; }
+  }
   POOL_VOICES = [];
   /* slots past nine sit at two-digit paths (11, 12 …) and older ones inside the
    * supernest wrap — a digit child with no voice of its own is a container: recurse */
@@ -1109,6 +1121,23 @@ function render(){
   $('foot-next').href = HANDLE ? '/next/' + encodeURIComponent(HANDLE) : '/next';
   $('mast-title').innerHTML = esc(VENTURE) + ', <span class="cool">walked</span>.';
   $('band-title').textContent = 'Walk ' + VENTURE + '.';
+  /* THE FORM SPEAKS FOR THE FAMILY. The band's line is the law's opening line, in the
+   * family's own words — never this page's wording, which was written for the clock
+   * and described every tree under it (David, 2026-09-28: "Slide sideways through
+   * time" over Matthew's families). A family with no law is drawn plain and told in
+   * one line how to give itself a form; it is still walked, by direct link, as
+   * David answered the forms proposal's §9. He also chose the word: form. */
+  const bp = document.querySelector('#review .band-head p:not(.eyebrow)');
+  const fp = $('mast-form');
+  if (LAW){
+    const line = voice(LAW) || '';
+    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + esc(short(line, 520));
+    fp.hidden = false;
+    fp.innerHTML = 'form: <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>' + (line.length > 520 ? ' \u2014 the whole line there' : '');
+  } else {
+    if (bp) bp.innerHTML = '<b>No form yet.</b> This family stands as a spine without its law, so its rows are drawn bare \u2014 ' + (MODE === 'clock' ? 'the shared clock' : 'its own branches') + ', with nothing to say what a line at a part means. To give it a form, its keeper writes the law at <b>function:' + esc(VENTURE) + '</b>: what the family is, what a line means, how the fold reads. <a href="/found">/found</a> founds a family with its form in a step.';
+    fp.hidden = false; fp.textContent = 'form: none stands yet';
+  }
   /* /venture is this family's page in the open — the plan rung by rung, every
      voice beside it — and this walk is its workings, so it points back there */
   $('mast-venture').hidden = VENTURE !== 'beach-venture';

@@ -920,6 +920,10 @@
       });
   }
 
+  /* the line beneath the row for families that have no form yet */
+  var BARE_CSS = '.projrow__bare{flex-basis:100%;font-family:var(--mono);font-size:11px;letter-spacing:0.06em;' +
+                 'color:var(--vapour-dim);padding-top:4px}' +
+                 '.projrow__bare a{color:var(--vapour-dim);text-decoration:underline dotted;margin:0}';
   var ROW_CSS = '' +
     /* not sticky itself any more — it rides inside .stickyhead with the bar */
     '.projrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;' +
@@ -960,7 +964,7 @@
    * with the label clipped off the left edge. Styling is not the read's to own. */
   function rowStyle(){
     if (rowStyled) return; rowStyled = true;
-    var st = document.createElement('style'); st.textContent = ROW_CSS; document.head.appendChild(st);
+    var st = document.createElement('style'); st.textContent = ROW_CSS + BARE_CSS; document.head.appendChild(st);
   }
 
   /* The bar is sticky at the top and this row sits under it, so its offset is the
@@ -1046,16 +1050,38 @@
       var blocks = both[0], stated = both[1];
       var have = {};
       blocks.forEach(function(n){ have[n] = 1; });
-      var mine = [];
+      /* A FAMILY IS WELL-FORMED WHEN ITS LAW STANDS — function:<name> beside
+       * spine:<name> (ways:founding 2.2; bsp-mcp proposals/2026-09-28-forms-a-family-
+       * declares-its-law §3.1). The row lists only well-formed families, which is
+       * David's "only show well-formed projects" (2026-09-28): a spine with no law is
+       * drawn bare by the pages, under nobody's words, and a row that names it
+       * beside the others says it is something it is not yet. It is not hidden
+       * either — a family you list or hold a mirror in that has no form yet is named
+       * beneath the row, linked, so a direct link still opens it (his answer to
+       * the forms proposal's §9). The families with their own pages and the ground
+       * carry their law elsewhere (function:now, function:earth) and are exempt. */
+      /* A HAND'S OWN DIARY IS NOT A PROJECT: spine:<handle> beside passport:<handle>
+       * is the family /page founds for a person's posts, and a reader's answer there
+       * founds <handle>:<reader> — which made every person you had answered arrive
+       * in your row as a project, and now would arrive as one 'with no form yet'.
+       * Its form is the page. Left out of the computed row; counted well-formed if
+       * a hand lists it on purpose, as the families with their own pages are. */
+      function isDiary(f){ return !!have['passport:' + f]; }
+      function wellFormed(f){ return !!have['function:' + f] || !!OWN_PAGE[f] || f === 'here' || isDiary(f); }
+      var mine = [], bare = [];
       blocks.forEach(function(n){
         if (n.indexOf('spine:') !== 0) return;
         var f = n.slice(6);
-        if (OWN_PAGE[f]) return;
-        if (have[f + ':' + cfg.handle]) mine.push(f);
+        if (OWN_PAGE[f] || isDiary(f)) return;
+        if (!have[f + ':' + cfg.handle]) return;
+        (wellFormed(f) ? mine : bare).push(f);
       });
       /* whatever you are standing in belongs in the row even if you hold no mirror
-       * there yet — otherwise the row silently disagrees with the page above it */
+       * there yet — otherwise the row silently disagrees with the page above it;
+       * and a bare family you are standing in is said plainly by the page above,
+       * not repeated beneath the row */
       if (cfg.family && !OWN_PAGE[cfg.family] && mine.indexOf(cfg.family) < 0) mine.push(cfg.family);
+      bare = bare.filter(function(f){ return f !== cfg.family; });
       /* THE GROUND IS EVERYONE'S. 'here' is the one family named by register rather
        * than by spine: — its spine is spatial:earth at the real and your voice there
        * is identity:<handle> — so the apex index never lists it and the rule above
@@ -1078,15 +1104,23 @@
         visible = stated.slice();
         if (!walksGround) visible = visible.filter(function(f){ return f !== 'here'; });
         if (cfg.family && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
+        /* a stated family with no form yet stays yours and stays listed; it is named
+         * beneath the row until its law stands, never drawn as a project beside the
+         * others (the family you stand in is the one exception, said above) */
+        visible = visible.filter(function(f){ return f === cfg.family || wellFormed(f); });
         /* a stated project you hold no mirror in yet is still yours — offer it too */
-        stated.forEach(function(f){ if (mine.indexOf(f) < 0) mine.push(f); });
+        stated.forEach(function(f){
+          if (f === cfg.family) return;
+          if (wellFormed(f)){ if (mine.indexOf(f) < 0) mine.push(f); }
+          else if (bare.indexOf(f) < 0) bare.push(f);
+        });
       } else {
         visible = mine.filter(function(f){
           if (f === cfg.family) return true;         /* never hide where you are standing */
           return !OFF_BY_DEFAULT[f];
         });
       }
-      if (visible.length < 2 && mine.length < 2) return;   /* a row of one is furniture, not a choice */
+      if (visible.length < 2 && mine.length < 2 && !bare.length) return;   /* a row of one is furniture, not a choice */
       function shown(f){ return visible.indexOf(f) >= 0; }
 
       rowStyle();
@@ -1132,6 +1166,9 @@
          * so ticking a family on drops it at the end rather than nowhere */
         var order = visible.slice();
         mine.forEach(function(f){ if (order.indexOf(f) < 0) order.push(f); });
+        /* a family with no form yet is still yours to list or unlist; it is only
+         * the row that waits for its law */
+        bare.forEach(function(f){ if (order.indexOf(f) < 0) order.push(f); });
         /* THE TICKS ARE WHAT WAS CHOSEN, NEVER WHAT IS MERELY UNDERFOOT. `visible`
          * force-adds the family being stood in so the row cannot disagree with the
          * page above it; ticking from that list would make a save silently adopt a
@@ -1161,7 +1198,7 @@
               draw();
             });
             var nm = document.createElement('span');
-            nm.className = 'projrow__name'; nm.textContent = f;
+            nm.className = 'projrow__name'; nm.textContent = f + (bare.indexOf(f) >= 0 ? ' \u00b7 no form yet' : '');
             if (!inList[f]) nm.style.opacity = '0.45';
             rowEl.appendChild(cb); rowEl.appendChild(nm);
             [['↑', -1], ['↓', 1]].forEach(function(mv){
@@ -1209,6 +1246,22 @@
         row.appendChild(panel);
       });
       row.appendChild(pick);
+      /* the families with no form yet, named beneath the row and linked: reachable
+       * by a direct link, never drawn as a project until their law stands */
+      if (bare.length){
+        var bl = document.createElement('span');
+        bl.className = 'projrow__bare';
+        bl.appendChild(document.createTextNode('no form yet \u00b7 '));
+        bare.sort().forEach(function(f, i){
+          if (i) bl.appendChild(document.createTextNode(' \u00b7 '));
+          var ba = document.createElement('a');
+          ba.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
+          ba.textContent = f;
+          ba.title = 'spine:' + f + ' stands with no law at function:' + f + ' \u2014 drawn bare until it has one';
+          bl.appendChild(ba);
+        });
+        row.appendChild(bl);
+      }
 
       /* The note only where it is actually true, which is narrower than it was.
        *
