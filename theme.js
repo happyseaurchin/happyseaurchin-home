@@ -824,39 +824,78 @@
    * ────────────────────────────────────────────────────────────────────────── */
   function listBlockName(handle){ return 'lists:' + handle; }
 
-  /* walk a chain, collecting each rung's underscore in order */
-  function chainToList(node){
+  /* walk a chain, keeping each rung's own children. The chain runs through 1, so a
+   * rung is {_: the name, 1: the next rung, 2: THE RELATIONSHIP LINE — how this hand
+   * stands to the family, in its own words: 'as coordinator, for Community Recovery'
+   * (apex conventions 2.131; bsp-mcp #447 §5)}. Digits 3-9 beneath a rung are kept
+   * as found, so a later convention has room and a save never strips one. */
+  function chainToItems(node){
     var out = [], n = node && node['1'], guard = 0;
     while (n && typeof n === 'object' && guard++ < 200){
-      if (typeof n._ === 'string' && n._.trim()) out.push(n._.trim());
+      if (typeof n._ === 'string' && n._.trim()){
+        var item = { name: n._.trim(), line: (typeof n['2'] === 'string' ? n['2'].trim() : '') };
+        Object.keys(n).forEach(function(k){ if (/^[3-9]$/.test(k)) item[k] = n[k]; });
+        out.push(item);
+      }
       n = n['1'];
     }
     return out;
   }
+  /* the names alone, in order */
+  function chainToList(node){ return chainToItems(node).map(function(x){ return x.name; }); }
 
-  /* build the chain back from a list, deepest last */
+  /* build the chain back from a list, deepest last — items are names, or
+   * {name, line, …} as chainToItems gives them, so what stood beneath a rung stands
+   * after the save (the order used to be saved as bare names, which would have
+   * dropped every line the moment someone re-ordered their row) */
   function listToChain(items){
     var node = null;
     for (var i = items.length - 1; i >= 0; i--){
-      var rung = { '_': items[i] };
+      var it = typeof items[i] === 'string' ? { name: items[i] } : items[i];
+      var rung = { '_': it.name };
+      if (it.line) rung['2'] = it.line;
+      Object.keys(it).forEach(function(k){ if (/^[3-9]$/.test(k)) rung[k] = it[k]; });
       if (node) rung['1'] = node;
       node = rung;
     }
     return node;
   }
 
-  function readBranch(origin, handle, digit){
+  function readItems(origin, handle, digit){
     return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(listBlockName(handle)),
                  { headers:{Accept:'application/json'}, cache:'no-store' })
       .then(function(r){ return r.status === 404 ? null : r.json(); })
-      .then(function(b){ return b ? chainToList(b[String(digit)]) : null; })
+      .then(function(b){ return b ? chainToItems(b[String(digit)]) : null; })
       .catch(function(){ return null; });
+  }
+  function readBranch(origin, handle, digit){
+    return readItems(origin, handle, digit).then(function(items){ return items ? items.map(function(x){ return x.name; }) : null; });
   }
   var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
   var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and nothing else. Naming a place here is choosing it, and a place left out simply does not appear: the menu is the choice, not the choice laid over a catalogue. Nothing is lost by leaving one out, because the catalogue every page offers stands whole behind 'choose what shows', which is where a list is changed.";
-  var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down.";
+  var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down. Beneath each family's rung, at its 2, this hand's own line on how it stands to the family — 'as coordinator, for Community Recovery' — plural across families and changed at will; there is no roster anywhere (the beach's conventions 2.131).";
 
   function latchFor(handle){ return 'lists-latch:' + handle; }
+
+  /* ── THE RELATIONSHIP LINE, read and written — how a hand stands to a family, in its
+   * own words beneath the family's rung in lists:<handle> branch 1, at the rung's 2
+   * (the beach's conventions 2.131; bsp-mcp #447 §5). The walk's join door writes it;
+   * the row's titles read it. A family not yet listed is appended at the chain's end,
+   * so listing and saying how you stand to it are one act. Saved under the passport's
+   * key, as every block named for a handle is (handle_bound). ── */
+  window.siteRelation = {
+    read: function(origin, handle){ return readItems(origin || 'https://beach.happyseaurchin.com', handle, 1); },
+    write: function(origin, handle, family, line){
+      origin = origin || 'https://beach.happyseaurchin.com';
+      return readItems(origin, handle, 1).then(function(items){
+        items = items || [];
+        var it = items.filter(function(x){ return x.name === family; })[0];
+        if (!it){ it = { name: family }; items.push(it); }
+        it.line = (line || '').trim();
+        return saveBranch(origin, handle, 1, BRANCH_SAYS, items);
+      });
+    }
+  };
 
   function post(origin, body){
     return fetch(origin + '/.well-known/pscale-beach', { method:'POST', cache:'no-store',
@@ -1048,8 +1087,11 @@
     if (!cfg.handle) return askForHandle(cfg, bar);
     var origin = cfg.beach || 'https://beach.happyseaurchin.com';
 
-    Promise.all([readIndex(origin), readBranch(origin, cfg.handle, 1)]).then(function(both){
-      var blocks = both[0], stated = both[1];
+    Promise.all([readIndex(origin), readItems(origin, cfg.handle, 1)]).then(function(both){
+      var blocks = both[0], items = both[1] || [];
+      var stated = items.map(function(x){ return x.name; });
+      var lineOf = {};
+      items.forEach(function(x){ if (x.line) lineOf[x.name] = x.line; });
       var have = {};
       blocks.forEach(function(n){ have[n] = 1; });
       /* A FAMILY IS WELL-FORMED WHEN ITS LAW STANDS — function:<name> beside
@@ -1137,6 +1179,7 @@
           var cur = document.createElement('span');
           cur.className = 'here'; cur.textContent = f;
           cur.setAttribute('aria-current', 'true');
+          if (lineOf[f]) cur.title = lineOf[f];
           row.appendChild(cur);
         } else {
           var a = document.createElement('a');
@@ -1148,6 +1191,7 @@
            * belongs. */
           a.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
           a.textContent = f;
+          if (lineOf[f]) a.title = lineOf[f];     /* how this hand stands to it, in its own words */
           row.appendChild(a);
         }
       });
@@ -1234,7 +1278,9 @@
           save.addEventListener('click', function(e){
             e.stopPropagation();
             save.disabled = true; save.textContent = 'saving…';
-            saveBranch(origin, cfg.handle, 1, BRANCH_SAYS, order.filter(function(f){ return inList[f]; }))
+            saveBranch(origin, cfg.handle, 1, BRANCH_SAYS, order.filter(function(f){ return inList[f]; }).map(function(f){
+                return items.filter(function(x){ return x.name === f; })[0] || { name: f };   /* the rung's own line rides along */
+              }))
               .then(function(w){
                 if (w && w.ok){ location.reload(); return; }
                 save.disabled = false;
@@ -1263,6 +1309,14 @@
           bl.appendChild(ba);
         });
         row.appendChild(bl);
+      }
+      /* how this hand stands to the family it is standing in — its own line; on the
+       * walk the masthead carries it, with the door that writes it */
+      if (cfg.page !== 'walk' && cfg.family && lineOf[cfg.family]){
+        var fl = document.createElement('span');
+        fl.className = 'projrow__bare';
+        fl.textContent = 'you, here: ' + lineOf[cfg.family];
+        row.appendChild(fl);
       }
 
       /* The note only where it is actually true, which is narrower than it was.
