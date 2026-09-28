@@ -2,11 +2,13 @@
 // film-the-room.mjs — the observer's seat at a table, and the film of a room.
 //
 // Three verbs, one convention (ways:stills at the beach): a picture leaves a scene as a LINK,
-// never as bytes on the beach. gallery:<room> is the room's picture-book — one entry per still:
-// the caption, 1 who made it, 2 the beat it renders (pool:<room>:<slot>), 3 when, 4 the link.
-// gallery:<handle> is a character's own book: its first entry is the FACE — the photograph a
-// player gave (2 = passport:<handle>:3, the address of their look), and every still of them is
-// rendered against it, so the person at the table recognises themselves in the film.
+// never as bytes on the beach, and every picture stands in its MAKER's own book — gallery:<handle>,
+// one entry per still: the caption, 1 the maker, 2 the address it renders (pool:<room>:<slot> for a
+// moment of play), 3 when, 4 the link. The room's pictures are a VIEW across every book at the
+// table, by address; nothing is copied. A character's book holds the FACE — the photograph a
+// player gave (2 = passport:<handle>:3, the address of their look) — and every still of them is
+// rendered against it, so the person at the table recognises themselves in the film. The film
+// itself is one more entry in the cutter's book, addressed to the room (pool:<room>).
 //
 //   faces  — put a player's photograph at the sink and open their book with it
 //   watch  — follow a room: each new moment becomes a still (and, if asked, a clip) on YOUR key
@@ -170,6 +172,18 @@ const isVideoLink = u => /youtube\.com\/|youtu\.be\/|vimeo\.com\/|\.(mp4|webm|mo
 // the look at passport 3, without the Location clause the mechanics keep there
 const lookOf = pp => (pp && typeof pp['3'] === 'string' ? pp['3'] : voiceOf(pp && pp['3']) || '').replace(/\s*Location:\s*\*:\S+/i, '').trim();
 
+// every picture-book at a surface — each maker's own; the room's pictures are a VIEW across them
+async function booksAt(origin) {
+  const idx = await readIndex(origin);
+  const names = (idx.blocks || []).filter(b => b.startsWith('gallery:'));
+  const books = await Promise.all(names.map(async n => [n, await readBlock(origin, n).catch(() => null)]));
+  return books.filter(([, b]) => b);
+}
+async function stillsAt(origin, room) {
+  const out = [];
+  for (const [name, book] of await booksAt(origin)) for (const s of stillsOf(book)) if (s.at === `pool:${room}` || s.at.startsWith(`pool:${room}:`)) out.push({ ...s, book: name });
+  return out;
+}
 // the faces: gallery:<handle>'s entry at the address of the look — the photograph the player gave
 async function facesOf(origin, handles) {
   const out = {};
@@ -408,8 +422,8 @@ async function renderBeat(origin, room, beat, handles, looks, faces, style, want
   const raw = await makeStill(prompt, faceUrls, base + '-raw.png');
   const jpg = toJpeg(raw, base + '.jpg');
   const url = await storeAtSink(jpg, room);
-  const ack = await appendEntry(origin, 'gallery:' + room, { _: firstSentence(beat.text), 1: AGENT, 2: `pool:${room}:${beat.slot}`, 3: new Date().toISOString(), 4: url });
-  log(`  still → ${url}\n  gallery:${room} slot ${ack.slot}`);
+  const ack = await appendEntry(origin, 'gallery:' + AGENT, { _: firstSentence(beat.text), 1: AGENT, 2: `pool:${room}:${beat.slot}`, 3: new Date().toISOString(), 4: url });
+  log(`  still → ${url}\n  gallery:${AGENT} slot ${ack.slot}`);
   if (wantClip) {
     try { const clip = await makeClip(jpg, url, prompt, faceUrls, seconds, base + '-clip.mp4'); log(`  clip → ${clip}`); }
     catch (e) { log('  clip failed: ' + e.message); }
@@ -423,13 +437,13 @@ async function verbWatch(origin) {
   const style = ARGS.style || process.env.STYLE || (await readBlock(origin, 'style:' + (ARGS.world || '')).then(s => voiceOf(s)).catch(() => null)) || DEFAULT_STYLE;
   const stateFile = path.join(WORK, 'watched.json');
   const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { done: [] };
-  log(`watching pool:${room} at ${origin} every ${every / 1000}s — ${HF ? 'Higgsfield' : GK ? 'Gemini' : OK ? 'OpenAI' : 'the free service'}${wantClip ? ', with a clip per moment' : ''}${DRY ? ' (dry run — nothing is made or written)' : ''}`);
-  await ensureBook(origin, 'gallery:' + room, `The picture-book of the room at pool:${room} — one entry per still: the caption is the moment it renders, 1 who made it, 2 the beat (pool:${room}:<slot>), 3 when, 4 the link a viewer renders. Links only; each link's bytes live at its maker's sink (ways:stills). Read in the order of 2 and the feed is the film of the room.`).catch(e => { if (!DRY) throw e; });
+  log(`watching pool:${room} at ${origin} every ${every / 1000}s as ${AGENT} — ${HF ? 'Higgsfield' : GK ? 'Gemini' : OK ? 'OpenAI' : 'the free service'}${wantClip ? ', with a clip per moment' : ''}${DRY ? ' (dry run — nothing is made or written)' : ''}`);
+  if (!DRY) await ensureBook(origin, 'gallery:' + AGENT, `The picture-book of ${AGENT} at this table — what ${AGENT} made, one entry per still: the caption is the moment it renders, 1 the maker, 2 the address rendered (pool:<room>:<slot> for a moment), 3 when, 4 the link a viewer renders. Links only; the bytes live at the maker's sink (ways:stills). The room's pictures are read across every book here by address.`);
   for (;;) {
     try {
-      const [pool, book, idx] = await Promise.all([readBlock(origin, 'pool:' + room), readBlock(origin, 'gallery:' + room).catch(() => null), readIndex(origin)]);
+      const [pool, already, idx] = await Promise.all([readBlock(origin, 'pool:' + room), stillsAt(origin, room).catch(() => []), readIndex(origin)]);
       const handles = (idx.blocks || []).filter(b => b.startsWith('passport:')).map(b => b.slice(9));
-      const rendered = new Set([...(book ? stillsOf(book).map(s => s.at) : []), ...state.done]);
+      const rendered = new Set([...already.map(s => s.at), ...state.done]);
       const beats = pool ? beatsOf(pool) : [];
       const todo = beats.filter(b => !rendered.has(`pool:${room}:${b.slot}`) && (!ARGS.since || slotCmp(b.slot, String(ARGS.since)) > 0));
       if (todo.length) {
@@ -437,7 +451,7 @@ async function verbWatch(origin) {
         const looks = Object.fromEntries(handles.map(h => [h, lookOf(pps[h])]));
         const faces = await facesOf(origin, handles);
         for (const beat of todo) {
-          try { await renderBeat(origin, room, beat, handles, looks, faces, style, wantClip, seconds); state.done.push(`pool:${room}:${beat.slot}`); fs.writeFileSync(stateFile, JSON.stringify(state)); }
+          try { await renderBeat(origin, room, beat, handles, looks, faces, style, wantClip, seconds); if (!DRY) { state.done.push(`pool:${room}:${beat.slot}`); fs.writeFileSync(stateFile, JSON.stringify(state)); } }
           catch (e) { log(`  [${beat.slot}] failed: ${e.message}`); }
         }
       } else log(`${new Date().toISOString().slice(11, 19)} nothing new (${beats.length} moments, ${rendered.size} rendered)`);
@@ -451,14 +465,14 @@ async function verbFilm(origin) {
   const room = String(ARGS.room || '').trim(); if (!room) throw new Error('film needs --room <address>');
   const mode = ARGS.mode === 'clips' ? 'clips' : 'stills', seconds = Math.max(3, Number(ARGS.seconds) || 7), wantNarration = !!ARGS.narrate;
   const out = path.resolve(ARGS.out || `film-${(ARGS.world || 'w').replace(/[^a-z0-9-]/gi, '-')}-${room}.mp4`);
-  const [book, pool, idx] = await Promise.all([readBlock(origin, 'gallery:' + room), readBlock(origin, 'pool:' + room).catch(() => null), readIndex(origin)]);
-  if (!book) throw new Error(`no picture-book yet at gallery:${room} — watch the room first`);
+  const [all, pool, idx] = await Promise.all([stillsAt(origin, room), readBlock(origin, 'pool:' + room).catch(() => null), readIndex(origin)]);
   const beats = pool ? beatsOf(pool) : [];
-  const stills = stillsOf(book).filter(s => s.at.startsWith(`pool:${room}:`) && !isVideoLink(s.url));
-  // one still per beat — the newest — in the order of the beats
+  const stills = all.filter(s => s.at.startsWith(`pool:${room}:`) && !isVideoLink(s.url)).sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+  // one still per beat — the newest, from whichever book — in the order of the beats
   const byBeat = new Map(); for (const s of stills) byBeat.set(s.at, s);
   const order = [...byBeat.values()].sort((a, b) => slotCmp(a.at.split(':').pop(), b.at.split(':').pop()));
-  if (!order.length) throw new Error(`gallery:${room} holds no stills addressed to pool:${room}:<slot>`);
+  if (!order.length) throw new Error(`no book at ${origin} holds a still addressed to pool:${room}:<slot> — watch the room first`);
+  log(`from ${new Set(stills.map(s => s.book)).size} book(s): ${[...new Set(stills.map(s => s.book))].join(', ')}`);
   const world = ARGS.world, title = ARGS.title || `${world} — ${room}`;
   const handles = (idx.blocks || []).filter(b => b.startsWith('passport:')).map(b => b.slice(9));
   const faces = mode === 'clips' ? await facesOf(origin, handles) : {};
@@ -520,7 +534,7 @@ async function verbFilm(origin) {
   sh(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', out]);
   if (!burned) fs.writeFileSync(out.replace(/\.mp4$/, '') + '.srt', srt.join('\n'));
   log(`\nfilm: ${out} (${Math.round(clock)} s, ${plan.length} moments${burned ? ', captions burned in' : ', captions in the .srt beside it'})`);
-  log(`upload it to a channel you own, then keep the link in the room's book:\n  curl -X POST '${wk(origin)}' -H 'Content-Type: application/json' -d '${JSON.stringify({ block: 'gallery:' + room, append: true, content: { _: `The film of ${room} — ${plan.length} moments`, 1: AGENT, 2: `pool:${room}`, 3: new Date().toISOString(), 4: 'https://youtu.be/…' } })}'`);
+  log(`upload it to a channel you own, then keep the link in your own book, addressed to the room:\n  curl -X POST '${wk(origin)}' -H 'Content-Type: application/json' -d '${JSON.stringify({ block: 'gallery:' + AGENT, append: true, content: { _: `The film of ${room} — ${plan.length} moments`, 1: AGENT, 2: `pool:${room}`, 3: new Date().toISOString(), 4: 'https://youtu.be/…' } })}'`);
 }
 function hasAudio(file) { try { return sh(FFPROBE, ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', file]).toString().includes('audio'); } catch { return false; } }
 
