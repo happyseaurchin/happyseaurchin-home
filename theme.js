@@ -1266,7 +1266,7 @@
       who.className = 'dd__who'; who.textContent = cfg.handle + ' · ' + cfg.world;
       menu.appendChild(who);
       /* the character's own pages at this world — the one stood on marked as here */
-      [['page', '’s page', '/page/'], ['passport', '’s passport', '/passport/']].forEach(function(own){
+      [['page', '’s page', '/page/'], ['passport', '’s passport', '/passport/'], ['gallery', '’s pictures', '/gallery/']].forEach(function(own){
         if (own[0] !== 'page' && own[0] !== cfg.here) return;
         if (own[0] === cfg.here){
           var cur = document.createElement('span');
@@ -1308,7 +1308,7 @@
       var who = document.createElement('span');
       who.className = 'dd__who'; who.textContent = 'the tables';
       menu.appendChild(who);
-      [['rpg', 'the open tables', '/rpg'], ['mirror', 'the mirror ↗', 'https://mirror.onen.ai/'], ['play', 'how the game plays', '/play']].forEach(function(p){
+      [['rpg', 'the open tables', '/rpg'], ['mirror', 'the mirror ↗', 'https://mirror.onen.ai/'], ['play', 'how the game plays', '/play'], ['gallery', 'the tables, in stills', '/gallery' + (cfg.world ? '?world=' + encodeURIComponent(cfg.world) : '')]].forEach(function(p){
         if (p[0] === cfg.here){
           var cur = document.createElement('span');
           cur.className = 'here'; cur.textContent = p[1]; cur.setAttribute('aria-current', 'page');
