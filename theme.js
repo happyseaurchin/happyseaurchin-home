@@ -1372,10 +1372,11 @@
     var CAST = null;
     function paintWorld(){
       var who = document.createElement('span');
-      who.className = 'dd__who'; who.textContent = cfg.handle + ' · ' + cfg.world;
+      who.className = 'dd__who'; who.textContent = (cfg.handle ? cfg.handle + ' · ' : '') + cfg.world;
       menu.appendChild(who);
       /* the character's own pages at this world — the one stood on marked as here */
       [['page', '’s page', '/page/'], ['passport', '’s passport', '/passport/'], ['gallery', '’s pictures', '/gallery/']].forEach(function(own){
+        if (!cfg.handle) return;   /* a world page with no one carried — the table's own doors only */
         if (own[0] !== 'page' && own[0] !== cfg.here) return;
         if (own[0] === cfg.here){
           var cur = document.createElement('span');
@@ -1388,7 +1389,7 @@
         go.textContent = cfg.handle + own[1];
         menu.appendChild(go);
       });
-      var others = (CAST || []).filter(function(n){ return n.toLowerCase() !== String(cfg.handle).toLowerCase(); });
+      var others = (CAST || []).filter(function(n){ return !cfg.handle || n.toLowerCase() !== String(cfg.handle).toLowerCase(); });
       if (others.length){
         var lab = document.createElement('span');
         lab.className = 'dd__lab'; lab.textContent = 'at this table';
