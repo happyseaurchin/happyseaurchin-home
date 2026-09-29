@@ -55,6 +55,11 @@
   .who{color:var(--vapour);margin:0 0 8px;font-size:1.05rem}
   .who.first{color:var(--foam);font-size:1.12rem}
   .who.look{font-style:italic}
+  .head{position:relative}
+  .portrait{float:right;margin:0 0 12px 18px;border:0}
+  .portrait img{width:132px;height:132px;border-radius:50%;object-fit:cover;border:1px solid var(--line-strong);background:var(--deep);display:block}
+  .pictures{font-family:var(--mono);font-size:12.5px;letter-spacing:0.04em;margin:0 0 14px}
+  @media (max-width:560px){.portrait img{width:96px;height:96px}}
   .who.look .to-parlour{font-style:normal;font-family:var(--mono);font-size:12px;letter-spacing:.04em;white-space:nowrap}
   .who b{color:var(--foam);font-weight:600}
   .whoq{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--liquid);margin:12px 0 4px}
@@ -664,9 +669,24 @@ async function load(){
     if (m && !DEV_WAKER) WAKER = m[0].replace(/\/enroll$/, '');
   }
 
+  /* THE PORTRAIT — the face the player gave (the first picture of the character, addressed to their look),
+     else the newest picture taken of them; kept as links in gallery:<handle> at the table (ways:stills) */
+  let PORTRAIT = null;
+  if (WORLD){
+    const book = await readBlock('gallery:' + HANDLE).catch(() => null);
+    if (book){
+      const pics = [];
+      (function walk(n){ if (!n || typeof n !== 'object') return; if (n['_'] && typeof n['_'] === 'object') walk(n['_']); for (const k of digitKeys(n)){ const c = n[k]; if (c && typeof c === 'object' && typeof c['4'] === 'string' && /^https?:/.test(c['4']) && !/youtube\.com|youtu\.be|vimeo\.com|\.(mp4|webm|mov)(\?|$)/i.test(c['4'])) pics.push({ url: c['4'], at: typeof c['2'] === 'string' ? c['2'] : '' }); else if (c && typeof c === 'object') walk(c); } })(book);
+      PORTRAIT = (pics.filter(p => p.at === 'passport:' + HANDLE + ':3').pop() || pics[pics.length - 1] || null);
+    }
+  }
+  const PICTURES = WORLD ? '/gallery/' + encodeURIComponent(HANDLE) + '?world=' + encodeURIComponent(WORLD) : '/gallery/' + encodeURIComponent(HANDLE);
+
   const out = [];
   /* WHO — the passport: its opening line is the headline; then what it brings, what it looks for, and how it looks */
-  out.push('<header class="head"><h1><span class="cool">' + esc(HANDLE) + '</span>' + (WORLD ? '<a class="at" href="/rpg" title="the open tables — this one among them">at ' + esc(WORLD) + '</a>' : '') + '</h1>');
+  out.push('<header class="head">' + (PORTRAIT ? '<a class="portrait" href="' + PICTURES + '" title="' + esc(HANDLE) + ', in pictures"><img src="' + esc(PORTRAIT.url) + '" alt="' + esc(HANDLE) + '"></a>' : '') +
+    '<h1><span class="cool">' + esc(HANDLE) + '</span>' + (WORLD ? '<a class="at" href="/rpg" title="the open tables — this one among them">at ' + esc(WORLD) + '</a>' : '') + '</h1>');
+  if (WORLD) out.push('<p class="pictures"><a href="' + PICTURES + '">' + esc(HANDLE) + ', in pictures →</a> <span style="color:var(--vapour-dim)">' + (PORTRAIT ? 'every moment, with its picture; take one, or give a face' : 'no picture yet — give a face and take the first') + '</span></p>');
   if (passport){
     const who = voiceOf(passport), offers = voiceOf(passport['1']), needs = voiceOf(passport['2']), look = lookOf(passport);
     if (who) out.push('<p class="who first">' + esc(who) + '</p>');

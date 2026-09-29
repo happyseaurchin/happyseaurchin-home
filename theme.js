@@ -1377,7 +1377,9 @@
       /* the character's own pages at this world — the one stood on marked as here */
       [['page', '’s page', '/page/'], ['passport', '’s passport', '/passport/'], ['gallery', '’s pictures', '/gallery/']].forEach(function(own){
         if (!cfg.handle) return;   /* a world page with no one carried — the table's own doors only */
-        if (own[0] !== 'page' && own[0] !== cfg.here) return;
+        /* the ring at a table: the character's page and their pictures are offered from each other;
+           the passport is written to its holder and shows only as the place stood on */
+        if (own[0] === 'passport' && own[0] !== cfg.here) return;
         if (own[0] === cfg.here){
           var cur = document.createElement('span');
           cur.className = 'here'; cur.textContent = cfg.handle + own[1]; cur.setAttribute('aria-current', 'page');
@@ -1455,7 +1457,7 @@
       rule();
       door(['mirror', 'the mirror ↗', 'https://mirror.onen.ai/']);
       door(['rpg', 'the tables', '/rpg']);
-      if (cfg.handle){ rule(); door(['now', cfg.handle + '’s now', '/now/' + encodeURIComponent(cfg.handle)]); }
+      if (cfg.handle){ rule(); door(['now', cfg.handle + '’s now', '/now/' + encodeURIComponent(cfg.handle)]); door(['gallery', cfg.handle + '’s pictures', '/gallery/' + encodeURIComponent(cfg.handle)]); }
     }
 
     function paint(){
