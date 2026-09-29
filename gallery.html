@@ -117,7 +117,7 @@
         <p class="sub" id="make-sub">One press reads the scene, renders it into a picture (free), and hangs it in your book — about twenty seconds. Nothing to fill in.</p>
         <div class="make__row">
           <button id="render" type="button">Render</button>
-          <button id="follow" type="button" class="quiet hidden" aria-pressed="false">follow the room — a still for every new moment</button>
+          <button id="follow" type="button" class="quiet hidden" aria-pressed="false">follow the table — a still for every new moment, in any room</button>
         </div>
         <p class="make__hint" id="mhint">The free service needs nothing. A better render on your own key lives under options.</p>
         <details class="make__opts">
@@ -251,15 +251,20 @@
       return Promise.all(names.map(function(n){return fetch(w(n),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(b){return b?{name:n,block:b,origin:o}:null;}).catch(function(){return null;});})).then(function(a){return a.filter(Boolean);});}).catch(function(){return [];});}
   function books(){return booksAt(BEACH);}
   // the room's pictures: the books at the table (local addresses), and the books at the apex that reference this table
-  function roomStills(){
-    var here=BEACH.replace(/\/+$/,''), isRoom=function(local){return local==='pool:'+ROOM||local.indexOf('pool:'+ROOM+':')===0;};
+  function stillsWhere(pred){
+    var here=BEACH.replace(/\/+$/,'');
     return Promise.all([booksAt(here),here===APEX?Promise.resolve([]):booksAt(APEX)]).then(function(r){
       var out=[];
-      r[0].forEach(function(b){stillsOf(b.block,b.name).forEach(function(s){var ref=refOf(s.at);if((!ref.origin||ref.origin===here)&&isRoom(ref.local)){s.local=ref.local;out.push(s);}});});
-      r[1].forEach(function(b){stillsOf(b.block,b.name).forEach(function(s){var ref=refOf(s.at);if(ref.origin===here&&isRoom(ref.local)){s.local=ref.local;s.home=APEX;out.push(s);}});});
+      r[0].forEach(function(b){stillsOf(b.block,b.name).forEach(function(s){var ref=refOf(s.at);if((!ref.origin||ref.origin===here)&&pred(ref.local)){s.local=ref.local;out.push(s);}});});
+      r[1].forEach(function(b){stillsOf(b.block,b.name).forEach(function(s){var ref=refOf(s.at);if(ref.origin===here&&pred(ref.local)){s.local=ref.local;s.home=APEX;out.push(s);}});});
       return out;
     });
   }
+  function roomStills(){return stillsWhere(function(local){return local==='pool:'+ROOM||local.indexOf('pool:'+ROOM+':')===0;});}
+  function tableStills(){return stillsWhere(function(local){return local.indexOf('pool:')===0;});}
+  // every room at the table — the pools its index lists — and their resolved moments, each tagged with its room
+  function tableMoments(){return readIndex().then(function(idx){var rooms=((idx&&idx.blocks)||[]).filter(function(b){return /^pool:\d+(\.\d+)?$/.test(b);}).map(function(b){return b.slice(5);});
+    return Promise.all(rooms.map(function(r){return readBlock('pool:'+r).then(function(p){return (p?beatsOf(p):[]).map(function(b){b.room=r;return b;});}).catch(function(){return [];});})).then(function(a){return [].concat.apply([],a);});});}
   // ── display ──
   var HANDLES=[], FACES={};
   function embed(url){
@@ -352,20 +357,21 @@
   // the order the recipe states; the text below is the fallback if the beach cannot be read.
   var RECIPE={look:DEFAULT_LOOK,bind:'Each person shown must have the face of their reference photograph, exactly, in period dress.',never:'No text or lettering, no modern objects, nothing overtly fantastical.'};
   function readRecipe(){return fetch(APEX+'/.well-known/pscale-beach?block=ways:stills',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(w){var six=w&&w['6'];if(!six||typeof six!=='object')return;var l=voiceOf(six['1']),b=voiceOf(six['2']),n=voiceOf(six['3']);if(l)RECIPE.look=l;if(b)RECIPE.bind=b;if(n)RECIPE.never=n;}).catch(function(){});}
-  function composeShot(text,cast,looks,style){
-    var who=cast.map(function(h){return h+': '+(looks[h]||'as described');}).join(' · ');
-    return [text.length>1100?text.slice(0,1100)+'…':text, PLACE?'The place — '+PLACE:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', RECIPE.never].filter(Boolean).join(' ');
+  function composeShot(text,cast,looks,style,place){
+    var who=cast.map(function(h){return h+': '+(looks[h]||'as described');}).join(' · '), at=place===undefined?PLACE:place;
+    return [text.length>1100?text.slice(0,1100)+'…':text, at?'The place — '+at:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', RECIPE.never].filter(Boolean).join(' ');
   }
   // the place: the table's keeper names where it is placed (keeper:scene 3, PLACING: *:<origin>:spatial:<world>:<address>);
   // the room's own line in that register, with its parent's, is the picture's setting — read once per room
-  var PLACE='';
+  var PLACE='', PLACES={};
   function starRef(s){var m=String(s||'').match(/\*:(https?:\/\/\S+?):((?:[a-z][a-z0-9_-]*:)*[a-z][a-z0-9_-]*):([0-9.]+)\s*$/i);return m?{origin:m[1],block:m[2],addr:m[3]}:null;}
   function linesTo(block,addr){var lines=[],node=block;String(addr).replace('.','').split('').forEach(function(d){if(!node)return;var next=node[d];if(next===undefined&&node._&&typeof node._==='object'){node=node._;next=node[d];}if(next===undefined){node=null;return;}node=next;var v=voiceOf(node);if(v)lines.push(v);});return lines;}
-  function readPlace(){
+  function readPlace(room){
     return readBlock('keeper:scene').then(function(k){var ref=starRef(k&&(typeof k['3']==='string'?k['3']:voiceOf(k['3'])));if(!ref)return '';
-      return fetch(ref.origin.replace(/\/+$/,'')+'/.well-known/pscale-beach?block='+encodeURIComponent(ref.block),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(reg){return reg?linesTo(reg,ROOM||ref.addr).slice(-2).join(' ').slice(0,600):'';});
+      return fetch(ref.origin.replace(/\/+$/,'')+'/.well-known/pscale-beach?block='+encodeURIComponent(ref.block),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(reg){return reg?linesTo(reg,room||ROOM||ref.addr).slice(-2).join(' ').slice(0,600):'';});
     }).catch(function(){return '';});
   }
+  function placeFor(room){if(PLACES[room]!==undefined)return Promise.resolve(PLACES[room]);return readPlace(room).then(function(p){PLACES[room]=p;return p;});}
   function facesOf(handles){
     return Promise.all(handles.map(function(h){return readBlock('gallery:'+h).then(function(b){var f=b?stillsOf(b).filter(function(s){return s.at==='passport:'+h+':3';}).pop():null;if(f)FACES[h]=f.img;}).catch(function(){});}));
   }
@@ -438,23 +444,23 @@
     function styleText(){return styleIn.value.trim()||WORLD_STYLE||RECIPE.look;}
     // one moment → one still in the maker's book, addressed to the moment
     function renderMoment(beat,prov,k){
-      var pps={};
-      return Promise.all(HANDLES.map(function(h){return readBlock('passport:'+h).then(function(p){pps[h]=p;}).catch(function(){});})).then(function(){
+      var pps={}, room=beat.room||ROOM;
+      return Promise.all(HANDLES.map(function(h){return readBlock('passport:'+h).then(function(p){pps[h]=p;}).catch(function(){});}).concat([placeFor(room)])).then(function(r){
         var looks={}; HANDLES.forEach(function(h){looks[h]=lookOf(pps[h]);});
-        var cast=castOf(beat), prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText());
+        var cast=castOf(beat), prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText(),r[r.length-1]||'');
         var refs=prov==='free'?[]:cast.map(function(h){return FACES[h];}).filter(Boolean);
-        say('moment '+beat.slot+' — '+(prov==='free'?'rendering (free service, ~20s)…':'rendering on your key'+(refs.length?' with '+refs.length+' face'+(refs.length>1?'s':'')+' as reference…':'…')));
+        say('moment '+beat.slot+' at '+room+' — '+(prov==='free'?'rendering (free service, ~20s)…':'rendering on your key'+(refs.length?' with '+refs.length+' face'+(refs.length>1?'s':'')+' as reference…':'…')));
         return facesOf64(refs).then(function(r64){return generate(prov,prompt,k,r64);}).then(function(image){
           say('storing the still…');
           return storeStill(image,who()).catch(function(){return image;});
         }).then(function(src){
           say('keeping it in gallery:'+who()+'…');
-          return appendToBook(who(),{_:firstSentence(beat.text),'1':who(),'2':'pool:'+ROOM+':'+beat.slot,'3':new Date().toISOString(),'4':src});
+          return appendToBook(who(),{_:firstSentence(beat.text),'1':who(),'2':'pool:'+room+':'+beat.slot,'3':new Date().toISOString(),'4':src});
         });
       });
     }
-    function moments(){return readBlock('pool:'+ROOM).then(function(p){return p?beatsOf(p):[];});}
-    function rendered(){return roomStills().then(function(all){var d={};all.forEach(function(s){d[s.local||s.at]=1;});return d;}).catch(function(){return {};});}
+    function moments(){return readBlock('pool:'+ROOM).then(function(p){return (p?beatsOf(p):[]).map(function(b){b.room=ROOM;return b;});});}
+    function rendered(){return tableStills().then(function(all){var d={};all.forEach(function(s){d[s.local||s.at]=1;});return d;}).catch(function(){return {};});}
     function go(){
       var prov=provider.value, k=key.value.trim(), sc=scene.value.trim()||'bubble:gal-1', sh=shot.value.trim();
       if(prov!=='free' && !k){say('paste your '+prov+' key, or switch to Free.','err');return;}
@@ -480,9 +486,9 @@
       var prov=provider.value,k=key.value.trim();
       if(prov!=='free'&&!k){say('following needs your key, or Free.','err');return;}
       BUSY=true;
-      Promise.all([moments(),rendered()]).then(function(r){
-        var todo=r[0].filter(function(b){return !r[1]['pool:'+ROOM+':'+b.slot];});
-        if(!todo.length){say('following as '+who()+' — nothing new ('+r[0].length+' moments, all rendered)');return;}
+      Promise.all([tableMoments(),rendered()]).then(function(r){
+        var todo=r[0].filter(function(b){return !r[1]['pool:'+b.room+':'+b.slot];});
+        if(!todo.length){say('following the table as '+who()+' — nothing new ('+r[0].length+' moments in every room, all rendered)');return;}
         var chain=Promise.resolve();
         todo.forEach(function(b){chain=chain.then(function(){return renderMoment(b,prov,k);});});
         return chain.then(function(){say('following as '+who()+' — '+todo.length+' new moment'+(todo.length>1?'s':'')+' rendered ✓','ok');render();});
@@ -491,7 +497,7 @@
     follow.addEventListener('click',function(){
       FOLLOW=!FOLLOW; follow.classList.toggle('on',FOLLOW); follow.setAttribute('aria-pressed',String(FOLLOW));
       try{localStorage.setItem('gallery:who',who());}catch(e){}
-      if(FOLLOW){say('following the room as '+who()+' — a still for every new moment, on '+(provider.value==='free'?'the free service':'your key'));tick();TICK=setInterval(tick,20000);}
+      if(FOLLOW){say('following the whole table as '+who()+' — a still for every new moment in any room, on '+(provider.value==='free'?'the free service':'your key'));tick();TICK=setInterval(tick,20000);}
       else{clearInterval(TICK);say('stopped following.');}
     });
     btn.addEventListener('click',go);
@@ -505,7 +511,7 @@
         document.getElementById('h1').innerHTML='The room at '+esc(ROOM)+', <span class="cool">in stills</span>.';
         document.getElementById('lede').innerHTML='Every moment played at '+(WORLD?'<b>'+esc(WORLD)+'</b>':'this table')+' room '+esc(ROOM)+', rendered into a picture by whoever is watching — on their <b>own image key</b>, kept in their <b>own book</b>. Read in order, the room’s pictures are its film.';
         document.getElementById('make-h2').textContent='Make a still of the latest moment';
-        document.getElementById('make-sub').innerHTML='One press reads the newest moment in the room, renders it (with the faces given at the table, on a key), and keeps it in your book, addressed to the moment. <b>Follow</b> keeps doing that for every new moment while this tab is open.';
+        document.getElementById('make-sub').innerHTML='One press reads the newest moment in the room, renders it (with the faces given at the table, on a key), and keeps it in your book, addressed to the moment. <b>Follow</b> keeps doing that for every new moment in every room of the table while this tab is open.';
         follow.classList.remove('hidden');
         if(params.get('follow')==='1')setTimeout(function(){follow.click();},800);
       } else if(MODE==='handle'){
@@ -519,7 +525,7 @@
       if(MODE==='room'){
         ready=readIndex().then(function(idx){HANDLES=(idx.blocks||[]).filter(function(b){return b.indexOf('passport:')===0;}).map(function(b){return b.slice(9);});return facesOf(HANDLES);}).catch(function(){})
           .then(function(){return readBlock(STYLE_BLOCK).then(function(s){WORLD_STYLE=voiceOf(s);}).catch(function(){});})
-          .then(function(){return readPlace().then(function(p){PLACE=p;});}).then(readRecipe).then(renderFaces);
+          .then(function(){return placeFor(ROOM).then(function(p){PLACE=p;});}).then(readRecipe).then(renderFaces);
       }
       ready.then(function(){render();setInterval(render,20000);});
     });
