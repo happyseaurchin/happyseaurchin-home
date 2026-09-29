@@ -88,6 +88,8 @@
   .shot__frame img{width:100%;height:100%;display:block;object-fit:cover}
   .shot__frame .nopic{color:var(--vapour-dim);font-style:italic;font-size:.95rem;padding:14px;text-align:center}
   .shot__cap{padding:14px 18px 8px;font-size:1rem;line-height:1.5;color:var(--foam)}
+  .shot__cap[data-more]{cursor:pointer} .shot__cap .full{display:none} .shot__cap.open .full{display:inline} .shot__cap.open .short{display:none}
+  .shot__cap .more{font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour-dim);margin-left:6px;white-space:nowrap} .shot__cap:hover .more{color:var(--foam)}
   .shot__meta{padding:0 18px 14px;font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
   .shot__meta .who{color:var(--vapour)} .shot__meta a{border:0}
   .empty,.loading{color:var(--vapour-dim);font-style:italic;padding:10px 0}
@@ -448,10 +450,23 @@
     b.disabled=true;b.textContent='deleting…';
     deletePicture(s).then(function(){render();}).catch(function(err){b.disabled=false;b.textContent='✕ delete';var fig=b.closest('figure'),n=fig&&fig.querySelector('.taking');if(fig){if(!n){n=document.createElement('p');n.className='hint taking err';n.style.padding='0 18px 12px';fig.appendChild(n);}n.className='hint taking err';n.textContent=err.message;}});
   });
+  // THE CAPTION folds to its first lines and opens whole on a tap: the character view holds the whole telling already;
+  // the room and person views hold the picture's own caption and read the moment from the room when tapped
+  function capHTML(text,momentAt){var t=String(text||''),short=t.length>200?t.slice(0,200).replace(/\s+\S*$/,'')+'…':t,more=t.length>200||!!momentAt;
+    return '<figcaption class="shot__cap"'+(more?' data-more="1"'+(momentAt?' data-at="'+esc(momentAt)+'"':'')+' title="tap for the whole moment"':'')+'><span class="short">'+esc(short)+(more?'<span class="more">more ▾</span>':'')+'</span>'+(more?'<span class="full">'+esc(t)+'<span class="more">less ▴</span></span>':'')+'</figcaption>';}
+  document.getElementById('shots').addEventListener('click',function(e){
+    var cap=e.target.closest&&e.target.closest('figcaption.shot__cap[data-more]'); if(!cap||e.target.closest('a'))return;
+    var at=cap.getAttribute('data-at');
+    if(at&&!cap.getAttribute('data-read')){var m=at.match(/^pool:([\d.]+):(\d+)$/);cap.setAttribute('data-read','1');
+      readBlock('pool:'+m[1]).then(function(p){var b=p?beatsOf(p).filter(function(x){return x.slot===m[2];})[0]:null;if(!b){var all=p?slotted(p).filter(function(x){return x.slot===m[2];})[0]:null;b=all?{text:shownText(voiceOf(all.entry))}:null;}
+        if(b&&b.text)cap.querySelector('.full').innerHTML=esc(b.text)+'<span class="more">less ▴</span>';}).catch(function(){});}
+    cap.classList.toggle('open');
+  });
   function shotHTML(s,showTaker){
     var door=s.home===APEX?personLink(s.book.slice(8)):charLink(s.book.slice(8));
-    return '<figure class="shot"><div class="shot__frame"><img loading="lazy" alt="'+esc(s.cap||'a picture')+'" src="'+esc(s.img)+'"></div>'+(s.cap?'<figcaption class="shot__cap">'+esc(s.cap)+'</figcaption>':'')+
-      '<div class="shot__meta">'+(s.who?'<span class="who">'+(showTaker&&s.book?'taken by <a href="'+door+'">'+esc(s.who)+'</a>':'taken by '+esc(s.who))+'</span>':'')+(s.at?'<span>'+renders(s.at)+'</span>':'')+(s.ts?'<span>'+esc(when(s.ts))+'</span>':'')+xButton(s)+'</div></figure>';
+    var momentAt=s.local&&/^pool:\d+(?:\.\d+)?:\d+$/.test(s.local)?s.local:'';
+    return '<figure class="shot"><div class="shot__frame"><img loading="lazy" alt="'+esc(s.cap||'a picture')+'" src="'+esc(s.img)+'"></div>'+(s.cap?capHTML(s.cap,momentAt):'')+
+      '<div class="shot__meta">'+(s.who?'<span class="who">'+(showTaker&&s.book?'taken by <a href="'+door+'">'+esc(s.who)+'</a>':'taken by '+esc(s.who))+'</span>':'')+(s.at?'<span>'+renders(s.at)+'</span>':'')+(s.ts?'<span title="when the picture was taken">'+esc(when(s.ts))+'</span>':'')+xButton(s)+'</div></figure>';
   }
   function filmHTML(film){return '<p class="eyebrow">The film</p><figure class="film"><div class="frame">'+embed(film.img)+'</div><figcaption>'+esc(film.cap)+(film.who?' · by '+esc(film.who):'')+(film.ts?' · '+esc(when(film.ts)):'')+'</figcaption></figure>';}
   function faceHTML(h,big){return '<a class="face'+(big?' big':'')+'" href="'+charLink(h)+'" title="'+esc(h)+', in pictures">'+(FACES[h]?'<img src="'+esc(FACES[h])+'" alt="'+esc(h)+'">':'<span class="none">·</span>')+'<span>'+esc(h)+(big?'':'<span class="what">'+(FACES[h]?'face given':'no face yet')+'</span>')+'</span></a>';}
@@ -470,8 +485,8 @@
       if(!moments.length){box.innerHTML='<p class="empty">'+esc(HANDLE)+' has not been in a moment at this table yet. Play, and the moments appear here.</p>';return;}
       box.innerHTML=moments.map(function(b){var s=byAt['pool:'+b.room+':'+b.slot], at='pool:'+b.room+':'+b.slot;
         return '<figure class="shot" data-at="'+esc(at)+'"><div class="shot__frame">'+(s?'<img loading="lazy" alt="" src="'+esc(s.img)+'">':'<div class="nopic">no picture yet<br><button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'">📷 take one</button></div>')+'</div>'+
-          '<figcaption class="shot__cap">'+esc(b.text.length>260?b.text.slice(0,260)+'…':b.text)+'</figcaption>'+
-          '<div class="shot__meta"><span><a href="'+roomLink(b.room)+'">'+esc(placeName(b.room))+'</a></span>'+(b.ts?'<span>'+esc(when(b.ts))+'</span>':'')+(s&&s.who?'<span class="who">taken by '+esc(s.who)+'</span>':'')+(s?'<button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'" title="take it again — the newest picture is the one that shows; the earlier one stays in the record">📷 take again</button>':'')+(s?xButton(s):'')+'</div></figure>';}).join('');
+          capHTML(b.text,'')+
+          '<div class="shot__meta"><span><a href="'+roomLink(b.room)+'">'+esc(placeName(b.room))+'</a></span>'+(b.ts?'<span title="when the moment happened">happened '+esc(when(b.ts))+'</span>':'')+(s&&s.who?'<span class="who">taken'+(s.ts?' '+esc(when(s.ts)):'')+' by '+esc(s.who)+'</span>':'')+(s?'<button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'" title="take it again — the newest picture is the one that shows; the earlier one stays in the record">📷 take again</button>':'')+(s?xButton(s):'')+'</div></figure>';}).join('');
       Array.prototype.forEach.call(box.querySelectorAll('.take'),function(btn){btn.addEventListener('click',function(){var b=moments.filter(function(m){return m.room===btn.dataset.room&&m.slot===btn.dataset.slot;})[0];if(b&&window.takeOne)window.takeOne(b,btn);});});
     }).catch(function(e){box.innerHTML='<p class="empty">Couldn’t read the table just now — '+esc(e.message)+'.</p>';});
   }
