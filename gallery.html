@@ -121,7 +121,7 @@
         </div>
         <p class="hint" id="mhint">No key yet: pictures come from a free service, without faces, and it is often busy. Put your own key under options for good pictures with the faces.</p>
         <details class="opts">
-          <summary>options — your name and your image key</summary>
+          <summary>your name and your image key — needed for real pictures</summary>
           <p class="sub" style="margin:12px 0 10px">Pictures you take are kept under <b>your name</b> on the beach, so everyone can see who took them. Your key runs <b>in this browser only</b>, sent straight to the image service, never to the beach. Get one at aistudio.google.com (Google) or platform.openai.com (OpenAI).</p>
           <div class="row"><input id="who" placeholder="your name (the pictures you take are kept under it)" spellcheck="false" autocapitalize="none"></div>
           <div class="row">
@@ -271,11 +271,26 @@
   // the room's own name: the first clause of its own line in the world's register
   function placeName(room){var p=PLACE_NAMES[room]||'';var m=p.match(/^([^—.:(]{3,60})/);return m?m[1].trim():'room '+room;}
   // THE RECIPE lives at the beach (ways:stills 6); this page only assembles in the order it states
-  var RECIPE={look:DEFAULT_LOOK,bind:'Each person shown must have the face of their reference photograph, exactly, in period dress.',never:'No text or lettering, no modern objects, nothing overtly fantastical.'};
-  function readRecipe(){return fetch(APEX+'/.well-known/pscale-beach?block=ways:stills',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(w){var six=w&&w['6'];if(!six||typeof six!=='object')return;var l=voiceOf(six['1']),b=voiceOf(six['2']),n=voiceOf(six['3']);if(l)RECIPE.look=l;if(b)RECIPE.bind=b;if(n)RECIPE.never=n;}).catch(function(){});}
-  function composeShot(text,cast,looks,style,place){
+  var RECIPE={look:DEFAULT_LOOK,bind:'Each person shown must have the face of their reference photograph, exactly, in period dress.',never:'No text or lettering, no modern objects, nothing overtly fantastical.',place:'The last reference image is this same place as pictured before; keep its look, its light and its things.'};
+  function readRecipe(){return fetch(APEX+'/.well-known/pscale-beach?block=ways:stills',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(w){var six=w&&w['6'];if(!six||typeof six!=='object')return;var l=voiceOf(six['1']),b=voiceOf(six['2']),n=voiceOf(six['3']),pl=voiceOf(six['5']);if(l)RECIPE.look=l;if(b)RECIPE.bind=b;if(n)RECIPE.never=n;if(pl){var m=pl.match(/—\s*(The last reference image[^.]*\.[^.]*\.)/);if(m)RECIPE.place=m[1];}}).catch(function(){});}
+  function composeShot(text,cast,looks,style,place,placeRef){
     var who=cast.map(function(h){return h+': '+(looks[h]||'as described');}).join(' · ');
-    return [text.length>1100?text.slice(0,1100)+'…':text, place?'The place — '+place:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', RECIPE.never].filter(Boolean).join(' ');
+    return [text.length>1100?text.slice(0,1100)+'…':text, place?'The place — '+place:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', placeRef?RECIPE.place:'', RECIPE.never].filter(Boolean).join(' ');
+  }
+  // THE LIBRARY AS REFERENCE (ways:stills 6.5): faces first, then the newest picture of the same room, then the
+  // people's own newest pictures — so a place and a person look the same from picture to picture
+  function referencesFor(beat,cast,prov){
+    if(prov==='free')return Promise.resolve({urls:[],placeRef:false});
+    var max=prov==='gemini'?4:8, urls=[];
+    cast.forEach(function(h){if(FACES[h]&&urls.indexOf(FACES[h])<0)urls.push(FACES[h]);});
+    return tableStills().then(function(all){
+      var pics=all.filter(function(s){return !isVideo(s.img);}).sort(function(a,b){return String(b.ts).localeCompare(String(a.ts));});
+      var room=beat.room||ROOM, placeRef=false;
+      var samePlace=pics.filter(function(s){return s.local.indexOf('pool:'+room+':')===0&&s.local!=='pool:'+room+':'+beat.slot;})[0];
+      if(samePlace&&urls.length<max&&urls.indexOf(samePlace.img)<0){urls.push(samePlace.img);placeRef=true;}
+      cast.forEach(function(h){if(urls.length>=max)return;var mine=pics.filter(function(s){return s.who&&s.who.toLowerCase()===h.toLowerCase()&&urls.indexOf(s.img)<0;})[0];if(mine)urls.push(mine.img);});
+      return {urls:urls.slice(0,max),placeRef:placeRef};
+    }).catch(function(){return {urls:urls.slice(0,max),placeRef:false};});
   }
   // ── the makers: one call each, on the taker's key ──
   function genGemini(prompt,key,refs){
@@ -351,8 +366,8 @@
       box.innerHTML=moments.map(function(b){var s=byAt['pool:'+b.room+':'+b.slot], at='pool:'+b.room+':'+b.slot;
         return '<figure class="shot" data-at="'+esc(at)+'"><div class="shot__frame">'+(s?'<img loading="lazy" alt="" src="'+esc(s.img)+'">':'<div class="nopic">no picture yet<br><button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'">📷 take one</button></div>')+'</div>'+
           '<figcaption class="shot__cap">'+esc(b.text.length>260?b.text.slice(0,260)+'…':b.text)+'</figcaption>'+
-          '<div class="shot__meta"><span><a href="'+roomLink(b.room)+'">'+esc(placeName(b.room))+'</a></span>'+(b.ts?'<span>'+esc(when(b.ts))+'</span>':'')+(s&&s.who?'<span class="who">taken by '+esc(s.who)+'</span>':'')+'</div></figure>';}).join('');
-      Array.prototype.forEach.call(box.querySelectorAll('.take'),function(btn){btn.addEventListener('click',function(){var b=moments.filter(function(m){return m.room===btn.dataset.room&&m.slot===btn.dataset.slot;})[0];if(b&&window.takeOne)window.takeOne(b);});});
+          '<div class="shot__meta"><span><a href="'+roomLink(b.room)+'">'+esc(placeName(b.room))+'</a></span>'+(b.ts?'<span>'+esc(when(b.ts))+'</span>':'')+(s&&s.who?'<span class="who">taken by '+esc(s.who)+'</span>':'')+(s?'<button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'" title="take it again — the newest picture is the one that shows; the earlier one stays in the record">📷 take again</button>':'')+'</div></figure>';}).join('');
+      Array.prototype.forEach.call(box.querySelectorAll('.take'),function(btn){btn.addEventListener('click',function(){var b=moments.filter(function(m){return m.room===btn.dataset.room&&m.slot===btn.dataset.slot;})[0];if(b&&window.takeOne)window.takeOne(b,btn);});});
     }).catch(function(e){box.innerHTML='<p class="empty">Couldn’t read the table just now — '+esc(e.message)+'.</p>';});
   }
   function renderFaceCard(){
@@ -422,8 +437,11 @@
       shot.value=localStorage.getItem('gallery:shot')||'';
       styleIn.value=localStorage.getItem('gallery:style')||'';
     }catch(e){scene.value='bubble:gal-1';}
+    if(!key.value){var od=document.querySelector('details.opts');if(od)od.open=true;}
     function who(){return whoIn.value.replace(/[^a-z0-9 _.-]/gi,'').trim()||(MODE==='character'?HANDLE:'observer');}
-    function say(m,cls){hint.className='hint'+(cls?' '+cls:'');hint.textContent=m;}
+    var CARD=null;   /* the moment's card that was pressed — it shows the state in place, beside the button */
+    function say(m,cls){hint.className='hint'+(cls?' '+cls:'');hint.textContent=m;
+      if(CARD){var st=CARD.querySelector('.taking');if(!st){st=document.createElement('p');st.className='hint taking';st.style.padding='0 18px 12px';CARD.appendChild(st);}st.className='hint taking'+(cls?' '+cls:'');st.textContent=m;}}
     function styleText(){return styleIn.value.trim()||WORLD_STYLE||RECIPE.look;}
     function remember(){try{localStorage.setItem('gallery:provider',provider.value);localStorage.setItem('gallery:key',key.value.trim());localStorage.setItem('gallery:who',who());localStorage.setItem('gallery:shot',shot.value.trim());localStorage.setItem('gallery:style',styleIn.value.trim());}catch(e){}}
     // one moment → one picture, kept under the taker's name, addressed to the moment
@@ -431,10 +449,12 @@
       var pps={}, room=beat.room||ROOM;
       return Promise.all(HANDLES.map(function(h){return readBlock('passport:'+h).then(function(p){pps[h]=p;}).catch(function(){});}).concat([placeFor(room)])).then(function(r){
         var looks={}; HANDLES.forEach(function(h){looks[h]=lookOf(pps[h]);});
-        var cast=castOf(beat), prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText(),r[r.length-1]||'');
-        var refs=prov==='free'?[]:cast.map(function(h){return FACES[h];}).filter(Boolean);
-        say((prov==='free'?'drawing on the free service (about 20 s)…':'drawing on your key'+(refs.length?', with '+refs.length+' face'+(refs.length>1?'s':'')+' from the table…':'…')));
-        return facesOf64(refs).then(function(r64){return generate(prov,prompt,k,r64);}).then(function(image){say('keeping the picture…');return storeStill(image,who()).catch(function(){return image;});})
+        var cast=castOf(beat), place=r[r.length-1]||'';
+        return referencesFor(beat,cast,prov).then(function(ref){
+          var prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText(),place,ref.placeRef);
+          say((prov==='free'?'drawing on the free service (about 20 s, no faces, no continuity)…':'drawing on your key'+(ref.urls.length?', with '+ref.urls.length+' reference picture'+(ref.urls.length>1?'s':'')+(ref.placeRef?' including this place as pictured before':'')+'…':'…')));
+          return facesOf64(ref.urls).then(function(r64){return generate(prov,prompt,k,r64);});
+        }).then(function(image){say('keeping the picture…');return storeStill(image,who()).catch(function(){return image;});})
           .then(function(src){return keepPicture(who(),{_:firstSentence(beat.text),'1':who(),'2':'pool:'+room+':'+beat.slot,'3':new Date().toISOString(),'4':src});});
       });
     }
@@ -447,9 +467,19 @@
       var mine=MODE==='character'?characterMoments(HANDLE):tableMoments();
       return Promise.all([mine,tableStills()]).then(function(r){var have={};r[1].forEach(function(s){have[s.local||s.at]=1;});return r[0].filter(function(b){return !have['pool:'+b.room+':'+b.slot];});});
     }
-    function ready(){var prov=provider.value,k=key.value.trim();if(prov!=='free'&&!k){say('put your '+(prov==='gemini'?'Google':'OpenAI')+' key under options, or choose Free.','err');return null;}remember();return {prov:prov,k:k};}
-    window.takeOne=function(beat){var c=ready();if(!c||BUSY)return;BUSY=true;btn.disabled=true;
-      takePicture(beat,c.prov,c.k).then(function(){say('done — the picture is below, kept under '+who()+'.','ok');render();}).catch(function(e){say(e.message,'err');}).then(function(){BUSY=false;btn.disabled=false;});};
+    var FREE_OK=false;
+    function openOptions(){var d=document.querySelector('details.opts');if(d)d.open=true;try{key.focus({preventScroll:false});}catch(e){}}
+    function ready(){var prov=provider.value,k=key.value.trim();
+      if(prov!=='free'&&!k){openOptions();say('put your '+(prov==='gemini'?'Google':'OpenAI')+' key in the box above, or choose Free.','err');return null;}
+      if(prov==='free'&&!FREE_OK){openOptions();FREE_OK=true;say('No key yet. Free pictures ignore the faces and the world and drift from picture to picture. Choose Google or OpenAI and paste a key above for the real thing — or press again to go free anyway.','err');return null;}
+      remember();return {prov:prov,k:k};}
+    window.takeOne=function(beat,el){
+      CARD=el?el.closest('figure'):null;
+      var c=ready(); if(!c){if(CARD)CARD.scrollIntoView({behavior:'smooth',block:'center'});return;}
+      if(BUSY){say('one picture at a time — this one is still being drawn');return;}
+      BUSY=true;btn.disabled=true;
+      if(el){el.disabled=true;el.textContent='⏳ taking… about 20 seconds';}
+      takePicture(beat,c.prov,c.k).then(function(){say('done — the picture is in place, kept under '+who()+'.','ok');CARD=null;render();}).catch(function(e){say(e.message,'err');if(el){el.disabled=false;el.textContent='📷 try again';}}).then(function(){BUSY=false;btn.disabled=false;});};
     function go(){
       var c=ready(); if(!c||BUSY)return;
       if(MODE==='handle'||(!WORLD&&!LEGACY_BEACH)){ // the old scene books: a Gal bubble's FACES line

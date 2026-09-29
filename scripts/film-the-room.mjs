@@ -491,10 +491,25 @@ async function verbFaces(origin) {
   }
 }
 
+// THE LIBRARY AS REFERENCE (ways:stills 6.5): faces first, then the newest picture of the same room, then the
+// people's own newest pictures — so a place and a person look the same from picture to picture
+async function referencesFor(origin, room, beat, cast, faces) {
+  const max = HF ? 10 : GK ? 4 : 8, urls = [];
+  for (const h of cast) if (faces[h] && !urls.includes(faces[h])) urls.push(faces[h]);
+  let placeRef = false;
+  try {
+    const pics = (await stillsAt(origin, room)).filter(s => !isVideoLink(s.url)).sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
+    const samePlace = pics.find(s => s.at !== `pool:${room}:${beat.slot}`);
+    if (samePlace && urls.length < max && !urls.includes(samePlace.url)) { urls.push(samePlace.url); placeRef = true; }
+    for (const h of cast) { if (urls.length >= max) break; const mine = pics.find(s => s.who && s.who.toLowerCase() === h.toLowerCase() && !urls.includes(s.url)); if (mine) urls.push(mine.url); }
+  } catch { /* the faces alone */ }
+  return { urls: urls.slice(0, max), placeRef };
+}
 async function renderBeat(origin, room, beat, handles, looks, faces, style, wantClip, seconds, place) {
   const cast = castOf(beat, handles);
-  const prompt = composeShot(beat, cast, looks, style, place);
-  const faceUrls = cast.map(h => faces[h]).filter(Boolean);
+  const ref = (HF || GK || OK) ? await referencesFor(origin, room, beat, cast, faces) : { urls: [], placeRef: false };
+  const prompt = composeShot(beat, cast, looks, style, place) + (ref.placeRef ? ' ' + RECIPE.place : '');
+  const faceUrls = ref.urls;
   const base = path.join(WORK, `beat-${beat.slot.replace(/\./g, '_')}`);
   log(`\n[${room}:${beat.slot}] ${beat.who} — ${firstSentence(beat.text)}\n  in frame: ${cast.join(', ') || 'nobody named'}${faceUrls.length ? ` (${faceUrls.length} face${faceUrls.length > 1 ? 's' : ''} as reference)` : ''}`);
   if (DRY) {
