@@ -263,6 +263,19 @@ function castOf(beat, handles) {
   for (const h of handles) if (new RegExp('\\b' + h.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(beat.text)) named.add(h);
   return handles.filter(h => [...named].some(n => n.toLowerCase() === h.toLowerCase()));
 }
+// THE RECIPE lives at the beach, not here: ways:stills 6 says how a shot is composed, and its lines
+// beneath are the words every seat uses verbatim — 6.1 the look when a world has none, 6.2 the line
+// that binds a face to its reference, 6.3 what a still never carries. This script only assembles,
+// in the order the recipe states; the text below is the fallback if the beach cannot be read.
+const RECIPE = { look: DEFAULT_STYLE, bind: 'Each person shown must have the face of their reference photograph, exactly, in period dress.', never: 'No text or lettering, no modern objects, nothing overtly fantastical.' };
+async function readRecipe() {
+  try {
+    const w = await readBlock(APEX, 'ways:stills'), six = w && w['6'];
+    if (!six || typeof six !== 'object') return;
+    const l = voiceOf(six['1']), b = voiceOf(six['2']), n = voiceOf(six['3']);
+    if (l) RECIPE.look = l; if (b) RECIPE.bind = b; if (n) RECIPE.never = n;
+  } catch { /* the fallback stands */ }
+}
 function composeShot(beat, cast, looks, style, place) {
   const who = cast.map(h => `${h}: ${looks[h] || 'as described'}`).join(' · ');
   return [
@@ -270,7 +283,8 @@ function composeShot(beat, cast, looks, style, place) {
     place ? `The place — ${place}` : '',
     cast.length ? `In frame — ${who}.` : '',
     `The picture is ${style}`,
-    cast.length ? 'Each person shown must have the face of their reference photograph, exactly, in period dress.' : '',
+    cast.length ? RECIPE.bind : '',
+    RECIPE.never,
   ].filter(Boolean).join(' ');
 }
 const firstSentence = t => (String(t).split(/(?<=[.!?…])\s/)[0] || String(t)).slice(0, 160);
@@ -484,7 +498,7 @@ async function renderBeat(origin, room, beat, handles, looks, faces, style, want
   const base = path.join(WORK, `beat-${beat.slot.replace(/\./g, '_')}`);
   log(`\n[${room}:${beat.slot}] ${beat.who} — ${firstSentence(beat.text)}\n  in frame: ${cast.join(', ') || 'nobody named'}${faceUrls.length ? ` (${faceUrls.length} face${faceUrls.length > 1 ? 's' : ''} as reference)` : ''}`);
   if (DRY) {
-    log('  prompt: ' + prompt.slice(0, 400) + (prompt.length > 400 ? '…' : ''));
+    log('  prompt (whole, as it would be sent):\n    ' + prompt.replace(/\n/g, '\n    '));
     if (HF) { const est = await hfEstimate(process.env.HF_IMAGE_ENDPOINT || 'xai/grok-imagine-image-2.0', { prompt, aspect_ratio: '16:9', resolution: '2k', quality: 'medium' }); if (est) log(`  Higgsfield estimate: ${JSON.stringify(est)}`); }
     return null;
   }
@@ -527,7 +541,8 @@ async function verbKeep(origin) {
 async function verbWatch(origin) {
   const one = String(ARGS.room || 'all').trim();
   const every = Math.max(8, Number(ARGS.every) || 20) * 1000, wantClip = !!ARGS.clips, seconds = Number(ARGS.seconds) || 6;
-  const style = ARGS.style || process.env.STYLE || (await readBlock(origin, 'style:' + (ARGS.world || '')).then(s => voiceOf(s)).catch(() => null)) || DEFAULT_STYLE;
+  await readRecipe();
+  const style = ARGS.style || process.env.STYLE || (await readBlock(origin, 'style:' + (ARGS.world || '')).then(s => voiceOf(s)).catch(() => null)) || RECIPE.look;
   const stateFile = path.join(WORK, 'watched.json');
   const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { done: [] };
   const places = {};
