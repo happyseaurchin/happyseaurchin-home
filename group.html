@@ -797,7 +797,7 @@ function maker(){ const m = (store(makerHome()) || '').toLowerCase(); return m ?
    rendered against it and they recognise themselves in the film (ways:stills). The bytes go
    to the commons sink (ways:stills 9); the beach keeps only the LINK, as the first entry of
    the character's own picture-book gallery:<handle>, addressed to passport:<handle>:3 — the
-   address of their look. No key: a book is open, like the room's. */
+   address of their look. The book is latched under the character's own key (ways:stills 7). */
 const SINK_URL = 'https://wnprucjylftyktxprogp.supabase.co';
 const SINK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InducHJ1Y2p5bGZ0eWt0eHByb2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwMzk5ODMsImV4cCI6MjA2MjYxNTk4M30.bovkEN7DJ0OQ0nx0qkcy0ounaEB7aIaB-ldpSgKqCPE';
 const FACE = {};
@@ -826,12 +826,17 @@ async function giveFace(h, file, say){
   if (!up.ok) throw new Error('the sink refused the photo (' + up.status + ')');
   const url = SINK_URL + '/storage/v1/object/public/stills/' + path;
   say('keeping the link in ' + h + '’s book…');
-  const book = 'gallery:' + h;
-  if (!(await readBlock(book).catch(() => null))){
-    const born = await writeBlock({ block: book, content: { _: 'The picture-book of ' + h + ' — the face the player gave at the table (the entry at passport:' + h + ':3, the address of their look), then every still they stand in, addressed to the moment it renders. Links only; the bytes live at each maker’s sink (ways:stills).' } });
-    if (!born.ok) throw new Error('could not open ' + book + ' (' + born.status + ')');
-  }
-  const w = await writeBlock({ block: book, append: true, content: { _: h + ' — the face at the table, the reference every still of ' + h + ' is rendered against', '1': h, '2': 'passport:' + h + ':3', '3': new Date().toISOString(), '4': url } });
+  /* THE BOOK IS LATCHED under the character's own key (ways:stills 7, 2026-09-29): founded locked with
+     it, claimed with it when it stands open from before, appended to with it — so no typed name writes
+     under another's. The key is the one this screen holds for the character (options → edit characters). */
+  const book = 'gallery:' + h, key = keyOf(h);
+  if (!key) throw new Error('no key for ' + h + ' on this screen — options → edit characters → ✎');
+  const standing = await readBlock(book).catch(() => null);
+  const born = standing
+    ? await writeBlock({ block: book, content: standing, confirm: true, secret: key, new_lock: key })
+    : await writeBlock({ block: book, content: { _: 'The picture-book of ' + h + ' — the face the player gave at the table (the entry at passport:' + h + ':3, the address of their look), then every still they stand in, addressed to the moment it renders. Links only; the bytes live at each maker’s sink (ways:stills). Latched under ' + h + '’s own key.' }, new_lock: key });
+  if (!born.ok) throw new Error(born.data && born.data.code === 'handle_bound' ? 'the key here does not open ' + h + ' — options → edit characters → ✎' : lockRequired(born) ? h + '’s book answers to another key' : 'could not open ' + book + ' (' + born.status + ')');
+  const w = await writeBlock({ block: book, append: true, content: { _: h + ' — the face at the table, the reference every still of ' + h + ' is rendered against', '1': h, '2': 'passport:' + h + ':3', '3': new Date().toISOString(), '4': url }, secret: key });
   if (!w.ok) throw new Error('the book refused the link (' + w.status + ')');
   FACE[h] = url;
   return url;

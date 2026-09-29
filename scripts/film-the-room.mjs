@@ -24,7 +24,8 @@
 //
 // Without --room, watch follows EVERY room at the table (a party moves by WAY) and film cuts every
 // room in the order the moments were played. A key is pasted once into .env.observer beside this
-// repo (HIGGSFIELD_API_KEY=id:secret, or GEMINI_API_KEY=…, or OPENAI_API_KEY=…; AGENT=<your name>)
+// repo (HIGGSFIELD_API_KEY=id:secret, or GEMINI_API_KEY=…, or OPENAI_API_KEY=…; AGENT=<your name>;
+// AGENT_SECRET=<a passphrase for that name — the seat's own book is latched under it, ways:stills 7>)
 // and never committed. The one-command evening:
 //   node scripts/film-the-room.mjs watch --world <table> --clips      (leave it running while they play)
 //   node scripts/film-the-room.mjs film  --world <table> --mode clips --narrate --out tonight.mp4
@@ -98,13 +99,24 @@ async function post(origin, body) {
   if (!r.ok) throw new Error(`write ${body.block} at ${origin}: HTTP ${r.status} ${JSON.stringify(d).slice(0, 300)}`);
   return d;
 }
+// THE BOOK IS LATCHED under its holder's key (ways:stills 7, 2026-09-29): the seat's own book,
+// gallery:<AGENT>, is founded locked with AGENT_SECRET (a passphrase pasted once in .env.observer),
+// claimed with it when it stands open from before, and appended to with it. A seat writes only its
+// own book — a face it gives goes into its own book too, addressed to the character's look.
+const AGENT_SECRET = process.env.AGENT_SECRET || '';
+const latched = new Set();
 async function ensureBook(origin, name, purpose) {
-  if (await readBlock(origin, name)) return false;
-  await post(origin, { block: name, content: { _: purpose } });
-  return true;
+  if (!AGENT_SECRET) throw new Error('AGENT_SECRET is not set — a book is latched under its holder\'s key; put a passphrase for ' + AGENT + ' in .env.observer');
+  const standing = await readBlock(origin, name).catch(() => null);
+  if (standing && latched.has(name)) return false;
+  await post(origin, standing
+    ? { block: name, content: standing, confirm: true, secret: AGENT_SECRET, new_lock: AGENT_SECRET }
+    : { block: name, content: { _: purpose }, new_lock: AGENT_SECRET });
+  latched.add(name);
+  return !standing;
 }
 async function appendEntry(origin, book, entry) {
-  return post(origin, { block: book, content: entry, append: true });
+  return post(origin, { block: book, content: entry, append: true, secret: AGENT_SECRET });
 }
 
 // a link names a WORLD, never an origin — the pages' resolver, as it stands in group.html
@@ -222,12 +234,18 @@ const RATES = { 'gemini-3.1-flash-image': 0.101, 'gemini-3-pro-image': 0.134, 'g
 const costFile = () => path.join(WORK, 'cost.jsonl');
 function logCost(entry) { try { fs.appendFileSync(costFile(), JSON.stringify({ t: new Date().toISOString(), ...entry }) + '\n'); } catch { /* the log is a courtesy */ } }
 function costTotal() { try { return fs.readFileSync(costFile(), 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l)).reduce((s, e) => s + (Number(e.usd) || 0), 0); } catch { return 0; } }
-// the faces: gallery:<handle>'s entry at the address of the look — the photograph the player gave
+// THE FACE IS A VIEW across the books at the table (ways:stills 7): the character's own entry at their look when they
+// gave one, else the newest anyone gave — an entry addressed to passport:<handle>:3 in any book at the table, or at the
+// apex referencing the table
 async function facesOf(origin, handles) {
-  const out = {};
+  const books = await loadBooks(origin), out = {}, all = [];
+  const isFace = local => /^passport:[^:]+:3$/.test(local);
+  for (const [name, book] of books.table) for (const s of stillsOf(book)) { const ref = refOf(s.at); if ((!ref.origin || ref.origin === books.here) && isFace(ref.local)) all.push({ ...s, at: ref.local, book: name }); }
+  for (const [name, book] of books.apex) for (const s of stillsOf(book)) { const ref = refOf(s.at); if (ref.origin === books.here && isFace(ref.local)) all.push({ ...s, at: ref.local, book: name }); }
+  all.sort((a, b) => String(b.ts).localeCompare(String(a.ts)));
   for (const h of handles) {
-    const book = await readBlock(origin, 'gallery:' + h).catch(() => null);
-    const face = book && stillsOf(book).filter(s => s.at === `passport:${h}:3`).pop();
+    const mine = all.filter(s => s.at.toLowerCase() === `passport:${h.toLowerCase()}:3`);
+    const face = mine.find(s => s.book.toLowerCase() === `gallery:${h.toLowerCase()}`) || mine[0];
     if (face) out[h] = face.url;
   }
   return out;
@@ -485,9 +503,9 @@ async function verbFaces(origin) {
     const jpg = toJpeg(file, path.join(WORK, `face-${handle}.jpg`), 900);
     if (DRY) { log(`dry — would put ${handle}'s photograph at the sink and open gallery:${handle} with it`); continue; }
     const url = await storeAtSink(jpg, 'faces');
-    await ensureBook(origin, 'gallery:' + handle, `The picture-book of ${handle} — the face the player gave at the table (the entry at passport:${handle}:3, the address of their look), then every still they stand in, addressed to the moment it renders. Links only; the bytes live at each maker's sink (ways:stills).`);
-    const ack = await appendEntry(origin, 'gallery:' + handle, { _: `${handle} — the face at the table, the reference every still of ${handle} is rendered against`, 1: AGENT, 2: `passport:${handle}:3`, 3: new Date().toISOString(), 4: url });
-    log(`${handle}: face at ${url} → gallery:${handle} slot ${ack.slot}`);
+    await ensureBook(origin, 'gallery:' + AGENT, `The picture-book of ${AGENT} — every still this seat took at the table, addressed to the moment it renders, and the faces it gave, each addressed to the character's look. Links only; the bytes live at the maker's sink (ways:stills). Latched under ${AGENT}'s own key.`);
+    const ack = await appendEntry(origin, 'gallery:' + AGENT, { _: `${handle} — the face at the table, the reference every still of ${handle} is rendered against`, 1: AGENT, 2: `passport:${handle}:3`, 3: new Date().toISOString(), 4: url });
+    log(`${handle}: face at ${url} → gallery:${AGENT} slot ${ack.slot} (addressed to passport:${handle}:3)`);
   }
 }
 
