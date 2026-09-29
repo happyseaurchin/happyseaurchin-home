@@ -220,7 +220,16 @@
   // or the room's opening telling; a player's own staged line, kept beside it in the record, is not a picture
   function isMoment(x){return x.slot==='1'||!!fieldOf(x.entry,'5')||/(^|\n)\s*WAY\b/.test(voiceOf(x.entry)||'');}
   function beatsOf(pool){var all=slotted(pool),m=all.filter(isMoment);return (m.length?m:all).map(function(x){return {slot:x.slot,text:shownText(voiceOf(x.entry)),who:fieldOf(x.entry,'1'),ts:fieldOf(x.entry,'3'),woven:fieldOf(x.entry,'5')};}).filter(function(b){return b.text&&b.who;}).sort(function(a,b){return slotCmp(a.slot,b.slot);});}
-  function stillsOf(book,name){var out=[];(function walk(node){if(!node||typeof node!=='object')return;if(node._&&typeof node._==='object')walk(node._);digitKeys(node).forEach(function(k){var c=node[k];if(c&&typeof c==='object'&&typeof c['4']==='string'&&c['4'])out.push({img:c['4'],cap:typeof c._==='string'?c._:'',who:fieldOf(c,'1'),at:fieldOf(c,'2'),ts:c['3'],book:name||''});else if(c&&typeof c==='object')walk(c);});})(book);return out;}
+  function stillsOf(book,name){var out=[];(function walk(node,p){if(!node||typeof node!=='object')return;if(node._&&typeof node._==='object')walk(node._,p+'0');digitKeys(node).forEach(function(k){var c=node[k];if(c&&typeof c==='object'&&typeof c['4']==='string'&&c['4'])out.push({img:c['4'],cap:typeof c._==='string'?c._:'',who:fieldOf(c,'1'),at:fieldOf(c,'2'),ts:c['3'],book:name||'',slot:p+k});else if(c&&typeof c==='object')walk(c,p+k);});})(book,'');return out;}
+  // SET ASIDE — a picture is never removed from the record: its entry keeps a line saying a picture stood
+  // here and was set aside, and loses its link, so no page shows it. Only for a picture kept under your own
+  // name, and only while the book is small enough that its slots are plain digits.
+  function setAside(s,who){
+    if(!s.slot||/^0/.test(s.slot))return Promise.reject(new Error('this one cannot be set aside from here yet'));
+    var entry={_:'set aside by '+who+' on '+new Date().toISOString().slice(0,10)+' — '+(s.cap||'a picture')+'; the link is withdrawn and the moment stands open for another',1:s.who||who,2:s.at,3:s.ts||new Date().toISOString()};
+    var origin=(s.home===APEX?APEX:BEACH).replace(/\/+$/,'');
+    return fetch(origin+'/.well-known/pscale-beach',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({block:s.book,spindle:s.slot,content:entry})}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||('could not set it aside ('+r.status+')'));return d;});});
+  }
   var isVideo=function(u){return /youtube\.com\/|youtu\.be\/|vimeo\.com\/|\.(mp4|webm|mov)(\?|$)/i.test(u);};
   function lookOf(pp){var l=pp&&typeof pp['3']==='string'?pp['3']:(voiceOf(pp&&pp['3'])||'');return l.replace(/\s*Location:\s*\*:\S+/i,'').trim();}
   function when(ts){var t=Date.parse(ts);if(!isFinite(t))return '';var s=(Date.now()-t)/1000;if(s<90)return 'just now';if(s<5400)return Math.round(s/60)+' min ago';if(s<172800)return Math.round(s/3600)+' hours ago';return new Date(t).toISOString().slice(0,10);}
@@ -366,7 +375,9 @@
       box.innerHTML=moments.map(function(b){var s=byAt['pool:'+b.room+':'+b.slot], at='pool:'+b.room+':'+b.slot;
         return '<figure class="shot" data-at="'+esc(at)+'"><div class="shot__frame">'+(s?'<img loading="lazy" alt="" src="'+esc(s.img)+'">':'<div class="nopic">no picture yet<br><button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'">📷 take one</button></div>')+'</div>'+
           '<figcaption class="shot__cap">'+esc(b.text.length>260?b.text.slice(0,260)+'…':b.text)+'</figcaption>'+
-          '<div class="shot__meta"><span><a href="'+roomLink(b.room)+'">'+esc(placeName(b.room))+'</a></span>'+(b.ts?'<span>'+esc(when(b.ts))+'</span>':'')+(s&&s.who?'<span class="who">taken by '+esc(s.who)+'</span>':'')+(s?'<button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'" title="take it again — the newest picture is the one that shows; the earlier one stays in the record">📷 take again</button>':'')+'</div></figure>';}).join('');
+          '<div class="shot__meta"><span><a href="'+roomLink(b.room)+'">'+esc(placeName(b.room))+'</a></span>'+(b.ts?'<span>'+esc(when(b.ts))+'</span>':'')+(s&&s.who?'<span class="who">taken by '+esc(s.who)+'</span>':'')+(s?'<button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'" title="take it again — the newest picture is the one that shows; the earlier one stays in the record">📷 take again</button>':'')+(s&&s.who&&window.myName&&s.who.toLowerCase()===window.myName().toLowerCase()?'<button type="button" class="pill small aside" data-at="'+esc(at)+'" title="set this picture aside — it leaves every page; the record keeps a line that it stood here">✕ set aside</button>':'')+'</div></figure>';}).join('');
+      Array.prototype.forEach.call(box.querySelectorAll('.aside'),function(btn){btn.addEventListener('click',function(){var s=byAt[btn.dataset.at];if(!s)return;if(!confirm('Set this picture aside? It leaves every page. The record keeps a line that it stood here.'))return;btn.disabled=true;btn.textContent='setting aside…';
+        setAside(s,window.myName()).then(function(){render();}).catch(function(e){btn.disabled=false;btn.textContent='✕ '+e.message;});});});
       Array.prototype.forEach.call(box.querySelectorAll('.take'),function(btn){btn.addEventListener('click',function(){var b=moments.filter(function(m){return m.room===btn.dataset.room&&m.slot===btn.dataset.slot;})[0];if(b&&window.takeOne)window.takeOne(b,btn);});});
     }).catch(function(e){box.innerHTML='<p class="empty">Couldn’t read the table just now — '+esc(e.message)+'.</p>';});
   }
@@ -439,6 +450,7 @@
     }catch(e){scene.value='bubble:gal-1';}
     if(!key.value){var od=document.querySelector('details.opts');if(od)od.open=true;}
     function who(){return whoIn.value.replace(/[^a-z0-9 _.-]/gi,'').trim()||(MODE==='character'?HANDLE:'observer');}
+    window.myName=who;
     var CARD=null;   /* the moment's card that was pressed — it shows the state in place, beside the button */
     function say(m,cls){hint.className='hint'+(cls?' '+cls:'');hint.textContent=m;
       if(CARD){var st=CARD.querySelector('.taking');if(!st){st=document.createElement('p');st.className='hint taking';st.style.padding='0 18px 12px';CARD.appendChild(st);}st.className='hint taking'+(cls?' '+cls:'');st.textContent=m;}}
