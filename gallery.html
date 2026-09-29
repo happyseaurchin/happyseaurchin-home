@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/vault.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   body{
@@ -63,6 +64,8 @@
   .keycard select,.keycard input{background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);border-radius:4px;padding:11px 13px;color:var(--foam);font-family:var(--mono);font-size:13px}
   .keycard select{flex:0 0 auto} .keycard input{flex:1 1 190px;min-width:0} .keycard input::placeholder{color:var(--vapour-dim)}
   .keycard .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
+  .keycard .eyebrow{margin:14px 0 6px}
+  .keycard .row .pill.small{white-space:nowrap}
   .pill.x{color:var(--vapour-dim)} .pill.x:hover{color:#e88;border-color:#e88}
   /* the faces */
   .faces{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;margin:0 0 8px}
@@ -133,11 +136,19 @@
       </div>
     </div>
   </section>
-  <dialog id="keycard" class="keycard" aria-label="your image API key">
+  <dialog id="keycard" class="keycard" aria-label="your keys">
     <div class="keycard__in">
       <button type="button" class="keycard__x" id="key-x" aria-label="close">✕</button>
-      <h3>Your image API key</h3>
-      <p class="sub">It runs <b>in this browser only</b>, sent straight to the image service, never to the beach. Get one at aistudio.google.com (Google), platform.openai.com (OpenAI) or console.x.ai (Grok). Pictures you take are kept under <b>your name</b>, so everyone can see who took them.</p>
+      <h3>Your keys</h3>
+      <p class="sub">Everything here runs <b>in this browser</b>. Your own key opens <b>your vault</b> at the beach, where your other keys are kept sealed — one key, typed once, brings the rest to any device. Nothing is ever kept in the open on the beach.</p>
+      <p class="eyebrow">You</p>
+      <div class="row">
+        <input id="me" placeholder="your name at the beach" spellcheck="false" autocapitalize="none" autocomplete="username">
+        <input id="pass" type="password" placeholder="your key — the one your passport uses" autocomplete="current-password" spellcheck="false">
+        <button type="button" class="pill small" id="unlock">open my vault</button>
+      </div>
+      <p class="hint" id="vault-hint" style="margin:2px 0 0"></p>
+      <p class="eyebrow">Pictures</p>
       <div class="row">
         <select id="provider" aria-label="image service">
           <option value="free">Free · no key · no faces · often busy</option>
@@ -146,12 +157,35 @@
           <option value="grok">Grok · your key · faces</option>
         </select>
         <input id="key" type="password" placeholder="your image API key" autocomplete="off" spellcheck="false">
+        <button type="button" class="pill small" id="vault-image" title="seal this key in your vault, so any device with your own key has it">keep in my vault</button>
       </div>
-      <div class="row"><input id="who" placeholder="your name (the pictures you take are kept under it)" spellcheck="false" autocapitalize="none"></div>
+      <p class="hint" style="margin:2px 0 0">Get one at aistudio.google.com (Google), platform.openai.com (OpenAI) or console.x.ai (Grok). It is sent straight to that service, never to the beach.</p>
+      <div id="seat-box" style="display:none">
+        <p class="eyebrow" id="seat-eyebrow">Playing</p>
+        <div class="row">
+          <input id="seat" type="password" placeholder="" autocomplete="off" spellcheck="false">
+          <button type="button" class="pill small" id="vault-seat" title="seal this character's key in your vault">keep in my vault</button>
+        </div>
+        <p class="hint" id="seat-hint" style="margin:2px 0 0">Pictures of a character are kept in the character’s own book, which answers to the character’s key.</p>
+      </div>
+      <p class="eyebrow">Where your pictures are kept</p>
+      <div class="row">
+        <select id="place" aria-label="picture place">
+          <option value="commons">the beach’s own store, for now</option>
+          <option value="supabase">my own Supabase bucket</option>
+        </select>
+        <button type="button" class="pill small" id="vault-place" title="seal this in your vault">keep in my vault</button>
+      </div>
+      <div class="row" id="place-row" style="display:none">
+        <input id="place-url" placeholder="project URL — https://xxxx.supabase.co" spellcheck="false" autocapitalize="none">
+        <input id="place-bucket" placeholder="bucket (public)" spellcheck="false" autocapitalize="none">
+        <input id="place-key" type="password" placeholder="its anon key" autocomplete="off" spellcheck="false">
+      </div>
+      <p class="eyebrow">The picture</p>
       <div class="row"><input id="shot" placeholder="say how you want the picture (optional) — your words replace the scene's own" spellcheck="false"></div>
       <div class="row"><input id="style" placeholder="the look (optional) — else the world's own" spellcheck="false"></div>
       <div class="row" id="scene-row" style="display:none"><input id="scene" placeholder="a scene block, e.g. bubble:gal-1" spellcheck="false" autocapitalize="none"></div>
-      <div class="acts"><button type="button" class="btn" id="key-keep">keep</button><button type="button" class="pill small" id="key-forget">forget the key</button><span class="hint" id="key-hint" style="margin:0"></span></div>
+      <div class="acts"><button type="button" class="btn" id="key-keep">keep</button><label class="hint" style="margin:0;cursor:pointer"><input type="checkbox" id="remember" checked> remember on this device</label><button type="button" class="pill small" id="key-forget">forget everything here</button><span class="hint" id="key-hint" style="margin:0"></span></div>
     </div>
   </dialog>
   <section class="section">
@@ -200,14 +234,18 @@
   var SINK_URL='https://wnprucjylftyktxprogp.supabase.co';
   var SINK_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InducHJ1Y2p5bGZ0eWt0eHByb2dwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcwMzk5ODMsImV4cCI6MjA2MjYxNTk4M30.bovkEN7DJ0OQ0nx0qkcy0ounaEB7aIaB-ldpSgKqCPE';
   function shrink(src,maxW,q){return new Promise(function(res,rej){var im=new Image();im.onload=function(){var w=Math.min(maxW,im.width||maxW),h=Math.round((im.height||maxW)*w/(im.width||maxW));var c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(im,0,0,w,h);c.toBlob(function(b){b?res(b):rej(new Error('could not read the image'));},'image/jpeg',q);};im.onerror=function(){rej(new Error('could not load the image'));};im.src=src;});}
+  // THE PICTURE PLACE — the person's own bucket when they have named one (kept in their vault), else the commons sink
+  window.placeNow=function(){return null;};
   function toSink(blob,folder){var path=(folder||'stills').replace(/^gallery:/,'').replace(/[^a-z0-9_-]/gi,'-')+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,7)+'.jpg';
-    return fetch(SINK_URL+'/storage/v1/object/stills/'+path,{method:'POST',headers:{'Authorization':'Bearer '+SINK_KEY,'apikey':SINK_KEY,'Content-Type':'image/jpeg'},body:blob}).then(function(r){if(!r.ok)throw new Error('the picture store refused ('+r.status+')');return SINK_URL+'/storage/v1/object/public/stills/'+path;});}
+    var P=window.placeNow(), base=P?P.url:SINK_URL, k=P?P.key:SINK_KEY, bucket=P?P.bucket:'stills';
+    return fetch(base+'/storage/v1/object/'+bucket+'/'+path,{method:'POST',headers:{'Authorization':'Bearer '+k,'apikey':k,'Content-Type':'image/jpeg'},body:blob}).then(function(r){if(!r.ok)throw new Error((P?'your picture place':'the picture store')+' refused ('+r.status+')');return base+'/storage/v1/object/public/'+bucket+'/'+path;});}
   function storeStill(dataUri,folder){return shrink(dataUri,1216,0.85).then(function(b){return toSink(b,folder);});}
   var wk = function(block){return BEACH.replace(/\/+$/,'')+'/.well-known/pscale-beach'+(block?'?block='+encodeURIComponent(block):'');};
   var esc = function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
   function readBlock(block){return fetch(wk(block)+'&_t='+Date.now(),{headers:{Accept:'application/json'}}).then(function(r){if(r.status===404)return null;if(!r.ok)throw new Error('read '+block+' ('+r.status+')');return r.json();});}
   function readIndex(){return fetch(wk('')+'?_t='+Date.now(),{headers:{Accept:'application/json'}}).then(function(r){if(!r.ok)throw new Error('index ('+r.status+')');return r.json();});}
-  function post(body){return fetch(wk(''),{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||('post failed ('+r.status+')'));return d;});});}
+  function post(body){return fetch(wk(''),{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok){var e=new Error(d.error||('post failed ('+r.status+')'));e.code=d.code;e.status=r.status;throw e;}return d;});});}
+  function host(o){return String(o||'').replace(/^https?:\/\//,'').replace(/\/+$/,'');}
   // a link names a WORLD (the pages' resolver: the register, then /w/<name>, then the sub-domain)
   var BARE=/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i, TABLE=/^\/w\/[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i;
   function family(){var h=new URL(APEX).host;return h.indexOf('beach.')===0?h:'beach.'+h;}
@@ -271,7 +309,12 @@
   function inMoment(beat,h){return castOf(beat).some(function(x){return x.toLowerCase()===h.toLowerCase();});}
   // a character's moments: every moment they were in, in any room, newest first
   function characterMoments(h){return tableMoments().then(function(all){return all.filter(function(b){return inMoment(b,h);}).sort(function(a,b){return String(b.ts).localeCompare(String(a.ts));});});}
-  function facesOf(handles){return Promise.all(handles.map(function(h){return readBlock('gallery:'+h).then(function(b){var f=b?stillsOf(b).filter(function(s){return s.at==='passport:'+h+':3';}).pop():null;if(f)FACES[h]=f.img;}).catch(function(){});}));}
+  // THE FACE IS A VIEW across the books at the table (ways:stills 7): the character's own entry at their look when they
+  // gave one, else the newest anyone gave, addressed to passport:<h>:3
+  function facesOf(handles){return stillsWhere(function(local){return /^passport:[^:]+:3$/.test(local);}).then(function(all){
+    all.sort(function(a,b){return String(b.ts).localeCompare(String(a.ts));});
+    handles.forEach(function(h){var mine=all.filter(function(s){return s.local.toLowerCase()==='passport:'+h.toLowerCase()+':3';});var own=mine.filter(function(s){return s.book.toLowerCase()==='gallery:'+h.toLowerCase();})[0];var f=own||mine[0];if(f)FACES[h]=f.img;});
+  }).catch(function(){});}
   function facesOf64(urls){return Promise.all(urls.map(function(u){return fetch(u).then(function(r){return r.ok?r.blob():null;}).then(function(b){if(!b)return null;return new Promise(function(res){var fr=new FileReader();fr.onload=function(){var s=String(fr.result);res({mime:b.type||'image/jpeg',data:s.slice(s.indexOf(',')+1)});};fr.onerror=function(){res(null);};fr.readAsDataURL(b);});}).catch(function(){return null;});})).then(function(a){return a.filter(Boolean);});}
   // the place: the table's keeper names where it is placed; the room's own line in that register is the setting
   var PLACES={}, PLACE_NAMES={};
@@ -340,15 +383,28 @@
   function genFree(prompt){var url='https://image.pollinations.ai/prompt/'+encodeURIComponent(prompt)+'?width=1216&height=832&nologo=true';
     return fetch(url).then(function(r){if(!r.ok)throw new Error('the free service is busy — try again, or use your own key');return r.blob();}).then(function(blob){return new Promise(function(res,rej){var fr=new FileReader();fr.onload=function(){res(fr.result);};fr.onerror=function(){rej(new Error('could not read the image'));};fr.readAsDataURL(blob);});});}
   function generate(provider,prompt,key,refs){if(provider==='gemini')return genGemini(prompt,key,refs||[]);if(provider==='openai')return genOpenAI(prompt,key,refs||[]);if(provider==='grok')return genGrok(prompt,key,refs||[]);return genFree(prompt);}
-  // a picture is kept under its taker's own name; the first picture opens their pictures
-  function keepPicture(who,entry){var name='gallery:'+who;
-    return readBlock(name).then(function(b){if(b)return;return post({block:name,content:{_:'The pictures of '+who+(WORLD?' at '+WORLD:'')+' — what '+who+' took, each kept as a link and addressed to the moment it pictures; the bytes live at the picture store, never here (ways:stills).'}});})
-      .then(function(){return post({block:name,content:entry,append:true});});}
+  // THE BOOK IS LATCHED (ways:stills 7, 2026-09-29): a picture is kept under its taker's own name, in a book that
+  // answers to the taker's own key — founded locked with it, claimed with it when it stood open from before, appended
+  // to with it. The beach binds gallery:<handle> to that handle's passport key where a passport stands (a handle founds
+  // under its own key), so no typed name writes under another's. The key comes from the card: the person's own for
+  // their own book, the character's for the character's.
+  window.keyOf=function(){return '';};
+  var LATCHED={};
+  function keyRefusal(e,who){return e.code==='handle_bound'?'that is not '+who+'’s key — the book answers to the key '+who+'’s passport uses':e.code==='lock_required'?who+'’s book answers to another key':e.message;}
+  function keepPicture(who,entry){var name='gallery:'+who, key=window.keyOf(who);
+    if(!key)return Promise.reject(new Error('pictures are kept under '+who+'’s own key — open your vault or type it under options ▾'));
+    return readBlock(name).then(function(b){
+      if(!b)return post({block:name,content:{_:'The pictures of '+who+(WORLD?' at '+WORLD:'')+' — what '+who+' took, each kept as a link and addressed to the moment it pictures; the bytes live at the picture store, never here (ways:stills). Latched under '+who+'’s own key.'},new_lock:key});
+      if(!LATCHED[name])return post({block:name,content:b,confirm:true,secret:key,new_lock:key});
+    }).then(function(){LATCHED[name]=1;return post({block:name,content:entry,append:true,secret:key});})
+      .catch(function(e){throw new Error(keyRefusal(e,who));});}
   // the face: a photograph of the player, kept as the first picture of the character, so every picture of them wears it
+  // the face stands in the GIVER's book (the character's own when the player gives it), addressed to the character's look
   function giveFace(h,file,say){
+    var giver=window.myName?window.myName():h;
     say('shrinking the photo…');
     return shrink(URL.createObjectURL(file),900,0.86).then(function(blob){say('keeping it…');return toSink(blob,'faces');}).then(function(url){
-      return keepPicture(h,{_:h+' — the face at the table, the one every picture of '+h+' wears','1':h,'2':'passport:'+h+':3','3':new Date().toISOString(),'4':url}).then(function(){FACES[h]=url;return url;});
+      return keepPicture(giver,{_:h+' — the face at the table, the one every picture of '+h+' wears','1':giver,'2':'passport:'+h+':3','3':new Date().toISOString(),'4':url}).then(function(){FACES[h]=url;return url;});
     });
   }
   // ── display ──
@@ -381,8 +437,9 @@
       var node=b; for(var i=0;i<s.path.length-1;i++){node=node&&typeof node==='object'?node[s.path[i]]:null;}
       var last=s.path[s.path.length-1]; if(!node||!node[last])throw new Error('that picture is no longer in the record');
       delete node[last];
-      return fetch(w,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({block:s.book,content:b,confirm:true})})
-        .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(r.status===403?'this book is latched — only its own key can delete from it':(d.error||('delete failed ('+r.status+')')));return d;});});
+      var key=window.keyOf(s.who);
+      return fetch(w,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({block:s.book,content:b,confirm:true,secret:key||undefined})})
+        .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(r.status===403?(key?'that key does not open '+s.who+'’s book':'this book answers to '+s.who+'’s key — open your vault or type it under options ▾'):(d.error||('delete failed ('+r.status+')')));return d;});});
     });
   }
   document.getElementById('shots').addEventListener('click',function(e){
@@ -473,38 +530,93 @@
   function facesOfScene(scene){var f=scene&&scene['3'];if(typeof f!=='string')throw new Error('that scene has no FACES (field 3)');return f.replace(/^FACES\b[^:]*:\s*/i,'').trim();}
   // ── the camera ──
   (function(){
-    var provider=document.getElementById('provider'),key=document.getElementById('key'),whoIn=document.getElementById('who'),
+    var provider=document.getElementById('provider'),key=document.getElementById('key'),me=document.getElementById('me'),pass=document.getElementById('pass'),
+        seat=document.getElementById('seat'),place=document.getElementById('place'),placeUrl=document.getElementById('place-url'),placeBucket=document.getElementById('place-bucket'),placeKey=document.getElementById('place-key'),
+        remCb=document.getElementById('remember'),vaultHint=document.getElementById('vault-hint'),
         scene=document.getElementById('scene'),shot=document.getElementById('shot'),styleIn=document.getElementById('style'),
         btn=document.getElementById('render'),hint=document.getElementById('mhint'),follow=document.getElementById('follow');
     var FOLLOW=false, TICK=null, BUSY=false, WORLD_STYLE=null;
+    // ── what this browser holds: on the device when 'remember' is ticked, for this tab only when it is not ──
+    function stored(k){try{return localStorage.getItem(k)||sessionStorage.getItem(k)||'';}catch(e){return '';}}
+    function REMEMBER(){return remCb.checked;}
+    function hold(k,v){try{if(!v){localStorage.removeItem(k);sessionStorage.removeItem(k);return;}(REMEMBER()?localStorage:sessionStorage).setItem(k,v);(REMEMBER()?sessionStorage:localStorage).removeItem(k);}catch(e){}}
+    function seatLatch(h){return 'journal-latch:'+host(BEACH)+':'+h;}   /* the name the character page and the group page keep a character's key under */
     try{
-      provider.value=localStorage.getItem('gallery:provider')||'free';
-      key.value=localStorage.getItem('gallery:key')||'';
-      whoIn.value=(params.get('h')||'').replace(/[^a-z0-9 _.-]/gi,'').trim()||localStorage.getItem('gallery:who')||'';
-      scene.value=localStorage.getItem('gallery:scene')||'bubble:gal-1';
-      shot.value=localStorage.getItem('gallery:shot')||'';
-      styleIn.value=localStorage.getItem('gallery:style')||'';
+      remCb.checked=(localStorage.getItem('gallery:remember')||'1')==='1';
+      provider.value=stored('gallery:provider')||'free';
+      key.value=stored('gallery:key')||'';
+      me.value=(params.get('h')||'').replace(/[^a-z0-9 _.-]/gi,'').trim()||stored('gallery:me')||stored('gallery:who')||'';
+      pass.value=stored('gallery:pass')||'';
+      scene.value=stored('gallery:scene')||'bubble:gal-1';
+      shot.value=stored('gallery:shot')||'';
+      styleIn.value=stored('gallery:style')||'';
+      var pl=JSON.parse(stored('gallery:place')||'null'); if(pl&&pl.url){place.value='supabase';placeUrl.value=pl.url;placeBucket.value=pl.bucket||'stills';placeKey.value=stored('gallery:place-key')||'';}
     }catch(e){scene.value='bubble:gal-1';}
-    function who(){return whoIn.value.replace(/[^a-z0-9 _.-]/gi,'').trim()||(MODE==='character'?HANDLE:'observer');}
+    function meName(){return me.value.replace(/[^a-z0-9 _.-]/gi,'').trim();}
+    function who(){return MODE==='character'?HANDLE:(meName()||'observer');}
     window.myName=who;
+    function seatKey(h){
+      if(MODE==='character'&&h.toLowerCase()===HANDLE.toLowerCase()&&seat.value.trim())return seat.value.trim();
+      var sv=SEATS[h.toLowerCase()]; if(sv&&sv.url===BEACH.replace(/\/+$/,''))return sv.key;
+      return stored(seatLatch(h))||stored('passport-latch:'+h)||'';
+    }
+    window.keyOf=function(name){if(MODE==='character'&&name.toLowerCase()===HANDLE.toLowerCase())return seatKey(name);if(name.toLowerCase()===meName().toLowerCase())return pass.value.trim();return seatKey(name);};
+    window.placeNow=function(){return place.value==='supabase'&&placeUrl.value.trim()&&placeKey.value.trim()?{url:placeUrl.value.trim().replace(/\/+$/,''),key:placeKey.value.trim(),bucket:placeBucket.value.trim()||'stills'}:null;};
+    place.addEventListener('change',function(){document.getElementById('place-row').style.display=place.value==='supabase'?'':'none';});
+    document.getElementById('place-row').style.display=place.value==='supabase'?'':'none';
     // THE KEY CARD — behind options ▾ at the top right, where every page's own acts gather (theme.js), never a fold in the page
     var card=document.getElementById('keycard'), btnKey=document.getElementById('btn-key'), keyHint=document.getElementById('key-hint');
     var NAMES={gemini:'Google',openai:'OpenAI',grok:'Grok',free:'Free'};
     function keyed(){return !!(key.value.trim()&&provider.value!=='free');}
-    function labelKey(){btnKey.textContent=keyed()?'image api key · '+NAMES[provider.value]:'add image api key';
-      if(!BUSY)hint.textContent=keyed()?'Pictures on '+NAMES[provider.value]+' with the faces, kept under '+who()+'. Your key is under options ▾, top right.':'No key yet: pictures come from a free service, without faces, and it is often busy. Add your image API key under options ▾, top right, for real pictures with the faces.';}
-    function openOptions(){if(card.showModal&&!card.open)card.showModal();try{key.focus({preventScroll:true});}catch(e){}}
+    function labelKey(){btnKey.textContent=keyed()?'your keys · '+NAMES[provider.value]:'add image api key';
+      var missing=MODE==='character'&&!seatKey(HANDLE)?' '+HANDLE+'’s own key is not here yet — open your vault, or type it under options ▾.':'';
+      if(!BUSY)hint.textContent=keyed()?'Pictures on '+NAMES[provider.value]+' with the faces, kept under '+who()+'.'+missing+' Your keys are under options ▾, top right.':'No key yet: pictures come from a free service, without faces, and it is often busy. Add your image API key under options ▾, top right, for real pictures with the faces.'+missing;}
+    function openOptions(){if(card.showModal&&!card.open)card.showModal();try{(meName()&&pass.value?key:me).focus({preventScroll:true});}catch(e){}}
     btnKey.addEventListener('click',openOptions);
     document.getElementById('key-x').addEventListener('click',function(){card.close();});
     card.addEventListener('click',function(e){if(e.target===card)card.close();});
-    document.getElementById('key-keep').addEventListener('click',function(){remember();labelKey();keyHint.className='hint ok';keyHint.textContent=keyed()?'kept in this browser — pictures on '+NAMES[provider.value]+', under '+who():'no key — the free service, without faces';setTimeout(function(){card.close();keyHint.textContent='';},900);});
-    document.getElementById('key-forget').addEventListener('click',function(){key.value='';provider.value='free';remember();labelKey();keyHint.className='hint';keyHint.textContent='forgotten — this browser holds no key now';});
+    function vsay(m,cls){vaultHint.className='hint'+(cls?' '+cls:'');vaultHint.textContent=m;}
+    function today(){return new Date().toISOString().slice(0,10);}
+    // ── THE VAULT (ways:vault; vault.js): one key opens it, and what it holds fills this card ──
+    var SEATS={}, VAULT={exists:false,slots:{}};
+    function vaultLaw(h){var o=APEX.replace(/\/+$/,'');return 'vault:'+h+' — '+h+'’s vault, founded '+today()+' from happyseaurchin.com/gallery to the recipe at ways:vault. THE LAW. This root is plain on purpose: a keyless reader learns how the vault works and never a key. Each entry beneath is one KEY-GROUP the handle holds — its label plain at the entry (what the key is, for whom, since when: an image key and its service; a character at a table and the table’s address; a picture place), and the key itself sealed at the entry’s 1 — so the list reads without the key and no key reads without the sovereign. Write-latch and cipher answer to ONE sovereign: the handle’s own passport key, typed by its holder into the page that needs it and kept in no block, this one included. Sealed as bsp-mcp seals (Argon2id with the salt '+o+', the beach’s URL form; nacl secretbox), so the router opens what a page sealed and a page opens what the router sealed. The canary at 9 proves the key. Rotating the sovereign re-seals nothing: every entry is rewritten under the new key in the same pass.';}
+    function openVault(){var h=meName(),k=pass.value.trim();if(!h||!k){vsay('your name and your key first — they open the vault','err');return Promise.resolve(null);}
+      vsay('opening your vault… a second or two');
+      return vault.read(APEX,h,k).then(function(v){
+        VAULT=v; VAULT.slots={}; var found=[];
+        if(!v.exists){vsay('no vault yet under '+h+' — keep a key below and one is founded, latched under this same key');return v;}
+        v.entries.forEach(function(e){
+          if(!e.opened)return; var L=e.label.toLowerCase();
+          if(L.indexOf('image key')===0){var m=e.label.match(/image key\s*[—-]\s*(google|openai|grok)/i);if(m)provider.value={google:'gemini',openai:'openai',grok:'grok'}[m[1].toLowerCase()];key.value=e.text;VAULT.slots.image=e.slot;found.push('image key'+(m?' ('+m[1]+')':''));}
+          else if(L.indexOf('picture place')===0){var pm=e.label.match(/picture place\s*[—-]\s*supabase\s+(\S+)\s+bucket\s+(\S+)/i);if(pm){place.value='supabase';placeUrl.value=pm[1];placeBucket.value=pm[2].replace(/,+$/,'');placeKey.value=e.text;VAULT.slots.place=e.slot;found.push('your picture place');document.getElementById('place-row').style.display='';}}
+          else{var sm=e.label.match(/^(.+?)\s+at\s+(\S+)\s*[—-]\s*(\S+)/);if(sm){var ch=sm[1].trim(),url=sm[3].replace(/,+$/,'').replace(/\/+$/,'');SEATS[ch.toLowerCase()]={key:e.text,slot:e.slot,url:url};
+            if(url===BEACH.replace(/\/+$/,'')){hold(seatLatch(ch),e.text);if(MODE==='character'&&ch.toLowerCase()===HANDLE.toLowerCase()){seat.value=e.text;VAULT.slots.seat=e.slot;}}found.push(ch+' at '+sm[2].replace(/,+$/,''));}}
+        });
+        var sealed=v.entries.filter(function(e){return e.envelope&&!e.opened;}).length;
+        vsay('vault open — '+(found.length?found.join(', '):'nothing for this page in it yet')+(sealed?' · '+sealed+' other '+(sealed>1?'entries':'entry')+' sealed under another form':''),'ok');
+        remember();labelKey();return v;
+      }).catch(function(e){vsay(e.message,'err');return null;});}
+    function keepIn(kind){var h=meName(),k=pass.value.trim();if(!h||!k){vsay('your name and your key first — the vault answers to them','err');return;}
+      var label,text,slot;
+      if(kind==='image'){if(!key.value.trim()||provider.value==='free'){vsay('choose a service and paste its key first','err');return;}label='image key — '+NAMES[provider.value]+', kept '+today()+' from happyseaurchin.com/gallery';text=key.value.trim();slot=VAULT.slots.image;}
+      else if(kind==='seat'){if(!seat.value.trim()){vsay('type '+HANDLE+'’s key first','err');return;}label=HANDLE+' at '+(WORLD||LEGACY_BEACH)+' — '+BEACH.replace(/\/+$/,'')+', since '+today();text=seat.value.trim();slot=VAULT.slots.seat;}
+      else{var P=window.placeNow();if(!P){vsay('fill in your own bucket first — its URL, bucket and anon key','err');return;}label='picture place — supabase '+P.url+' bucket '+P.bucket+', kept '+today();text=P.key;slot=VAULT.slots.place;}
+      vsay('sealing…');
+      var ensure=VAULT.exists?Promise.resolve():vault.found(APEX,h,k,vaultLaw(h)).then(function(){VAULT.exists=true;});
+      return ensure.then(function(){return vault.keep(APEX,h,k,label,text,slot);}).then(function(at){VAULT.slots[kind]=at;if(kind==='seat')hold(seatLatch(HANDLE),text);vsay('sealed in your vault at '+at+' — '+label.split(',')[0],'ok');remember();}).catch(function(e){vsay(e.message,'err');});}
+    document.getElementById('unlock').addEventListener('click',openVault);
+    document.getElementById('vault-image').addEventListener('click',function(){keepIn('image');});
+    document.getElementById('vault-seat').addEventListener('click',function(){keepIn('seat');});
+    document.getElementById('vault-place').addEventListener('click',function(){keepIn('place');});
+    document.getElementById('key-keep').addEventListener('click',function(){remember();labelKey();keyHint.className='hint ok';keyHint.textContent=(keyed()?'pictures on '+NAMES[provider.value]+', under '+who():'no image key — the free service, without faces')+(REMEMBER()?' — kept on this device':' — for this tab only');setTimeout(function(){card.close();keyHint.textContent='';},1100);});
+    document.getElementById('key-forget').addEventListener('click',function(){key.value='';provider.value='free';pass.value='';seat.value='';placeKey.value='';SEATS={};VAULT={exists:false,slots:{}};['gallery:key','gallery:pass','gallery:place-key'].forEach(function(k){hold(k,'');});if(MODE==='character')hold(seatLatch(HANDLE),'');vault.forget();remember();labelKey();vsay('');keyHint.className='hint';keyHint.textContent='forgotten — this browser holds no key now';});
     labelKey();
     var CARD=null;   /* the moment's card that was pressed — it shows the state in place, beside the button */
     function say(m,cls){hint.className='hint'+(cls?' '+cls:'');hint.textContent=m;
       if(CARD){var st=CARD.querySelector('.taking');if(!st){st=document.createElement('p');st.className='hint taking';st.style.padding='0 18px 12px';CARD.appendChild(st);}st.className='hint taking'+(cls?' '+cls:'');st.textContent=m;}}
     function styleText(){return styleIn.value.trim()||WORLD_STYLE||RECIPE.look;}
-    function remember(){try{localStorage.setItem('gallery:provider',provider.value);localStorage.setItem('gallery:key',key.value.trim());localStorage.setItem('gallery:who',who());localStorage.setItem('gallery:shot',shot.value.trim());localStorage.setItem('gallery:style',styleIn.value.trim());}catch(e){}}
+    function remember(){try{localStorage.setItem('gallery:remember',REMEMBER()?'1':'0');localStorage.setItem('gallery:me',meName());localStorage.setItem('gallery:shot',shot.value.trim());localStorage.setItem('gallery:style',styleIn.value.trim());localStorage.setItem('gallery:place',JSON.stringify(window.placeNow()?{url:window.placeNow().url,bucket:window.placeNow().bucket}:null));
+      hold('gallery:provider',provider.value);hold('gallery:key',key.value.trim());hold('gallery:pass',pass.value.trim());hold('gallery:place-key',placeKey.value.trim());if(MODE==='character'&&seat.value.trim())hold(seatLatch(HANDLE),seat.value.trim());}catch(e){}}
     // one moment → one picture, kept under the taker's name, addressed to the moment
     function takePicture(beat,prov,k){
       var pps={}, room=beat.room||ROOM;
@@ -531,6 +643,7 @@
     }
     var FREE_OK=false;
     function ready(){var prov=provider.value,k=key.value.trim();
+      if(!window.keyOf(who())){openOptions();say('pictures are kept under '+who()+'’s own key — open your vault, or type '+(MODE==='character'?HANDLE+'’s key':'your key')+' in the card first.','err');return null;}
       if(prov!=='free'&&!k){openOptions();say('paste your '+NAMES[prov]+' key in the card, or choose Free.','err');return null;}
       if(prov==='free'&&!FREE_OK){openOptions();FREE_OK=true;say('No key yet. Free pictures ignore the faces and the world and drift from picture to picture. Choose Google, OpenAI or Grok and paste a key for the real thing — or press again to go free anyway.','err');return null;}
       remember();return {prov:prov,k:k};}
@@ -590,7 +703,11 @@
           h2.textContent='Take a picture of '+HANDLE+'’s latest moment';
           sub.innerHTML='One press turns the latest thing '+esc(HANDLE)+' was in into a picture. <b>Watch</b> keeps doing that for every new moment '+esc(HANDLE)+' is in, wherever they go, while this tab is in front.';
           follow.textContent='👁 watch '+HANDLE+' — a picture for every new moment';
-          if(!whoIn.value)whoIn.placeholder='your name — '+HANDLE+' if you are playing them; your own if you are watching';
+          document.getElementById('seat-box').style.display='';document.getElementById('seat-eyebrow').textContent='Playing '+HANDLE;seat.placeholder=HANDLE+'’s key at this table';
+          seat.value=stored(seatLatch(HANDLE))||stored('passport-latch:'+HANDLE)||'';
+          me.placeholder='your own name at the beach — the person, not the character';
+          if(meName()&&pass.value.trim()&&!VAULT.exists)openVault();
+          labelKey();
         } else if(MODE==='room'){
           h1.innerHTML='The room, <span class="cool">in pictures</span>.';
           lede.innerHTML='Every picture taken of this room at <b>'+esc(WORLD||LEGACY_BEACH)+'</b>. To follow one character wherever they go, tap them at <a href="'+(here()?'/gallery.html?world='+encodeURIComponent(WORLD):'/gallery?world='+encodeURIComponent(WORLD))+'">the table</a>.';
