@@ -259,16 +259,17 @@
   function facesOf(handles){return Promise.all(handles.map(function(h){return readBlock('gallery:'+h).then(function(b){var f=b?stillsOf(b).filter(function(s){return s.at==='passport:'+h+':3';}).pop():null;if(f)FACES[h]=f.img;}).catch(function(){});}));}
   function facesOf64(urls){return Promise.all(urls.map(function(u){return fetch(u).then(function(r){return r.ok?r.blob():null;}).then(function(b){if(!b)return null;return new Promise(function(res){var fr=new FileReader();fr.onload=function(){var s=String(fr.result);res({mime:b.type||'image/jpeg',data:s.slice(s.indexOf(',')+1)});};fr.onerror=function(){res(null);};fr.readAsDataURL(b);});}).catch(function(){return null;});})).then(function(a){return a.filter(Boolean);});}
   // the place: the table's keeper names where it is placed; the room's own line in that register is the setting
-  var PLACES={};
+  var PLACES={}, PLACE_NAMES={};
   function starRef(s){var m=String(s||'').match(/\*:(https?:\/\/\S+?):((?:[a-z][a-z0-9_-]*:)*[a-z][a-z0-9_-]*):([0-9.]+)\s*$/i);return m?{origin:m[1],block:m[2],addr:m[3]}:null;}
   function linesTo(block,addr){var lines=[],node=block;String(addr).replace('.','').split('').forEach(function(d){if(!node)return;var next=node[d];if(next===undefined&&node._&&typeof node._==='object'){node=node._;next=node[d];}if(next===undefined){node=null;return;}node=next;var v=voiceOf(node);if(v)lines.push(v);});return lines;}
   function placeFor(room){
     if(PLACES[room]!==undefined)return Promise.resolve(PLACES[room]);
     return readBlock('keeper:scene').then(function(k){var ref=starRef(k&&(typeof k['3']==='string'?k['3']:voiceOf(k['3'])));if(!ref)return '';
-      return fetch(ref.origin.replace(/\/+$/,'')+'/.well-known/pscale-beach?block='+encodeURIComponent(ref.block),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(reg){return reg?linesTo(reg,room||ref.addr).slice(-2).join(' ').slice(0,600):'';});
+      return fetch(ref.origin.replace(/\/+$/,'')+'/.well-known/pscale-beach?block='+encodeURIComponent(ref.block),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(reg){if(!reg)return '';var two=linesTo(reg,room||ref.addr).slice(-2);PLACE_NAMES[room]=two[two.length-1]||'';return two.join(' ').slice(0,600);});
     }).catch(function(){return '';}).then(function(p){PLACES[room]=p;return p;});
   }
-  function placeName(room){var p=PLACES[room]||'';var m=p.match(/^([^—.:]{3,60})/);return m?m[1].trim():'room '+room;}
+  // the room's own name: the first clause of its own line in the world's register
+  function placeName(room){var p=PLACE_NAMES[room]||'';var m=p.match(/^([^—.:(]{3,60})/);return m?m[1].trim():'room '+room;}
   // THE RECIPE lives at the beach (ways:stills 6); this page only assembles in the order it states
   var RECIPE={look:DEFAULT_LOOK,bind:'Each person shown must have the face of their reference photograph, exactly, in period dress.',never:'No text or lettering, no modern objects, nothing overtly fantastical.'};
   function readRecipe(){return fetch(APEX+'/.well-known/pscale-beach?block=ways:stills',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(w){var six=w&&w['6'];if(!six||typeof six!=='object')return;var l=voiceOf(six['1']),b=voiceOf(six['2']),n=voiceOf(six['3']);if(l)RECIPE.look=l;if(b)RECIPE.bind=b;if(n)RECIPE.never=n;}).catch(function(){});}
@@ -389,14 +390,18 @@
   // THE TABLE (or the beach's home): the players, the rooms, everyone's pictures
   function renderIndex(){
     var box=document.getElementById('shots'), more=document.getElementById('more');
-    Promise.all([books(),WORLD?roomsAt():Promise.resolve([])]).then(function(r){
-      var bs=r[0], rooms=r[1];
+    var atTable=!!(WORLD||LEGACY_BEACH);
+    // at a table: everyone who has pictured it, whether their pictures stand at the table or at the beach's home
+    var takers=atTable?tableStills().then(function(all){var by={};all.filter(function(s){return !isVideo(s.img);}).sort(function(a,b){return String(a.ts).localeCompare(String(b.ts));}).forEach(function(s){var name=s.book.slice(8);if(!by[name])by[name]={name:name,home:s.home===APEX,shots:[]};by[name].shots.push(s);});return Object.keys(by).map(function(k){return by[k];});})
+      :books().then(function(bs){return bs.map(function(b){return {name:b.name.slice(8),home:true,shots:stillsOf(b.block,b.name).filter(function(s){return !isVideo(s.img)&&!/^passport:/.test(s.at);})};});});
+    Promise.all([takers,atTable?roomsAt():Promise.resolve([])]).then(function(r){
+      var people=r[0], rooms=r[1];
       var out='';
       if(rooms.length)out+='<p class="eyebrow">The rooms</p><p style="margin:0 0 30px">'+rooms.map(function(rm){return '<a class="pill small" style="display:inline-block;margin:0 8px 8px 0" href="'+roomLink(rm)+'">'+esc(placeName(rm))+'</a>';}).join('')+'</p>';
-      document.getElementById('eyebrow').textContent=bs.length?('Everyone’s pictures — '+bs.length+(bs.length===1?' person':' people')):'Everyone’s pictures';
-      if(!bs.length){box.innerHTML='<p class="empty">Nobody has taken a picture '+(WORLD?'at '+esc(WORLD):'here')+' yet.</p>';more.innerHTML='';return;}
-      box.innerHTML=bs.map(function(b){var name=b.name.slice(8), shots=stillsOf(b.block,b.name).filter(function(s){return !isVideo(s.img)&&!/^passport:/.test(s.at);}), last=shots[shots.length-1];
-        return '<figure class="shot"><a href="'+(b.origin===APEX&&WORLD?personLink(name):charLink(name))+'" style="border:none;color:inherit"><div class="shot__frame">'+(last?'<img loading="lazy" alt="" src="'+esc(last.img)+'">':'<p class="empty" style="padding:14px">none yet</p>')+'</div><figcaption class="shot__cap">'+esc(name)+'<span style="color:var(--vapour-dim);font-size:.85em"> · '+shots.length+'</span></figcaption></a></figure>';}).join('');
+      document.getElementById('eyebrow').textContent=people.length?('Everyone’s pictures — '+people.length+(people.length===1?' person':' people')):'Everyone’s pictures';
+      if(!people.length){box.innerHTML='<p class="empty">Nobody has taken a picture '+(atTable?'at '+esc(WORLD||LEGACY_BEACH):'here')+' yet.</p>';more.innerHTML=out;return;}
+      box.innerHTML=people.map(function(p){var last=p.shots[p.shots.length-1];
+        return '<figure class="shot"><a href="'+(p.home?personLink(p.name):charLink(p.name))+'" style="border:none;color:inherit"><div class="shot__frame">'+(last?'<img loading="lazy" alt="" src="'+esc(last.img)+'">':'<p class="empty" style="padding:14px">none yet</p>')+'</div><figcaption class="shot__cap">'+esc(p.name)+'<span style="color:var(--vapour-dim);font-size:.85em"> · '+p.shots.length+'</span></figcaption></a></figure>';}).join('');
       more.innerHTML=out;
     }).catch(function(e){box.innerHTML='<p class="empty">Couldn’t read the beach just now — '+esc(e.message)+'.</p>';});
   }
