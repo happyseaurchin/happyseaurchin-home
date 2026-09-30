@@ -635,7 +635,8 @@ async function gResolveWorld(){
 const gMapName = () => GROUND.world === 'earth' ? 'the earth-map' : 'the ' + GROUND.world + ' map';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [], POOL_STANDS = false;
 let LAW = null, LAWREF = '';        /* the family's law — function:<name>, or the operator its pool mounts (tree 9.1) */
-let SINCE = 0;                      /* the marker: your last act, else 24h */
+let NINE_OFF = false;               /* the spine's 9 is the operator's own stem, kept off the rows (nineIsOperator) */
+let SINCE = 0;                     /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '', NOW_ADDR = '';
 const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
@@ -1097,10 +1098,11 @@ async function load(){
   if (!spine) throw new Error('spine:' + VENTURE + ' is not on the beach');
   SPINE = spine;
   LAW = law; LAWREF = law ? 'function:' + VENTURE : '';
+  NINE_OFF = nineIsOperator(spine, law);
   /* the same page walks every family: a floor-10 sundial spine as time, any other as its own branches */
   MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
   if (MODE === 'tree' && first){
-    SEL.path = [childDigits(spine).filter(d => d !== '9')[0]].filter(Boolean);
+    SEL.path = [childDigits(spine).filter(d => !(NINE_OFF && d === '9'))[0]].filter(Boolean);
     SEL.level = 't';
   }
   const blocks = (index && index.blocks) || [];
@@ -1546,13 +1548,25 @@ function renderRack(){
     + 'and once done it stands here in the timeline, at the rung it was held at.';
   renderRowsFrom('ce');
 }
+/* THE NINTH BRANCH IS A BRANCH, unless it is the operator's own stem. A deck keeps
+ * that stem at the spine's 9, and its law says it is a deck in its operator lines
+ * (mode:, respond:, disarm:, access:, cards: — as /tree and /fold read them); a field
+ * made before a family's law had a block of its own says so at 9 in its first word
+ * ('Operator — …'). Anything else at 9 is drawn like the other eight: a book's ninth
+ * chapter, a state's ninth part. The family's own law decides, never an operator its
+ * pool mounts. */
+function nineIsOperator(spine, law){
+  const opLines = n => typeof n === 'string' ? /^(mode|respond|disarm|access|cards):\s*\S/i.test(n)
+    : !!n && typeof n === 'object' && (opLines(voice(n)) || childDigits(n).some(d => opLines(n[d])));
+  return opLines(law) || /^(operator\s*[—:-]|(mode|respond|disarm|access|cards):)/i.test(voice(spine && spine['9']) || '');
+}
 /* ── the tree rack — the same rows, grown from the spine's own branches: row one
  * is the stems, each further row the children of the branch chosen above it ── */
 function renderTreeRack(){
   const rows = [];
   let node = SPINE, addrSoFar = '';
   for (let depth = 0; ; depth++){
-    const kids = childDigits(node).filter(d => !(depth === 0 && d === '9'));
+    const kids = childDigits(node).filter(d => !(depth === 0 && NINE_OFF && d === '9'));
     if (!kids.length) break;
     const cards = kids.map(d => {
       const a = addrSoFar + d;
