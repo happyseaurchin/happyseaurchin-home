@@ -330,12 +330,40 @@
   }
   // the room's own name: the first clause of its own line in the world's register
   function placeName(room){var p=PLACE_NAMES[room]||'';var m=p.match(/^([^—.:(]{3,60})/);return m?m[1].trim():'room '+room;}
+  // THE PEOPLE IN FRAME (ways:stills 6.6): a world's people register is an aspect of its places — only the scenario's
+  // principal figures stand in it as themselves, each a digit in the fan of the room they keep, the body spread beneath
+  // by scale (parts, then details); everyone else is one line, left to the image model. This page cannot weigh a
+  // figure's states against a moment, so it takes none: the unchanging lines, and the telling poses them. A place with
+  // three figures or fewer gives each their parts; a wider place gives each their own line only — further off, less seen.
+  var PEOPLE={};
+  function peopleFor(room){
+    if(PEOPLE[room]!==undefined)return Promise.resolve(PEOPLE[room]);
+    return readBlock('keeper:scene').then(function(k){var ref=starRef(k&&(typeof k['3']==='string'?k['3']:voiceOf(k['3'])));if(!ref||!/^spatial:/.test(ref.block))return '';
+      return fetch(ref.origin.replace(/\/+$/,'')+'/.well-known/pscale-beach?block='+encodeURIComponent(ref.block.replace(/^spatial:/,'people:')),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(reg){
+        if(!reg)return '';
+        var at=function(a){var n=reg;String(a).split('').forEach(function(d){n=n&&typeof n==='object'?n[d]:undefined;});return n;};
+        var prefix=String(room||ref.addr).replace('.','').replace(/0+$/,'').slice(0,4), figs=[], seen={};
+        var take=function(c,a){var said='';
+          if(typeof c==='string'){var m=c.match(/^(.*?)\s*—?\s*\*?:?(?:https?:\/\/\S+?:)?people:[a-z0-9-]+:(\d+)\.(\d+)\s*$/i);if(m){said=m[1];a=m[2]+m[3];c=at(a);}}   /* a pointer: that person, standing here */
+          if(!c||seen[a])return; seen[a]=1; figs.push({node:c,said:said});};
+        if(prefix.length>=4)take(at(prefix),prefix);
+        else (function walk(n,p){if(!n||typeof n!=='object')return;digitKeys(n).forEach(function(d){if((p+d).length<4)walk(n[d],p+d);else take(n[d],p+d);});})(at(prefix),prefix);
+        var deep=figs.length<=3, all='';
+        figs.map(function(f){var n=f.node, out=[(f.said?f.said+' — ':'')+(voiceOf(n)||'')];
+          if(deep&&typeof n==='object')digitKeys(n).forEach(function(d){var v=d==='4'?'':voiceOf(n[d]);if(v)out.push(v);});
+          return out.join(' ').trim();}).forEach(function(s){if(s&&(all+s).length<2600)all+=(all?' · ':'')+s;});   /* whole figures only, never a cut line */
+        return all;
+      });
+    }).catch(function(){return '';}).then(function(p){PEOPLE[room]=p;return p;});
+  }
   // THE RECIPE lives at the beach (ways:stills 6); this page only assembles in the order it states
-  var RECIPE={look:DEFAULT_LOOK,bind:'Each person shown must have the face of their reference photograph, exactly, in period dress.',never:'No text or lettering, no modern objects, nothing overtly fantastical.',place:'The last reference image is this same place as pictured before; keep its look, its light and its things.'};
+  var RECIPE={look:DEFAULT_LOOK,bind:'Each reference photograph of a face is one named person’s and only theirs: that person must have that face, exactly, in period dress. Everyone else in the picture has a face of their own, unlike any reference and unlike one another.',never:'No text or lettering, no modern objects, nothing overtly fantastical.',place:'The last reference image is this same place as pictured before; keep its look, its light and its things.'};
   function readRecipe(){return fetch(APEX+'/.well-known/pscale-beach?block=ways:stills',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(w){var six=w&&w['6'];if(!six||typeof six!=='object')return;var l=voiceOf(six['1']),b=voiceOf(six['2']),n=voiceOf(six['3']),pl=voiceOf(six['5']);if(l)RECIPE.look=l;if(b)RECIPE.bind=b;if(n)RECIPE.never=n;if(pl){var m=pl.match(/—\s*(The last reference image[^.]*\.[^.]*\.)/);if(m)RECIPE.place=m[1];}}).catch(function(){});}
-  function composeShot(text,cast,looks,style,place,placeRef){
+  function composeShot(text,cast,looks,style,place,placeRef,people){
     var who=cast.map(function(h){return h+': '+(looks[h]||'as described');}).join(' · ');
-    return [text.length>1100?text.slice(0,1100)+'…':text, place?'The place — '+place:'', cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', placeRef?RECIPE.place:'', RECIPE.never].filter(Boolean).join(' ');
+    return [text.length>1100?text.slice(0,1100)+'…':text, place?'The place — '+place.replace(/[\s,;:—-]+$/,'')+(/[.!?…]$/.test(place.trim())?'':'.'):'',
+      people?'The people who keep this place, as they always look — draw only those this moment shows, and draw them like this: '+people:'',
+      cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', placeRef?RECIPE.place:'', RECIPE.never].filter(Boolean).join(' ');
   }
   // THE LIBRARY AS REFERENCE (ways:stills 6.5): faces first, then the newest picture of the same room, then the
   // people's own newest pictures — so a place and a person look the same from picture to picture
@@ -635,12 +663,14 @@
     // one moment → one picture, kept under the taker's name, addressed to the moment
     function takePicture(beat,prov,k){
       var pps={}, room=beat.room||ROOM;
-      return Promise.all(HANDLES.map(function(h){return readBlock('passport:'+h).then(function(p){pps[h]=p;}).catch(function(){});}).concat([placeFor(room)])).then(function(r){
+      return Promise.all(HANDLES.map(function(h){return readBlock('passport:'+h).then(function(p){pps[h]=p;}).catch(function(){});}).concat([peopleFor(room),placeFor(room)])).then(function(r){
         var looks={}; HANDLES.forEach(function(h){looks[h]=lookOf(pps[h]);});
-        var cast=castOf(beat), place=r[r.length-1]||'';
+        var cast=castOf(beat), place=r[r.length-1]||'', people=r[r.length-2]||'';
         return referencesFor(beat,cast,prov).then(function(ref){
-          var prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText(),place,ref.placeRef);
-          if(prov==='grok'&&ref.labels&&ref.labels.length)prompt+=' Reference images: '+ref.labels.map(function(l,i){return '<IMAGE_'+i+'> is '+l;}).join('; ')+'.';
+          var prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText(),place,ref.placeRef,people);
+          /* whose picture each reference is — so one person's face is never laid on another (ways:stills 6.2) */
+          if(ref.labels&&ref.labels.length)prompt+=prov==='grok'?' Reference images: '+ref.labels.map(function(l,i){return '<IMAGE_'+i+'> is '+l;}).join('; ')+'.'
+            :' The reference pictures, in the order given: '+ref.labels.map(function(l,i){return (i+1)+' is '+l;}).join('; ')+'.';
           say((prov==='free'?'drawing on the free service (about 20 s, no faces, no continuity)…':'drawing on your key'+(ref.urls.length?', with '+ref.urls.length+' reference picture'+(ref.urls.length>1?'s':'')+(ref.placeRef?' including this place as pictured before':'')+'…':'…')));
           return facesOf64(ref.urls).then(function(r64){return generate(prov,prompt,k,r64);});
         }).then(function(image){say('keeping the picture…');return storeStill(image,who()).catch(function(){return image;});})
