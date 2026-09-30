@@ -220,7 +220,14 @@ if (window.siteDoors) siteDoors({ handle: WHO, family: FIELD });
     try { const b = await readBlock(n); if (b) mirrors[n.slice(FIELD.length + 1)] = b; } catch(e){}
   }));
 
-  const stems = childDigits(spine).filter(d => d !== '9');
+  const op = [];
+  const opBlock = await readBlock('function:' + FIELD).catch(() => null);   /* the law lives in the operator block, never at spine 9 */
+  if (opBlock) for (const t of textsOf(opBlock, [], 2)){ const m = t.match(/^(mode|respond|disarm|access|cards):\s*\S+/i); if (m) op.push(m[0].toLowerCase()); }
+  /* the ninth stem is a stem, unless it is the operator's own (walk.html, nineIsOperator):
+   * a deck's law keeps that stem at 9, and a field made before its law had a block of
+   * its own says so at 9 in its first word ('Operator — …') */
+  const nineOff = op.length > 0 || /^(operator\s*[—:-]|(mode|respond|disarm|access|cards):)/i.test(voice(spine['9']) || '');
+  const stems = childDigits(spine).filter(d => !(nineOff && d === '9'));
   let cardCount = 0, markCount = 0;
   const out = [];
   for (const s of stems){
@@ -296,9 +303,6 @@ if (window.siteDoors) siteDoors({ handle: WHO, family: FIELD });
     }
     out.push('</section>');
   }
-  const op = [];
-  const opBlock = await readBlock('function:' + FIELD).catch(() => null);   /* the law lives in the operator block, never at spine 9 */
-  if (opBlock) for (const t of textsOf(opBlock, [], 2)){ const m = t.match(/^(mode|respond|disarm|access|cards):\s*\S+/i); if (m) op.push(m[0].toLowerCase()); }
   $('h-meta').innerHTML = '<span><b>' + cardCount + '</b> cards</span><span><b>' + Object.keys(mirrors).length + '</b> people</span><span><b>' + markCount + '</b> answers</span>' + (op.length ? '<span>' + esc(op.join(' · ')) + '</span>' : '');
   $('stems').innerHTML = out.join('');
 }
