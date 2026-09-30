@@ -1,9 +1,113 @@
-<!doctype html>
-<!-- /services — what this beach offers for money, and where the money goes.
-     Forwards to the render view of the `services` block at the beach: the
-     offer is a block, so it is kept where it can be read by anyone and
-     changed without a deploy. -->
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
 <meta charset="utf-8">
-<title>services</title>
-<script>location.replace('/render?beach=beach.happyseaurchin.com&block=services');</script>
-<noscript><a href="/render?beach=beach.happyseaurchin.com&block=services">services — at the beach</a></noscript>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Services</title>
+<meta name="description" content="What the happyseaurchin beach offers for money — a monthly beach service, and consultancy priced per job — and how to sell your own.">
+<meta property="og:title" content="Services">
+<meta property="og:description" content="A monthly beach service for £10, consultancy with David priced per job, and the same machine for anyone to sell their own.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<!-- /services — the page reads the `services` block at the beach and draws it:
+     the offer lives in the block, so it is read by anyone and changed without
+     a deploy. A line naming a ticket machine's /buy/<product> page becomes the
+     join form in place, and the form's handle box is #h, so theme.js hangs its
+     "did you mean …?" line under it — a ticket goes to the name typed. -->
+<style>
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:var(--body);color:var(--foam);font-size:17.5px;line-height:1.58;
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--liquid-rgb),0.10), transparent 60%),
+      linear-gradient(180deg,var(--ground-top) 0%, var(--deep) 30%, var(--abyss) 100%);
+    background-attachment:fixed;-webkit-font-smoothing:antialiased;min-height:100dvh}
+  a{color:var(--liquid);text-decoration:none;border-bottom:1px solid rgba(var(--liquid-rgb),0.35)}
+  a:hover{color:var(--foam);border-color:var(--foam)}
+  .wrap{max-width:760px;margin:0 auto;padding:0 18px 80px}
+  .bar{padding:14px 0 10px;font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--vapour-dim)}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(1.6rem,6vw,2.3rem);line-height:1.1;margin:6px 0 10px}
+  h2{font-family:var(--display);font-weight:700;font-size:1.2rem;margin:40px 0 4px;
+    border-bottom:1px solid var(--line);padding:0 0 6px;display:flex;align-items:baseline;gap:10px}
+  h2 span{font-family:var(--mono);font-weight:400;font-size:11px;color:var(--vapour-dim);letter-spacing:.08em}
+  .lede{font-size:19px;margin:0 0 10px}
+  .what{color:var(--vapour-dim);font-size:15.5px;margin:0 0 12px}
+  p{margin:0 0 12px}
+  .join{margin:4px 0 18px;padding:14px 14px 12px;border:1px solid var(--line);border-radius:6px;
+    background:rgba(var(--liquid-rgb),0.05)}
+  .join label{display:block;font-size:15px;margin:0 0 8px}
+  .join .row{display:flex;gap:8px;flex-wrap:wrap}
+  .join input{flex:1 1 220px;min-width:0;background:transparent;border:1px solid var(--line);border-radius:4px;
+    color:var(--foam);font-family:var(--mono);font-size:15px;padding:9px 10px}
+  .join input:focus{outline:none;border-color:var(--liquid)}
+  .join button{background:none;border:1px solid var(--liquid);border-radius:4px;color:var(--liquid);
+    font-family:var(--mono);font-size:13px;padding:9px 14px;cursor:pointer}
+  .join button:hover{color:var(--foam);border-color:var(--foam)}
+  .absent{color:var(--vapour-dim);font-style:italic}
+  .foot{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:44px 0 0;line-height:1.9}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar">services</div>
+  <h1>Services</h1>
+  <div id="offer"><p class="absent">Reading the offer from the beach…</p></div>
+
+  <form class="join" id="join" method="post" hidden>
+    <label for="h">Your handle on the beach — exactly as it stands, capitals and all. The ticket goes to that name.</label>
+    <div class="row">
+      <input id="h" name="buyer_agent_id" type="text" required pattern="[a-zA-Z0-9_:.\-]{2,128}" placeholder="your handle">
+      <button type="submit">Continue to payment</button>
+    </div>
+  </form>
+
+  <p class="foot">The words above are the <a href="/render?beach=beach.happyseaurchin.com&amp;block=services">services</a> block at beach.happyseaurchin.com, read as the page opens. Payment is taken by Stripe; the beach keeps only the ticket.</p>
+</div>
+<script>
+var BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+var BUY = /\s+—\s+(https?:\/\/\S+?\/buy\/[A-Za-z0-9_-]+)(?=[.,;]?(\s|$))/;
+
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+/* web links open; a room named pool:<name> opens that person's page, parlour at its foot */
+function prose(t){
+  return esc(t).replace(/(https?:\/\/[^\s<"']*[^\s<.,;:)'"])|\bpool:([A-Za-z0-9_-]+)/g, function(m, url, room){
+    return url ? '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>'
+               : '<a href="/page/' + room + '">pool:' + room + '</a>';
+  });
+}
+function text(n){ return typeof n === 'string' ? n : (n && typeof n._ === 'string' ? n._ : ''); }
+function kids(n){ return n && typeof n === 'object' ? '123456789'.split('').filter(function(d){ return n[d] !== undefined; }) : []; }
+function upper(s){ return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+
+function draw(b){
+  var root = text(b), cut = root.indexOf('. ');
+  var html = '<p class="lede">' + prose(cut > 0 ? root.slice(0, cut + 1) : root) + '</p>' +
+             (cut > 0 ? '<p class="what">' + prose(root.slice(cut + 2)) + '</p>' : '');
+  var buyAt = null;
+  kids(b).forEach(function(d){
+    var head = text(b[d]), dash = head.indexOf(' — ');
+    html += '<h2>' + esc(dash > 0 ? head.slice(0, dash) : head) + ' <span>' + d + '</span></h2>';
+    if (dash > 0) html += '<p class="what">' + prose(upper(head.slice(dash + 3))) + '</p>';
+    kids(b[d]).forEach(function(k){
+      var line = text(b[d][k]), m = BUY.exec(line);
+      if (m && !buyAt){ buyAt = m[1]; line = line.replace(BUY, ''); }
+      html += '<p>' + prose(line) + '</p>' + (m && buyAt === m[1] ? '<div id="join-here"></div>' : '');
+    });
+  });
+  document.getElementById('offer').innerHTML = html;
+  var here = document.getElementById('join-here'), form = document.getElementById('join');
+  if (here && buyAt){ form.action = buyAt; here.replaceWith(form); form.hidden = false; }
+}
+
+fetch(BEACH + '?block=services', { cache: 'no-store' })
+  .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('status ' + r.status)); })
+  .then(draw)
+  .catch(function(){
+    document.getElementById('offer').innerHTML =
+      '<p class="absent">The beach did not answer just now. The offer stands at <a href="/render?beach=beach.happyseaurchin.com&amp;block=services">the services block</a>.</p>';
+  });
+if (window.siteDoors) siteDoors({ here: 'services', site: true });
+</script>
+</body>
+</html>
