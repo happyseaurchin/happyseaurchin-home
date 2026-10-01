@@ -14,8 +14,9 @@
 <script src="/theme.js"></script>
 <!-- /services — the page reads the `services` block at the beach and draws it:
      the offer lives in the block, so it is read by anyone and changed without
-     a deploy. A line naming a ticket machine's /buy/<product> page becomes the
-     join form in place, and the form's handle box is #h, so theme.js hangs its
+     a deploy. Every line naming a ticket machine's /buy/<product> page gets a
+     "Choose →" button; choosing one moves the single join form under that line
+     and points it there. The form's handle box is #h, so theme.js hangs its
      "did you mean …?" line under it — a ticket goes to the name typed. -->
 <style>
   *{box-sizing:border-box} html,body{margin:0}
@@ -44,6 +45,9 @@
   .join button{background:none;border:1px solid var(--liquid);border-radius:4px;color:var(--liquid);
     font-family:var(--mono);font-size:13px;padding:9px 14px;cursor:pointer}
   .join button:hover{color:var(--foam);border-color:var(--foam)}
+  .choose{background:none;border:1px solid var(--liquid);border-radius:4px;color:var(--liquid);
+    font-family:var(--mono);font-size:13px;padding:7px 12px;cursor:pointer;margin:0 0 14px}
+  .choose:hover,.choose.on{color:var(--foam);border-color:var(--foam)}
   .absent{color:var(--vapour-dim);font-style:italic}
   .foot{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:44px 0 0;line-height:1.9}
 </style>
@@ -69,11 +73,13 @@ var BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 var BUY = /\s+—\s+(https?:\/\/\S+?\/buy\/[A-Za-z0-9_-]+)(?=[.,;]?(\s|$))/;
 
 function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
-/* web links open; a room named pool:<name> opens that person's page, parlour at its foot */
+/* web links open; a room named pool:<name> opens that person's page, parlour at its
+   foot; a list named sed:<name> opens on the render view */
 function prose(t){
-  return esc(t).replace(/(https?:\/\/[^\s<"']*[^\s<.,;:)'"])|\bpool:([A-Za-z0-9_-]+)/g, function(m, url, room){
-    return url ? '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>'
-               : '<a href="/page/' + room + '">pool:' + room + '</a>';
+  return esc(t).replace(/(https?:\/\/[^\s<"']*[^\s<.,;:)'"])|\bpool:([A-Za-z0-9_-]+)|\bsed:([A-Za-z0-9_-]+)/g, function(m, url, room, list){
+    if (url) return '<a href="' + url + '" target="_blank" rel="noopener">' + url + '</a>';
+    if (room) return '<a href="/page/' + room + '">pool:' + room + '</a>';
+    return '<a href="/render?beach=beach.happyseaurchin.com&amp;block=sed%3A' + list + '">sed:' + list + '</a>';
   });
 }
 function text(n){ return typeof n === 'string' ? n : (n && typeof n._ === 'string' ? n._ : ''); }
@@ -84,21 +90,31 @@ function draw(b){
   var root = text(b), cut = root.indexOf('. ');
   var html = '<p class="lede">' + prose(cut > 0 ? root.slice(0, cut + 1) : root) + '</p>' +
              (cut > 0 ? '<p class="what">' + prose(root.slice(cut + 2)) + '</p>' : '');
-  var buyAt = null;
   kids(b).forEach(function(d){
     var head = text(b[d]), dash = head.indexOf(' — ');
     html += '<h2>' + esc(dash > 0 ? head.slice(0, dash) : head) + ' <span>' + d + '</span></h2>';
     if (dash > 0) html += '<p class="what">' + prose(upper(head.slice(dash + 3))) + '</p>';
     kids(b[d]).forEach(function(k){
       var line = text(b[d][k]), m = BUY.exec(line);
-      if (m && !buyAt){ buyAt = m[1]; line = line.replace(BUY, ''); }
-      html += '<p>' + prose(line) + '</p>' + (m && buyAt === m[1] ? '<div id="join-here"></div>' : '');
+      html += '<p>' + prose(m ? line.replace(BUY, '') : line) + '</p>';
+      if (m) html += '<button type="button" class="choose" data-buy="' + esc(m[1]) + '">Choose →</button>';
     });
   });
   document.getElementById('offer').innerHTML = html;
-  var here = document.getElementById('join-here'), form = document.getElementById('join');
-  if (here && buyAt){ form.action = buyAt; here.replaceWith(form); form.hidden = false; }
 }
+
+/* one join form for every offer: choosing moves it under that line and points it there */
+document.getElementById('offer').addEventListener('click', function(e){
+  var btn = e.target.closest('.choose');
+  if (!btn) return;
+  var form = document.getElementById('join');
+  document.querySelectorAll('.choose.on').forEach(function(x){ x.classList.remove('on'); });
+  btn.classList.add('on');
+  form.action = btn.getAttribute('data-buy');
+  btn.insertAdjacentElement('afterend', form);
+  form.hidden = false;
+  document.getElementById('h').focus();
+});
 
 fetch(BEACH + '?block=services', { cache: 'no-store' })
   .then(function(r){ return r.ok ? r.json() : Promise.reject(new Error('status ' + r.status)); })
