@@ -778,6 +778,8 @@
    * page folded into /hands — the FAMILY is untouched and its blocks are still
    * ahead:<handle>; only the surface went, so it walks like any other now. */
   var OWN_PAGE = { 'now':'now', 'today-beach-deck':'today-beach-deck', 'ahead':'ahead' };
+  /* the depth of a block's underscore chain — /walk's floorOf, held to exactly: ten is the clock */
+  function floorOf(block){ var n = 0, node = block; while (node && typeof node === 'object' && ('_' in node)){ node = node._; n++; } return n; }
   /* A DEFAULT, NOT A LAW. There is no substrate fact that means 'project' — the
    * floor does not say it (beach-venture and genus-one are clocks; doing,
    * experiences and molequle are trees, and all five are projects), and nothing
@@ -961,7 +963,7 @@
       });
   }
 
-  /* the line beneath the row for families that have no form yet */
+  /* the quiet line beneath the row — how a hand stands to the family it is in */
   var BARE_CSS = '.projrow__bare{flex-basis:100%;font-family:var(--mono);font-size:11px;letter-spacing:0.06em;' +
                  'color:var(--vapour-dim);padding-top:4px}' +
                  '.projrow__bare a{color:var(--vapour-dim);text-decoration:underline dotted;margin:0}';
@@ -989,6 +991,8 @@
     '.projrow__item{display:flex;align-items:center;gap:7px;font-family:var(--body);' +
       'font-size:14px;color:var(--vapour);min-width:210px}' +
     '.projrow__name{flex:1}' +
+    '.projrow__group{flex:1 0 100%;font-family:var(--mono);font-size:10.5px;letter-spacing:0.12em;text-transform:uppercase;' +
+      'color:var(--vapour-dim);padding-top:6px}' +
     '.projrow__mv{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);' +
       'font-size:11px;line-height:1;padding:2px 5px;cursor:pointer}' +
     '.projrow__mv:disabled{opacity:0.25;cursor:default}' +
@@ -1100,9 +1104,10 @@
        * David's "only show well-formed projects" (2026-09-28): a spine with no law is
        * drawn bare by the pages, under nobody's words, and a row that names it
        * beside the others says it is something it is not yet. It is not hidden
-       * either — a family you list or hold a mirror in that has no form yet is named
-       * beneath the row, linked, so a direct link still opens it (his answer to
-       * the forms proposal's §9). The families with their own pages and the ground
+       * either — a family you list or hold a mirror in that has no form yet waits in
+       * the chooser under its own heading, and a direct link still opens it (his
+       * answer to the forms proposal's §9); it is never listed beneath the row (David,
+       * 2026-10-01: no list of badly formed projects). The families with their own pages and the ground
        * carry their law elsewhere (function:now, function:earth) and are exempt. */
       /* A HAND'S OWN DIARY IS NOT A PROJECT: spine:<handle> beside passport:<handle>
        * is the family /page founds for a person's posts, and a reader's answer there
@@ -1148,8 +1153,8 @@
         visible = stated.slice();
         if (!walksGround) visible = visible.filter(function(f){ return f !== 'here'; });
         if (cfg.family && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
-        /* a stated family with no form yet stays yours and stays listed; it is named
-         * beneath the row until its law stands, never drawn as a project beside the
+        /* a stated family with no form yet stays yours and stays listed; it waits in
+         * the chooser until its law stands, never drawn as a project beside the
          * others (the family you stand in is the one exception, said above) */
         visible = visible.filter(function(f){ return f === cfg.family || wellFormed(f); });
         /* a stated project you hold no mirror in yet is still yours — offer it too */
@@ -1224,41 +1229,71 @@
         var inList = {};
         (stated && stated.length ? stated : visible).forEach(function(f){ inList[f] = 1; });
 
+        /* SEPARATED BY FORM, as the walk reads it (David, 2026-10-01): a spine whose
+         * underscore chain runs ten deep walks as the clock, any other spine as
+         * branches, the ground as places, and a family with no law waits beneath
+         * them. Read off each spine when the chooser opens — the form is where the
+         * data sits, never a word stored beside it. The arrows move a family within
+         * its form; the row keeps the saved order. */
+        var GROUPS = [['clock', 'on the clock'], ['tree', 'in branches'], ['ground', 'on the map'], ['bare', 'no form yet']];
+        var formOf = {};
+        function groupOf(f){ return formOf[f] || 'tree'; }
+        function readForms(){
+          return Promise.all(order.map(function(f){
+            if (f === 'here'){ formOf[f] = 'ground'; return null; }
+            if (bare.indexOf(f) >= 0){ formOf[f] = 'bare'; return null; }
+            return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent('spine:' + f),
+                         { headers:{Accept:'application/json'}, cache:'no-store' })
+              .then(function(r){ return r.ok ? r.json() : null; })
+              .then(function(b){ formOf[f] = floorOf(b) === 10 ? 'clock' : 'tree'; })
+              .catch(function(){ formOf[f] = 'tree'; });
+          }));
+        }
+
         function draw(){
           panel.innerHTML = '';
-          order.forEach(function(f, i){
-            var rowEl = document.createElement('div');
-            rowEl.className = 'projrow__item';
-            var cb = document.createElement('input');
-            cb.type = 'checkbox'; cb.checked = !!inList[f];
-            /* THE ONE YOU ARE STANDING IN IS UNTICKABLE LIKE ANY OTHER. It used to
-             * be disabled here — "you are standing in it" — which made a family
-             * joined by accident permanent: the row shows it on every page that
-             * shows the row, and the only place offering to remove it was the one
-             * page that refused. Julie met this at /walk/fairy-tales and was stuck
-             * with it (David, 2026-09-10). Unticking now removes it from the saved
-             * list; it still SHOWS while she stands in it, which the note below
-             * says plainly so the save does not read as a failure. */
-            cb.addEventListener('change', function(){
-              if (cb.checked) inList[f] = 1; else delete inList[f];
-              draw();
-            });
-            var nm = document.createElement('span');
-            nm.className = 'projrow__name'; nm.textContent = f + (bare.indexOf(f) >= 0 ? ' \u00b7 no form yet' : '');
-            if (!inList[f]) nm.style.opacity = '0.45';
-            rowEl.appendChild(cb); rowEl.appendChild(nm);
-            [['↑', -1], ['↓', 1]].forEach(function(mv){
-              var b = document.createElement('button');
-              b.type = 'button'; b.className = 'projrow__mv'; b.textContent = mv[0];
-              b.disabled = (i + mv[1] < 0 || i + mv[1] >= order.length);
-              b.addEventListener('click', function(e){
-                e.stopPropagation();
-                var j = i + mv[1], t = order[i]; order[i] = order[j]; order[j] = t;
+          GROUPS.forEach(function(g){
+            var fams = order.filter(function(f){ return groupOf(f) === g[0]; });
+            if (!fams.length) return;
+            var head = document.createElement('div');
+            head.className = 'projrow__group'; head.textContent = g[1];
+            panel.appendChild(head);
+            fams.forEach(function(f, k){
+              var rowEl = document.createElement('div');
+              rowEl.className = 'projrow__item';
+              var cb = document.createElement('input');
+              cb.type = 'checkbox'; cb.checked = !!inList[f];
+              /* THE ONE YOU ARE STANDING IN IS UNTICKABLE LIKE ANY OTHER. It used to
+               * be disabled here — "you are standing in it" — which made a family
+               * joined by accident permanent: the row shows it on every page that
+               * shows the row, and the only place offering to remove it was the one
+               * page that refused. Julie met this at /walk/fairy-tales and was stuck
+               * with it (David, 2026-09-10). Unticking now removes it from the saved
+               * list; it still SHOWS while she stands in it, which the note below
+               * says plainly so the save does not read as a failure. */
+              cb.addEventListener('change', function(){
+                if (cb.checked) inList[f] = 1; else delete inList[f];
                 draw();
               });
-              rowEl.appendChild(b);
+              var nm = document.createElement('span');
+              nm.className = 'projrow__name'; nm.textContent = f;
+              if (!inList[f]) nm.style.opacity = '0.45';
+              rowEl.appendChild(cb); rowEl.appendChild(nm);
+              [['↑', -1], ['↓', 1]].forEach(function(mv){
+                var b = document.createElement('button');
+                b.type = 'button'; b.className = 'projrow__mv'; b.textContent = mv[0];
+                var other = fams[k + mv[1]];
+                b.disabled = !other;
+                b.addEventListener('click', function(e){
+                  e.stopPropagation();
+                  var i = order.indexOf(f), j = order.indexOf(other);
+                  order[i] = other; order[j] = f;
+                  draw();
+                });
+                rowEl.appendChild(b);
+              });
+              panel.appendChild(rowEl);
             });
-            panel.appendChild(rowEl);
           });
 
           var foot = document.createElement('div'); foot.className = 'projrow__foot';
@@ -1290,26 +1325,11 @@
           foot.appendChild(save);
           panel.appendChild(foot);
         }
-        draw();
+        panel.textContent = 'reading the forms\u2026';
         row.appendChild(panel);
+        readForms().then(draw);
       });
       row.appendChild(pick);
-      /* the families with no form yet, named beneath the row and linked: reachable
-       * by a direct link, never drawn as a project until their law stands */
-      if (bare.length){
-        var bl = document.createElement('span');
-        bl.className = 'projrow__bare';
-        bl.appendChild(document.createTextNode('no form yet \u00b7 '));
-        bare.sort().forEach(function(f, i){
-          if (i) bl.appendChild(document.createTextNode(' \u00b7 '));
-          var ba = document.createElement('a');
-          ba.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
-          ba.textContent = f;
-          ba.title = 'spine:' + f + ' stands with no law at function:' + f + ' \u2014 drawn bare until it has one';
-          bl.appendChild(ba);
-        });
-        row.appendChild(bl);
-      }
       /* how this hand stands to the family it is standing in — its own line; on the
        * walk the masthead carries it, with the door that writes it */
       if (cfg.page !== 'walk' && cfg.family && lineOf[cfg.family]){
