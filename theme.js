@@ -528,6 +528,15 @@
     ['news',        'news']
   ];
 
+  /* THE NAME THIS DEVICE SIGNS WITH — render:who, kept by whichever page last wrote
+   * under it (/welcome's 'that's me' and its three cards, /page, /view, /render,
+   * /network). Never a sign-in: it only says whose pages the site's own menu should
+   * offer when a page carries no handle of its own. */
+  function knownName(){
+    try { return String(localStorage.getItem('render:who') || '').replace(/[^a-z0-9_-]/gi, '').trim() || null; }
+    catch(e){ return null; }
+  }
+
   var CSS = '' +
     '.dd{position:relative;flex:none}' +
     '.dd>summary{list-style:none;cursor:pointer;border:1px solid var(--line);border-radius:4px;' +
@@ -874,7 +883,7 @@
     return readItems(origin, handle, digit).then(function(items){ return items ? items.map(function(x){ return x.name; }) : null; });
   }
   var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
-  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and nothing else. Naming a place here is choosing it, and a place left out simply does not appear: the menu is the choice, not the choice laid over a catalogue. Nothing is lost by leaving one out, because the catalogue every page offers stands whole behind 'choose what shows', which is where a list is changed.";
+  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and, beneath it, only the one way across to the site's own pages. Naming a place here is choosing it, and a place left out simply does not appear: the menu is the choice, not the choice laid over a catalogue. Nothing is lost by leaving one out, because the catalogue every page offers stands whole behind 'choose what shows', which is where a list is changed.";
   var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down. Beneath each family's rung, at its 2, this hand's own line on how it stands to the family — 'as coordinator, for Community Recovery' — plural across families and changed at will; there is no roster anywhere (the beach's conventions 2.131).";
 
   function latchFor(handle){ return 'lists-latch:' + handle; }
@@ -1383,6 +1392,21 @@
     var menu = document.createElement('div');
     menu.className = 'dd__menu';
 
+    /* ONE WAY ACROSS, at the foot of every list. The go menus are kinds of bar — a
+     * hand's places, the site's own pages, the tables and a character's — and a reader
+     * standing in one must reach the others without knowing an address. So each list
+     * carries the one door that crosses: a hand's places, the tables and a character
+     * cross to /welcome, and the site's pages cross to the hand's own now (David,
+     * 2026-10-02: "I need one item to shift from one go-list to another … /now and
+     * /welcome seem to be the ones that need to be in each other's go-list"). Under a
+     * rule, after the list and never inside it, so a list a reader has chosen cannot
+     * hide the way out of it. */
+    function across(label, url){
+      var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
+      var a = document.createElement('a'); a.href = url; a.textContent = label;
+      menu.appendChild(a);
+    }
+
     /* A CHARACTER IN A WORLD keeps none of a person's places — no now, no here, no
      * hands, no list of its own — so a world page's menu is the world's: this
      * character's page, the others at the same table (read off the table's own
@@ -1431,6 +1455,7 @@
       var t = document.createElement('a');
       t.href = '/rpg'; t.textContent = 'the open tables';
       menu.appendChild(t);
+      across('welcome', '/welcome');
     }
 
     /* THE TABLES' OWN PAGES, standing in no one world (/rpg): the open tables, the
@@ -1451,12 +1476,15 @@
         a.href = p[2]; a.textContent = p[1];
         menu.appendChild(a);
       });
+      across('welcome', '/welcome');
     }
 
     /* THE SITE'S OWN PAGES (SITE, above): each other, the one stood on marked as
      * here; across a rule the mirror and the tables; and a walker who arrived
      * carrying a handle keeps the way back to their own now, so the chain of
-     * doors is not broken by passing through. Nothing to choose, so no editor. */
+     * doors is not broken by passing through — and a page that carries none
+     * offers the now of the name this device signs with, which is the way across
+     * to a hand's own places. Nothing to choose, so no editor. */
     function paintSite(){
       var who = document.createElement('span');
       who.className = 'dd__who'; who.textContent = 'happyseaurchin.com';
@@ -1477,7 +1505,8 @@
       rule();
       door(['mirror', 'the mirror ↗', 'https://mirror.onen.ai/']);
       door(['rpg', 'the tables', '/rpg']);
-      if (cfg.handle){ rule(); door(['now', cfg.handle + '’s now', '/now/' + encodeURIComponent(cfg.handle)]); door(['gallery', cfg.handle + '’s pictures', '/gallery/' + encodeURIComponent(cfg.handle)]); }
+      var h = cfg.handle || knownName();
+      if (h){ rule(); door(['now', h + '’s now', '/now/' + encodeURIComponent(h)]); door(['gallery', h + '’s pictures', '/gallery/' + encodeURIComponent(h)]); }
     }
 
     function paint(){
@@ -1518,6 +1547,9 @@
         lastGroup = g;
         place(p);
       });
+
+      /* the handle rides along, so /welcome's own menu offers the way back here */
+      across('welcome', '/welcome' + (cfg.handle ? '?h=' + encodeURIComponent(cfg.handle) : ''));
 
       var edit = document.createElement('button');
       edit.className = 'dd__edit'; edit.type = 'button'; edit.setAttribute('data-keep-open',''); edit.textContent = 'choose what shows';
