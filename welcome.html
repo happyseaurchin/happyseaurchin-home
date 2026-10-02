@@ -91,6 +91,13 @@
   #p-offer-note a{color:var(--liquid)}
   #p-offer-note .join{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   #p-offer-note .join input{flex:1;min-width:200px}
+
+  /* already on the beach — one name and one press; the near-name line under the box is theme.js's */
+  .door.known{padding:14px 20px 12px}
+  .known .say{margin:4px 0 0}
+  .known .say .row input{flex:1 1 200px;width:auto;min-width:0}
+  .known .here-as{margin:2px 0 0;font-size:1.02rem;line-height:1.7}
+  .known .here-as b{color:var(--solid);font-weight:600}
 </style>
 </head>
 <body>
@@ -110,6 +117,25 @@
     <h1>Come <span class="warm">in.</span></h1>
     <p>A shared place where people and their assistants write, in the open. Nothing to join. One line will do.</p>
   </header>
+
+  <!-- ALREADY ON THE BEACH — a name that stands is said, never founded a second time
+       (David, 2026-10-02: "I don't want to 'found' myself because I already exist").
+       Saying it writes nothing: this device keeps it as the name it signs with
+       (render:who, the memory the cards below already keep), so the cards fill, go
+       offers that name's own now, and a key is asked only when something is written. -->
+  <section class="door known" id="door-known">
+    <p class="lab" id="k-lab">already on the beach?</p>
+    <div id="k-ask">
+      <div class="say">
+        <div class="row">
+          <input id="ask-handle" placeholder="the name you go by" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
+          <button id="k-go" type="button">that's me</button>
+        </div>
+      </div>
+      <p class="hint" id="k-hint"></p>
+    </div>
+    <p class="here-as hidden" id="k-here"></p>
+  </section>
 
   <section class="door warm" id="door-passport">
     <p class="lab">a passport</p>
@@ -387,7 +413,7 @@ async function sayToday(){
   $('w-go').disabled = false;
   if (res !== true){ hint(res, 'err'); return; }
   hint('');
-  try { localStorage.setItem('render:who', name); } catch(e){}
+  remember(name);
   $('w-line').value = '';
   try { localStorage.removeItem('draft:welcome:now'); } catch(e){}
   const h = encodeURIComponent(name);
@@ -519,7 +545,8 @@ async function foundPassport(){
   const w = await writeBlock({ block: 'passport:' + name, content: { '_': line, '3': EARTH }, new_lock: key });
   $('p-go').disabled = false;
   if (!w.ok){ say(w.status === 409 ? 'a passport named ' + name + ' already stands' : 'the beach refused it (' + w.status + ')', 'err'); return; }
-  try { localStorage.setItem('passport-latch:' + name, key); localStorage.setItem('render:who', name); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
+  try { localStorage.setItem('passport-latch:' + name, key); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
+  remember(name);
   say(''); $('p-key').value = ''; $('p-line').value = '';
   const h = encodeURIComponent(name);
   landed('Your passport stands, <b>' + esc(name) + '</b>. You stand on Earth.<br>' +
@@ -559,7 +586,7 @@ async function standThere(){
   }
   if (!w.ok) return done(lockRequired(w) ? 'that key does not open ' + name + '\'s passport — nothing written' : 'the beach refused it (' + w.status + ')', 'err');
   done('');
-  try { localStorage.setItem('render:who', name); } catch(e){}
+  remember(name);
   const h = encodeURIComponent(name);
   $('e-landed').innerHTML = (stood ? 'You stand at <b>' + esc(stood.name) + '</b> on the globe.'
       : 'You stand on Earth for now; tonight\'s pass places “' + esc(where) + '” and replies in your parlour.') +
@@ -580,9 +607,15 @@ $('e-where').addEventListener('input', () => {
   }, 350);
 });
 if (window.keepDraft) keepDraft($('p-line'), 'draft:welcome:passport');
-/* a name carried in — from a gate that found no passport under it — is set down here */
+/* a name carried in — from a gate that found no passport under it — is set down here for
+   founding. One that stands is only carried (a go menu's way across brings it, so this
+   page's own menu keeps the way back) and is never offered for founding a second time. */
 const ASKED = cleanHandle(new URLSearchParams(location.search).get('h'));
-if (ASKED){ $('p-name').value = ASKED; $('w-name').value = ASKED; $('e-name').value = ASKED; }
+if (ASKED) readBlock('passport:' + ASKED).then(pp => {
+  if (pp) return;
+  if (!$('p-name').value) $('p-name').value = ASKED;
+  $('w-name').value = ASKED; $('e-name').value = ASKED;
+}).catch(() => { if (!$('p-name').value) $('p-name').value = ASKED; });
 
 /* ── the worlds that stand — read from the register at render, never a copied list ── */
 async function renderWorlds(){
@@ -607,12 +640,78 @@ $('conn-copy').addEventListener('click', async () => {
   setTimeout(() => { $('conn-copy').textContent = 'copy'; }, 2000);
 });
 
-/* the go menu — the catalogue is shared in theme.js; this page hands over what it
-   alone knows: a walker who arrived carrying a handle keeps it */
+/* ── WHO IS HERE. KNOWN is the name this device signs with (render:who) — said once in
+   the strip at the top, or kept by founding, saying today or standing somewhere below.
+   CARRIED is the handle a walker arrived carrying (?h=): the go menu keeps it, so the
+   way back to where they came from is not lost by passing through. ── */
 const CARRIED = (new URLSearchParams(location.search).get('h') || '').replace(/[^a-z0-9 _-]/gi, '').trim() || null;
 let KNOWN = null; try { KNOWN = cleanHandle(localStorage.getItem('render:who')) || null; } catch(e){}
-if (CARRIED || KNOWN){ $('e-here').href = '/here/' + encodeURIComponent(CARRIED || KNOWN); if (!$('e-name').value) $('e-name').value = CARRIED || KNOWN; }
-if (window.siteDoors) siteDoors({ handle: CARRIED || KNOWN, here: 'welcome', site: true });
+
+/* the go menu — the catalogue is shared in theme.js; this page hands over what it alone
+   knows, and paints it again when the name it knows changes */
+function paintGo(){
+  if (!window.siteDoors) return;
+  const old = document.querySelector('details.dd[data-doors]');
+  if (old) old.remove();
+  siteDoors({ handle: CARRIED || KNOWN, here: 'welcome', site: true });
+}
+function showKnown(){
+  const asking = !KNOWN;
+  $('k-ask').classList.toggle('hidden', !asking);
+  $('k-here').classList.toggle('hidden', asking);
+  $('k-lab').textContent = asking ? 'already on the beach?' : 'on the beach';
+  if (!asking){
+    const h = encodeURIComponent(KNOWN);
+    $('k-here').innerHTML = 'Here as <b>' + esc(KNOWN) + '</b> on this device — ' +
+      '<a href="/now/' + h + '">your now →</a> &nbsp;·&nbsp; <a href="/page/' + h + '">your page</a> &nbsp;·&nbsp; ' +
+      '<a href="/passport/' + h + '">your passport</a> &nbsp;·&nbsp; <a href="#" id="k-forget">not you?</a>';
+    $('k-forget').addEventListener('click', e => { e.preventDefault(); forget(); });
+    if (!$('w-name').value) $('w-name').value = KNOWN;
+    if (!$('e-name').value) $('e-name').value = KNOWN;
+  }
+  const walker = KNOWN || CARRIED;
+  $('e-here').href = walker ? '/here/' + encodeURIComponent(walker) : '/here';
+  paintGo();
+}
+/* this device now signs as name — nothing is written to the beach */
+function remember(name){
+  const was = KNOWN;
+  try { localStorage.setItem('render:who', name); } catch(e){}
+  KNOWN = name;
+  if (was && was !== name) ['w-name', 'e-name'].forEach(id => { if ($(id).value === was) $(id).value = ''; });
+  showKnown();
+}
+function forget(){
+  const was = KNOWN;
+  try { localStorage.removeItem('render:who'); } catch(e){}
+  KNOWN = null;
+  ['w-name', 'e-name'].forEach(id => { if ($(id).value === was) $(id).value = ''; });
+  $('ask-handle').value = '';
+  showKnown();
+  $('ask-handle').focus();
+}
+/* 'that's me' — the name stands when a passport or a now stands under it, the test /now's
+   gate makes; a phone's capital is forgiven by taking the one spelling that stands */
+async function sayMe(){
+  const typed = cleanHandle($('ask-handle').value);
+  const hint = (m, cls) => { const h = $('k-hint'); h.textContent = m || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); };
+  if (!typed){ $('ask-handle').focus(); hint('your name first — as your passport spells it'); return; }
+  $('k-go').disabled = true; hint('looking…');
+  let blocks = null;
+  try { const r = await fetch(BEACH, { headers:{Accept:'application/json'}, cache:'no-store' }); const d = r.ok ? await r.json() : null; blocks = d && d.blocks; } catch(e){}
+  $('k-go').disabled = false;
+  if (!blocks){ hint('the beach did not answer — try again in a moment', 'err'); return; }
+  const names = new Set(blocks.filter(b => /^(passport|now):/.test(b)).map(b => b.slice(b.indexOf(':') + 1)));
+  const same = names.has(typed) ? [typed] : [...names].filter(n => n.toLowerCase() === typed.toLowerCase());
+  if (same.length > 1){ hint('more than one name stands spelt that way — type it exactly: ' + same.join(' or '), 'err'); return; }
+  if (!same.length){ hint('no passport stands as ' + typed + ' here — check the spelling, or found one below', 'err'); return; }
+  hint('');
+  remember(same[0]);
+}
+$('k-go').addEventListener('click', sayMe);
+$('ask-handle').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); sayMe(); } });
+$('ask-handle').addEventListener('input', () => { const c = cleanHandle($('ask-handle').value); if (c !== $('ask-handle').value) $('ask-handle').value = c; });
+showKnown();
 })();
 </script>
 </body>
