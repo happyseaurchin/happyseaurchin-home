@@ -1455,6 +1455,9 @@
       var t = document.createElement('a');
       t.href = '/rpg'; t.textContent = 'the open tables';
       menu.appendChild(t);
+      var c = document.createElement('a');
+      c.href = '/costs'; c.textContent = 'what play costs';
+      menu.appendChild(c);
       across('welcome', '/welcome');
     }
 
@@ -1465,7 +1468,7 @@
       var who = document.createElement('span');
       who.className = 'dd__who'; who.textContent = 'the tables';
       menu.appendChild(who);
-      [['rpg', 'the open tables', '/rpg'], ['mirror', 'the mirror ↗', 'https://mirror.onen.ai/'], ['play', 'how the game plays', '/play'], ['gallery', 'the tables, in stills', '/gallery' + (cfg.world ? '?world=' + encodeURIComponent(cfg.world) : '')]].forEach(function(p){
+      [['rpg', 'the open tables', '/rpg'], ['mirror', 'the mirror ↗', 'https://mirror.onen.ai/'], ['play', 'how the game plays', '/play'], ['costs', 'what play costs', '/costs'], ['gallery', 'the tables, in stills', '/gallery' + (cfg.world ? '?world=' + encodeURIComponent(cfg.world) : '')]].forEach(function(p){
         if (p[0] === cfg.here){
           var cur = document.createElement('span');
           cur.className = 'here'; cur.textContent = p[1]; cur.setAttribute('aria-current', 'page');
