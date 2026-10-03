@@ -250,13 +250,30 @@ const RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: redu
 
 /* /globe/<handle> — a lens on the world, not a person: the segment is CARRIED
  * for the chain of doors, never read. */
-const HANDLE = (function(){
+let HANDLE = (function(){
   const m = location.pathname.match(/\/globe\/([^\/]+)\/?$/);
   const q = new URLSearchParams(location.search).get('h');
   return ((m && decodeURIComponent(m[1])) || q || '').replace(/[^a-z0-9_-]/gi, '').trim() || null;
 })();
 /* the page hands over what only it knows; the catalogue is shared in theme.js */
 if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'globe' });
+
+/* TAKING A NAME AND LETTING IT GO HAPPEN IN PLACE (David, 2026-10-03: letting a
+ * name go reloaded the page, replayed the planet's arrival and flew him down to
+ * the very person he had just released). The URL still carries the handle for the
+ * doors — by history, never by a load — and the go menu is rebuilt for it, since
+ * siteDoors builds once. Taking a name flies to where that person stands, as it
+ * always did; letting it go leaves the view exactly where it is. */
+function takeHandle(h, path){
+  HANDLE = h || null;
+  const q = new URLSearchParams(location.search); q.delete('h');
+  const qs = q.toString();
+  try { history.replaceState(null, '', (HANDLE ? '/globe/' + encodeURIComponent(HANDLE) : '/globe') + (qs ? '?' + qs : '') + location.hash); } catch(e){}
+  const doors = document.querySelector('details.dd[data-doors]');
+  if (doors) doors.remove();
+  if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'globe' });
+  if (HANDLE && path) setAddress(path); else renderPanel();
+}
 
 /* ── pscale tree — the walk, exactly as the walker walks it ─────────────── */
 function floorOf(block){
@@ -826,7 +843,7 @@ function renderPanel(){
     const on = !!HANDLE && f.handle.toLowerCase() === HANDLE.toLowerCase();
     const h = document.createElement('span'); h.className = 'h' + (on ? ' on' : ''); h.textContent = f.handle + (on ? ' ×' : '');
     h.title = on ? 'release — the globe as no one' : 'the globe as ' + f.handle + ' — the doors follow';
-    h.addEventListener('click', () => { location.href = (on ? '/globe' : '/globe/' + encodeURIComponent(f.handle)) + '#' + f.path.join(','); });
+    h.addEventListener('click', () => takeHandle(on ? null : f.handle, f.path));
     const at = document.createElement('span'); at.className = 'at';
     const ts = semOf(nodeAt(SPATIAL, f.path));
     at.textContent = ts ? nameOf(ts) : 'unresolved ground';
