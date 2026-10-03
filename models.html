@@ -330,6 +330,7 @@
         if (dm){
           run(runs, 'its doorman, while you are away', nameOf(m, 'Sonnet · medium'), m ? '' : 'the doorman\'s own, nothing being set');
           if (dm.mode === 'character') run(runs, 'the world\'s hand, after each moment at its table', 'its game-keeper\'s', 'set under worlds I keep, by whoever keeps the world');
+          if (dm.mode === 'character') seatRow(r, runs);
         }
       }
       if (!writable){
@@ -383,6 +384,26 @@
       var a = el('div', 'set'); a.appendChild(el('label', '', 'its model'));
       a.appendChild(seg(now.mind, function(t){ save(t, own(now.keeper)); })); sets.appendChild(a);
     }).catch(function(){ run(runs, 'its beach did not answer just now', '—'); });
+  }
+
+  /* A CHARACTER'S SEAT, where its table's world asks for seats: the world read
+   * off the table's PLACING, the rule off the keeper's dial, the seats off the
+   * world's list, and the beats used off the keeper's journal. */
+  function seatRow(r, host){
+    var table = (r.beach.match(/\/w\/([^\/]+)$/) || [])[1];
+    if (!table) return;
+    get(r.beach, 'keeper:scene').then(function(scene){
+      var m = /PLACING:\s*\*:(\S+?):spatial:([^:\s"]+)/.exec(JSON.stringify(scene || ''));
+      if (!m) return;
+      var master = trim(m[1]), world = m[2];
+      return Promise.all([get(master, 'wake:keeper:' + world), get(APEX, 'sed:' + world + '-seats'), get(master, 'daily:keeper:' + world)]).then(function(got){
+        if (!got[0]) return;
+        var per = keeperMinds(got[0]).seats || 0, buy = got[1] ? TICKETS + '/buy/' + encodeURIComponent(world) + '-seat' : '';
+        if (!per){ runLink(host, 'its seat at ' + world, 'not needed — ' + world + ' keeps every beat for now', buy, 'buy one ahead'); return; }
+        var held = (seatHolders(got[1])[r.handle.toLowerCase()] || { seats: 0 }).seats, used = usedBy(entriesOf(got[2], []), r.handle), left = Math.max(0, held * per - used);
+        runLink(host, 'its seat at ' + world, held ? left + ' of ' + (held * per) + ' beats left' : 'no seat yet — the world does not move for its beats', buy, held ? 'buy another' : 'buy a seat');
+      });
+    }).catch(function(){});
   }
 
   function paint(){
@@ -448,10 +469,11 @@
     return out;
   }
   function tally(entries){
-    var by = {}, total = { beats:0, cost:0, unpriced:false };
+    var by = {}, total = { beats:0, cost:0, unpriced:false, unkept:0 };
     entries.forEach(function(e){
       var t = String(e['2']).replace(/\/+$/, '').split('/').pop() || 'a table';
-      var row = by[t] || (by[t] = { beats:0, cost:0, last:'', unpriced:false });
+      var row = by[t] || (by[t] = { beats:0, cost:0, last:'', unpriced:false, unkept:0 });
+      if (String(e['5'] || '') === 'unkept'){ row.unkept++; total.unkept++; return; }
       row.beats++; total.beats++;
       if (String(e['3'] || '') > row.last) row.last = String(e['3'] || '');
       var m; USAGE_RE.lastIndex = 0;
@@ -471,9 +493,56 @@
     if (nine && typeof nine === 'object') Object.keys(nine).forEach(function(k){
       if (k === '_' || typeof nine[k] !== 'string') return;
       var p = nine[k].trim().split(/[\s,]+/), w = p[0].toLowerCase();
-      if (p.length >= 2 && (w === 'keeper' || w === 'figure')) got[w] = tierOf(p[1]);
+      if (p.length >= 2 && w === 'seats') got.seats = /^\d+$/.test(p[1]) ? +p[1] : 0;
+      else if (p.length >= 2 && (w === 'keeper' || w === 'figure')) got[w] = tierOf(p[1]);
     });
     return got;
+  }
+  /* SEATS (David, 2026-10-03: "£5 for 100 beats. Each player pays their own
+   * ticket"). A world asks for them with one line beneath 9 of its keeper's dial,
+   * 'seats 100'; each seat bought is an entry '<handle> — <date>' on
+   * sed:<world>-seats at the beach, written by the ticket machine; and every
+   * beat the keeper kept names, in its journal, the character who made it happen. */
+  var SEATS_PER = 100, TICKETS = 'https://genus-tickets-production.up.railway.app';
+  function seatLines(list, out){
+    if (!list || typeof list !== 'object') return out;
+    Object.keys(list).forEach(function(k){
+      var v = list[k];
+      if (k === '_'){ if (v && typeof v === 'object') seatLines(v, out); return; }
+      if (!/^[1-9]$/.test(k)) return;
+      var t = typeof v === 'string' ? v : (v && typeof v === 'object' && typeof v._ === 'string' ? v._ : '');
+      if (t && t.indexOf(' — ') > 0) out.push(t.trim());
+      if (v && typeof v === 'object') seatLines(v, out);
+    });
+    return out;
+  }
+  function seatHolders(list){
+    var by = {};
+    seatLines(list, []).forEach(function(t){ var h = t.split(' — ')[0].trim(), id = h.toLowerCase(); (by[id] = by[id] || { handle: h, seats: 0 }).seats++; });
+    return by;
+  }
+  function usedBy(entries, handle){
+    var want = String(handle || '').trim().toLowerCase();
+    return entries.filter(function(e){ return String(e['5'] || '') === 'done' && String(e['7'] || '').trim().toLowerCase() === want; }).length;
+  }
+  function seatsNine(nine, n, world){
+    var was = (nine && typeof nine === 'object') ? nine : { _: typeof nine === 'string' ? nine : '' };
+    var node = { _: was._ || 'the keeper\'s models — beneath, one named line each (happyseaurchin.com/models).' };
+    var lines = [];
+    Object.keys(was).sort().forEach(function(k){
+      if (k === '_' || typeof was[k] !== 'string') return;
+      if (was[k].trim().split(/[\s,]+/)[0].toLowerCase() === 'seats') return;
+      lines.push(was[k]);
+    });
+    if (n) lines.push('seats ' + n + ' — each seat bought for a character on sed:' + world + '-seats keeps ' + n + ' of the beats it makes happen; a character with none left is not kept. Set at happyseaurchin.com/models; the game-keeper\'s to switch off.');
+    lines.slice(0, 9).forEach(function(v, i){ node[String(i + 1)] = v; });
+    return node;
+  }
+  function runLink(host, door, mind, href, label){
+    var r = el('div', 'run'); r.appendChild(el('span', 'run__door', door));
+    var m = el('span', 'run__mind', mind);
+    if (href){ m.appendChild(document.createTextNode(' ')); var a = el('a', '', label); a.href = href; a.target = '_blank'; a.rel = 'noopener'; a.style.color = 'var(--liquid)'; m.appendChild(a); }
+    r.appendChild(m); host.appendChild(r);
   }
   /* Position 9 of the keeper's dial, written WHOLE: the two lines this page sets
    * first, every other named line carried across (nineNode's rule). */
@@ -545,8 +614,8 @@
       });
     }
 
-    Promise.all([get(k.beach, dialName), get(k.beach, 'daily:' + r.handle)]).then(function(got){
-      var dial = got[0] && typeof got[0] === 'object' ? got[0] : null, journal = got[1];
+    Promise.all([get(k.beach, dialName), get(k.beach, 'daily:' + r.handle), get(APEX, 'sed:' + k.world + '-seats')]).then(function(got){
+      var dial = got[0] && typeof got[0] === 'object' ? got[0] : null, journal = got[1], list = got[2];
       var on = /^on\b/i.test(voice(dial && dial['1']).trim()), minds = keeperMinds(dial);
       run(runs, 'its switch', !dial ? 'no dial yet' : on ? 'on' : 'off', !dial ? 'it is made when the keeper is enrolled' : on ? 'every beat at its tables is kept' : 'nothing is kept');
       run(runs, 'the keeper, after each beat', nameOf(minds.keeper, 'Sonnet · medium'), minds.keeper ? '' : 'its own default');
@@ -555,6 +624,16 @@
       if (!tables.length) run(kept, 'what it has kept', journal ? 'nothing yet' : 'no journal yet', journal ? '' : 'its first pass starts one');
       tables.forEach(function(n){ var x = t.by[n]; run(kept, n, x.beats + (x.beats === 1 ? ' beat kept' : ' beats kept') + ' · ' + money(x.cost, x.unpriced), x.last ? 'last ' + when(x.last) : ''); });
       if (tables.length > 1) run(kept, 'all its tables', t.total.beats + ' beats · ' + money(t.total.cost, t.total.unpriced));
+      if (t.total.unkept) run(kept, 'not kept — no seat beats left', t.total.unkept + (t.total.unkept === 1 ? ' beat' : ' beats'), 'its player can buy a seat');
+
+      /* SEATS: what the world asks, who holds seats, and how much each has used */
+      var seated = el('div', 'runs'); host.insertBefore(seated, sets);
+      var holders = seatHolders(list), per = minds.seats || 0, entries = entriesOf(journal, []);
+      runLink(seated, 'seats', per ? per + ' beats a seat — a character with none left is not kept' : 'not asked — every beat is kept',
+              list ? TICKETS + '/buy/' + encodeURIComponent(k.world) + '-seat' : '', 'the buy page');
+      Object.keys(holders).sort().forEach(function(id){ var h = holders[id], used = usedBy(entries, h.handle);
+        run(seated, h.handle, h.seats + (h.seats === 1 ? ' seat' : ' seats') + (per ? ' · ' + used + ' of ' + (h.seats * per) + ' beats used' : ''), per ? '' : 'counted once seats are asked'); });
+      if (list && !Object.keys(holders).length) run(seated, 'who holds seats', 'nobody yet');
 
       if (dial){
         var s1 = el('div', 'set'); s1.appendChild(el('label', '', 'its switch'));
@@ -579,6 +658,16 @@
         s2.appendChild(seg(minds.keeper || 'medium', function(tier){ models(tier, own(minds.figure) || 'basic'); })); sets.appendChild(s2);
         var s3 = el('div', 'set'); s3.appendChild(el('label', '', 'each figure'));
         s3.appendChild(seg(minds.figure || 'basic', function(tier){ models(own(minds.keeper) || 'medium', tier); })); sets.appendChild(s3);
+        var s4 = el('div', 'set'); s4.appendChild(el('label', '', 'seats'));
+        s4.appendChild(pick(minds.seats ? 'asked' : 'not asked', ['not asked', 'asked'], function(v){
+          withLock((v === 'asked' ? 'To ask for seats at ' + k.world + ' (' + SEATS_PER + ' beats each)' : 'To stop asking for seats at ' + k.world) + ', the passphrase of keeper:' + k.world + ' — not an API key:', function(key){
+            note.className = 'note'; note.textContent = 'saving…';
+            post(k.beach, { block: dialName, spindle: '9', content: seatsNine(dial['9'], v === 'asked' ? SEATS_PER : 0, k.world), secret: key })
+              .then(function(w){ if (!w.ok){ dropKey(r); bad(refused(w)); return; } saved(key, function(d){ return !!keeperMinds(d).seats === (v === 'asked'); }); });
+          });
+        }));
+        s4.appendChild(el('small', '', 'asked: a player\'s beats are kept only from a seat they bought; not asked: every beat is kept'));
+        sets.appendChild(s4);
       }
       /* A NEW KEY GOES STRAIGHT TO THE WAKER, from this browser; the page keeps no
        * copy. The keeper's lock proves the world is yours to pay for. */
