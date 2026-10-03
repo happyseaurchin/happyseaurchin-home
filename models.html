@@ -61,6 +61,7 @@
   .run__mind i{font-style:normal;color:var(--vapour-dim)}
   .else{background:none;border:0;padding:0;color:var(--vapour-dim);font-family:var(--mono);font-size:11.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
   .absent{color:var(--vapour-dim);font-style:italic}
+  h2{font-family:var(--display);font-weight:700;font-size:clamp(24px,4.5vw,30px);line-height:1.1;margin:52px 0 10px}
   .foot{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:40px 0 0;line-height:1.9}
   .foot b{color:var(--vapour)}
 </style>
@@ -85,8 +86,18 @@
     <p id="a-note" class="absent" hidden></p>
   </form>
 
+  <h2>Worlds I keep</h2>
+  <p class="lede">A world you are game-keeper of. Its keeper runs on your key after every beat at its tables, whoever plays and through whatever door: here is its switch, its models, and what it kept and spent at each table.</p>
+  <div id="keeps"><p class="absent">reading this device's list…</p></div>
+  <form class="add" id="add-keep" autocomplete="off">
+    <p>Add a world you keep — just its name, the one its tables are placed in.</p>
+    <input id="k-world" placeholder="a world, such as brackenfoot" required>
+    <button type="submit">add to my worlds</button>
+    <p id="k-note" class="absent" hidden></p>
+  </form>
+
   <p class="foot">
-    This page never asks for an API key and cannot see one. Your key stays where you gave it — in the mirror, or deposited with a doorman — and this page only says which model it is asked for.<br>
+    This page asks for an API key in one place only: a world you keep, to hand a new key straight to the waker that runs its keeper. It keeps no copy, and no handle's row ever asks for one. Every other key stays where you gave it — in the mirror, or deposited with a doorman — and this page only says which model it is asked for.<br>
     A setting is one named line in the handle's own block — <b>beneath position 9 of its dial</b>, its doorman's behaviours — so it holds from any device and every door reads the same word. Anyone may read a dial, as they may read any block here; only changing one asks for the handle's passphrase (once per tab, or once per device with <b>keep passphrases on this device</b>, under <b>options</b>). Which handles are yours is written nowhere.<br>
     Every model that writes words here is Anthropic's: the mirror and the doormen call no other provider yet. Playing through an LLM app of your own with the connector uses that app's model and no key at all.
   </p>
@@ -318,7 +329,7 @@
             m === 'basic' ? 'for what happens and how it is told; the mirror\'s own voice stays Sonnet' : m === 'advanced' ? 'advanced is not worn at the mirror yet' : !m ? 'the mirror\'s own, nothing being set' : '');
         if (dm){
           run(runs, 'its doorman, while you are away', nameOf(m, 'Sonnet · medium'), m ? '' : 'the doorman\'s own, nothing being set');
-          if (dm.mode === 'character') run(runs, 'the world\'s hand, after each moment at its table', nameOf(now.keeper, 'Haiku · basic'), now.keeper ? '' : 'its own default');
+          if (dm.mode === 'character') run(runs, 'the world\'s hand, after each moment at its table', 'its game-keeper\'s', 'set under worlds I keep, by whoever keeps the world');
         }
       }
       if (!writable){
@@ -371,10 +382,6 @@
       var own = function(v){ return v && v.indexOf('other:') !== 0 ? v : null; };
       var a = el('div', 'set'); a.appendChild(el('label', '', 'its model'));
       a.appendChild(seg(now.mind, function(t){ save(t, own(now.keeper)); })); sets.appendChild(a);
-      if (dm && dm.mode === 'character'){
-        var k = el('div', 'set'); k.appendChild(el('label', '', 'the world\'s hand'));
-        k.appendChild(seg(now.keeper || 'basic', function(t){ save(own(now.mind) || 'medium', t); })); sets.appendChild(k);
-      }
     }).catch(function(){ run(runs, 'its beach did not answer just now', '—'); });
   }
 
@@ -411,6 +418,220 @@
     });
   }
 
+  /* ── WORLDS I KEEP — the game-keeper's side (David, 2026-10-03: "game-keeper it
+   * is"; a page for them, beach-style, visible through any portal). A world's
+   * keeper runs on its game-keeper's key after every beat at the world's tables
+   * (bsp-mcp #473). Its switch and models stand at its dial, wake:keeper:<world>,
+   * and every pass it makes is one entry of its journal, daily:keeper:<world>
+   * (#475): the table, the beat, and what the API counted. This reads both at
+   * the world's own surface; the list of worlds, like the list of handles, is
+   * the device's and is written nowhere. */
+  var KEEPS_KEY = 'models:keeps';
+  /* Dollars per million tokens: in, read from the kept frame, kept (an hour),
+   * out — the keeper's frame is kept an hour, at twice the price of plain input. */
+  var PRICES = { 'claude-sonnet-5': [2, 0.2, 4, 10], 'claude-haiku-4-5': [1, 0.1, 2, 5], 'claude-sonnet-4-6': [3, 0.3, 6, 15] };
+  var priceOf = function(model){ var m = String(model || ''); for (var k in PRICES) if (m.indexOf(k) === 0) return PRICES[k]; return null; };
+  var keeps = function(){ try { return JSON.parse(localStorage.getItem(KEEPS_KEY) || '[]'); } catch(e){ return []; } };
+  var keepKeeps = function(list){ try { localStorage.setItem(KEEPS_KEY, JSON.stringify(list)); } catch(e){} };
+  var USAGE_RE = /(keeper|sheets|figures) (\S+) in=(\d+) read=(\d+) write=(\d+) out=(\d+)/g;
+
+  /* Every entry of the journal, however deep it has grown: an entry carries the
+   * table it kept at 2 and what the API counted at 6; a container is walked. */
+  function entriesOf(node, out){
+    if (!node || typeof node !== 'object') return out;
+    Object.keys(node).forEach(function(k){
+      if (k !== '_' && !/^[1-9]$/.test(k)) return;
+      var v = node[k];
+      if (!v || typeof v !== 'object') return;
+      if (typeof v['6'] === 'string' && typeof v['2'] === 'string') out.push(v); else entriesOf(v, out);
+    });
+    return out;
+  }
+  function tally(entries){
+    var by = {}, total = { beats:0, cost:0, unpriced:false };
+    entries.forEach(function(e){
+      var t = String(e['2']).replace(/\/+$/, '').split('/').pop() || 'a table';
+      var row = by[t] || (by[t] = { beats:0, cost:0, last:'', unpriced:false });
+      row.beats++; total.beats++;
+      if (String(e['3'] || '') > row.last) row.last = String(e['3'] || '');
+      var m; USAGE_RE.lastIndex = 0;
+      while ((m = USAGE_RE.exec(e['6']))){
+        var p = priceOf(m[2]);
+        if (!p){ row.unpriced = total.unpriced = true; continue; }
+        var c = (m[3] * p[0] + m[4] * p[1] + m[5] * p[2] + m[6] * p[3]) / 1e6;
+        row.cost += c; total.cost += c;
+      }
+    });
+    return { by: by, total: total };
+  }
+  var money = function(c, unpriced){ return '$' + c.toFixed(c < 1 ? 3 : 2) + (unpriced ? ' and a model priced nowhere here' : ''); };
+  var when = function(iso){ return String(iso).replace('T', ' ').replace(/:\d\d(\.\d+)?Z$/, ' UTC'); };
+  function keeperMinds(dial){
+    var got = {}, nine = dial && dial['9'];
+    if (nine && typeof nine === 'object') Object.keys(nine).forEach(function(k){
+      if (k === '_' || typeof nine[k] !== 'string') return;
+      var p = nine[k].trim().split(/[\s,]+/), w = p[0].toLowerCase();
+      if (p.length >= 2 && (w === 'keeper' || w === 'figure')) got[w] = tierOf(p[1]);
+    });
+    return got;
+  }
+  /* Position 9 of the keeper's dial, written WHOLE: the two lines this page sets
+   * first, every other named line carried across (nineNode's rule). */
+  function keeperNine(nine, keeper, figure){
+    var was = (nine && typeof nine === 'object') ? nine : { _: typeof nine === 'string' ? nine : '' };
+    var node = { _: was._ || 'the keeper\'s models — beneath, one named line each (happyseaurchin.com/models).' };
+    var lines = [], kt = BY[keeper], ft = BY[figure];
+    if (kt) lines.push('keeper ' + kt.nick + ' — ' + kt.tier + ': the model that keeps the world after each beat at its tables. Set at happyseaurchin.com/models; the game-keeper\'s to change.');
+    if (ft) lines.push('figure ' + ft.nick + ' — ' + ft.tier + ': the model each of the place\'s people speaks with.');
+    Object.keys(was).sort().forEach(function(k){
+      if (k === '_' || typeof was[k] !== 'string') return;
+      var w = was[k].trim().split(/[\s,]+/)[0].toLowerCase();
+      if ((w === 'keeper' && kt) || (w === 'figure' && ft)) return;
+      lines.push(was[k]);
+    });
+    lines.slice(0, 9).forEach(function(v, i){ node[String(i + 1)] = v; });
+    return node;
+  }
+  function pick(current, options, onPick){
+    var box = el('div', 'seg');
+    options.forEach(function(o){
+      var b = el('button', '', o); b.type = 'button';
+      b.setAttribute('aria-pressed', String(current === o));
+      b.addEventListener('click', function(){ if (current !== o) onPick(o); });
+      box.appendChild(b);
+    });
+    return box;
+  }
+
+  function paintKeep(k, host){
+    host.textContent = '';
+    var r = { handle: 'keeper:' + k.world, beach: k.beach }, dialName = 'wake:' + r.handle;
+    var head = el('div', 'row__head');
+    head.appendChild(el('span', 'row__who', k.world));
+    var rm = el('button', 'x', 'forget'); rm.type = 'button'; rm.title = 'take ' + k.world + ' off this device\'s list';
+    rm.addEventListener('click', function(){ keepKeeps(keeps().filter(function(x){ return x.world !== k.world; })); dropKey(r); paintKeeps(); });
+    head.appendChild(rm); host.appendChild(head);
+    host.appendChild(el('div', 'row__where', (k.enrolled ? 'its keeper runs on your key' : 'no keeper is enrolled for it yet') + ' · ' + k.beach.replace(/^https?:\/\//, '')));
+    var runs = el('div', 'runs'); host.appendChild(runs);
+    var kept = el('div', 'runs'); host.appendChild(kept);
+    var sets = el('div', 'sets'); host.appendChild(sets);
+    var note = el('div', 'note'); host.appendChild(note);
+    var bad = function(why){ note.className = 'note bad'; note.textContent = why; };
+    var refused = function(w){ return (w.data && (w.data.code === 'lock_required' || /secret|lock/i.test(String(w.data.error || '')))) ? 'that passphrase does not open keeper:' + k.world + ' — nothing was changed' : 'not saved: ' + ((w.data && w.data.error) || ('HTTP ' + w.status)); };
+
+    /* THE KEEPER'S LOCK IS ASKED FOR IN THE ROW — masked, where a password manager
+     * can fill it; with a new API key beside it when one is being handed over. */
+    function withLock(why, then, apiKey){
+      var held = keyOf(r);
+      if (held && !apiKey){ then(held, ''); return; }
+      var old = host.querySelector('.ask'); if (old) old.remove();
+      var f = el('form', 'ask'); f.autocomplete = 'on';
+      f.appendChild(el('span', '', why));
+      var u = document.createElement('input'); u.type = 'text'; u.name = 'username'; u.autocomplete = 'username'; u.value = r.handle; u.hidden = true; f.appendChild(u);
+      var pw = document.createElement('input'); pw.type = 'password'; pw.name = 'password'; pw.autocomplete = 'current-password'; pw.placeholder = 'the passphrase of keeper:' + k.world; pw.required = true; if (held) pw.value = held; f.appendChild(pw);
+      var ak = null;
+      if (apiKey){ ak = document.createElement('input'); ak.type = 'password'; ak.autocomplete = 'off'; ak.placeholder = 'the new API key'; ak.required = true; f.appendChild(ak); }
+      var go = el('button', '', apiKey ? 'hand it to the keeper' : 'save'); go.type = 'submit'; f.appendChild(go);
+      var no = el('button', 'quiet', 'cancel'); no.type = 'button'; no.addEventListener('click', function(){ f.remove(); }); f.appendChild(no);
+      f.addEventListener('submit', function(e){ e.preventDefault(); var key = pw.value.trim(), api = ak ? ak.value.trim() : ''; if (!key || (ak && !api)) return; f.remove(); then(key, api); });
+      host.insertBefore(f, note); (held && ak ? ak : pw).focus();
+    }
+    function saved(key, check){
+      holdKey(r, key);
+      get(k.beach, dialName).then(function(d2){
+        var good = check(d2 && typeof d2 === 'object' ? d2 : null);
+        paintKeep(k, host);
+        setTimeout(function(){ var n = host.querySelector('.note'); if (n){ n.className = good ? 'note ok' : 'note bad'; n.textContent = good ? 'saved, and read back.' : 'written, but it did not read back as set — look at ' + dialName; } }, 900);
+      });
+    }
+
+    Promise.all([get(k.beach, dialName), get(k.beach, 'daily:' + r.handle)]).then(function(got){
+      var dial = got[0] && typeof got[0] === 'object' ? got[0] : null, journal = got[1];
+      var on = /^on\b/i.test(voice(dial && dial['1']).trim()), minds = keeperMinds(dial);
+      run(runs, 'its switch', !dial ? 'no dial yet' : on ? 'on' : 'off', !dial ? 'it is made when the keeper is enrolled' : on ? 'every beat at its tables is kept' : 'nothing is kept');
+      run(runs, 'the keeper, after each beat', nameOf(minds.keeper, 'Sonnet · medium'), minds.keeper ? '' : 'its own default');
+      run(runs, 'each figure, speaking for itself', nameOf(minds.figure, 'Haiku · basic'), minds.figure ? '' : 'its own default');
+      var t = tally(entriesOf(journal, [])), tables = Object.keys(t.by).sort(function(a, b){ return t.by[b].beats - t.by[a].beats; });
+      if (!tables.length) run(kept, 'what it has kept', journal ? 'nothing yet' : 'no journal yet', journal ? '' : 'its first pass starts one');
+      tables.forEach(function(n){ var x = t.by[n]; run(kept, n, x.beats + (x.beats === 1 ? ' beat kept' : ' beats kept') + ' · ' + money(x.cost, x.unpriced), x.last ? 'last ' + when(x.last) : ''); });
+      if (tables.length > 1) run(kept, 'all its tables', t.total.beats + ' beats · ' + money(t.total.cost, t.total.unpriced));
+
+      if (dial){
+        var s1 = el('div', 'set'); s1.appendChild(el('label', '', 'its switch'));
+        s1.appendChild(pick(on ? 'on' : 'off', ['on', 'off'], function(v){
+          withLock('To switch ' + k.world + '\'s keeper ' + v + ', the passphrase of keeper:' + k.world + ' — not an API key:', function(key){
+            note.className = 'note'; note.textContent = 'saving…';
+            post(k.beach, { block: dialName, spindle: '1', secret: key,
+                            content: v === 'on' ? 'on — the world is kept (the game-keeper\'s to flip)' : 'off — no table placed in ' + k.world + ' is kept (the game-keeper\'s to flip)' })
+              .then(function(w){ if (!w.ok){ dropKey(r); bad(refused(w)); return; } saved(key, function(d){ return !!d && /^on\b/i.test(voice(d['1']).trim()) === (v === 'on'); }); });
+          });
+        }));
+        sets.appendChild(s1);
+        var own = function(v){ return v && v.indexOf('other:') !== 0 ? v : null; };
+        var models = function(keeper, figure){
+          withLock('To set ' + k.world + '\'s models, the passphrase of keeper:' + k.world + ' — not an API key:', function(key){
+            note.className = 'note'; note.textContent = 'saving…';
+            post(k.beach, { block: dialName, spindle: '9', content: keeperNine(dial['9'], keeper, figure), secret: key })
+              .then(function(w){ if (!w.ok){ dropKey(r); bad(refused(w)); return; } saved(key, function(d){ var b = keeperMinds(d); return b.keeper === keeper && b.figure === figure; }); });
+          });
+        };
+        var s2 = el('div', 'set'); s2.appendChild(el('label', '', 'the keeper'));
+        s2.appendChild(seg(minds.keeper || 'medium', function(tier){ models(tier, own(minds.figure) || 'basic'); })); sets.appendChild(s2);
+        var s3 = el('div', 'set'); s3.appendChild(el('label', '', 'each figure'));
+        s3.appendChild(seg(minds.figure || 'basic', function(tier){ models(own(minds.keeper) || 'medium', tier); })); sets.appendChild(s3);
+      }
+      /* A NEW KEY GOES STRAIGHT TO THE WAKER, from this browser; the page keeps no
+       * copy. The keeper's lock proves the world is yours to pay for. */
+      var give = el('div', 'ask');
+      var gb = el('button', 'quiet', k.enrolled ? 'give its keeper a new API key' : 'enrol its keeper with your API key'); gb.type = 'button';
+      gb.addEventListener('click', function(){
+        withLock('The passphrase of keeper:' + k.world + ' — it proves the world is yours to keep — and the API key its keeper is to run on. The key goes straight to the waker; this page keeps no copy.', function(key, api){
+          note.className = 'note'; note.textContent = 'handing it over…';
+          fetch(WAKER + '/enroll', { method:'POST', cache:'no-store', headers:{ 'Content-Type':'application/json' },
+                                     body: JSON.stringify({ handle: r.handle, passphrase: key, beach: k.beach, fuel: api, consent: !dial }) })
+            .then(function(res){ return res.json().catch(function(){ return {}; }).then(function(d){ return { ok: res.ok && d && d.ok, d: d }; }); })
+            .then(function(w){
+              if (!w.ok){ bad((w.d && w.d.detail) || 'the waker did not take it'); return; }
+              holdKey(r, key); k.enrolled = true; paintKeep(k, host);
+              setTimeout(function(){ var n = host.querySelector('.note'); if (n){ n.className = 'note ok'; n.textContent = 'the keeper runs on the new key from its next pass.'; } }, 600);
+            }).catch(function(){ bad('the waker did not answer — nothing was changed'); });
+        }, true);
+      });
+      give.appendChild(gb); host.insertBefore(give, note);
+    }).catch(function(){ run(runs, 'its surface did not answer just now', '—'); });
+  }
+  function paintKeeps(){
+    var list = keeps(), host = $('keeps'); host.textContent = '';
+    if (!list.length){ host.appendChild(el('p', 'absent', 'No world on this device\'s list — add one you keep below.')); return; }
+    doormenFor(list.map(function(x){ return 'keeper:' + x.world; })).then(function(dms){
+      list.forEach(function(x){
+        var dm = dms.filter(function(d){ return d.handle === 'keeper:' + x.world; })[0];
+        var row = el('div', 'row'); host.appendChild(row);
+        paintKeep({ world: x.world, beach: dm ? trim(dm.beach) : x.beach, enrolled: !!dm }, row);
+      });
+    });
+  }
+  /* WHERE A WORLD'S KEEPER STANDS: the waker says, when it keeps one; else the
+   * world's own surface, where its keeper block stands. */
+  function locateWorld(world){
+    return doormenFor(['keeper:' + world]).then(function(dms){
+      if (dms.length) return { world: world, beach: trim(dms[0].beach) };
+      var b = APEX + '/w/' + world;
+      return names(b).then(function(ns){ return ns.indexOf('keeper:' + world) >= 0 ? { world: world, beach: b } : null; });
+    });
+  }
+  $('add-keep').addEventListener('submit', function(e){
+    e.preventDefault();
+    var w = $('k-world').value.trim().toLowerCase(), note = $('k-note');
+    if (!w) return;
+    note.hidden = false; note.textContent = 'looking for ' + w + '…';
+    locateWorld(w).then(function(found){
+      if (!found){ note.textContent = 'No world called ' + w + ' stands here — its keeper block, keeper:' + w + ', is found nowhere at the beach. Check the spelling.'; return; }
+      var list = keeps(); if (!list.some(function(x){ return x.world === w; })) list.push(found);
+      keepKeeps(list); $('k-world').value = ''; note.hidden = true; paintKeeps();
+    });
+  });
+
   $('tiers').textContent = '';
   TIERS.forEach(function(t){ var c = el('div', 'tier'); c.appendChild(el('b', '', t.tier)); c.appendChild(document.createTextNode(t.says)); $('tiers').appendChild(c); });
   var max = el('div', 'tier off'); max.appendChild(el('b', '', 'max — not yet')); max.appendChild(document.createTextNode('The largest model always thinks before it speaks; the doors need more room for that before it can be offered.')); $('tiers').appendChild(max);
@@ -445,6 +666,7 @@
   if (HANDLE){ $('whose').textContent = ' · ' + HANDLE;
     var l = store(); if (!l.some(function(x){ return x.handle === HANDLE; })){ l.unshift({ handle:HANDLE, beach:APEX }); keep(l); } }
   paint();
+  paintKeeps();
   if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'models' });
 })();
 </script>
