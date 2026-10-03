@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ask</title>
+<meta name="description" content="Ask a helper on the beach a question, privately. The conversation stays in your tab and nothing is kept.">
+<meta property="og:title" content="Ask">
+<meta property="og:description" content="A private conversation with a helper on the beach. Nothing is kept.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<!-- /ask — a private conversation with a helper that answers at the waker's private
+     door (bsp-mcp proposals/2026-10-03-the-private-door). /ask/<handle> or
+     /ask?h=<handle>; lero-helper when neither is given. The conversation lives in
+     this tab alone (sessionStorage) and travels whole with each question; the waker
+     answers from the helper's own blocks on its holder's LLM key and keeps nothing.
+     The helper's own line is read from its passport at the beach. The question box
+     keeps no draft between visits — no keepDraft here — because a private question
+     must not outlive the tab on a shared phone. The waker admits this site's origin
+     already (its CORS_BASE), so the page needs no setting there. -->
+<style>
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:var(--body);color:var(--foam);font-size:18px;line-height:1.6;
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--liquid-rgb),0.10), transparent 60%),
+      linear-gradient(180deg,var(--ground-top) 0%, var(--deep) 30%, var(--abyss) 100%);
+    background-attachment:fixed;-webkit-font-smoothing:antialiased;min-height:100dvh}
+  ::selection{background:rgba(var(--liquid-rgb),0.30);color:var(--foam)}
+  a{color:var(--liquid);text-decoration:none;border-bottom:1px solid rgba(var(--liquid-rgb),0.35)}
+  a:hover{color:var(--foam);border-color:var(--foam)}
+
+  .bar{position:sticky;top:0;z-index:10;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:12px 18px;
+    font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+
+  .wrap{max-width:640px;margin:0 auto;padding:0 18px 24px}
+  .head{padding:34px 0 6px}
+  .head h1{font-family:var(--display);font-weight:800;font-size:clamp(1.5rem,6vw,2.2rem);line-height:1.1;margin:0;overflow-wrap:anywhere}
+  .welcome{font-size:1.1rem;line-height:1.55;margin:12px 0 4px}
+
+  .card{background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.5) 0%,rgba(var(--card-rgb),0.5) 100%);
+    border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin:14px 0}
+  .quiet p{margin:0 0 8px;font-size:0.95rem;color:var(--vapour)}
+  .quiet p:last-child{margin:0}
+  .quiet b{color:var(--foam)}
+  .quiet .safety{color:var(--solid)}
+
+  .talk{margin:18px 0 6px}
+  .msg{max-width:92%;margin:12px 0;padding:10px 14px;border-radius:12px;border:1px solid var(--line)}
+  .msg .who{display:block;font-family:var(--mono);font-size:11px;letter-spacing:0.08em;color:var(--vapour-dim);margin:0 0 4px}
+  .msg .said{white-space:pre-wrap;overflow-wrap:anywhere;font-size:1.02rem;line-height:1.55}
+  .msg.me{margin-left:auto;background:rgba(var(--liquid-rgb),0.10);border-color:rgba(var(--liquid-rgb),0.32)}
+  .msg.it{background:rgba(var(--card-rgb),0.45)}
+  .msg.wait .said{color:var(--vapour-dim);font-style:italic}
+
+  .speak textarea{width:100%;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:10px;
+    color:var(--foam);font-family:var(--body);font-size:17px;padding:12px 14px;outline:none;resize:vertical;min-height:84px}
+  .speak textarea:focus{border-color:var(--liquid)}
+  .speak .row{display:flex;gap:8px;margin-top:10px;align-items:center}
+  .speak button.go{background:var(--liquid);border:none;border-radius:10px;color:var(--abyss);font-family:var(--display);
+    font-weight:700;font-size:15px;padding:10px 24px;cursor:pointer;min-height:44px}
+  .speak button.go:hover{background:var(--foam)}
+  .speak button.go:disabled{opacity:0.5;cursor:wait}
+  .speak button.ghost{margin-left:auto;background:none;border:1px solid var(--line);border-radius:10px;color:var(--vapour-dim);
+    font-family:var(--mono);font-size:12px;letter-spacing:0.06em;padding:10px 14px;cursor:pointer;min-height:44px}
+  .speak button.ghost:hover{color:var(--foam);border-color:var(--line-strong)}
+  .speak .hint{font-size:0.88rem;color:var(--vapour-dim);margin-top:10px;min-height:1.2em}
+  .speak .hint.err{color:var(--solid)}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.remove('no-js');</script>
+<div class="bar">
+  <span class="dot"></span>
+  <span><b>ask</b> · <span id="bar-who">a helper</span></span>
+  <span class="spacer"></span>
+</div>
+
+<main class="wrap">
+  <div class="head"><h1 id="title">Ask</h1></div>
+  <p class="welcome" id="intro">A helper on the beach, answering from its own pages.</p>
+
+  <div class="card quiet">
+    <p><b>Private.</b> This conversation stays in this tab, and nothing is kept — not on the beach, not by the service that answers. Close the tab, or press Forget, and it is gone.</p>
+    <p class="safety">Not a crisis service. If you are in danger now, call 999. Samaritans answer any time, free, on 116 123.</p>
+  </div>
+
+  <div class="talk" id="talk" aria-live="polite"></div>
+
+  <form class="card speak" id="f" autocomplete="off">
+    <textarea id="q" rows="3" data-dictate placeholder="Ask a question…" aria-label="Your question"></textarea>
+    <div class="row">
+      <button class="go" id="go" type="submit">Ask</button>
+      <button class="ghost" id="forget" type="button">Forget</button>
+    </div>
+    <div class="hint" id="said" role="status"></div>
+  </form>
+</main>
+
+<script>
+(function(){
+'use strict';
+var DOOR = 'https://waker-production.up.railway.app';
+var BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+var Q = new URLSearchParams(location.search);
+/* A stand-in door for testing on this machine only. Never on the live site: a door
+   named in the address could be anyone's, and the question would go to them. */
+if (/^(localhost|127\.0\.0\.1)$/.test(location.hostname) && Q.get('door')) DOOR = Q.get('door').replace(/\/+$/, '');
+var fromPath = (location.pathname.match(/\/ask\/([^\/?#]+)\/?$/) || [])[1] || '';
+var H = '';
+try { H = decodeURIComponent(fromPath || Q.get('h') || 'lero-helper'); } catch (e) { H = ''; }
+var KEY = 'ask:' + H;
+var turns = [];
+var $ = function(id){ return document.getElementById(id); };
+var coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
+function store(){ try { sessionStorage.setItem(KEY, JSON.stringify(turns)); } catch (e) {} }
+function say(text, cls){ var s = $('said'); s.textContent = text || ''; s.className = 'hint' + (cls ? ' ' + cls : ''); }
+function line(role, text, extra){
+  var d = document.createElement('div');
+  d.className = 'msg ' + (role === 'user' ? 'me' : 'it') + (extra ? ' ' + extra : '');
+  var who = document.createElement('span');
+  who.className = 'who';
+  who.textContent = role === 'user' ? 'you' : H;
+  var said = document.createElement('div');
+  said.className = 'said';
+  said.textContent = text;
+  d.appendChild(who); d.appendChild(said);
+  $('talk').appendChild(d);
+  d.scrollIntoView({ block: 'end', behavior: 'smooth' });
+  return d;
+}
+
+if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,39}$/.test(H)){
+  $('title').textContent = 'Which helper?';
+  $('intro').textContent = 'This address needs a helper’s name, like /ask/lero-helper.';
+  $('go').disabled = true; $('q').disabled = true; $('forget').disabled = true;
+  return;
+}
+$('title').textContent = 'Ask ' + H;
+$('bar-who').textContent = H;
+document.title = 'Ask ' + H;
+
+/* The helper says what it is, in its own passport's opening line: the page only
+   trims the name it starts with (the title already says it) and where it stands. */
+fetch(BEACH + '?block=' + encodeURIComponent('passport:' + H))
+  .then(function(r){ return r.ok ? r.json() : null; })
+  .then(function(b){
+    var n = b;
+    while (n && typeof n === 'object' && '_' in n) n = n._;
+    if (typeof n !== 'string' || !n.trim()) return;
+    var s = n.trim().replace(/\s*Situated at \S+\s*$/, '');
+    if (s.indexOf(H + ' — ') === 0) s = s.slice(H.length + 3);
+    if (s) $('intro').textContent = s.charAt(0).toUpperCase() + s.slice(1);
+  }, function(){});
+
+try { turns = JSON.parse(sessionStorage.getItem(KEY) || '[]') || []; } catch (e) { turns = []; }
+if (!Array.isArray(turns)) turns = [];
+turns.forEach(function(t){ if (t && t.role && t.text) line(t.role, t.text); });
+
+$('forget').addEventListener('click', function(){
+  turns = [];
+  try { sessionStorage.removeItem(KEY); } catch (e) {}
+  $('talk').textContent = ''; $('q').value = '';
+  say('Forgotten. Nothing of it is kept anywhere.');
+});
+$('q').addEventListener('keydown', function(e){
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)){ e.preventDefault(); $('go').click(); }
+});
+$('f').addEventListener('submit', function(e){
+  e.preventDefault();
+  var text = $('q').value.trim();
+  if (!text || $('go').disabled) return;
+  say(''); $('go').disabled = true;
+  turns.push({ role: 'user', text: text }); store();
+  var mine = line('user', text); $('q').value = '';
+  var waiting = line('assistant', '…', 'wait');
+  /* A failed ask takes its question back off the page and puts the words back in
+     the box, so nothing is lost and the conversation stays in order. */
+  function undo(why){
+    waiting.remove(); mine.remove(); turns.pop(); store();
+    $('q').value = text; say(why, 'err');
+  }
+  fetch(DOOR + '/ask', { method: 'POST', headers: { 'content-type': 'application/json' },
+                          body: JSON.stringify({ handle: H, turns: turns }) })
+    .then(function(r){ return r.json().catch(function(){ return null; }); })
+    .then(function(d){
+      if (d && d.ok && d.answer){
+        waiting.remove();
+        turns.push({ role: 'assistant', text: d.answer }); store();
+        line('assistant', d.answer);
+      } else undo((d && d.detail) || 'That did not work — please try again.');
+    }, function(){ undo('The helper could not be reached — please try again.'); })
+    .then(function(){ $('go').disabled = false; if (!coarse) $('q').focus(); });
+});
+})();
+</script>
+</body>
+</html>
