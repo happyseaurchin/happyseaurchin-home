@@ -124,6 +124,8 @@
       </div>
       <label class="f">why this family exists — one or two lines, readers see this first</label>
       <textarea id="f-why" data-dictate placeholder="What this is for, and for whom."></textarea>
+      <label class="f">its own page elsewhere, if it has one — the link joins the end of your first sentence</label>
+      <input type="text" id="f-link" class="mono" inputmode="url" placeholder="https://… (optional)" autocapitalize="none" spellcheck="false">
       <div class="row2">
         <div>
           <label class="f">your key — the one your passport uses, if you have one; it keeps the family yours to edit</label>
@@ -377,10 +379,27 @@ function composeWrites(o){
   return writes;
 }
 
+/* THE FOUNDER'S SENTENCE IS THE FAMILY'S OPENING LINE (conventions 2.14): every form
+ * puts <why> first in the spine's root and the law's, so the mirror shows it as the
+ * welcome and the walk as the band. It closes with a full stop, or the form's own text
+ * would run on into it; and the one link the founder gives to the family's own page
+ * elsewhere joins the end of its FIRST sentence, in brackets, so the link stands
+ * wherever that sentence is read (bsp-mcp proposals/2026-10-03-found-opens-with-the-
+ * founders-sentence). */
+function openingWith(why, link){
+  let w = why.replace(/\s+/g, ' ').trim();
+  if (!/[.!?]["'”’)\]]*$/.test(w)) w += '.';
+  if (!link) return w;
+  const m = /^(.+?)([.!?])(\s|$)/.exec(w);
+  if (!m) return w + ' (' + link + ')';
+  return m[1] + ' (' + link + ')' + m[2] + w.slice(m[1].length + m[2].length);
+}
+
 async function found(){
   const name = $('f-name').value.trim().toLowerCase();
   const keeper = $('f-keeper').value.trim();
   const why = $('f-why').value.trim();
+  const link = $('f-link').value.trim();
   const key = $('f-key').value;
   const accessSel = $('f-access').value;
   const sedName = $('f-sed').value.trim().toLowerCase().replace(/^sed:/,'');
@@ -390,6 +409,7 @@ async function found(){
   if (['doing','pulse','marks','tide','settings','conventions','tree','worlds','lighthouse'].includes(name)) return hint('that name is already spoken for on this beach', true);
   if (!keeper) return hint('a family needs a keeper — your handle', true);
   if (!why) return hint('say why the family exists — readers stand in that sentence', true);
+  if (link && !/^https?:\/\/[^\s()]+$/.test(link)) return hint('the link wants to be a web address on its own, starting https://', true);
   if (!key || key.length < 4) return hint('the keeper key wants a few more characters', true);
   if (FORM.sets && accessSel === 'sed' && !/^[a-z0-9-]{2,}$/.test(sedName)) return hint('name the collective (its sed: name)', true);
   if (FORM.own && !law) return hint('your own form needs its law — a line or three on how a part is read', true);
@@ -417,7 +437,7 @@ async function found(){
   const today = new Date().toISOString().slice(0,10);
   const access = accessSel === 'sed' ? 'sed:' + sedName : accessSel;
   const ladder = { y: $('lad-y').value.trim(), s: $('lad-s').value.trim(), m: $('lad-m').value.trim(), w: $('lad-w').value.trim() };
-  const writes = composeWrites({ name, keeper, why, key, access, today, stems, ladder, law });
+  const writes = composeWrites({ name, keeper, why: openingWith(why, link), key, access, today, stems, ladder, law });
   const room = writes.pop();          /* the pool is offered, never a reason to fail */
 
   /* ?dry=1 shows the writes instead of making them — how a founding is checked
