@@ -383,6 +383,47 @@
       var own = function(v){ return v && v.indexOf('other:') !== 0 ? v : null; };
       var a = el('div', 'set'); a.appendChild(el('label', '', 'its model'));
       a.appendChild(seg(now.mind, function(t){ save(t, own(now.keeper)); })); sets.appendChild(a);
+      /* ITS TELLING (David, 2026-10-03: "a switch for a player to turn off their
+       * own telling"): 'telling off' beneath 9 of this dial, the line the mirror
+       * reads at step-in and its drawer writes. Off, the mirror asks no telling
+       * on the player's key, and they read the room's record as it landed. */
+      if (dm && dm.mode === 'genus') return;
+      var told = !(rootObj && rootObj['9'] && typeof rootObj['9'] === 'object' && Object.keys(rootObj['9']).some(function(k){ return k !== '_' && /^telling\s+off\b/i.test(String(rootObj['9'][k]).trim()); }));
+      function writeTelling(off, key){
+        note.className = 'note'; note.textContent = 'saving…';
+        var nine = lineNine(rootObj && rootObj['9'], 'telling', off ? TELLING_OFF : '');
+        var step = block
+          ? post(r.beach, { block: dial.block, spindle: addr(dial.inner + '9'), content: nine, secret: key })
+          : prove(r, key).then(function(pv){
+              if (!pv.ok) return { ok:false, said: pv.why };
+              return post(r.beach, { block: dial.block, content: { '_': 'THE DIAL of ' + r.handle + ' — which model answers for this character and whether it is told, set by its holder. No door is answered from here: position 1 stands absent, which reads as off.', '9': nine }, secret: key, new_lock: key });
+            });
+        step.then(function(w){
+          if (!w.ok){ bad(w.said || refused(w)); return; }
+          holdKey(r, key);
+          get(r.beach, dial.block).then(function(b2){
+            var n9 = (walk(b2, dial.inner) || {})['9'], offNow = !!(n9 && typeof n9 === 'object' && Object.keys(n9).some(function(k){ return k !== '_' && /^telling\s+off\b/i.test(String(n9[k]).trim()); }));
+            paintRow(r, host, dm);
+            setTimeout(function(){ var n = host.querySelector('.note'); if (n){ n.className = offNow === off ? 'note ok' : 'note bad'; n.textContent = offNow === off ? 'saved, and read back.' : 'written, but it did not read back as set — look at ' + dial.block; } }, 900);
+          });
+        });
+      }
+      var tl = el('div', 'set'); tl.appendChild(el('label', '', 'its telling'));
+      tl.appendChild(pick(told ? 'on' : 'off', ['on', 'off'], function(v){
+        var held = keyOf(r);
+        if (held){ writeTelling(v === 'off', held); return; }
+        var old = host.querySelector('.ask'); if (old) old.remove();
+        var f = el('form', 'ask'); f.autocomplete = 'on';
+        f.appendChild(el('span', '', 'To switch ' + r.handle + '\'s telling ' + v + ', its passphrase — the one that opens ' + r.handle + '\'s own blocks, not an API key:'));
+        var u = document.createElement('input'); u.type = 'text'; u.name = 'username'; u.autocomplete = 'username'; u.value = r.handle; u.hidden = true; f.appendChild(u);
+        var pw = document.createElement('input'); pw.type = 'password'; pw.name = 'password'; pw.autocomplete = 'current-password'; pw.placeholder = 'passphrase for ' + r.handle; pw.required = true; f.appendChild(pw);
+        var go = el('button', '', 'save'); go.type = 'submit'; f.appendChild(go);
+        var no = el('button', 'quiet', 'cancel'); no.type = 'button'; no.addEventListener('click', function(){ f.remove(); }); f.appendChild(no);
+        f.addEventListener('submit', function(e){ e.preventDefault(); var k = pw.value.trim(); if (!k) return; f.remove(); writeTelling(v === 'off', k); });
+        host.insertBefore(f, note); pw.focus();
+      }));
+      tl.appendChild(el('small', '', 'off: you read the room\'s record as it landed instead of a telling written for you — it costs nothing'));
+      sets.appendChild(tl);
     }).catch(function(){ run(runs, 'its beach did not answer just now', '—'); });
   }
 
@@ -509,6 +550,8 @@
    * only the game-keeper can write ('— 2 seats given by the game-keeper'); and
    * every beat the keeper kept names, in its journal, who made it happen. */
   var SEATS_PER = 100, SEAT_POUNDS = 5, TICKETS = 'https://genus-tickets-production.up.railway.app';
+  /* The line that turns a character's telling off — the mirror writes the same words. */
+  var TELLING_OFF = "telling off — I read the room's record as it landed instead of a telling written for me, and it costs nothing. Set from the mirror's drawer or happyseaurchin.com/models; mine to switch back on.";
   function seatLines(list, out){
     if (!list || typeof list !== 'object') return out;
     Object.keys(list).forEach(function(k){
