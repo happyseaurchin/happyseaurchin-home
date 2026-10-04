@@ -1487,7 +1487,9 @@
      * carrying a handle keeps the way back to their own now, so the chain of
      * doors is not broken by passing through — and a page that carries none
      * offers the now of the name this device signs with, which is the way across
-     * to a hand's own places. Nothing to choose, so no editor. */
+     * to a hand's own places. The now alone: the hand's pictures went at David's
+     * word (2026-10-02, "just happyseaurchin's now"); a character's pictures stay
+     * in its table's own menu. Nothing to choose, so no editor. */
     function paintSite(){
       var who = document.createElement('span');
       who.className = 'dd__who'; who.textContent = 'happyseaurchin.com';
@@ -1509,7 +1511,7 @@
       door(['mirror', 'the mirror ↗', 'https://mirror.onen.ai/']);
       door(['rpg', 'the tables', '/rpg']);
       var h = cfg.handle || knownName();
-      if (h){ rule(); door(['now', h + '’s now', '/now/' + encodeURIComponent(h)]); door(['gallery', h + '’s pictures', '/gallery/' + encodeURIComponent(h)]); }
+      if (h){ rule(); door(['now', h + '’s now', '/now/' + encodeURIComponent(h)]); }
     }
 
     function paint(){
