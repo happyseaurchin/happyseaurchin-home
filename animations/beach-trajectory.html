@@ -110,6 +110,9 @@ code{font-family:var(--font-m);font-size:.92em}
 }
 .home a{color:var(--ink-2)}
 .framed .home{display:none}
+/* set inside another page, the frame around it already names it, so the chart comes first */
+.framed .head{display:none}
+.framed .wrap{padding-block:12px 32px}
 </style>
 </head>
 <body>
@@ -517,6 +520,8 @@ function makeTicks(now) {
   fut.forEach(f => { if (f.t > now + 0.5 && !out.some(o => Math.abs(o.t - f.t) < 1)) out.push({ ...f, fut: true }); else if (out.length && Math.abs(out[out.length - 1].t - f.t) < 1) out[out.length - 1].lab += ' · ' + f.lab; });
   return tk.concat(out);
 }
+/* a tick is known by its address, so a rung that rolls on fades out where it was as the next fades in */
+const tickKey = t => (t.fut ? 'f' : 'p') + t.ad;
 
 /* ---------- pen (theme) ---------- */
 let PEN = null;
@@ -564,6 +569,23 @@ function labeler() {
     free(x, y, w, h) { for (const b of boxes) if (x < b.x + b.w && x + w > b.x && y < b.y + b.h && y + h > b.y) return false; return true; },
     add(x, y, w, h) { boxes.push({ x, y, w, h }); },
   };
+}
+/* a label fades in and out rather than flashing: it keeps its opacity, and its spot, from frame to frame,
+   and one whose mark has left the picture fades from where it last stood */
+const SHOWN = new Map(), SPOT = new Map();
+let STEP = 1, FRAME = 0;   // opacity per frame: a fraction while frames run, 1 for a still
+function settle(key, on, paint) {
+  const s = SHOWN.get(key) || { a: 0 };
+  s.a = clamp(s.a + (on ? STEP : -STEP), 0, 1); s.seen = FRAME; s.paint = paint; SHOWN.set(key, s);
+  if (s.a > 0) { ctx.globalAlpha = s.a; paint(); ctx.globalAlpha = 1; }
+}
+function fadeTheRest() {
+  SHOWN.forEach((s, key) => {
+    if (s.seen === FRAME) return;
+    s.a = clamp(s.a - STEP, 0, 1);
+    if (s.a > 0) { ctx.globalAlpha = s.a; s.paint(); ctx.globalAlpha = 1; } else SHOWN.delete(key);
+  });
+  FRAME++;
 }
 function pill(str, x, y, opt = {}) {
   const size = opt.size || 11.5, w = measure(str, size, opt.weight || 600) + 10, h = size + 8;
@@ -624,16 +646,16 @@ function drawAxisX(ax, box, S) {
   const order = tk.filter(t => !t.fut && t.t >= R0).reverse().concat(tk.filter(t => t.fut), tk.filter(t => !t.fut && t.t < R0).reverse());
   for (const t of order) {
     const x = ax.x(t.t); if (x < left - 1 || x > right + 1) continue;
-    const w1 = measure(t.lab, 11, 600), p1 = place(x, w1);
-    if (!L1.free(p1.bx - 5, bottom + 4, w1 + 10, 15)) continue;
-    L1.add(p1.bx - 5, bottom + 4, w1 + 10, 15);
-    ctx.strokeStyle = PEN.ink3; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 0.5, bottom); ctx.lineTo(x + 0.5, bottom + 5); ctx.stroke();
-    text(t.lab, x, bottom + 17, { size: 11, weight: 600, color: PEN.ink2, align: p1.al });
+    const w1 = measure(t.lab, 11, 600), p1 = place(x, w1), on1 = L1.free(p1.bx - 5, bottom + 4, w1 + 10, 15);
+    if (on1) L1.add(p1.bx - 5, bottom + 4, w1 + 10, 15);
+    settle('ax' + tickKey(t), on1, () => {
+      ctx.strokeStyle = PEN.ink3; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x + 0.5, bottom); ctx.lineTo(x + 0.5, bottom + 5); ctx.stroke();
+      text(t.lab, x, bottom + 17, { size: 11, weight: 600, color: PEN.ink2, align: p1.al });
+    });
     if (narrow) continue;
-    const w2 = measure(t.ad, 9.5, 400, true), p2 = place(x, w2);
-    if (!L2.free(p2.bx - 4, bottom + 20, w2 + 8, 13)) continue;
-    L2.add(p2.bx - 4, bottom + 20, w2 + 8, 13);
-    text(t.ad, x, bottom + 30, { size: 9.5, weight: 400, mono: true, color: PEN.ink3, align: p2.al });
+    const w2 = measure(t.ad, 9.5, 400, true), p2 = place(x, w2), on2 = on1 && L2.free(p2.bx - 4, bottom + 20, w2 + 8, 13);
+    if (on2) L2.add(p2.bx - 4, bottom + 20, w2 + 8, 13);
+    settle('ad' + tickKey(t), on2, () => text(t.ad, x, bottom + 30, { size: 9.5, weight: 400, mono: true, color: PEN.ink3, align: p2.al }));
   }
 }
 function drawLaneGutter(box, ys, opts = {}) {
@@ -703,24 +725,14 @@ function renderRiver(S) {
     text('4 entries', x - 8, mid - 2, { size: 10.5, weight: 600, color: PEN.ink2, align: 'right' });
     text('a day', x - 8, mid + 11, { size: 10.5, weight: 500, color: PEN.ink3, align: 'right' });
   }
-  // landings as beads on their bands (placed first so labels avoid them)
-  const Lb = labeler(); Lb.add(xn - 30, top, 60, bottom - top);
+  // landings as beads on their bands; the key beneath the chart names the bands, since a name riding a moving band flashes
   const beads = [];
   for (const e of EVENTS) {
     if (e.t > S.now || !e.m) continue;
     const x = ax.x(e.t), c = colPast.reduce((p, q) => Math.abs(q.x - x) < Math.abs(p.x - x) ? q : p, colPast[0]);
     const k = colPast.indexOf(c), th = Ep[k][e.li] - Ep[k][e.li + 1]; if (th < 3) continue;
     const y = (Ep[k][e.li] + Ep[k][e.li + 1]) / 2;
-    beads.push({ x, y, e }); Lb.add(x - 6, y - 6, 12, 12);
-  }
-  // band labels where each band is widest
-  for (let i = 0; i < 7; i++) {
-    let best = -1, bk = -1;
-    colPast.forEach((c, k) => { if (c.x < xStart + 24 || c.x > xn - 40) return; const th = Ep[k][i] - Ep[k][i + 1]; if (th > best) { best = th; bk = k; } });
-    if (bk < 0 || best < 13) continue;
-    const c = colPast[bk], y = (Ep[bk][i] + Ep[bk][i + 1]) / 2, w = measure(LINES[i].short, 11, 650) + 10;
-    if (!Lb.free(c.x - w / 2, y - 9, w, 18)) continue; Lb.add(c.x - w / 2, y - 9, w, 18);
-    pill(LINES[i].short, c.x, y, { size: 11, align: 'center', alpha: 0.88 });
+    beads.push({ x, y, e });
   }
   beads.forEach(({ x, y, e }) => {
     const r = 3.4 * popScale(e.t, S.now);
@@ -810,15 +822,13 @@ function renderMetro(S) {
   // station labels, newest majors first
   const majors = shown.filter(e => e.m).slice().reverse();
   for (const e of majors) {
-    const x = ax.x(e.t), y = yFor(e, e.li), w = measure(e.title, 11, 600) + 6;
+    const x = ax.x(e.t), y = yFor(e, e.li), w = measure(e.title, 11, 600) + 6, key = 'st' + e.title;
     const cands = [[x - w / 2, y - 22], [x - w / 2, y + 9], [x + 8, y - 8], [x - w - 8, y - 8]];
-    for (const [bx, by] of cands) {
-      if (bx < left + 2 || bx + w > right - 2 || by < top + 2 || by + 15 > bottom - 2) continue;
-      if (!Lb.free(bx, by, w, 15)) continue;
-      Lb.add(bx, by, w, 15);
-      text(e.title, bx + 3, by + 11, { size: 11, weight: 600, color: PEN.ink, halo: rgba(PEN.sand, 0.92), haloW: 3.5 });
-      break;
-    }
+    const fits = ([bx, by]) => bx >= left + 2 && bx + w <= right - 2 && by >= top + 2 && by + 15 <= bottom - 2 && Lb.free(bx, by, w, 15);
+    const was = SPOT.get(key), k = was != null && fits(cands[was]) ? was : cands.findIndex(fits);
+    if (k >= 0) { SPOT.set(key, k); Lb.add(cands[k][0], cands[k][1], w, 15); }
+    const [bx, by] = cands[k >= 0 ? k : was || 0];
+    settle(key, k >= 0, () => text(e.title, bx + 3, by + 11, { size: 11, weight: 600, color: PEN.ink, halo: rgba(PEN.sand, 0.92), haloW: 3.5 }));
   }
   // open plans as hollow stations at sea
   open.forEach(p => {
@@ -854,9 +864,9 @@ function renderSundial(S) {
   tk.forEach(t => {
     const r = rr(t.t); if (r < r0 + 2 || r > R + 0.5) return;
     ctx.beginPath(); ctx.arc(cx, cy, r, A0, A0 + SPAN); ctx.strokeStyle = rgba(PEN.ink3, t.fut ? 0.35 : 0.3); ctx.lineWidth = 1; ctx.setLineDash(t.fut ? [2, 4] : []); ctx.stroke(); ctx.setLineDash([]);
-    const y = cy - r, w = measure(t.lab, 10, 600) + 8;
-    if (!Lr.free(cx - w / 2, y - 7, w, 13)) return; Lr.add(cx - w / 2, y - 7, w, 13);
-    text(t.lab, cx, y + 3.5, { size: 10, weight: 600, color: PEN.ink2, align: 'center', halo: t.fut ? PEN.sea : PEN.sand, haloW: 3 });
+    const y = cy - r, w = measure(t.lab, 10, 600) + 8, on = Lr.free(cx - w / 2, y - 7, w, 13);
+    if (on) Lr.add(cx - w / 2, y - 7, w, 13);
+    settle('ring' + tickKey(t), on, () => text(t.lab, cx, y + 3.5, { size: 10, weight: 600, color: PEN.ink2, align: 'center', halo: t.fut ? PEN.sea : PEN.sand, haloW: 3 }));
   });
   // tide ring
   ctx.beginPath();
@@ -1061,6 +1071,7 @@ function draw() {
   HITS = [];
   ctx.globalAlpha = 1;
   RENDER[view](S);
+  fadeTheRest();
   if (fade < 1) { ctx.fillStyle = rgba(PEN.page, 1 - fade); ctx.fillRect(0, 0, W, H); }
   const cap = captionAt(T, st.now); if (cap !== lastCap) { capEl.textContent = cap; lastCap = cap; }
   const nl = `now · ${human(st.now)} · ${addr(st.now, 'day')}`; if (nl !== lastNowLbl) { nowEl.textContent = nl; lastNowLbl = nl; }
@@ -1074,6 +1085,7 @@ function frame(ts) {
   if (Math.abs(lin - linTarget) > 0.001) { lin += (linTarget - lin) * Math.min(1, dt * 5); if (Math.abs(lin - linTarget) < 0.002) lin = linTarget; changed = true; }
   if (fade < 1) { fade = Math.min(1, fade + dt * 3.5); changed = true; }
   if (!reduce.matches) changed = true;
+  STEP = reduce.matches ? 1 : Math.min(1, dt * 6);
   if (changed) { draw(); dirty = false; }
   requestAnimationFrame(frame);
 }
@@ -1081,7 +1093,7 @@ function frame(ts) {
 /* ---------- controls ---------- */
 const tabs = [...document.querySelectorAll('.tab')];
 function setView(v) {
-  view = v; fade = reduce.matches ? 1 : 0; dirty = true;
+  view = v; fade = reduce.matches ? 1 : 0; dirty = true; SHOWN.clear(); SPOT.clear();
   tabs.forEach(b => b.setAttribute('aria-selected', String(b.dataset.view === v)));
   document.getElementById('viewname').textContent = VIEWS[v].name;
   document.getElementById('viewhow').textContent = VIEWS[v].how;
@@ -1150,7 +1162,7 @@ readPen(); resize(); setView('river');
 if (reduce.matches) { T = T_END; playing = false; }
 updatePlay();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { readPen(); dirty = true; });
-window.__bt = { set(t, v, th) { if (v) setView(v); fade = 1; T = t; playing = false; updatePlay(); if (th) document.documentElement.setAttribute('data-theme', th); readPen(); draw(); }, lin(x) { lin = linTarget = x; draw(); } };
+window.__bt = { set(t, v, th) { if (v) setView(v); fade = 1; T = t; playing = false; updatePlay(); if (th) document.documentElement.setAttribute('data-theme', th); readPen(); STEP = 1; draw(); }, lin(x) { lin = linTarget = x; STEP = 1; draw(); } };
 requestAnimationFrame(frame);
 })();
 </script>
