@@ -71,12 +71,8 @@
   .rung{position:relative;padding:0 0 28px 34px}
   .rung::before{content:"";position:absolute;left:0;top:7px;width:16px;height:16px;border-radius:50%;
     background:var(--abyss);border:2px solid rgba(var(--liquid-rgb),0.75)}
-  .rung.now::before{background:var(--liquid);box-shadow:0 0 12px rgba(var(--liquid-rgb),0.7)}
   .rung.ahead::before{border-color:rgba(var(--vapour-rgb),0.35)}
-  .rung h3{font-family:var(--display);font-weight:700;font-size:1.12rem;margin:0 0 4px;color:var(--foam);display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
-  .rung h3 .here{font-family:var(--mono);font-size:10.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--abyss);
-    background:var(--liquid);border-radius:999px;padding:2px 9px}
-  .rung h3 .win{font-family:var(--mono);font-size:11px;font-weight:400;letter-spacing:0.06em;color:var(--vapour-dim)}
+  .rung h3{font-family:var(--display);font-weight:700;font-size:1.12rem;margin:0 0 4px;color:var(--foam)}
   .text{margin:0;color:var(--vapour);font-size:1.02rem;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
   .open > .text, .open > .clamp > .text{-webkit-line-clamp:unset;display:block}
   .more{background:none;border:none;padding:4px 0 0;color:var(--vapour-dim);font-size:11px;letter-spacing:0.08em}
@@ -90,10 +86,30 @@
   .reading .who i{font-style:normal;color:var(--vapour-dim)}
   .reading .text{font-size:0.98rem;white-space:pre-wrap;-webkit-line-clamp:4}
 
-  .decisions{margin:6px 0 0;border:1px solid var(--line-strong);border-radius:14px;padding:16px 18px;background:rgba(var(--card-rgb),0.4)}
-  .decisions p{margin:0 0 8px;color:var(--vapour);font-size:1rem}
-  .decisions p:last-child{margin:0}
-  .decisions b{color:var(--foam);font-weight:600;font-family:var(--mono);font-size:11.5px;letter-spacing:0.12em;text-transform:uppercase;margin-right:6px}
+  /* the road — four channels running at once, and the one gate where they meet
+     (David, 2026-10-05: 'different channels/conditions, but not the bundling of
+     them into artificial stages') */
+  .channels{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+  .channel{border:1px solid var(--line-strong);border-radius:16px;padding:16px 18px;
+    background:linear-gradient(165deg,rgba(var(--card-hi-rgb),0.55) 0%,rgba(var(--card-rgb),0.55) 100%)}
+  .channel.met{border-color:rgba(var(--liquid-rgb),0.7)}
+  .channel h3,.gate h3{font-family:var(--display);font-weight:700;font-size:1.15rem;margin:0 0 6px;color:var(--foam)}
+  .what{margin:0;color:var(--vapour);font-size:1rem}
+  .cond,.now{margin:10px 0 0;font-size:0.97rem;color:var(--foam)}
+  .cond b,.now b{display:block;font-family:var(--mono);font-weight:400;font-size:10.5px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 2px}
+  .now{color:var(--liquid)}
+  .channel .clamp{margin:10px 0 0}
+  .steps{margin:12px 0 0;padding:0 0 0 12px;list-style:none;border-left:2px solid rgba(var(--liquid-rgb),0.35)}
+  .steps li{padding:0 0 10px}
+  .steps h4{margin:0 0 2px;font-family:var(--display);font-weight:700;font-size:0.95rem;color:var(--foam)}
+  .steps .text{font-size:0.95rem;-webkit-line-clamp:2}
+  .gate{margin:14px 0 0;border:1px solid rgba(var(--solid-rgb),0.5);border-radius:16px;padding:18px 20px;background:rgba(var(--solid-rgb),0.06)}
+  .gate[hidden]{display:none}
+  .conds{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+  .conds li{display:flex;gap:10px;align-items:baseline;color:var(--vapour)}
+  .conds li::before{content:"";width:10px;height:10px;border-radius:50%;border:2px solid rgba(var(--solid-rgb),0.7);flex:none;transform:translateY(1px)}
+  .conds li.met::before{background:var(--solid)}
+  .gate .after{margin:12px 0 18px;color:var(--vapour);font-size:0.97rem}
 
   /* the doors — six tiles, and the one tapped opens its room beneath its own
      row at the grid's full width: a card that unfolded in place stretched into
@@ -193,9 +209,9 @@
     <div class="wrap">
       <p class="eyebrow">The road</p>
       <h2 class="big">From a phone number to ten thousand.</h2>
-      <p class="note" id="road-note">Each stage opens only when the one before it has passed its test. Dates are windows, not promises. Beside each stage, what the people doing it have said.</p>
-      <ol class="ladder" id="stages"><li class="loading">reading the road…</li></ol>
-      <div class="decisions" id="decisions" hidden></div>
+      <p class="note" id="road-note">Four things run at once, each with its own condition, and they meet at one gate before anything is made.</p>
+      <div class="channels" id="channels"><p class="loading">reading the road…</p></div>
+      <div class="gate" id="gate" hidden></div>
     </div>
   </section>
 
@@ -290,8 +306,10 @@ function split(text){
   return { lab: lab ? lab.charAt(0).toUpperCase() + lab.slice(1) : '', line };
 }
 /* for a person: the block's cross-references are for minds walking it, so a
-   reference in brackets goes, a stage or a build step is named by its number
-   in words, and a list of addresses after a colon is dropped */
+   reference in brackets goes, a place on the road is named by its channel and
+   a build step by its number in words, and a list of addresses after a colon
+   is dropped */
+const CHANNELS = {};
 function human(t){
   return (t || '')
     .replace(/\s*\((?:see\s+)?[\d.]+(?:\s*(?:,|–|-|to|and)\s*[\d.]+)*(?:,\s*approx\.)?\)/gi, '')
@@ -299,7 +317,7 @@ function human(t){
     .replace(/\bsed:bobble\b/g, 'the bobble\u2019s ticket list').replace(/\bpool:bobble\b/g, 'the bobble\u2019s room')
     .replace(/\bspine:bobble\b/g, 'this plan').replace(/\bfunction:bobble\b/g, 'the bobble\u2019s law').replace(/\bbobble:<your-handle>/g, 'your own mirror')
     .replace(/\((?:see\s+)?\d+(?:\.\d+)?:\s*/g, '(')
-    .replace(/(^|[^\d.])8\.(1{1,9})(?!\d)('s)?/g, (m, pre, ones, s) => pre + 'stage ' + ORD[ones.length - 1] + (s || ''))
+    .replace(/(^|[^\d.])8\.([1-9])[1-9]*(?![\d.])/g, (m, pre, c) => CHANNELS[c] ? pre + CHANNELS[c] : m)
     .replace(/:\s*\d+(?:\.\d+)?(?:,\s*\d+(?:\.\d+)?)+(?=[.;])/g, '')
     .replace(/\s*Build at \d+(?:\.\d+)?\./g, '')
     .replace(/\s+at\s+\d+\.\d+(?!\d)/g, '')
@@ -359,7 +377,7 @@ const MIRRORS = INDEX.then(names => {
 async function render(){
   const [spine, mirrors] = await Promise.all([SPINE, MIRRORS]);
   if (!spine) { $('walk').innerHTML = '<li class="loading">the bobble has no spine yet.</li>'; return; }
-  const said = addr => mirrors.map(m => ({ who: m.h, text: m.b ? textAt(m.b, addr) : null })).filter(x => x.text);
+  for (let c = 1; c <= 9; c++) { const t = textAt(spine, '8.' + c); if (t) CHANNELS[c] = split(t).lab.toLowerCase(); }
 
   /* THE WHOLE THING — the nine-step walk down digit 1 */
   const root1 = textAt(spine, '1') || '';
@@ -373,28 +391,63 @@ async function render(){
   }
   $('walk').innerHTML = walk.join('') || '<li class="loading">nothing voiced yet.</li>';
 
-  /* THE ROAD — the stages down digit 1 of 8, the one standing now marked */
-  const road = textAt(spine, '8') || '';
-  const here = (road.match(/Standing now at 8\.(1+)/) || [, '1'])[1].length;
-  const stages = [];
-  for (let d = 1; d <= 9; d++) {
-    const t = textAt(spine, chain('8', d)); if (!t) break;
+  /* THE ROAD — four channels at once, each with its condition ('Done when'),
+     where it stands ('Now'), its own steps down its digit 1, and every hand's
+     reading at or beneath it; then the gate, the one line that says 'Opens
+     when', its conditions ticked as their channels say Done, and its own steps
+     in order. A dot inside a token (3.4, approx.) never ends a sentence. */
+  const SENT = '((?:[^.]|\\.(?!\\s|$))*)\\.(?=\\s|$)';
+  const first = line => (line.match(new RegExp('^' + SENT)) || [line])[0];
+  const said1 = (line, word) => (line.match(new RegExp(word + '\\s*' + SENT)) || [])[1];
+  const drop = (line, word) => line.replace(new RegExp('\\s*' + word + '\\s*' + SENT), '');
+  const below = (n, d) => n + '1'.repeat(d);
+  const stepsOf = n => { const out = []; for (let d = 1; d <= 9; d++) { const t = textAt(spine, below(n, d)); if (!t) break; out.push(split(t)); } return out; };
+  const heardAt = n => {
+    const heard = [];
+    mirrors.forEach(m => {
+      if (!m.b) return;
+      const own = textAt(m.b, n);
+      if (own) heard.push({ who: m.h, text: own });
+      voicedUnder(nodeAt(m.b, n), n, []).forEach(v => heard.push({ who: m.h, at: split(textAt(spine, v.addr) || '').lab, text: v.text }));
+    });
+    return heard;
+  };
+  const road = split(textAt(spine, '8') || '').line;
+  if (road) $('road-note').textContent = cap(human(first(road)));
+  const met = {}, cards = [];
+  let gate = null;
+  for (let c = 1; c <= 9; c++) {
+    const n = '8.' + c, t = textAt(spine, n); if (!t) continue;
     const s = split(t);
-    /* the Window sentence: a dot inside a token (4.1, approx.) never ends it */
-    const win = (s.line.match(/Window:\s*((?:[^.]|\.(?!\s|$))*)\.(?=\s|$)/) || [])[1];
-    const body = s.line.replace(/\s*Window:\s*(?:[^.]|\.(?!\s|$))*\.(?=\s|$)/, '');
-    stages.push('<li class="rung' + (d === here ? ' now' : d > here ? ' ahead' : '') + '"><h3>' + esc(s.lab) +
-      (d === here ? '<span class="here">you are here</span>' : '') + (win ? '<span class="win">' + esc(human(win)) + '</span>' : '') + '</h3>' +
-      clampedHTML(cap(human(body))) + readingsHTML(said(chain('8', d))) + '</li>');
+    const opens = s.line.match(new RegExp('Opens when([^:]*):\\s*' + SENT));
+    if (opens) { gate = { n, s, opens }; continue; }
+    const done = said1(s.line, 'Done when'), now = said1(s.line, 'Now:');
+    met[c] = !!now && /^(done|met)\b/i.test(now);
+    const what = first(s.line);
+    const rest = drop(drop(s.line.slice(what.length), 'Done when'), 'Now:').trim();
+    const steps = stepsOf(n);
+    cards.push('<article class="channel' + (met[c] ? ' met' : '') + '"><h3>' + esc(s.lab) + '</h3>' +
+      '<p class="what">' + esc(cap(human(what))) + '</p>' +
+      (done ? '<p class="cond"><b>Done when</b>' + esc(human(done)) + '.</p>' : '') +
+      (now ? '<p class="now"><b>Now</b>' + esc(cap(human(now))) + '.</p>' : '') +
+      (rest ? clampedHTML(cap(human(rest))) : '') +
+      (steps.length ? '<ol class="steps">' + steps.map(p => '<li><h4>' + esc(p.lab) + '</h4>' + clampedHTML(cap(human(p.line))) + '</li>').join('') + '</ol>' : '') +
+      readingsHTML(heardAt(n)) + '</article>');
   }
-  $('stages').innerHTML = stages.join('') || '<li class="loading">no road drawn yet.</li>';
-  const dec = textAt(spine, '8.2');
-  if (dec) {
-    const ruled = (dec.match(/RULED[^:]*:\s*([^]*?)\s*STILL OPEN:/) || [])[1];
-    const open = (dec.match(/STILL OPEN:\s*([^]*)$/) || [])[1];
-    $('decisions').innerHTML = (ruled ? '<p><b>Decided</b>' + esc(cap(human(ruled))) + '</p>' : '') +
-      (open ? '<p><b>Still open</b>' + esc(cap(human(open))) + '</p>' : '');
-    $('decisions').hidden = !(ruled || open);
+  $('channels').innerHTML = cards.join('') || '<p class="loading">no road drawn yet.</p>';
+  if (gate) {
+    const conds = gate.opens[2].split(/,\s*(?:and\s+)?/).map(x => x.trim()).filter(Boolean).map(x => {
+      const c = (x.match(/\(8\.([1-9])\)/) || [])[1];
+      return '<li' + (c && met[c] ? ' class="met"' : '') + '>' + esc(cap(human(x))) + '</li>';
+    });
+    const what = first(gate.s.line);
+    const after = gate.s.line.slice(what.length).replace(gate.opens[0], '').trim();
+    $('gate').innerHTML = '<h3>' + esc(gate.s.lab) + '</h3><p class="what">' + esc(cap(human(what))) + '</p>' +
+      '<p class="cond"><b>Opens when</b>' + esc(cap(human(gate.opens[1].trim()))) + ':</p><ul class="conds">' + conds.join('') + '</ul>' +
+      (after ? '<p class="after">' + esc(cap(human(after))) + '</p>' : '') +
+      '<ol class="ladder">' + stepsOf(gate.n).map(p => '<li class="rung ahead"><h3>' + esc(p.lab) + '</h3>' + clampedHTML(cap(human(p.line))) + '</li>').join('') + '</ol>' +
+      readingsHTML(heardAt(gate.n));
+    $('gate').hidden = false;
   }
 
   /* THE DOORS — each branch a tile: its label and its first line. Its room
