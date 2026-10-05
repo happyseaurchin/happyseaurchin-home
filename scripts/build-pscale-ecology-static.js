@@ -69,13 +69,14 @@ const levelsLit = sliceBracketed(html, /const\s+LEVELS\s*=\s*/, '[', ']');
 const aliasLit = sliceBracketed(html, /const\s+HASH_ALIAS\s*=\s*/, '{', '}');
 const infoLit = sliceTemplate(html, /const\s+INFO_HTML\s*=\s*/);
 const semflowLit = sliceTemplate(html, /const\s+SEMFLOW\s*=\s*/);
+const grewLit = sliceTemplate(html, /const\s+GREW\s*=\s*/);
 
 // eval as pure data (BIOME_CFG/BSP_CFG referenced by connect frames → stub)
 const data = new Function(
   'const BIOME_CFG="";const BSP_CFG="";' +
   'return {OVERVIEW:' + overviewLit + ',BRANCHES:' + branchesLit +
   ',RAIL_ORDER:' + railLit + ',LEVELS:' + levelsLit + ',HASH_ALIAS:' + aliasLit +
-  ',INFO_HTML:' + infoLit + ',SEMFLOW:' + semflowLit + '};'
+  ',INFO_HTML:' + infoLit + ',SEMFLOW:' + semflowLit + ',GREW:' + grewLit + '};'
 )();
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -140,7 +141,7 @@ for (const l of data.LEVELS) {
     body += `<h4>${esc(c.label)} — ${esc(c.sub)}</h4>\n${c.front.trim()}\n<p><strong>What others do instead:</strong></p>\n${c.back.trim()}\n`;
   }
 }
-body += `<h3>Why this exists — two hidden attractors</h3>\n${data.INFO_HTML.trim()}\n</section>\n`;
+body += `<h3>Why this exists — two hidden attractors</h3>\n${data.INFO_HTML.trim()}\n${data.GREW.trim()}\n</section>\n`;
 
 // full segmented paths, in rail order, under their level
 body += `<section id="ssr-paths">\n<h2>The paths</h2>\n`;
@@ -185,7 +186,7 @@ for (const l of data.LEVELS) {
   m += `### ${l.label} — ${l.tag}\n\n${toMd(l.law)}\n\n`;
   for (const c of cards) m += `#### ${c.label} — ${c.sub}\n\n${toMd(c.front)}\n\n*What others do instead:* ${toMd(c.back)}\n\n`;
 }
-m += `### Why this exists — two hidden attractors\n\n${toMd(data.INFO_HTML)}\n\n---\n\n## The paths\n\n`;
+m += `### Why this exists — two hidden attractors\n\n${toMd(data.INFO_HTML)}\n\n${toMd(data.GREW)}\n\n---\n\n## The paths\n\n`;
 for (const run of LEVEL_RUNS()) {
   if (run.level) m += `### ${run.level.label} — ${run.level.tag}\n\n${toMd(run.level.law)}\n\n`;
   for (const b of run.branches) {
