@@ -459,6 +459,12 @@
  *
  *     siteDoors({ handle: HANDLE, family: VENTURE, here: 'walk' });
  *
+ * The handle names whose pages these are, never who is looking — and since the
+ * menu's first line is also the switch between names, a page that takes names in
+ * place rather than by its address (the globe) hands over its own hand for that:
+ *
+ *     siteDoors({ handle: HANDLE, here: 'globe', take: takeName });
+ *
  * Two groups, because a home and a glance are not peers: what you WORK in stands
  * first, what you GLANCE at stands under a rule. And anything needing a handle we
  * do not have is left out entirely rather than offered empty — there is nowhere
@@ -530,8 +536,9 @@
 
   /* THE NAME THIS DEVICE SIGNS WITH — render:who, kept by whichever page last wrote
    * under it (/welcome's 'that's me' and its three cards, /page, /view, /render,
-   * /network). Never a sign-in: it only says whose pages the site's own menu should
-   * offer when a page carries no handle of its own. */
+   * /network, and /now when a line lands under its key). Never a sign-in: it only says
+   * whose pages the site's own menu should offer when a page carries no handle of its
+   * own, and the way back to them from anyone else's (the switch, below). */
   function knownName(){
     try { return String(localStorage.getItem('render:who') || '').replace(/[^a-z0-9_-]/gi, '').trim() || null; }
     catch(e){ return null; }
@@ -557,6 +564,18 @@
     '.dd__menu .here{color:var(--foam)}' +
     '.dd__who{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--solid);padding:4px 8px 7px;border-bottom:1px solid var(--line);margin-bottom:4px}' +
     '.dd__rule{height:1px;background:var(--line);margin:7px 4px}' +
+    /* the first line as the switch: the name, tapped for another; the way back beneath it */
+    '.dd__head{border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:3px}' +
+    '.dd__menu button.dd__who{display:flex;width:100%;text-align:left;background:none;border:none;border-radius:4px;' +
+      'margin:0;padding:4px 8px 5px;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--solid)}' +
+    '.dd__menu button.dd__who::after{content:"⇄";margin-left:auto;padding-left:12px;letter-spacing:0;color:var(--vapour-dim);opacity:0.6}' +
+    '.dd__menu button.dd__who:hover,.dd__menu button.dd__who:hover::after{color:var(--liquid);opacity:1}' +
+    '.dd__menu a.dd__back{font-family:var(--mono);font-size:12px;letter-spacing:0.06em;color:var(--vapour-dim);padding:3px 8px 4px}' +
+    '.dd__menu a.dd__back:hover{color:var(--liquid)}' +
+    '.dd__ask{display:flex;gap:6px;padding:2px 4px 4px}' +
+    '.dd__ask input{flex:1 1 0;width:0;min-width:0;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);' +
+      'border-radius:4px;padding:5px 8px;color:var(--foam);font-family:var(--mono);font-size:12px}' +
+    '.dd__menu .dd__ask button{width:auto}' +
     '.dd__lab{font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;color:var(--vapour-dim);padding:6px 8px 2px}' +
     /* acts keep the bar\'s own register — a button still looks like a button */
     '.dd__menu button{width:100%;text-align:left}' +
@@ -1512,6 +1531,66 @@
       door(['rpg', 'the tables', '/rpg']);
       var h = cfg.handle || knownName();
       if (h){ rule(); door(['now', h + '’s now', '/now/' + encodeURIComponent(h)]); }
+      /* and a walker who arrived carrying someone else's name keeps the way to their own */
+      var me = knownName();
+      if (me && h && me.toLowerCase() !== h.toLowerCase()) door(['now', '↩ ' + me + '’s now', '/now/' + encodeURIComponent(me)]);
+    }
+
+    /* THE SWITCH — the first line of a hand's menu (tidying.19, 2026-10-05). A name on
+     * any page opens that person's page (#319), and from there every door carries their
+     * name, so a reader who followed one had no way back but the address bar. The first
+     * line still says whose pages these are; tapped, it takes any other name, the same
+     * place theirs. And while the page stands in a name that is not the one this device
+     * signs with, that name stands beneath it: one tap back to the same place as
+     * yourself. Never a sign-in — a key still decides what can be written. */
+    function sameFor(h){
+      var p = null;
+      [].concat.apply([], GROUPS).forEach(function(x){ if (x[1] === cfg.here) p = x; });
+      return (p && href(p[1], p[2], h, cfg.family)) || '/now/' + encodeURIComponent(h);
+    }
+    function goAs(h){
+      if (typeof cfg.take === 'function'){ d.removeAttribute('open'); cfg.take(h); return; }
+      location.href = sameFor(h);
+    }
+    function whoLine(){
+      var me = knownName();
+      var head = document.createElement('div'); head.className = 'dd__head';
+      var who = document.createElement('button');
+      who.type = 'button'; who.className = 'dd__who'; who.setAttribute('data-keep-open', '');
+      who.textContent = cfg.handle || 'whose pages?';
+      who.title = 'another name — the same place, theirs';
+      who.addEventListener('click', function(e){ e.stopPropagation(); askName(head, who); });
+      head.appendChild(who);
+      if (me && (!cfg.handle || me.toLowerCase() !== String(cfg.handle).toLowerCase())){
+        var back = document.createElement('a');
+        back.className = 'dd__back'; back.href = sameFor(me);
+        back.textContent = '↩ ' + me;
+        back.title = 'this place as ' + me + ' — the name this device signs with';
+        back.addEventListener('click', function(e){
+          if (typeof cfg.take !== 'function' || e.metaKey || e.ctrlKey || e.shiftKey) return;
+          e.preventDefault(); goAs(me);
+        });
+        head.appendChild(back);
+      }
+      menu.appendChild(head);
+    }
+    /* the line flips into a box where it stands, as 'choose what shows' flips the list */
+    function askName(head, who){
+      var row = document.createElement('div'); row.className = 'dd__ask';
+      var input = document.createElement('input');
+      input.type = 'text'; input.placeholder = 'a name'; input.setAttribute('aria-label', 'whose pages');
+      input.setAttribute('autocapitalize', 'none'); input.setAttribute('spellcheck', 'false');
+      var ok = document.createElement('button');
+      ok.type = 'button'; ok.textContent = 'go'; ok.setAttribute('data-keep-open', '');
+      function land(){
+        var h = input.value.replace(/[^a-z0-9_-]/gi, '').trim();
+        if (h) goAs(h); else input.focus();
+      }
+      ok.addEventListener('click', function(e){ e.stopPropagation(); land(); });
+      input.addEventListener('keydown', function(e){ if (e.key === 'Enter') land(); });
+      row.appendChild(input); row.appendChild(ok);
+      head.replaceChild(row, who);
+      input.focus();
     }
 
     function paint(){
@@ -1520,12 +1599,9 @@
       if (cfg.rpg){ paintRpg(); return; }
       if (cfg.site){ paintSite(); return; }
       var a = arrange(cfg.here), lastGroup = null;
-      /* whose pages these are — the first line, so "now" reads as this handle's now */
-      if (cfg.handle){
-        var who = document.createElement('span');
-        who.className = 'dd__who'; who.textContent = cfg.handle;
-        menu.appendChild(who);
-      }
+      /* whose pages these are — the first line, so "now" reads as this handle's now;
+       * it is also the switch between names (whoLine, above) */
+      whoLine();
 
       function place(p){
         var u = href(p[1], p[2], cfg.handle, cfg.family);
@@ -1659,11 +1735,13 @@
       ? readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
           if (list && list.length){
             STATED_DOORS = list;
-            if (!menu.querySelector('.dd__row')) paint();   /* not while it is being edited */
+            /* not while it is being edited, nor while a name is being typed at the top */
+            if (!menu.querySelector('.dd__row') && !menu.querySelector('.dd__ask')) paint();
           }
         })
       : Promise.resolve();
     d.appendChild(menu);
+    d.addEventListener('toggle', function(){ if (!d.open && menu.querySelector('.dd__ask')) paint(); });
     /* GO IS ALWAYS THE TOP RIGHT, on every page and whatever else the bar carries,
      * because a fixed corner is what makes a control findable without looking for
      * it. Acts sit to its left; gatherActs places itself before this one. */
