@@ -142,6 +142,17 @@
     display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:3.6em}
   .rcard.sel .say{color:var(--foam);display:block;-webkit-line-clamp:unset;overflow:visible}
   .rcard.empty .say{color:var(--vapour-dim);font-style:italic}
+  /* THE ROW GRAMMAR (tree 9.3) — a run down digit 1 drawn as one ladder, the
+     leaves beside a step as its side-rooms, readings that open in capitals counted */
+  .tsteps{max-width:720px;margin:0 auto;padding:6px 18px 10px;list-style:none;display:flex;flex-direction:column;gap:8px}
+  .tsteps .rcard{flex:none;max-width:none;width:100%;scroll-snap-align:none}
+  .tsteps .rcard .say{min-height:0;-webkit-line-clamp:2}
+  .tside{display:flex;flex-wrap:wrap;gap:6px}
+  .tside button{font-family:var(--mono);font-size:10.5px;letter-spacing:0.04em;color:var(--vapour);background:none;
+    border:1px solid var(--line);border-radius:999px;padding:2px 9px;cursor:pointer}
+  .tside button:hover,.tside button.sel{border-color:var(--liquid);color:var(--foam)}
+  .tside-own{max-width:720px;margin:0 auto;padding:4px 18px 0}
+  .b.bm{color:var(--solid);border:1px solid rgba(var(--solid-rgb),0.35)}
   .badges{display:flex;gap:8px;min-height:16px}
   .b{font-family:var(--mono);font-size:10px;letter-spacing:0.05em;border-radius:4px;padding:1px 7px}
   .b{cursor:pointer}
@@ -509,6 +520,60 @@ function voice(node){
 function childDigits(node){
   if (!node || typeof node !== 'object') return [];
   return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort();
+}
+/* ── THE ROW GRAMMAR (tree 9.3, 2026-10-05): how a branch family's rows are
+ * drawn, read from the block and never from a table in code. A node opens with
+ * its title in capitals, then ' — ', then the line written to the person;
+ * cross-references and block names stand in brackets, for minds. A family that
+ * keeps no titles walks exactly as it always did. ── */
+function titled(text){
+  let t = String(text || '').trim();
+  const own = t.match(/^[a-z][\w-]*:[\w:-]+\s+\u2014\s+/);           /* a root naming its own block first */
+  if (own) t = t.slice(own[0].length);
+  const m = t.match(/^([^a-z\u2014]{2,80}?)\s+\u2014\s+([^]*)$/) || t.match(/^([A-Z][A-Z0-9 ,'\u2019&()-]{2,60})\.\s+([^]*)$/);
+  if (!m || /[a-z]/.test(m[1]) || !/[A-Z]{2}/.test(m[1])) return null;
+  let title = m[1].trim(), line = m[2].trim();
+  /* a title that only names the kind of node lends itself the line's opening clause */
+  if (/^SIDE-ROOM$/.test(title)){ const c = line.match(/^[^.:;]{3,70}/); if (c) return { title: c[0].charAt(0).toUpperCase() + c[0].slice(1), line }; }
+  return { title: title.charAt(0) + title.slice(1).toLowerCase(), line };
+}
+/* the person's reading of a line: a bracket holding an address or a block name
+ * is for minds and goes; the family's own blocks are named in words */
+function plain(line){
+  const fam = VENTURE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(line || '')
+    .replace(/\s*\(([^()]*)\)/g, (m, inner) =>
+      /^\s*(see\s+)?[1-9](\.[1-9]+)?(\s*(,|;|\u2013|-|and|to)\s*[1-9](\.[1-9]+)?)*\s*$/.test(inner)
+      || /(^|[\s,;])[1-9]\.[1-9]+\b/.test(inner) || /\b[a-z][\w-]*:[a-z<][\w<>-]*/.test(inner) ? '' : m)
+    .replace(new RegExp('\\b' + fam + ':<your-handle>', 'g'), 'your own mirror')
+    .replace(new RegExp('\\bspine:' + fam + '\\b', 'g'), 'the plan')
+    .replace(new RegExp('\\bfunction:' + fam + '\\b', 'g'), 'the law')
+    .replace(new RegExp('\\bpool:' + fam + '\\b', 'g'), 'the room')
+    .replace(/\s+([,.;:])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+}
+const isLeaf = n => !n || typeof n !== 'object' || !childDigits(n).length;
+/* SEQUENCE IS DEPTH: from a node whose branch 1 goes on to its own branch 1,
+ * through steps whose other branches are leaves, the run down digit 1 is a
+ * sequence — one ladder, those leaves each step's side-rooms. Anything else is
+ * parts, drawn side by side. */
+function runFrom(node, addr){
+  const sideOk = n => childDigits(n).every(d => d === '1' || isLeaf(n[d]));
+  const steps = [];
+  let n = node, a = addr;
+  while (n && typeof n === 'object' && n['1'] != null && sideOk(n)){
+    n = n['1']; a += '1';
+    steps.push({ addr: a, node: n });
+  }
+  return steps.length >= 2 ? steps : null;
+}
+/* a reading that opens with a word in capitals is counted at its node */
+function marksAt(addr){
+  const n = {};
+  lensed(voicesAt(addr)).shown.forEach(v => {
+    const m = /^([A-Z]{3,})(?=[\s,.:;\u2014-]|$)/.exec(String(v.t || '').trim());
+    if (m) n[m[1]] = (n[m[1]] || 0) + 1;
+  });
+  return Object.keys(n).map(k => '<span class="b bm">' + n[k] + ' ' + k.toLowerCase() + '</span>').join('');
 }
 /* ONE ADDRESS, ONE READING — trailing zeros are floor padding, so 20263322 and
  * 2026332200 are the same point. walkZeroAware already reads them that way;
@@ -1317,8 +1382,9 @@ function inviteAt(lv, isNow, label){
   if (lv === 'w') return 'this week has no words yet, so the day hangs straight off the month — tap twice to give the week its line, or propose one in voices';
   return what + ' has no words yet — tap twice to give it a line, or propose one in voices';
 }
-function rcard(label, addr, isSel, isNow, data){
-  const t = lensText(addr);
+function rcard(label, addr, isSel, isNow, data, extra){
+  const raw = lensText(addr), tt = MODE === 'tree' && !PREFS.workings && raw ? titled(raw) : null;
+  const t = MODE === 'tree' && !PREFS.workings && raw ? plain(tt ? tt.line : raw) : raw;
   const lv = (String(data).match(/data-lv="(\w+)"/) || [])[1];
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
   /* data-addr carries the cell's own address into the markup. The rack already
@@ -1331,7 +1397,8 @@ function rcard(label, addr, isSel, isNow, data){
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
-    (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') + '</div></div>';
+    (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') +
+    (MODE === 'tree' ? marksAt(addr) : '') + '</div>' + (extra || '') + '</div>';
 }
 /* ── the rows. Each shows its FULL sibling set — every month of the year, every
  * year of the decade — so nothing vanishes as you click. A click highlights in
@@ -1535,7 +1602,8 @@ function renderRowsFrom(lv){
 function renderRack(){
   if (GROUND){ renderGroundRack(); return; }
   if (MODE === 'tree'){
-    $('toward').innerHTML = 'the family\u2019s own line · <b>' + esc(short(voice(SPINE) || '', 170)) + '</b>';
+    const root = voice(SPINE) || '', rt = PREFS.workings ? null : titled(root);
+    $('toward').innerHTML = 'the family\u2019s own line · <b>' + esc(short(PREFS.workings ? root : rt ? rt.title + ' \u2014 ' + plain(rt.line) : plain(root), 170)) + '</b>';
     renderTreeRack();
     return;
   }
@@ -1569,16 +1637,41 @@ function nineIsOperator(spine, law){
 /* ── the tree rack — the same rows, grown from the spine's own branches: row one
  * is the stems, each further row the children of the branch chosen above it ── */
 function renderTreeRack(){
-  const rows = [];
+  const rows = [], sel = SEL.path.join('');
+  const titleAt = a => { const tt = PREFS.workings ? null : titled(textAt(SPINE, a)); return tt ? tt.title : null; };
   let node = SPINE, addrSoFar = '';
   for (let depth = 0; ; depth++){
     const kids = childDigits(node).filter(d => !(depth === 0 && NINE_OFF && d === '9'));
     if (!kids.length) break;
+    const where = depth === 0 ? 'branches' : 'beneath ' + (titleAt(addrSoFar) || '\u00b7' + SEL.path.slice(0, depth).join('\u00b7'));
+    const run = depth === 0 && kids.length > 1 ? null : runFrom(node, addrSoFar);
+    if (run){
+      /* the node's own leaves stand beside the whole run, as its side-rooms */
+      const own = childDigits(node).filter(d => d !== '1' && isLeaf(node[d]) && !(depth === 0 && NINE_OFF && d === '9'));
+      const ownChips = own.length ? '<div class="tside tside-own">' + own.map(d => {
+        const a = addrSoFar + d;
+        return '<button type="button" data-path="' + a + '"' + (sel === a ? ' class="sel"' : '') + '>' + esc(titleAt(a) || '\u00b7' + d) + '</button>';
+      }).join('') + '</div>' : '';
+      rows.push('<div class="rowlab">' + esc(where) + ' \u2014 in order</div>' + ownChips + '<ol class="tsteps">' + run.map((st, i) => {
+        const last = i === run.length - 1;
+        const side = childDigits(st.node).filter(d => d !== '1' && isLeaf(st.node[d]) && (!last || childDigits(st.node).every(k => isLeaf(st.node[k]))));
+        const chips = side.length ? '<div class="tside">' + side.map(d => {
+          const a = st.addr + d;
+          return '<button type="button" data-path="' + a + '"' + (sel === a ? ' class="sel"' : '') + '>' + esc(titleAt(a) || '\u00b7' + d) + '</button>';
+        }).join('') + '</div>' : '';
+        return '<li>' + rcard(titleAt(st.addr) || '\u00b7' + st.addr.slice(depth), st.addr, sel === st.addr, false, 'data-lv="tp" data-path="' + st.addr + '"', chips) + '</li>';
+      }).join('') + '</ol>');
+      /* beneath the run's last step, its parts follow once the walk reaches it */
+      const lastStep = run[run.length - 1];
+      if (!sel.startsWith(lastStep.addr) || childDigits(lastStep.node).every(k => isLeaf(lastStep.node[k]))) break;
+      node = lastStep.node; addrSoFar = lastStep.addr; depth = lastStep.addr.length - 1;
+      continue;
+    }
     const cards = kids.map(d => {
       const a = addrSoFar + d;
-      return rcard('\u00b7' + d, a, SEL.path[depth] === d, false, 'data-lv="t" data-depth="' + depth + '" data-d="' + d + '"');
+      return rcard(titleAt(a) || '\u00b7' + d, a, SEL.path[depth] === d, false, 'data-lv="t" data-depth="' + depth + '" data-d="' + d + '"');
     });
-    rows.push('<div class="rowlab">' + (depth === 0 ? 'branches' : 'beneath \u00b7' + SEL.path.slice(0, depth).join('\u00b7')) + '</div><div class="carousel">' + cards.join('') + '</div>');
+    rows.push('<div class="rowlab">' + esc(where) + '</div><div class="carousel">' + cards.join('') + '</div>');
     const chosen = SEL.path[depth];
     if (!chosen) break;
     node = node[chosen]; addrSoFar += chosen;
@@ -1592,6 +1685,14 @@ function renderTreeRack(){
 }
 $('rack').addEventListener('click', e => {
   if (e.target.closest('a')) return;                        /* a link is a link — no selection ride-along */
+  const side = e.target.closest('.tside button');
+  if (side){
+    const again = SEL.path.join('') === side.dataset.path;
+    SEL.path = side.dataset.path.split(''); SEL.level = 't';
+    renderTreeRack();
+    if (again) openSheet('text');
+    return;
+  }
   const card = e.target.closest('.rcard'); if (!card) return;
   const badge = e.target.closest('.b');
   const lv = card.dataset.lv;
@@ -1618,6 +1719,14 @@ $('rack').addEventListener('click', e => {
     SEL.gpath = gJump(walk); SEL.level = 'p';
     renderGroundRack();
     if (badge){ G_SHEET_WALK = SEL.gpath; openSheet('voices'); }
+    return;
+  }
+  if (lv === 'tp'){
+    const again = SEL.path.join('') === card.dataset.path;
+    SEL.path = card.dataset.path.split(''); SEL.level = 't';
+    renderTreeRack();
+    if (badge) openSheet(badge.classList.contains('bv') ? 'voices' : 'cards');
+    else if (again) openSheet('text');
     return;
   }
   if (lv === 't'){
@@ -1668,6 +1777,7 @@ $('rack').addEventListener('click', e => {
 });
 $('rack').addEventListener('keydown', e => {
   if (e.key !== 'Enter' && e.key !== ' ') return;
+  if (e.target.closest('.tside button')) return;            /* a side-room is its own button */
   const card = e.target.closest('.rcard'); if (!card) return;
   e.preventDefault(); card.click();
 });
@@ -1696,7 +1806,8 @@ function selAddr(){
 function selLabel(){
   if (SEL.level === 'p') return gLabel(SEL.gpath);
   if (SEL.level === 't'){
-    const t = textAt(SPINE, SEL.path.join(''));
+    const t = textAt(SPINE, SEL.path.join('')), tt = PREFS.workings ? null : titled(t);
+    if (tt) return tt.title;
     return '\u00b7' + SEL.path.join('\u00b7') + (t ? ' \u2014 ' + short(t, 60) : '');
   }
   if (SEL.level === 'ce') return 'the ' + ORD(Math.floor(SEL.y / 100) + 1) + ' century';
@@ -1935,7 +2046,8 @@ function paintSheet(){
   });
   const b = [];
   if (SHEET.pane === 'text'){
-    b.push('<div class="fulltext">' + esc(textAt(SPINE, addr) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
+    const rawLine = textAt(SPINE, addr), lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
+    b.push('<div class="fulltext">' + esc((MODE === 'tree' && !PREFS.workings && rawLine ? plain(lineTt ? lineTt.line : rawLine) : rawLine) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
     /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
      * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
      * so a write at this rung would land a level up and eat what stands beneath —
@@ -2159,7 +2271,7 @@ $('disp').querySelectorAll('input[data-badge]').forEach(cb => {
 (function(){
   const dw = document.getElementById('disp-work');
   dw.checked = !!PREFS.workings;
-  dw.addEventListener('change', () => { PREFS.workings = dw.checked; savePrefs(); applyDisplay(); });
+  dw.addEventListener('change', () => { PREFS.workings = dw.checked; savePrefs(); applyDisplay(); if (MODE === 'tree' && !GROUND && SPINE) renderRack(); });
   const dg = document.getElementById('disp-gold');
   dg.checked = !!PREFS.gold;
   dg.addEventListener('change', () => { PREFS.gold = dg.checked; savePrefs(); applyDisplay(); });
