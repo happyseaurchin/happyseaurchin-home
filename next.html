@@ -626,6 +626,15 @@ function pileSlotFor(node){
   const retired = digs.filter(d => {
     const v = node[d];
     if (typeof v === 'string') return !v.trim() || /^(DONE|DROP)\b/.test(v.trim());
+    /* AN EMPTIED SLOT IS FREE. Every put-down writes {_: ''} — a done card
+     * landing in the timeline, a card thrown to tomorrow, the sweep — because
+     * the wire merges a bare string into what stands (fecdc5c), and blanks
+     * from before that kept their old conditions beside an empty sentence.
+     * This rule knew only the empty string, so every slot emptied since
+     * 2026-09-01 stayed taken and a pile filled with nothing (David,
+     * 2026-10-05: five cards showing at tomorrow, nine counted, no room).
+     * A slot holding no words is free, whatever conditions ride with it. */
+    if (isEntryNode(v) && !v._.trim()) return true;
     return v && typeof v === 'object' && (v['4'] === 'done' || v['4'] === 'drop')
       && String(v['3'] || '').slice(0, 10) !== today;
   }).sort();
@@ -729,7 +738,9 @@ async function loadField(){
             return;
           }
           if (!node || typeof node !== 'object') return;
-          if (isEntryNode(node)){ found.push({ digits: digits.slice(), node, pile: Number(pile) }); return; }
+          /* an emptied slot ({_: ''}) is no card — /hands and /morning already
+           * pass it over; here it dealt blank cards into ?aim=mine */
+          if (isEntryNode(node)){ if (node._.trim()) found.push({ digits: digits.slice(), node, pile: Number(pile) }); return; }
           if (node['_'] !== undefined) leaves(node['_'], digits.concat('0'));
           for (const d of childDigits(node)) leaves(node[d], digits.concat(d));
         })(mine[pile], [pile]);
