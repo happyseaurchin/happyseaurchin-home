@@ -100,10 +100,14 @@ const LEVEL_RUNS = () => {
   return runs;
 };
 
-function renderFrame(f) {
+// A card naming `goto` points at another frame of the same path, so here it
+// links to that frame's heading, which carries `<path>-<id>` as its anchor.
+const cardHref = (c, b) => c.goto ? `#${b.id}-${c.goto}` : c.href;
+
+function renderFrame(f, b) {
   if (f.kind === 'fork') return '';
   let h = '';
-  if (f.title) h += `<h5>${esc(f.title)}</h5>\n`;
+  if (f.title) h += `<h5${f.id ? ` id="${esc(b.id + '-' + f.id)}"` : ''}>${esc(f.title)}</h5>\n`;
   if (f.body) h += stripSvg(f.body).trim() + '\n';
   if (f.note) h += `<p class="ssr-note">${f.note}</p>\n`;
   if (f.kind === 'embed' && (f.open || f.src)) h += `<p>Live tool: <a href="${esc(f.open || f.src)}">${esc(f.open || f.src)}</a></p>\n`;
@@ -112,7 +116,7 @@ function renderFrame(f) {
     h += `<p>Connect via ${esc(f.via || 'bsp-mcp')} at <a href="${esc(ep)}">${esc(ep)}</a>.</p>\n`;
   }
   if (Array.isArray(f.cards) && f.cards.length) {
-    h += '<ul>\n' + f.cards.map(c => `<li><a href="${esc(c.href)}">${esc(c.title)}</a> — ${esc(c.desc)}</li>`).join('\n') + '\n</ul>\n';
+    h += '<ul>\n' + f.cards.map(c => `<li><a href="${esc(cardHref(c, b))}">${esc(c.title)}</a> — ${esc(c.desc)}</li>`).join('\n') + '\n</ul>\n';
   }
   return h;
 }
@@ -124,7 +128,7 @@ function renderFrame(f) {
 function renderBranch(b) {
   let h = (ALIASES_OF[b.id] || []).map(a => `<span id="${esc(a)}"></span>\n`).join('');
   h += `<section id="${esc(b.id)}" data-path="${esc(b.id)}">\n<h4>${esc(b.title)}</h4>\n<p>${esc(b.lede)}</p>\n`;
-  h += b.frames.map(renderFrame).join('');
+  h += b.frames.map(f => renderFrame(f, b)).join('');
   return h + '</section>\n';
 }
 
@@ -198,7 +202,11 @@ for (const run of LEVEL_RUNS()) {
     if (f.note) m += `_${toMd(f.note)}_\n\n`;
     if (f.kind === 'embed' && (f.open || f.src)) m += `Live tool: ${f.open || f.src}\n\n`;
     if (f.kind === 'connect') m += `Connect via ${f.via || 'bsp-mcp'} at ${f.endpoint || 'https://bsp.hermitcrab.me/mcp/v1'}\n\n`;
-    if (Array.isArray(f.cards) && f.cards.length) m += f.cards.map(c => `- [${c.title}](${c.href}) — ${c.desc}`).join('\n') + '\n\n';
+    if (Array.isArray(f.cards) && f.cards.length) m += f.cards.map(c => {
+      if (!c.goto) return `- [${c.title}](${c.href}) — ${c.desc}`;
+      const to = b.frames.find(x => x.id === c.goto);
+      return `- ${c.title} — ${c.desc}${to && to.title ? ` (see "${to.title}", below)` : ''}`;
+    }).join('\n') + '\n\n';
   }
   }
 }
