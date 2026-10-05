@@ -271,14 +271,20 @@ function digitKeys(node){
   if (!node || typeof node !== 'object') return [];
   return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort((a, b) => a - b);
 }
-/* the entries of an accumulator, oldest first — the supernest wrap holds the older ones under the underscore */
+/* the entries of an accumulator, oldest first: every node at the floor's depth. The floor is
+   the depth of the underscore chain, so the depth is the kind and nothing is guessed from a
+   node's shape. The supernest wrap holds the older entries under the underscore, a filled
+   ladder holds the newer ones in CONTAINERS at 1, 2, … (the register wrapped on 2026-09-14
+   at its tenth world), and a container's own underscore is the summary of what it holds,
+   never an entry — so writing the summary the register owes at 10 hides no world. A block
+   with no underscore chain reads as floor 1. */
 function entriesOf(block){
-  const out = [];
-  (function walk(node){
+  const floor = Math.max(1, floorOf(block)), out = [];
+  (function walk(node, depth){
     if (!node || typeof node !== 'object') return;
-    if (node['_'] && typeof node['_'] === 'object') walk(node['_']);
-    for (const d of digitKeys(node)) out.push(node[d]);
-  })(block);
+    if (depth + 1 < floor) walk(node['_'], depth + 1);
+    for (const d of digitKeys(node)) { if (depth + 1 === floor) out.push(node[d]); else walk(node[d], depth + 1); }
+  })(block, 0);
   return out;
 }
 
@@ -622,9 +628,10 @@ async function renderWorlds(){
   const box = $('g-worlds');
   let block = null;
   try { block = await readBlock('worlds'); } catch(e){}
-  /* earth is the real, not a game: it has its own door above, so it is left out of the tables */
+  /* worlds only: earth is the real, not a game, with its own door above; and an open table
+     ('<scenario>-open') is a table, not a world — /rpg shows it on its scenario's card */
   const names = entriesOf(block).map(voiceOf).filter(Boolean)
-    .map(s => s.split('→')[0].trim()).filter(n => /^[a-z0-9-]+$/i.test(n) && n !== 'earth');
+    .map(s => s.split('→')[0].trim()).filter(n => /^[a-z0-9-]+$/i.test(n) && n !== 'earth' && !/-open$/.test(n));
   if (!names.length){ box.innerHTML = '<span class="mono">the register could not be read just now — <a href="/rpg">the worlds page</a> reads it too</span>'; return; }
   const WORDS = ['One','Two','Three','Four','Five','Six','Seven','Eight','Nine'];
   $('g-title').textContent = (WORDS[names.length - 1] || names.length) + (names.length === 1 ? ' world stands.' : ' worlds stand.');

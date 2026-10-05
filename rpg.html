@@ -204,19 +204,25 @@ function digitKeys(node){
   if (!node || typeof node !== 'object') return [];
   return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort((a, b) => a - b);
 }
-/* the entries of an accumulator, oldest first — the supernest wrap holds the older ones
-   under the underscore, and a filled ladder holds the newer ones in CONTAINERS at 1, 2, …
-   (the register wrapped on 2026-09-14 at its tenth world). An entry is a string, or an
-   object with its own voice and scalar fields; anything else is a container to walk. */
+function floorOf(block){
+  let n = 0, node = block;
+  while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
+  return n;
+}
+/* the entries of an accumulator, oldest first: every node at the floor's depth. The floor is
+   the depth of the underscore chain, so the depth is the kind and nothing is guessed from a
+   node's shape. The supernest wrap holds the older entries under the underscore, a filled
+   ladder holds the newer ones in CONTAINERS at 1, 2, … (the register wrapped on 2026-09-14
+   at its tenth world), and a container's own underscore is the summary of what it holds,
+   never an entry — so writing the summary the register owes at 10 hides no world. A block
+   with no underscore chain reads as floor 1. */
 function entriesOf(block){
-  const out = [];
-  const scalar = v => v == null || typeof v !== 'object';
-  const isEntry = v => typeof v === 'string' || (v && typeof v === 'object' && typeof v['_'] === 'string' && digitKeys(v).every(d => scalar(v[d])));
-  (function walk(node){
+  const floor = Math.max(1, floorOf(block)), out = [];
+  (function walk(node, depth){
     if (!node || typeof node !== 'object') return;
-    if (node['_'] && typeof node['_'] === 'object') walk(node['_']);
-    for (const d of digitKeys(node)) { const v = node[d]; if (isEntry(v)) out.push(v); else walk(v); }
-  })(block);
+    if (depth + 1 < floor) walk(node['_'], depth + 1);
+    for (const d of digitKeys(node)) { if (depth + 1 === floor) out.push(node[d]); else walk(node[d], depth + 1); }
+  })(block, 0);
   return out;
 }
 function ago(iso){
@@ -284,7 +290,8 @@ async function renderWorlds(){
     catch(e){ b.textContent = 'shown below'; }
     setTimeout(() => { b.textContent = 'with your assistant'; }, 2000);
   }));
-  if (location.hash){ const t = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (t) t.scrollIntoView({ block: 'start' }); }
+  /* a table's name lands on its scenario's card: #brackenfoot-open is brackenfoot's */
+  if (location.hash){ const h = decodeURIComponent(location.hash.slice(1)); const t = document.getElementById(h) || document.getElementById(h.replace(/-open$/, '')); if (t) t.scrollIntoView({ block: 'start' }); }
   renderRosters();
 }
 
