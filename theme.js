@@ -528,7 +528,7 @@
     ['connect',     'connect your AI'],
     ['experiences', 'experiences'],
     ['animations',  'animations'],
-    ['paths',       'what can grow'],
+    ['path',        'part by part', '/path/beach-venture'],
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
