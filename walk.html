@@ -142,10 +142,7 @@
     display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:3.6em}
   .rcard.sel .say{color:var(--foam);display:block;-webkit-line-clamp:unset;overflow:visible}
   .rcard.empty .say{color:var(--vapour-dim);font-style:italic}
-  /* WHERE EACH PART STANDS (function:path 2) — the fold's line under the part's own */
-  .rcard .stand{font-size:0.8rem;line-height:1.4;color:var(--vapour-dim);margin-top:4px;
-    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  .rcard.sel .stand{display:block;-webkit-line-clamp:unset;overflow:visible;color:var(--vapour)}
+  /* WHERE EACH PART STANDS (function:path 2) — a mark on the tile; said whole in the part's cards tab */
   .mk{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;font-weight:400;border-radius:4px;padding:0 6px;margin-right:2px;border:1px solid var(--line)}
   .mk-done{color:var(--solid);border-color:rgba(var(--solid-rgb),0.5)}
   .mk-doing{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
@@ -582,11 +579,28 @@ function runFrom(node, addr){
 /* the fold's line at a node — for a path, where that part stands (function:path 2) */
 function foldAt(addr){ return FOLD ? textAt(FOLD, addr) : null; }
 const MARK_RE = /^([A-Z]{3,})(?=[\s,.:;—-]|$)/;
-function standLine(addr){
+/* the fold's line split into its mark and its words, the words plain for a person */
+function standOf(addr){
   const s = foldAt(addr), m = s && MARK_RE.exec(s);
-  if (!m) return '';
-  const rest = plain(s.slice(m[0].length).replace(/^\s*[—:-]\s*/, ''));
-  return '<span class="stand"><b class="mk mk-' + m[1].toLowerCase() + '">' + m[1].toLowerCase() + '</b> ' + esc(short(rest, 220)) + '</span>';
+  return m ? { mark: m[1].toLowerCase(), words: plain(s.slice(m[0].length).replace(/^\s*[—:-]\s*/, '')) } : null;
+}
+/* ON THE TILE, ONLY THE MARK — where a part stands, said whole, is the cards' own account
+ * and lives in the part's cards tab with the cards behind it (David, 2026-10-06: "it seems
+ * related to cards") */
+function standChip(addr){
+  const st = standOf(addr);
+  return st ? '<span class="b mk mk-' + st.mark + '" title="' + esc(st.words) + '">' + st.mark + '</span>' : '';
+}
+/* a part's own reference, the form a card dealt from it carries at its 5 —
+ * where it was dealt from (function:ahead 2) — and keeps through its landing */
+const partRef = a => VENTURE + ' ' + (String(a).length > 1 ? String(a)[0] + '.' + String(a).slice(1) : String(a));
+/* the cards taken from one part of a path: they serve the project, and name the part at 5 */
+function partCards(addr){
+  const ref = partRef(addr), out = [];
+  DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
+    if (c.toward === PATH_OF && c.from === ref) out.push({ who, ...c, elapsed: c.held || '' });
+  }));
+  return out;
 }
 /* a reading that opens with a word in capitals is counted at its node */
 function marksAt(addr){
@@ -861,7 +875,9 @@ function openCardsOf(deck){
     if (state === 'done' || state === 'drop') return;
     out.push({ addr: c.addr, pile: c.pile, text,
                held: state === 'doing' ? 'doing now' : (state === 'held' ? 'in hand' : ''),
-               toward: obj ? (n['2'] || null) : null });
+               toward: obj ? (n['2'] || null) : null,
+               /* 5, where it was dealt from (function:ahead 2): a part of a path, or a door */
+               from: obj ? (n['5'] || null) : null });
   });
   return out;
 }
@@ -1430,10 +1446,9 @@ function rcard(label, addr, isSel, isNow, data, extra){
     'data-addr="' + esc(addr) + '" ' + (isNow ? 'data-now="1" ' : '') + data + '>' +
     '<span class="lab">' + (lv === 'g' ? '<span data-when="' + esc(addr) + '">' + esc(label) + '</span>' : esc(label)) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
-    (MODE === 'tree' ? standLine(addr) : '') +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') +
-    (MODE === 'tree' ? marksAt(addr) : '') + '</div>' + (extra || '') + '</div>';
+    (MODE === 'tree' ? standChip(addr) + marksAt(addr) : '') + '</div>' + (extra || '') + '</div>';
 }
 /* ── the rows. Each shows its FULL sibling set — every month of the year, every
  * year of the decade — so nothing vanishes as you click. A click highlights in
@@ -1865,7 +1880,8 @@ function openSheet(pane){
    * default (the sovereign act); the spine is one tab away and a tab choice
    * becomes the new default. Badge taps still open exactly what was tapped. */
   if (pane === 'text'){
-    try { pane = localStorage.getItem('walk-pane') || 'voices'; } catch(e){}
+    /* on a path a plain tap opens where the part stands — its cards tab — unless chosen otherwise */
+    try { pane = PATH_OF ? (localStorage.getItem('path-pane') || 'cards') : (localStorage.getItem('walk-pane') || 'voices'); } catch(e){ if (PATH_OF) pane = 'cards'; }
   }
   SHEET = { pane }; paintSheet(); $('sheet-veil').classList.remove('hidden');
 }
@@ -1891,6 +1907,8 @@ const PILE_OF_LEVEL = { g: '1', d: '2', w: '3', m: '4', s: '5', y: '6', de: '7',
 function aimAndPile(){
   return { pile: PILE_OF_LEVEL[SEL.level] || '1' };
 }
+/* a path has no rungs, so a card taken from a part lands at this week's pile (3) */
+const PATH_PILE = '3';
 /* the /now keys, here too: Enter commits, Shift+Enter breaks a line, Esc leaves */
 function wireEnter(el, go){
   if (!el) return;
@@ -2061,7 +2079,9 @@ function paintSheet(){
     return;
   }
   tabs.classList.remove('hidden');
-  const addr = selAddr(), lens = lensed(voicesAt(addr)), vs = lens.shown, cs = MODE === 'tree' ? famCards() : cardsAt(addr);
+  /* on a path, a part's cards are the ones taken from it; any other branch family shows its own */
+  const addr = selAddr(), lens = lensed(voicesAt(addr)), vs = lens.shown,
+    cs = MODE === 'tree' ? (PATH_OF ? partCards(addr) : famCards()) : cardsAt(addr);
   /* a gathering carries its hours, shown when asked for (theme.js clockTimes) */
   if (SEL.level === 'g') $('sh-where').innerHTML = '<span data-when="' + gatherAddr(SEL.y, SEL.m0, SEL.d, SEL.g) + '">' + esc(selLabel()) + '</span>';
   else $('sh-where').textContent = selLabel();
@@ -2079,16 +2099,13 @@ function paintSheet(){
   tabs.querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.p === SHEET.pane);
     if (b.dataset.p === 'voices') b.textContent = 'your mirror · ' + (vs.length ? vs.length + (vs.length === 1 ? ' voice' : ' voices') : 'voices');
-    if (b.dataset.p === 'cards')  b.textContent = 'cards' + (cs.length ? ' · ' + cs.length : '');
+    /* on a path the cards tab IS where the part stands: the fold's line and the cards behind it */
+    if (b.dataset.p === 'cards')  b.textContent = (PATH_OF ? 'where it stands' : 'cards') + (cs.length ? ' · ' + cs.length + (PATH_OF ? (cs.length === 1 ? ' card' : ' cards') : '') : '');
   });
   const b = [];
   if (SHEET.pane === 'text'){
     const rawLine = textAt(SPINE, addr), lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
     b.push('<div class="fulltext">' + esc((MODE === 'tree' && !PREFS.workings && rawLine ? plain(lineTt ? lineTt.line : rawLine) : rawLine) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
-    /* where this part stands, from the fold (function:path 2) — said whole here */
-    const foldLine = MODE === 'tree' ? foldAt(addr) : null;
-    if (foldLine) b.push('<div class="standfull"><span class="sub">' + (PATH_OF ? 'where it stands' : 'the fold here') + '</span>' +
-      esc(PREFS.workings ? foldLine : plain(foldLine)) + '</div>');
     /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
      * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
      * so a write at this rung would land a level up and eat what stands beneath —
@@ -2129,12 +2146,32 @@ function paintSheet(){
     else
       b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
   } else {
+    /* WHERE IT STANDS, SAID WHOLE — the fold's line heads the cards it was folded from
+     * (function:path 2; David, 2026-10-06: "it seems related to cards") */
+    const st = MODE === 'tree' ? standOf(addr) : null;
+    if (st) b.push('<div class="standfull"><span class="sub">where it stands' + (FOLD && voice(FOLD) ? ' · folded each evening' : '') + '</span>' +
+      '<b class="mk mk-' + st.mark + '">' + st.mark + '</b> ' + esc(PREFS.workings ? (foldAt(addr) || '') : st.words) + '</div>');
+    else if (PATH_OF) b.push('<div class="standfull"><span class="sub">where it stands</span>not begun — nothing has been folded here yet</div>');
     b.push(cs.length
       ? cs.map(c => '<div class="cardenv' + (c.who === HANDLE ? ' you' : '') + '"><span class="cwho">' + whoMark(c.who) +
           (c.elapsed ? '<span class="st">' + esc(c.elapsed) + '</span>' : '') +
           '</span><div class="ctext">' + esc(c.text) + '</div></div>').join('')
-      : '<span class="silent">nothing closed here — a card stands here once it is done, and waits in the golden pile until then</span>');
-    if (HANDLE)
+      : '<span class="silent">' + (PATH_OF
+          ? 'no card has been taken from this part yet — take one below; once it is done it lands on ' + esc(PATH_OF) + '’s clock, and the evening fold moves this part'
+          : 'nothing closed here — a card stands here once it is done, and waits in the golden pile until then') + '</span>');
+    if (HANDLE && PATH_OF)
+      /* TAKE A CARD FROM A PART: it serves the project (2) and names the part it was dealt
+       * from (5, function:ahead 2), so its landing carries the part and the fold finds it;
+       * the sentence stays the holder's own words, nothing rides in it */
+      b.push('<div class="addwrap"><div class="mintbox">' +
+        '<div class="sub">' + (st && st.mark === 'next' ? 'take it as a card — the next thing on this part' : 'take a card from this part') + '</div>' +
+        '<textarea id="addto-text" placeholder="in your own words…"></textarea>' +
+        '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(PATH_PILE)) + '</b> (move it at /next), serving ' + esc(PATH_OF) +
+        '; when it is done it lands on that clock, and the evening fold moves this part.</p>' +
+        '<div class="row"><button id="addto-deal" title="start from where this part stands — edit, then take it">deal ↓</button>' +
+        '<button id="addto-go">take it</button></div>' +
+        '<div class="mnote"><a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a></div></div></div>');
+    else if (HANDLE)
       b.push('<div class="addwrap"><div class="mintbox">' +
         '<div class="sub">mint a card — one doable thing</div>' +
         '<textarea id="addto-text" placeholder="in your own words…"></textarea>' +
@@ -2167,7 +2204,7 @@ function paintSheet(){
   const mas = document.getElementById('mir-as');
   if (mas) mas.addEventListener('click', () => {
     const h = prompt('Your handle — the walk reloads with you in it:');
-    if (h && h.trim()) location.href = '/walk/' + encodeURIComponent(VENTURE) + '/' + encodeURIComponent(h.trim().replace(/[^a-zA-Z0-9 _-]/g, ''));
+    if (h && h.trim()) location.href = (PATH_OF ? '/path/' + encodeURIComponent(PATH_OF) : '/walk/' + encodeURIComponent(VENTURE)) + '/' + encodeURIComponent(h.trim().replace(/[^a-zA-Z0-9 _-]/g, ''));
   });
   if (SHEET.pane === 'voices' && HANDLE && $('mir-go')){
     const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
@@ -2223,6 +2260,8 @@ function paintSheet(){
     $('addto-deal').addEventListener('click', () => {
       if (!cands){
         const src = [], seenA = new Set();
+        /* on a path, deal from where the part stands first, then from what the part is */
+        if (PATH_OF){ const st = standOf(addr); if (st && st.mark !== 'done') src.push(st.words); }
         [addr].concat(
           SEL.level === 'd' ? [weekAddr(SEL.y, SEL.m0, SEL.band), monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y)]
           : SEL.level === 'w' ? [monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y)]
@@ -2273,10 +2312,14 @@ function paintSheet(){
        * stamps field 2, and the pile follows the rung the card was born at. A
        * commitment to a DATE is not a card at all: voice the mirror at that day
        * (function:ahead:3 — the bookings seam). */
-      const { pile } = aimAndPile();
+      const pile = PATH_OF ? PATH_PILE : aimAndPile().pile;
       BUSY = true; $('addto-go').disabled = true;
       try {
-        const w = await appendCard({ '_': t, '2': VENTURE, '3': new Date().toISOString().slice(0,16) + 'Z', '5': '/walk' }, pile);
+        /* a card taken from a part of a path serves the project (2) and names the part it
+         * was dealt from (5), which rides its landing (function:ahead 2, 4; function:path 3) */
+        const w = await appendCard(PATH_OF
+          ? { '_': t, '2': PATH_OF, '3': new Date().toISOString().slice(0,16) + 'Z', '5': partRef(addr) }
+          : { '_': t, '2': VENTURE, '3': new Date().toISOString().slice(0,16) + 'Z', '5': '/walk' }, pile);
         if (w.ok){ toast('✓ in your hand'); await load(); paintSheet(); }
         else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
       } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
@@ -2291,7 +2334,7 @@ $('foot-pool').addEventListener('click', e => { e.preventDefault(); openGatherSh
 $('sheet-veil').addEventListener('click', e => { if (e.target === $('sheet-veil')) closeSheet(); });
 $('sh-tabs').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b || !SHEET || SHEET.gather) return;
-  try { localStorage.setItem('walk-pane', b.dataset.p); } catch(err){}
+  try { localStorage.setItem(PATH_OF ? 'path-pane' : 'walk-pane', b.dataset.p); } catch(err){}
   SHEET.pane = b.dataset.p; paintSheet();
 });
 /* ── chrome ── */
