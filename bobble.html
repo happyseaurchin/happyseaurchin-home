@@ -312,6 +312,7 @@ function split(text){
 const CHANNELS = {};
 function human(t){
   return (t || '')
+    .replace(/\s*\[[^\[\]]*\]/g, '')
     .replace(/\s*\((?:see\s+)?[\d.]+(?:\s*(?:,|–|-|to|and)\s*[\d.]+)*(?:,\s*approx\.)?\)/gi, '')
     .replace(/\s*\([^()]*\b[a-z-]+:[a-z<'][^()]*\)/gi, '')
     .replace(/\bsed:bobble\b/g, 'the bobble\u2019s ticket list').replace(/\bpool:bobble\b/g, 'the bobble\u2019s room')
@@ -368,14 +369,24 @@ function voicedUnder(node, prefix, out){
 
 const INDEX = readIndex().catch(() => []);
 const SPINE = readBlock('spine:' + FAMILY);
+/* WHERE EACH PART STANDS is the fold at the bare name, and only there (function:make 4):
+   the plan says what a part is and when it is done, never where it stands now */
+const FOLD = INDEX.then(names => names.includes(FAMILY) ? readBlock(FAMILY) : null).catch(() => null);
 const MIRRORS = INDEX.then(names => {
   const hands = names.filter(n => n.startsWith(FAMILY + ':') && n.split(':').length === 2).map(n => n.slice(FAMILY.length + 1))
     .sort((a, b) => a.localeCompare(b, 'en', { sensitivity:'base' }));
   return Promise.all(hands.map(h => readBlock(FAMILY + ':' + h).then(b => ({ h, b })).catch(() => ({ h, b: null }))));
 });
 
+/* a fold line opens with its mark — DONE, DOING, BLOCKED or NEXT — then one sentence */
+function standAt(fold, addr){
+  const t = fold ? textAt(fold, addr) : null;
+  const m = t && /^([A-Z]{3,})(?=[\s,.:;\u2014-]|$)\s*[\u2014:-]?\s*/.exec(t.trim());
+  return m ? { mark: m[1].toLowerCase(), words: t.trim().slice(m[0].length) } : null;
+}
+
 async function render(){
-  const [spine, mirrors] = await Promise.all([SPINE, MIRRORS]);
+  const [spine, mirrors, fold] = await Promise.all([SPINE, MIRRORS, FOLD]);
   if (!spine) { $('walk').innerHTML = '<li class="loading">the bobble has no spine yet.</li>'; return; }
   for (let c = 1; c <= 9; c++) { const t = textAt(spine, '8.' + c); if (t) CHANNELS[c] = split(t).lab.toLowerCase(); }
 
@@ -421,15 +432,18 @@ async function render(){
     const s = split(t);
     const opens = s.line.match(new RegExp('Opens when([^:]*):\\s*' + SENT));
     if (opens) { gate = { n, s, opens }; continue; }
-    const done = said1(s.line, 'Done when'), now = said1(s.line, 'Now:');
-    met[c] = !!now && /^(done|met)\b/i.test(now);
+    /* where the channel stands: the fold's line at its address, opening with its mark;
+       a plan still carrying its own 'Now:' is read as before until its fold stands */
+    const done = said1(s.line, 'Done when'), stood = standAt(fold, n),
+      now = stood ? stood.words : said1(s.line, 'Now:');
+    met[c] = stood ? stood.mark === 'done' : (!!now && /^(done|met)\b/i.test(now));
     const what = first(s.line);
     const rest = drop(drop(s.line.slice(what.length), 'Done when'), 'Now:').trim();
     const steps = stepsOf(n);
     cards.push('<article class="channel' + (met[c] ? ' met' : '') + '"><h3>' + esc(s.lab) + '</h3>' +
       '<p class="what">' + esc(cap(human(what))) + '</p>' +
       (done ? '<p class="cond"><b>Done when</b>' + esc(human(done)) + '.</p>' : '') +
-      (now ? '<p class="now"><b>Now</b>' + esc(cap(human(now))) + '.</p>' : '') +
+      (now ? '<p class="now"><b>Now' + (stood ? ' \u00b7 ' + stood.mark : '') + '</b>' + esc(cap(human(now)).replace(/[.\s]+$/, '')) + '.</p>' : '') +
       (rest ? clampedHTML(cap(human(rest))) : '') +
       (steps.length ? '<ol class="steps">' + steps.map(p => '<li><h4>' + esc(p.lab) + '</h4>' + clampedHTML(cap(human(p.line))) + '</li>').join('') + '</ol>' : '') +
       readingsHTML(heardAt(n)) + '</article>');
