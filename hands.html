@@ -643,15 +643,56 @@ async function gatherAsks(index, addr){
       });
     }
   }
+  /* A FAMILY THAT KEEPS NO CLOCK lands its closings in each holder's own now,
+   * keeping the family at 2 (next.html landCard; function:ahead 4, amended
+   * 2026-10-06), because its mirrors are addressed by its parts. So its claims
+   * are read there: in the other hands' nows touched this week, a closing whose 2
+   * names a family listed here that keeps no clock. What I have confirmed is
+   * matched by whose account AND which address, since two hands' nows share
+   * one clock. */
+  const clockless = await clocklessOf(FIELDS);
+  if (clockless.size){
+    const since = new Date(Date.now() - 7 * 86400e3).toISOString();
+    const touched = (index && index.touched) || null;
+    const nows = (index.blocks || []).filter(b => b.startsWith('now:') && b.slice(4).indexOf(':') === -1 &&
+      b !== 'now:' + HANDLE && (!touched || !touched[b] || touched[b] >= since));
+    const seenNow = new Set();
+    const mineNow = await readBlock('now:' + HANDLE).catch(() => null);
+    if (mineNow) nodesUnder(mineNow, week, n => n && typeof n === 'object' && n['4'] === 'witnessed' &&
+      (String(n['1'] || '') + '|' + String(n['2'] || ''))).forEach(w => seenNow.add(w.value));
+    for (const name of nows){
+      const who = name.slice(4);
+      const b = await readBlock(name).catch(() => null);
+      if (!b) continue;
+      nodesUnder(b, week, n => (DONE_AT(n) && clockless.has(String(n['2'] || ''))) ? DONE_AT(n) : null).forEach(c => {
+        if (seenNow.has(who + '|' + c.addr)) return;
+        asks.push({ who, claim: c.value, family: String(c.node['2']), addr: c.addr, landing: 'now',
+                    rung: c.addr.indexOf(day) === 0 ? 'today' : 'this week' });
+      });
+    }
+  }
   return asks;
 }
+/* which of the families listed keep no clock, read off each spine's own floor */
+async function clocklessOf(fams){
+  const out = new Set();
+  await Promise.all((fams || []).map(async f => {
+    const sp = await readBlock('spine:' + f).catch(() => null);
+    if (!sp || floorOf(sp) < 8) out.add(f);
+  }));
+  return out;
+}
 async function confirm(ask){
-  const name = ask.family + ':' + HANDLE;
+  /* a claim that landed in its holder's now — a family that keeps no clock — is
+   * witnessed in MY now, beneath the same beat: the same pairing as every other
+   * claim and its witness, each in its own hand's block (function:ahead 5) */
+  const fam = ask.landing === 'now' ? 'now' : ask.family;
+  const name = fam + ':' + HANDLE;
   let block = await readBlock(name).catch(() => null);
   if (!block){
     /* a mirror born to carry a confirmation is still a mirror, and is born at the
      * clock's floor so every rung of the family has somewhere to stand */
-    let root = 'MIRROR — ' + HANDLE + "'s readings on the " + ask.family + ' field, at the spine\u2019s own addresses. Sovereign; silence at an address is honest absence.';
+    let root = 'MIRROR — ' + HANDLE + "'s readings on the " + fam + ' field, at the spine\u2019s own addresses. Sovereign; silence at an address is honest absence.';
     for (let i = 0; i < 10; i++) root = { '_': root };
     const w0 = await foundLatched(name, root);
     if (!w0.ok) return w0;

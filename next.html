@@ -1378,9 +1378,24 @@ async function landCard(card, doneText, elapsed){
   if (!PERSONAL) return { skipped: true };
   const fam = (card && card.toward) || (HAND ? 'now' : null);
   if (!fam) return { skipped: true };
-  const name = fam + ':' + HANDLE;
-  const block = await readBlock(name).catch(() => null);
-  if (!block) return { skipped: true, name, fam };   // no reading there yet — the card stands alone
+  /* A FAMILY THAT KEEPS NO CLOCK LANDS ITS DONE IN THE HOLDER'S OWN NOW
+   * (function:ahead 4, amended 2026-10-06). Such a family's mirror is addressed
+   * by its PARTS — the bobble's 3.1 is a build step, its 8.1 a channel — so an
+   * append there would sit at a part and read as the holder's word about it.
+   * The record of a closing is a WHEN, and now:<handle> is the clock every hand
+   * has. The card keeps its 2, the family it served, and its 5, the part it was
+   * dealt from, so that family's fold still finds it (function:path 3.1). */
+  let target = fam;
+  let block = await readBlock(fam + ':' + HANDLE).catch(() => null);
+  if (fam !== 'now' && !(block && floorOf(block) >= 8)){
+    const spine = await readBlock('spine:' + fam).catch(() => null);
+    if (!spine || floorOf(spine) < 8){
+      target = 'now';
+      block = await readBlock('now:' + HANDLE).catch(() => null);
+    }
+  }
+  const name = target + ':' + HANDLE;
+  if (!block) return { skipped: true, name, fam, target };   // no reading there yet — the card stands alone
   /* THE CARD, AS A CARD. Its sentence at pscale 0, its conditions at −1, the
    * shape function:ahead:2 already gives it — only the anchor moves. Field 6
    * is the one addition: the elapsed is a property of the CLOSING rather than
@@ -1401,8 +1416,8 @@ async function landCard(card, doneText, elapsed){
    * key may live in, newest convention first; a success re-stores it under the
    * shared name so the next landing finds it first try. */
   const keyHomes = ['next-latch:' + name];
-  if (fam === 'now') keyHomes.push('now-latch:' + HANDLE);
-  keyHomes.push('mirror-latch:' + fam + ':' + HANDLE);
+  if (target === 'now') keyHomes.push('now-latch:' + HANDLE);
+  keyHomes.push('mirror-latch:' + target + ':' + HANDLE);
   const secret = keyHomes.map(k => localStorage.getItem(k)).find(v => v) || null;
   /* A CLOCK FAMILY TAKES A BEAT OF TODAY; ANYTHING ELSE TAKES AN APPEND. A beat
    * address is nine digits and only a block whose floor reaches that far can
@@ -1438,7 +1453,7 @@ async function landCard(card, doneText, elapsed){
   if (secret) localStorage.setItem('next-latch:' + name, secret);
   /* AND ONLY NOW is the slot given back — the card is somewhere else first. */
   const freed = card && card.addr ? await writeMark(card.addr, { '_': '' }) : { ok: false };
-  return { addr, name, fam, append: !deep, freed: !!freed.ok };
+  return { addr, name, fam, target, append: !deep, freed: !!freed.ok };
 }
 
 /* ── NO LADDER STRIP ABOVE THE DECK. The venture's today, this-week and this-month
@@ -1576,7 +1591,7 @@ async function commitSheet(){
     }
     setTimeout(() => {
       rebuildDeck(false); renderDeck();
-      if (landed && landed.addr) toast('✓ the card stands in your ' + landed.fam + ' timeline, at this beat' + (landed.freed ? '' : ' — but its old slot did not clear'));
+      if (landed && landed.addr) toast('✓ the card stands in your ' + (landed.target && landed.target !== landed.fam ? landed.target + ' timeline, serving ' + landed.fam + ',' : landed.fam + ' timeline,') + ' at this beat' + (landed.freed ? '' : ' — but its old slot did not clear'));
       else if (landed && landed.name && landed.append) toast('✓ the card stands in your ' + landed.fam + ' reading' + (landed.freed ? '' : ' — but its old slot did not clear'));
       else if (landed && landed.full) toast('closed — but every beat of today is full at ' + landed.name + ', so the card waits in your hand', true);
       else if (landed && landed.refused) toast('closed — but the landing at ' + landed.name + ' was refused (latch ⚿ differs?) — key trouble? happyseaurchin.com/key', true);
