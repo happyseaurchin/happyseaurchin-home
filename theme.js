@@ -123,9 +123,14 @@
       try { localStorage.setItem(KEY, v ? 'on' : 'off'); } catch(e){}
       apply(v); say();
     });
-    if (menu) { menu.appendChild(b); return; }
+    /* RIGHT ABOVE THE PAGE'S OWN DISPLAY, where it has one, so how a page is shown
+     * stands together (David, 2026-10-06), else first under options — in the menu
+     * if the bar has gathered, else in the bar, whose gathering keeps the order */
+    var display = document.getElementById('btn-display');
+    if (menu) { menu.insertBefore(b, display && display.parentNode === menu ? display : menu.firstChild); return; }
+    var first = [].filter.call(bar.children, function(e){ return e.tagName === 'BUTTON'; })[0];
     var doors = bar.querySelector('details.dd[data-doors]');
-    if (doors) bar.insertBefore(b, doors); else bar.appendChild(b);
+    bar.insertBefore(b, (display && display.parentNode === bar ? display : first) || doors || null);
   }
   function decorate(el){
     var addr = el.getAttribute('data-when'), t = el.querySelector(':scope > .when-t');
@@ -142,10 +147,14 @@
   function sweep(root){ [].forEach.call(root.querySelectorAll('[data-when]'), decorate); }
 
   /* clockTimes(root, { watch: true }) — once, for a page that repaints its clock
-   * (the beat moves every ~18 minutes, a walk redraws its rows on every tap) */
+   * (the beat moves every ~18 minutes, a walk redraws its rows on every tap).
+   * { offer: true } — for a page that IS a view of the clock before it has named
+   * a gathering or a beat (/recency opens on the day, and its dial's own rings
+   * are too crowded to carry hours), so the switch is there from the start. */
   window.clockTimes = function(root, opts){
     root = root || document.body; opts = opts || {};
     style();
+    if (opts.offer) offer();
     sweep(root);
     if (opts.watch && !root.hasAttribute('data-when-watched')){
       root.setAttribute('data-when-watched', '');
