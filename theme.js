@@ -61,6 +61,100 @@
   });
 })();
 
+/* ── THE HOURS — the clock's gatherings and beats, read on this device's clock.
+ *
+ * The beach's clock is the UTC day in ninths of ninths (pscale://sundial): nine
+ * gatherings of 2h40m, each nine beats of about 18 minutes, so an hour falls
+ * through the middle of a beat and "how do beats refer to hours" (David,
+ * 2026-10-05, before a 4pm) has an exact answer nobody should have to work out.
+ * A page marks each gathering or beat it names with that address —
+ * data-when="2026411566" — and calls clockTimes(root) once; this writes the span
+ * beside it in the device's own time zone (the clock keeps none, sundial 8.3).
+ * 'show times' under options shows or hides every one at once with one attribute
+ * on <html>, set here before first paint as the light and dark is. Off until
+ * asked for, and offered only on a page that has named a gathering or a beat:
+ * a reader who never asks sees every page exactly as it was. (tidying.19) ── */
+(function(){
+  'use strict';
+  var KEY = 'view:times';
+  function on(){ try { return localStorage.getItem(KEY) === 'on'; } catch(e){ return false; } }
+  function apply(v){
+    if (v) document.documentElement.setAttribute('data-times', '');
+    else document.documentElement.removeAttribute('data-times');
+  }
+  apply(on());
+
+  /* [start, end) in ms of a gathering (nine digits) or a beat (ten); null otherwise */
+  function spanOf(addr){
+    var a = String(addr || '').replace(/\D/g, '');
+    if (a.length === 10 && a[9] === '0') a = a.slice(0, 9);
+    if (a.length !== 9 && a.length !== 10) return null;
+    var season = +a[4], mis = +a[5], band = +a[6], dib = +a[7], g = +a[8], b = a.length === 10 ? +a[9] : 0;
+    if (season < 1 || season > 4 || mis < 1 || mis > 3 || band < 1 || dib < 1 || g < 1) return null;
+    var gS = 86400000 / 9, start = Date.UTC(+a.slice(0, 4), (season - 1) * 3 + mis - 1, (band - 1) * 7 + dib) + (g - 1) * gS;
+    return b ? [start + (b - 1) * gS / 9, start + b * gS / 9] : [start, start + gS];
+  }
+  /* each edge to its nearest minute, as this device writes a time of day */
+  function wall(ms){ return new Date(Math.round(ms / 60000) * 60000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+
+  var styled = false, offered = false;
+  function style(){
+    if (styled) return; styled = true;
+    var st = document.createElement('style');
+    st.textContent = '.when-t{display:none;margin-left:.5em;font-family:var(--mono);font-size:.8em;' +
+      'letter-spacing:.02em;color:var(--vapour-dim);white-space:nowrap}' +
+      'html[data-times] .when-t{display:inline}';
+    document.head.appendChild(st);
+  }
+  /* the switch joins the page's acts: into options when the bar has gathered,
+   * else into the bar beside the light and dark, which gathers it */
+  function offer(){
+    if (offered || document.getElementById('btn-times')) return;
+    var menu = document.querySelector('#dd-acts .dd__menu'), bar = document.querySelector('.bar');
+    if (!menu && !bar) return;
+    offered = true;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'btn-times';
+    b.title = 'the clock’s gatherings and beats, on your own clock';
+    var say = function(){ b.textContent = on() ? 'hide times' : 'show times'; };
+    say();
+    b.addEventListener('click', function(){
+      var v = !on();
+      try { localStorage.setItem(KEY, v ? 'on' : 'off'); } catch(e){}
+      apply(v); say();
+    });
+    if (menu) { menu.appendChild(b); return; }
+    var doors = bar.querySelector('details.dd[data-doors]');
+    if (doors) bar.insertBefore(b, doors); else bar.appendChild(b);
+  }
+  function decorate(el){
+    var addr = el.getAttribute('data-when'), t = el.querySelector(':scope > .when-t');
+    if (t && t.getAttribute('data-for') === addr) return;
+    if (t) t.remove();
+    var sp = spanOf(addr);
+    if (!sp) return;
+    t = document.createElement('span');
+    t.className = 'when-t'; t.setAttribute('data-for', addr);
+    t.textContent = wall(sp[0]) + '–' + wall(sp[1]);
+    el.appendChild(t);
+    offer();
+  }
+  function sweep(root){ [].forEach.call(root.querySelectorAll('[data-when]'), decorate); }
+
+  /* clockTimes(root, { watch: true }) — once, for a page that repaints its clock
+   * (the beat moves every ~18 minutes, a walk redraws its rows on every tap) */
+  window.clockTimes = function(root, opts){
+    root = root || document.body; opts = opts || {};
+    style();
+    sweep(root);
+    if (opts.watch && !root.hasAttribute('data-when-watched')){
+      root.setAttribute('data-when-watched', '');
+      new MutationObserver(function(){ sweep(root); })
+        .observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-when'] });
+    }
+  };
+})();
+
 /* every page ends the same way: one of your own, and everyone else's.
  *
  * THIS FOOTER IS THE ONLY UNCONDITIONAL SURFACE ON THE SITE, which is why the
