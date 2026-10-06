@@ -142,6 +142,17 @@
     display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:3.6em}
   .rcard.sel .say{color:var(--foam);display:block;-webkit-line-clamp:unset;overflow:visible}
   .rcard.empty .say{color:var(--vapour-dim);font-style:italic}
+  /* WHERE EACH PART STANDS (function:path 2) — the fold's line under the part's own */
+  .rcard .stand{font-size:0.8rem;line-height:1.4;color:var(--vapour-dim);margin-top:4px;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .rcard.sel .stand{display:block;-webkit-line-clamp:unset;overflow:visible;color:var(--vapour)}
+  .mk{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;font-weight:400;border-radius:4px;padding:0 6px;margin-right:2px;border:1px solid var(--line)}
+  .mk-done{color:var(--solid);border-color:rgba(var(--solid-rgb),0.5)}
+  .mk-doing{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+  .mk-next{color:var(--bud);border-color:rgba(var(--bud-rgb),0.55)}
+  .mk-blocked{color:var(--vapour);border-style:dashed;border-color:var(--vapour-dim)}
+  .sheet__body .standfull{margin-top:12px;font-size:0.95rem;line-height:1.5;color:var(--vapour)}
+  .sheet__body .standfull .sub{display:block;font-family:var(--mono);font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim);margin-bottom:4px}
   /* THE ROW GRAMMAR (tree 9.3) — a run down digit 1 drawn as one ladder, the
      leaves beside a step as its side-rooms, readings that open in capitals counted */
   .tsteps{max-width:720px;margin:0 auto;padding:6px 18px 10px;list-style:none;display:flex;flex-direction:column;gap:8px}
@@ -542,6 +553,8 @@ function titled(text){
 function plain(line){
   const fam = VENTURE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return String(line || '')
+    /* a square bracket only ever holds a reference for minds (function:path 1) */
+    .replace(/\s*\[[^\[\]]*\]/g, '')
     .replace(/\s*\(([^()]*)\)/g, (m, inner) =>
       /^\s*(see\s+)?[1-9](\.[1-9]+)?(\s*(,|;|\u2013|-|and|to)\s*[1-9](\.[1-9]+)?)*\s*$/.test(inner)
       || /(^|[\s,;])[1-9]\.[1-9]+\b/.test(inner) || /\b[a-z][\w-]*:[a-z<][\w<>-]*/.test(inner) ? '' : m)
@@ -565,6 +578,15 @@ function runFrom(node, addr){
     steps.push({ addr: a, node: n });
   }
   return steps.length >= 2 ? steps : null;
+}
+/* the fold's line at a node — for a path, where that part stands (function:path 2) */
+function foldAt(addr){ return FOLD ? textAt(FOLD, addr) : null; }
+const MARK_RE = /^([A-Z]{3,})(?=[\s,.:;—-]|$)/;
+function standLine(addr){
+  const s = foldAt(addr), m = s && MARK_RE.exec(s);
+  if (!m) return '';
+  const rest = plain(s.slice(m[0].length).replace(/^\s*[—:-]\s*/, ''));
+  return '<span class="stand"><b class="mk mk-' + m[1].toLowerCase() + '">' + m[1].toLowerCase() + '</b> ' + esc(short(rest, 220)) + '</span>';
 }
 /* a reading that opens with a word in capitals is counted at its node */
 function marksAt(addr){
@@ -642,8 +664,13 @@ const pad10 = a => String(a).padEnd(10, '0');
 let HANDLE = null;
 const _wq = new URLSearchParams(location.search);
 const _wm = location.pathname.match(/\/walk\/([^\/]+)(?:\/([^\/]+))?\/?$/);
-const VENTURE = (((_wm && decodeURIComponent(_wm[1])) || _wq.get('f') || '').replace(/[^a-z0-9-]/gi, ''));
-const HANDLE_FROM_PATH = ((_wm && _wm[2] && decodeURIComponent(_wm[2])) || _wq.get('h') || '').trim();
+/* /path/<project> walks that project's PATH — the family <project>-path, its parts with
+ * where each stands (function:path 6; bsp-mcp proposals/2026-10-05-every-project-has-a-path) */
+const _pm = location.pathname.match(/\/path\/([^\/]+)(?:\/([^\/]+))?\/?$/);
+const VENTURE = (((_wm && decodeURIComponent(_wm[1])) || (_pm && decodeURIComponent(_pm[1]) + '-path') || _wq.get('f') || '').replace(/[^a-z0-9-]/gi, ''));
+const HANDLE_FROM_PATH = ((_wm && _wm[2] && decodeURIComponent(_wm[2])) || (_pm && _pm[2] && decodeURIComponent(_pm[2])) || _wq.get('h') || '').trim();
+/* a path family names the project it belongs to: beach-venture-path is beach-venture's path */
+const PATH_OF = /-path$/.test(VENTURE) ? VENTURE.slice(0, -5) : '';
 /* ── THE GROUND DIALECT — /walk/here walks the earth-map (ruled 2026-09-14) ──
  * A third way to walk, beside the clock and the branches: rows of sibling PLACES
  * along a chosen path — the planets, the continents, the countries, down to the
@@ -702,6 +729,7 @@ async function gResolveWorld(){
 }
 const gMapName = () => GROUND.world === 'earth' ? 'the earth-map' : 'the ' + GROUND.world + ' map';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [], POOL_STANDS = false;
+let FOLD = null;                    /* a branch family's fold at the bare name — for a path, where each part stands */
 let LAW = null, LAWREF = '';        /* the family's law — function:<name>, or the operator its pool mounts (tree 9.1) */
 let NINE_OFF = false;               /* the spine's 9 is the operator's own stem, kept off the rows (nineIsOperator) */
 let SINCE = 0;                     /* the marker: your last act, else 24h */
@@ -1173,6 +1201,9 @@ async function load(){
   NINE_OFF = nineIsOperator(spine, law);
   /* the same page walks every family: a floor-10 sundial spine as time, any other as its own branches */
   MODE = floorOf(spine) === 10 ? 'clock' : 'tree';
+  /* WHERE EACH PART STANDS — a branch family's fold at the bare name: one line a part,
+   * opening with its mark (function:path 2). A clock's fold is read at /fold instead. */
+  FOLD = MODE === 'tree' ? await readBlock(VENTURE).catch(() => null) : null;
   if (MODE === 'tree' && first){
     SEL.path = [childDigits(spine).filter(d => !(NINE_OFF && d === '9'))[0]].filter(Boolean);
     SEL.level = 't';
@@ -1289,8 +1320,10 @@ function render(){
   $('foot-tree').href = '/tree/' + encodeURIComponent(VENTURE) + (HANDLE ? '?h=' + encodeURIComponent(HANDLE) : '');
   $('foot-fold').href = '/fold?field=' + encodeURIComponent(VENTURE) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
   $('foot-next').href = HANDLE ? '/next/' + encodeURIComponent(HANDLE) : '/next';
-  $('mast-title').innerHTML = esc(VENTURE) + ', <span class="cool">walked</span>.';
-  $('band-title').textContent = 'Walk ' + VENTURE + '.';
+  $('mast-title').innerHTML = PATH_OF
+    ? esc(PATH_OF) + ', <span class="cool">part by part</span>.'
+    : esc(VENTURE) + ', <span class="cool">walked</span>.';
+  $('band-title').textContent = PATH_OF ? 'The parts of ' + PATH_OF + ', and where each stands.' : 'Walk ' + VENTURE + '.';
   /* THE FORM SPEAKS FOR THE FAMILY. The band's line is the law's opening line, in the
    * family's own words — never this page's wording, which was written for the clock
    * and described every tree under it (David, 2026-09-28: "Slide sideways through
@@ -1301,7 +1334,8 @@ function render(){
   const fp = $('mast-form');
   if (LAW){
     const line = voice(LAW) || '';
-    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + esc(short(line, 520));
+    /* in branch mode the law's line keeps the row grammar too: its brackets are for minds */
+    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + esc(short(MODE === 'tree' && !PREFS.workings ? plain(line) : line, 520));
     fp.hidden = false;
     fp.innerHTML = 'form: <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>' + (line.length > 520 ? ' \u2014 the whole line there' : '');
   } else {
@@ -1396,6 +1430,7 @@ function rcard(label, addr, isSel, isNow, data, extra){
     'data-addr="' + esc(addr) + '" ' + (isNow ? 'data-now="1" ' : '') + data + '>' +
     '<span class="lab">' + esc(label) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
     '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
+    (MODE === 'tree' ? standLine(addr) : '') +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') +
     (MODE === 'tree' ? marksAt(addr) : '') + '</div>' + (extra || '') + '</div>';
@@ -2048,6 +2083,10 @@ function paintSheet(){
   if (SHEET.pane === 'text'){
     const rawLine = textAt(SPINE, addr), lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
     b.push('<div class="fulltext">' + esc((MODE === 'tree' && !PREFS.workings && rawLine ? plain(lineTt ? lineTt.line : rawLine) : rawLine) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
+    /* where this part stands, from the fold (function:path 2) — said whole here */
+    const foldLine = MODE === 'tree' ? foldAt(addr) : null;
+    if (foldLine) b.push('<div class="standfull"><span class="sub">' + (PATH_OF ? 'where it stands' : 'the fold here') + '</span>' +
+      esc(PREFS.workings ? foldLine : plain(foldLine)) + '</div>');
     /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
      * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
      * so a write at this rung would land a level up and eat what stands beneath —
