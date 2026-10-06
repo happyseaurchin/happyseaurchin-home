@@ -592,16 +592,27 @@ function standChip(addr){
   return st ? '<span class="b mk mk-' + st.mark + '" title="' + esc(st.words) + '">' + st.mark + '</span>' : '';
 }
 /* a part's own reference, the form a card dealt from it carries at its 5 —
- * where it was dealt from (function:ahead 2) — and keeps through its landing */
-const partRef = a => VENTURE + ' ' + (String(a).length > 1 ? String(a)[0] + '.' + String(a).slice(1) : String(a));
-/* the cards taken from one part of a path: they serve the project, and name the part at 5 */
+ * where it was dealt from (function:ahead 2) — and keeps through its landing;
+ * the decimal sits at the spine's floor, so a floor-3 family's 3,1,1 reads 311 */
+const partRef = a => {
+  const s = String(a), f = Math.max(1, floorOf(SPINE) || 1);
+  return VENTURE + ' ' + (s.length <= f ? s.padEnd(f, '0') : s.slice(0, f) + '.' + s.slice(f));
+};
+/* A FAMILY FOUNDED AS PARTS IS ITS OWN PATH (bsp-mcp proposals/2026-10-05-every-project-has-a-path
+ * §2; function:make 3): its spine is its parts, so a card taken from a part names that part
+ * at 5 exactly as a path's card does, serving the family itself */
+const ownPath = () => MODE === 'tree' && !PATH_OF;
+/* the cards taken from one part: they serve the project, and name the part at 5 */
 function partCards(addr){
-  const ref = partRef(addr), out = [];
+  const ref = partRef(addr), proj = PATH_OF || VENTURE, out = [];
   DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
-    if (c.toward === PATH_OF && c.from === ref) out.push({ who, ...c, elapsed: c.held || '' });
+    if (c.toward === proj && c.from === ref) out.push({ who, ...c, elapsed: c.held || '' });
   }));
   return out;
 }
+/* on a family that is its own path, a part shows the cards taken from it, and a card that
+ * names no part (one minted before parts were named) still stands at every part, as before */
+const ownCards = addr => partCards(addr).concat(famCards().filter(c => !String(c.from || '').startsWith(VENTURE + ' ')));
 /* a reading that opens with a word in capitals is counted at its node */
 function marksAt(addr){
   const n = {};
@@ -2079,9 +2090,9 @@ function paintSheet(){
     return;
   }
   tabs.classList.remove('hidden');
-  /* on a path, a part's cards are the ones taken from it; any other branch family shows its own */
+  /* on a path, and on a family that is its own path, a part's cards are the ones taken from it */
   const addr = selAddr(), lens = lensed(voicesAt(addr)), vs = lens.shown,
-    cs = MODE === 'tree' ? (PATH_OF ? partCards(addr) : famCards()) : cardsAt(addr);
+    cs = MODE === 'tree' ? (PATH_OF ? partCards(addr) : ownCards(addr)) : cardsAt(addr);
   /* a gathering carries its hours, shown when asked for (theme.js clockTimes) */
   if (SEL.level === 'g') $('sh-where').innerHTML = '<span data-when="' + gatherAddr(SEL.y, SEL.m0, SEL.d, SEL.g) + '">' + esc(selLabel()) + '</span>';
   else $('sh-where').textContent = selLabel();
@@ -2158,16 +2169,18 @@ function paintSheet(){
           '</span><div class="ctext">' + esc(c.text) + '</div></div>').join('')
       : '<span class="silent">' + (PATH_OF
           ? 'no card has been taken from this part yet — take one below; once it is done it lands on ' + esc(PATH_OF) + '’s clock, and the evening fold moves this part'
+          : ownPath() ? 'no card has been taken from this part yet — take one below'
           : 'nothing closed here — a card stands here once it is done, and waits in the golden pile until then') + '</span>');
-    if (HANDLE && PATH_OF)
+    if (HANDLE && (PATH_OF || ownPath()))
       /* TAKE A CARD FROM A PART: it serves the project (2) and names the part it was dealt
        * from (5, function:ahead 2), so its landing carries the part and the fold finds it;
        * the sentence stays the holder's own words, nothing rides in it */
       b.push('<div class="addwrap"><div class="mintbox">' +
         '<div class="sub">' + (st && st.mark === 'next' ? 'take it as a card — the next thing on this part' : 'take a card from this part') + '</div>' +
         '<textarea id="addto-text" placeholder="in your own words…"></textarea>' +
-        '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(PATH_PILE)) + '</b> (move it at /next), serving ' + esc(PATH_OF) +
-        '; when it is done it lands on that clock, and the evening fold moves this part.</p>' +
+        '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(PATH_PILE)) + '</b> (move it at /next), ' + (PATH_OF
+          ? 'serving ' + esc(PATH_OF) + '; when it is done it lands on that clock, and the evening fold moves this part.'
+          : 'naming this part of ' + esc(VENTURE) + '; when it is done it lands in your own mirror of ' + esc(VENTURE) + ', still naming the part.') + '</p>' +
         '<div class="row"><button id="addto-deal" title="start from where this part stands — edit, then take it">deal ↓</button>' +
         '<button id="addto-go">take it</button></div>' +
         '<div class="mnote"><a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a></div></div></div>');
@@ -2261,7 +2274,7 @@ function paintSheet(){
       if (!cands){
         const src = [], seenA = new Set();
         /* on a path, deal from where the part stands first, then from what the part is */
-        if (PATH_OF){ const st = standOf(addr); if (st && st.mark !== 'done') src.push(st.words); }
+        if (PATH_OF || ownPath()){ const st = standOf(addr); if (st && st.mark !== 'done') src.push(st.words); }
         [addr].concat(
           SEL.level === 'd' ? [weekAddr(SEL.y, SEL.m0, SEL.band), monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y)]
           : SEL.level === 'w' ? [monthAddr(SEL.y, SEL.m0), yearAddr(SEL.y)]
@@ -2312,14 +2325,16 @@ function paintSheet(){
        * stamps field 2, and the pile follows the rung the card was born at. A
        * commitment to a DATE is not a card at all: voice the mirror at that day
        * (function:ahead:3 — the bookings seam). */
-      const pile = PATH_OF ? PATH_PILE : aimAndPile().pile;
+      const pile = (PATH_OF || ownPath()) ? PATH_PILE : aimAndPile().pile;
       BUSY = true; $('addto-go').disabled = true;
       try {
-        /* a card taken from a part of a path serves the project (2) and names the part it
-         * was dealt from (5), which rides its landing (function:ahead 2, 4; function:path 3) */
+        /* a card taken from a part serves the project (2) and names the part it was dealt
+         * from (5), which rides its landing (function:ahead 2, 4; function:path 3) — on a path
+         * the project is the one the path belongs to, on a family that is its own path the
+         * family itself; a card minted at a time cell names the walk it came from */
         const w = await appendCard(PATH_OF
           ? { '_': t, '2': PATH_OF, '3': new Date().toISOString().slice(0,16) + 'Z', '5': partRef(addr) }
-          : { '_': t, '2': VENTURE, '3': new Date().toISOString().slice(0,16) + 'Z', '5': '/walk' }, pile);
+          : { '_': t, '2': VENTURE, '3': new Date().toISOString().slice(0,16) + 'Z', '5': ownPath() ? partRef(addr) : '/walk' }, pile);
         if (w.ok){ toast('✓ in your hand'); await load(); paintSheet(); }
         else if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true);
       } catch(e){ toast('the beach did not answer — ' + String(e.message || e), true); }
