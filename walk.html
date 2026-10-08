@@ -67,6 +67,18 @@
   .masthead h1 .cool{color:var(--liquid)}
   .masthead p{color:var(--vapour);max-width:58ch;margin:0 0 6px;font-size:0.97rem}
   .stamp{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;color:var(--vapour-dim);margin-top:8px}
+  /* a path shown to a visitor: where each part stands and what it looks like under the name,
+   * the page's own workings below the parts */
+  .masthead .foldline{font-size:0.92rem;line-height:1.5;margin:0 0 10px}
+  .foldline b{color:var(--foam);font-weight:600}
+  .seeit{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;margin:12px 0 4px;font-family:var(--mono);font-size:12px}
+  .seeit[hidden]{display:none}
+  .seeit .head{flex-basis:100%}
+  .seeit .film{display:inline-flex;align-items:center;gap:10px;border:none;color:var(--foam)}
+  .seeit .film img{width:132px;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--line);flex:none}
+  .below{border-top:1px solid var(--line);margin-top:22px;padding-top:20px}
+  .below .toward{padding:0;margin:0 0 10px;font-size:11px}
+  .below .projrow{background:none;backdrop-filter:none;border:1px solid var(--line);border-radius:8px;margin:6px 0 12px}
 
   section{padding:24px 0 6px}
   .band-head{max-width:720px;margin:0 auto;padding:0 18px 12px}
@@ -434,19 +446,21 @@
 <div id="app" class="hidden">
   <div class="masthead">
     <h1 id="mast-title">A family, <span class="cool">walked</span>.</h1>
-    <p>Slide sideways through the rows; tap a card to stand there. The counts say who has spoken and what is held; the popup holds the words, the voices, and — with your handle in the URL — your own writing.</p>
+    <p id="mast-how">Slide sideways through the rows; tap a card to stand there. The counts say who has spoken and what is held; the popup holds the words, the voices, and — with your handle in the URL — your own writing.</p>
+    <p class="foldline" id="mast-fold" hidden></p>
     <p class="stamp" id="mast-since"></p>
     <p class="stamp" id="mast-form" hidden></p>
     <p class="stamp" id="mast-join" hidden></p>
     <p class="stamp" id="mast-venture" hidden><a href="/venture">the venture, in the open →</a></p>
     <p class="stamp" id="mast-pool" hidden><a target="_blank" rel="noopener">the pool ↗</a> — this project’s chat, talk with no rung on it</p>
+    <div class="seeit" id="mast-see" hidden></div>
   </div>
 
   <section id="review">
     <div class="band-head">
       <p class="eyebrow">the rows</p>
       <h2 id="band-title">Walk the family.</h2>
-      <p>Slide sideways through the rows; tap a card to stand there. Each row follows the one above it; the small counts say who has spoken there and what is held toward it.</p>
+      <p id="band-line">Slide sideways through the rows; tap a card to stand there. Each row follows the one above it; the small counts say who has spoken there and what is held toward it.</p>
     </div>
     <p class="toward" id="toward"></p>
     <div class="rack" id="rack">
@@ -460,6 +474,9 @@
       <div class="rw" id="rw-g"><div class="rowlab">gathering</div><div class="carousel" id="row-g"></div></div>
     </div>
   </section>
+
+  <!-- on a path, for a visitor: how the page works, its form and the box to say who you are -->
+  <div class="masthead below" id="below" hidden></div>
 
   <div id="sheet-veil" class="veil hidden">
     <div class="sheet">
@@ -561,6 +578,16 @@ function plain(line){
     .replace(new RegExp('\\bpool:' + fam + '\\b', 'g'), 'the room')
     .replace(/\s+([,.;:])/g, '$1').replace(/\s{2,}/g, ' ').trim();
 }
+/* A BRACKET HOLDING A SITE PATH IS A WAY ON FOR A PERSON TOO: in the plain reading of a path,
+ * or of a family founded as parts (every branch family, the only ones this reading serves),
+ * [/animations] stays as a link to that page on this site, and never to another one (so not
+ * //host); every other bracket is for minds and goes */
+function plainHtml(line, n){
+  const refs = [];
+  let t = plain(String(line || '').replace(/\[(\/(?![\/\\])[^\s\[\]"'<>\\]*)\]/g, (m, p) => '\uE000' + (refs.push(p) - 1) + '\uE001'));
+  if (n) t = short(t, n);
+  return esc(t).replace(/\uE000(\d+)\uE001/g, (m, i) => '<a href="' + esc(refs[i]) + '">' + esc(refs[i]) + '</a>');
+}
 const isLeaf = n => !n || typeof n !== 'object' || !childDigits(n).length;
 /* SEQUENCE IS DEPTH: from a node whose branch 1 goes on to its own branch 1,
  * through steps whose other branches are leaves, the run down digit 1 is a
@@ -581,8 +608,8 @@ function foldAt(addr){ return FOLD ? textAt(FOLD, addr) : null; }
 const MARK_RE = /^([A-Z]{3,})(?=[\s,.:;—-]|$)/;
 /* the fold's line split into its mark and its words, the words plain for a person */
 function standOf(addr){
-  const s = foldAt(addr), m = s && MARK_RE.exec(s);
-  return m ? { mark: m[1].toLowerCase(), words: plain(s.slice(m[0].length).replace(/^\s*[—:-]\s*/, '')) } : null;
+  const s = foldAt(addr), m = s && MARK_RE.exec(s), raw = m ? s.slice(m[0].length).replace(/^\s*[—:-]\s*/, '') : '';
+  return m ? { mark: m[1].toLowerCase(), words: plain(raw), raw } : null;
 }
 /* ON THE TILE, ONLY THE MARK — where a part stands, said whole, is the cards' own account
  * and lives in the part's cards tab with the cards behind it (David, 2026-10-06: "it seems
@@ -613,6 +640,28 @@ function partCards(addr){
 /* on a family that is its own path, a part shows the cards taken from it, and a card that
  * names no part (one minted before parts were named) still stands at every part, as before */
 const ownCards = addr => partCards(addr).concat(famCards().filter(c => !String(c.from || '').startsWith(VENTURE + ' ')));
+/* WHAT THE PROJECT LOOKS LIKE is read off the animations block, never kept here. Each film or
+ * chart there is one position (_ its title and what it shows, 1 where it plays, 2 its still,
+ * 3 who made it), and one that shows a project names it at its 4: by the bare name a card
+ * carries toward (beach-venture, bobble), or as one of its parts (bobble 2.2) */
+function filmsFor(block){
+  const web = u => typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/.test(u.trim()) ? u.trim() : '';
+  /* one kept on this site is linked by its path, so a preview of the site shows its own copy */
+  const here = u => { try { const x = new URL(u); return x.host === 'happyseaurchin.com' || x.host === location.host ? x.pathname : u; } catch(e){ return u; } };
+  const out = [];
+  (function walk(n){
+    if (!n || typeof n !== 'object') return;
+    if (typeof n._ === 'string' && web(n['1'])){
+      const named = String(n['4'] || '').trim().split(/\s+/)[0];
+      if (named && (named === VENTURE || named === PATH_OF))
+        out.push({ title: n._.split(' \u2014 ')[0].trim(), href: here(web(n['1'])), still: web(n['2']) ? here(web(n['2'])) : '' });
+      return;
+    }
+    if (n._ && typeof n._ === 'object') walk(n._);
+    childDigits(n).forEach(d => walk(n[d]));
+  })(block);
+  return out;
+}
 /* a reading that opens with a word in capitals is counted at its node */
 function marksAt(addr){
   const n = {};
@@ -755,6 +804,7 @@ async function gResolveWorld(){
 const gMapName = () => GROUND.world === 'earth' ? 'the earth-map' : 'the ' + GROUND.world + ' map';
 let SPINE = null, MIRRORS = [], DECKS = [], POOL_VOICES = [], POOL_STANDS = false;
 let FOLD = null;                    /* a branch family's fold at the bare name — for a path, where each part stands */
+let FILMS = [];                     /* what a branch family looks like: the films and charts that name it (filmsFor) */
 let LAW = null, LAWREF = '';        /* the family's law — function:<name>, or the operator its pool mounts (tree 9.1) */
 let NINE_OFF = false;               /* the spine's 9 is the operator's own stem, kept off the rows (nineIsOperator) */
 let SINCE = 0;                     /* the marker: your last act, else 24h */
@@ -1231,6 +1281,7 @@ async function load(){
   /* WHERE EACH PART STANDS — a branch family's fold at the bare name: one line a part,
    * opening with its mark (function:path 2). A clock's fold is read at /fold instead. */
   FOLD = MODE === 'tree' ? await readBlock(VENTURE).catch(() => null) : null;
+  FILMS = MODE === 'tree' ? filmsFor(await readBlock('animations').catch(() => null)) : [];
   if (MODE === 'tree' && first){
     SEL.path = [childDigits(spine).filter(d => !(NINE_OFF && d === '9'))[0]].filter(Boolean);
     SEL.level = 't';
@@ -1357,12 +1408,12 @@ function render(){
    * time" over Matthew's families). A family with no law is drawn plain and told in
    * one line how to give itself a form; it is still walked, by direct link, as
    * David answered the forms proposal's §9. He also chose the word: form. */
-  const bp = document.querySelector('#review .band-head p:not(.eyebrow)');
+  const bp = $('band-line');
   const fp = $('mast-form');
   if (LAW){
     const line = voice(LAW) || '';
     /* in branch mode the law's line keeps the row grammar too: its brackets are for minds */
-    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + esc(short(MODE === 'tree' && !PREFS.workings ? plain(line) : line, 520));
+    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + (MODE === 'tree' && !PREFS.workings ? plainHtml(line, 520) : esc(short(line, 520)));
     fp.hidden = false;
     fp.innerHTML = 'form: <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>' + (line.length > 520 ? ' \u2014 the whole line there' : '');
   } else {
@@ -1377,12 +1428,34 @@ function render(){
      only where its room stands, so it never opens an empty one */
   $('mast-pool').hidden = !POOL_STANDS;
   $('mast-pool').firstElementChild.href = poolUrl();
+  const visitor = !HANDLE && (PATH_OF || ownPath());
   if (HANDLE) $('mast-since').textContent = 'showing what moved since your last act, ' + (ago(new Date(SINCE).toISOString()) || 'a day ago');
-  else $('mast-since').textContent = 'walking as anyone — say who you are at the top of the page to write where you stand';
+  else $('mast-since').textContent = 'walking as anyone — say who you are ' + (visitor ? 'just below' : 'at the top of the page') + ' to write where you stand';
   renderJoin();
+  renderShown(visitor);
   $('foot-work').innerHTML = '<br><br><b>the blocks</b> — spine:' + esc(VENTURE) + ' · ' + esc(VENTURE) + ':&lt;handle&gt; · tree:' + esc(VENTURE) + ':&lt;handle&gt; · pool:' + esc(VENTURE) +
     '<br><b>the address</b> — one number: on a clock family the sundial (2026322600 reads Thursday 13 August 2026, to the day); on a tree, the digits walked.';
   renderRack();
+}
+/* ── A PATH, SHOWN (David, 2026-10-08: "make them actually useful and showable to others like
+ * James!!"). A visitor meets the project before the page: its name, where each part stands as
+ * the fold's own opening line says it, with its date, what it looks like, then the parts with
+ * their marks. How the page works, its form and the box to say who you are follow the parts.
+ * With a handle in the URL the page stands as it did, the pictures under its name. ── */
+function renderShown(visitor){
+  const fl = voice(FOLD), ft = fl && !PREFS.workings ? titled(fl) : null, mf = $('mast-fold');
+  mf.hidden = !(visitor && fl);
+  if (!mf.hidden) mf.innerHTML = PREFS.workings ? esc(fl) : ft ? '<b>' + esc(ft.title) + ':</b> ' + plainHtml(ft.line) : plainHtml(fl);
+  const ms = $('mast-see');
+  ms.hidden = !FILMS.length;
+  ms.innerHTML = !FILMS.length ? '' : '<span class="head"><span class="sub">see it</span> \u00b7 <a href="/animations">the films \u2192</a></span>' +
+    FILMS.map(f => '<a class="film" href="' + esc(f.href) + '">' + (f.still ? '<img src="' + esc(f.still) + '" alt="" width="1200" height="800">' : '') +
+      '<span>' + esc(f.title) + ' \u2192</span></a>').join('');
+  if (!visitor) return;
+  const below = $('below');
+  [$('toward'), $('band-line'), $('mast-form'), $('mast-how'), $('mast-since'), document.querySelector('.projrow--ask'), $('mast-pool')]
+    .forEach(el => { if (el) below.appendChild(el); });
+  below.hidden = false;
 }
 function clampSel(){
   SEL.band = Math.min(SEL.band, bandsIn(SEL.y, SEL.m0));
@@ -1456,7 +1529,7 @@ function rcard(label, addr, isSel, isNow, data, extra){
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' +
     'data-addr="' + esc(addr) + '" ' + (isNow ? 'data-now="1" ' : '') + data + '>' +
     '<span class="lab">' + (lv === 'g' ? '<span data-when="' + esc(addr) + '">' + esc(label) + '</span>' : esc(label)) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
-    '<span class="say">' + esc(t ? short(t, 240) : inviteAt(lv, isNow, label)) + '</span>' +
+    '<span class="say">' + (t && MODE === 'tree' && !PREFS.workings ? plainHtml(tt ? tt.line : raw, 240) : esc(t ? short(t, 240) : inviteAt(lv, isNow, label))) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') +
     (MODE === 'tree' ? standChip(addr) + marksAt(addr) : '') + '</div>' + (extra || '') + '</div>';
@@ -1664,7 +1737,7 @@ function renderRack(){
   if (GROUND){ renderGroundRack(); return; }
   if (MODE === 'tree'){
     const root = voice(SPINE) || '', rt = PREFS.workings ? null : titled(root);
-    $('toward').innerHTML = 'the family\u2019s own line · <b>' + esc(short(PREFS.workings ? root : rt ? rt.title + ' \u2014 ' + plain(rt.line) : plain(root), 170)) + '</b>';
+    $('toward').innerHTML = 'the family\u2019s own line · <b>' + (PREFS.workings ? esc(short(root, 170)) : plainHtml(rt ? rt.title + ' \u2014 ' + rt.line : root, 170)) + '</b>';
     renderTreeRack();
     return;
   }
@@ -2116,7 +2189,7 @@ function paintSheet(){
   const b = [];
   if (SHEET.pane === 'text'){
     const rawLine = textAt(SPINE, addr), lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
-    b.push('<div class="fulltext">' + esc((MODE === 'tree' && !PREFS.workings && rawLine ? plain(lineTt ? lineTt.line : rawLine) : rawLine) || 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it') + '</div>');
+    b.push('<div class="fulltext">' + ((MODE === 'tree' && !PREFS.workings && rawLine ? plainHtml(lineTt ? lineTt.line : rawLine) : esc(rawLine)) || esc('nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it')) + '</div>');
     /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
      * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
      * so a write at this rung would land a level up and eat what stands beneath —
@@ -2161,7 +2234,7 @@ function paintSheet(){
      * (function:path 2; David, 2026-10-06: "it seems related to cards") */
     const st = MODE === 'tree' ? standOf(addr) : null;
     if (st) b.push('<div class="standfull"><span class="sub">where it stands' + (FOLD && voice(FOLD) ? ' · folded each evening' : '') + '</span>' +
-      '<b class="mk mk-' + st.mark + '">' + st.mark + '</b> ' + esc(PREFS.workings ? (foldAt(addr) || '') : st.words) + '</div>');
+      '<b class="mk mk-' + st.mark + '">' + st.mark + '</b> ' + (PREFS.workings ? esc(foldAt(addr) || '') : plainHtml(st.raw)) + '</div>');
     else if (PATH_OF) b.push('<div class="standfull"><span class="sub">where it stands</span>not begun — nothing has been folded here yet</div>');
     b.push(cs.length
       ? cs.map(c => '<div class="cardenv' + (c.who === HANDLE ? ' you' : '') + '"><span class="cwho">' + whoMark(c.who) +
