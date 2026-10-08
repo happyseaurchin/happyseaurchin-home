@@ -1115,6 +1115,8 @@
     '.projrow__ask-go{background:var(--liquid);border:none;border-radius:4px;color:var(--abyss);' +
       'font-family:var(--mono);font-size:12px;font-weight:700;padding:6px 14px;cursor:pointer}' +
     '.projrow__ask-go:hover{background:var(--foam)}' +
+    '.projrow__lead{font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:var(--vapour-dim);padding:1px 5px 1px 8px}' +
+    '.projrow .projrow__every{margin-left:8px}' +
     '.projrow__pick{margin-left:10px;background:none;border:none;color:var(--vapour-dim);' +
       'font-family:var(--mono);font-size:11px;letter-spacing:0.06em;cursor:pointer;padding:1px 4px}' +
     '.projrow__pick:hover{color:var(--liquid)}' +
@@ -1301,14 +1303,40 @@
           return !OFF_BY_DEFAULT[f];
         });
       }
-      if (visible.length < 2 && mine.length < 2 && !bare.length) return;   /* a row of one is furniture, not a choice */
+      /* A HAND IN NO PROJECT YET IS SHOWN THE BEACH'S PROJECTS, never an empty bar. James
+       * (emojisword) met /walk/now with no row at all, because a newcomer's row is the
+       * ground alone and a row of one is hidden (David, 2026-10-08). A project is what the
+       * beach's conventions call one (2.13): spine:<f> for its addresses, function:<f> for
+       * its law, pool:<f> for its room — which leaves out the tests and the machinery that
+       * carry a law and no room. Most-spoken first, nine at most, each opening its walk,
+       * where the join door founds the mirror and lists the family in one act. Nothing is
+       * written by being offered, and once a family is joined the row is the hand's own
+       * and the offer is gone. A passport first, as /welcome says: the beach binds a mirror
+       * to its holder's key. */
+      var offer = null;
+      if (visible.length < 2 && mine.length < 2 && !bare.length){
+        var holds = mine.some(function(f){ return f !== 'here' && have[f + ':' + cfg.handle]; });
+        if (stated.length || holds || !have['passport:' + cfg.handle]) return;   /* a row of one is furniture, not a choice */
+        /* people in a family, counted as /tree counts them: <f>:<handle> */
+        var people = {};
+        blocks.forEach(function(n){
+          var i = n.lastIndexOf(':');
+          if (i > 0 && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(n.slice(i + 1))) people[n.slice(0, i)] = (people[n.slice(0, i)] || 0) + 1;
+        });
+        offer = blocks.filter(function(n){ return n.indexOf('spine:') === 0; })
+          .map(function(n){ return n.slice(6); })
+          .filter(function(f){ return !OWN_PAGE[f] && !OFF_BY_DEFAULT[f] && !isDiary(f) && have['function:' + f] && have['pool:' + f]; })
+          .sort(function(x, y){ return (people[y] || 0) - (people[x] || 0) || x.localeCompare(y); })
+          .map(function(f){ return { name: f, people: people[f] || 0 }; });
+        if (!offer.length) return;
+      }
       function shown(f){ return visible.indexOf(f) >= 0; }
 
       rowStyle();
 
       var row = document.createElement('div');
       row.className = 'projrow';
-      row.setAttribute('aria-label', 'your projects');
+      row.setAttribute('aria-label', offer ? 'projects to join' : 'your projects');
 
       visible.forEach(function(f, i){
         if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
@@ -1461,7 +1489,28 @@
         row.appendChild(panel);
         readForms().then(draw);
       });
-      row.appendChild(pick);
+      /* the offer stands where the chooser would — there is nothing of the hand's own to choose yet */
+      if (offer){
+        var lead = document.createElement('span');
+        lead.className = 'projrow__lead';
+        lead.textContent = 'no projects yet \u2014 pick one to join:';
+        row.appendChild(lead);
+        offer.slice(0, 9).forEach(function(p, i){
+          if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
+          var a = document.createElement('a');
+          a.href = '/walk/' + encodeURIComponent(p.name) + '/' + encodeURIComponent(cfg.handle);
+          a.textContent = p.name;
+          a.title = p.people + (p.people === 1 ? ' person' : ' people') + ' in it';
+          row.appendChild(a);
+        });
+        if (offer.length > 9){
+          var every = document.createElement('a');
+          every.className = 'projrow__every';
+          every.href = '/tree?h=' + encodeURIComponent(cfg.handle);
+          every.textContent = 'every field \u2192';
+          row.appendChild(every);
+        }
+      } else row.appendChild(pick);
       /* how this hand stands to the family it is standing in — its own line; on the
        * walk the masthead carries it, with the door that writes it */
       if (cfg.page !== 'walk' && cfg.family && lineOf[cfg.family]){
