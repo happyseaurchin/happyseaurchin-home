@@ -91,6 +91,13 @@
   .shot__cap[data-more]{cursor:pointer} .shot__cap .full{display:none} .shot__cap.open .full{display:inline} .shot__cap.open .short{display:none}
   .shot__cap .more{font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour-dim);margin-left:6px;white-space:nowrap} .shot__cap:hover .more{color:var(--foam)}
   .shot__meta{padding:0 18px 14px;font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+  /* THE LENS — the lines of the hands you follow on this moment, and your own (function:lens) */
+  .lens{padding:0 18px 12px;display:flex;flex-direction:column;gap:6px}
+  .lens__line{margin:0;font-size:.92rem;line-height:1.45;color:var(--foam);opacity:.9}
+  .lens__line .who{font-family:var(--mono);font-size:11px;letter-spacing:.04em;color:var(--vapour-dim);margin-right:6px}
+  .lens__say{display:flex;gap:6px;margin:0}
+  .lens__say input{flex:1;min-width:0;background:transparent;border:1px solid var(--vapour-dim);border-radius:8px;padding:6px 10px;color:var(--foam);font-size:.9rem}
+  .lens__hint{margin:0;font-size:.82rem;color:var(--vapour-dim);font-style:italic}
   .shot__meta .who{color:var(--vapour)} .shot__meta a{border:0}
   .empty,.loading{color:var(--vapour-dim);font-style:italic;padding:10px 0}
   .site-foot{border-top:1px solid var(--line);margin-top:20px;padding:34px 0 66px}
@@ -150,6 +157,7 @@
         <button type="button" class="pill small" id="unlock">open my vault</button>
       </div>
       <p class="hint" id="vault-hint" style="margin:2px 0 0"></p>
+      <div class="row"><input id="follows" placeholder="the hands you follow — names, comma-separated; their lines on a moment are your direction" spellcheck="false" autocapitalize="none"></div>
       <p class="eyebrow">Pictures</p>
       <div class="row">
         <select id="provider" aria-label="image service">
@@ -356,12 +364,53 @@
       });
     }).catch(function(){return '';}).then(function(p){PEOPLE[room]=p;return p;});
   }
+  // ── THE LENS (function:lens, 2026-10-08) — a hand's own line about a moment, in its own lens:<handle> at the
+  // moment's beat; the hands it follows (lists:<handle> 4 at the beach's home); their lines at a moment as the
+  // DIRECTION for a shot. Anyone renders, into their own book; nothing is removed by another's fold. ──
+  // a moment's address on the clock: its own time names its beat (pscale://sundial — the router's momentToAddress)
+  function beatOf(ts){var t=new Date(ts);if(!isFinite(t))return '';var y=t.getUTCFullYear(),m0=t.getUTCMonth(),d=t.getUTCDate();var secs=t.getUTCHours()*3600+t.getUTCMinutes()*60+t.getUTCSeconds();var part=Math.floor(secs/(86400/9)),beat=Math.floor((secs-part*(86400/9))/(86400/81));return String(y)+(Math.floor(m0/3)+1)+((m0%3)+1)+(Math.floor((d-1)/7)+1)+(((d-1)%7)+1)+(part+1)+(beat+1);}
+  // a line at a clock address in a mirror the stream door shaped: a zero digit walks the underscore
+  function lineAt(block,beat){var n=block;for(var i=0;i<beat.length&&n&&typeof n==='object';i++)n=n[beat[i]==='0'?'_':beat[i]];return typeof n==='string'?n:voiceOf(n);}
+  function viewerName(){var el=document.getElementById('me'),v=el&&el.value?el.value:'';try{v=v||localStorage.getItem('gallery:me')||'';}catch(e){}return v.trim();}
+  function apexBlock(block){return fetch(APEX+'/.well-known/pscale-beach?block='+encodeURIComponent(block)+'&_t='+Date.now(),{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}
+  function followsIn(lists){var out=[],n=lists&&lists['4']&&lists['4']['1'];while(n&&typeof n==='object'){var v=voiceOf(n);if(v)out.push(v.trim());n=n['1'];}return out;}
+  var LENS={me:'',follows:[],blocks:{},loaded:null};
+  // the hands this viewer follows, and every lens of theirs at this table, read once per name
+  function loadLens(){var me=viewerName();if(LENS.loaded&&LENS.me===me)return LENS.loaded;LENS.me=me;LENS.blocks={};LENS.follows=[];
+    LENS.loaded=(me?apexBlock('lists:'+me):Promise.resolve(null)).then(function(l){LENS.follows=followsIn(l);var f=document.getElementById('follows');if(f&&!f.value.trim()&&LENS.follows.length)f.value=LENS.follows.join(', ');
+      var hands=me?[me].concat(LENS.follows.filter(function(h){return h.toLowerCase()!==me.toLowerCase();})):[];
+      return Promise.all(hands.map(function(h){return readBlock('lens:'+h).then(function(b){if(b)LENS.blocks[h]=b;}).catch(function(){});}));}).then(function(){return LENS;});
+    return LENS.loaded;}
+  function lensLines(beat){var out=[];Object.keys(LENS.blocks).forEach(function(h){var t=lineAt(LENS.blocks[h],beat);if(t)out.push({who:h,text:t});});return out;}
+  function directionFor(beat){return beat?lensLines(beat).map(function(l){return l.who+': '+l.text;}).join(' · '):'';}
+  function lensInner(beat){var me=viewerName(),lines=lensLines(beat),mine=me&&LENS.blocks[me]?lineAt(LENS.blocks[me],beat):'';
+    return lines.map(function(l){return '<p class="lens__line"><span class="who">'+esc(l.who)+'</span>'+esc(l.text)+'</p>';}).join('')+
+      (me?'<form class="lens__say" onsubmit="return false"><input placeholder="'+(mine?'your line on this moment — say again to change it':'your line on this moment — direction for whoever takes it')+'" value="'+esc(mine||'')+'"><button type="button" class="pill small">say</button></form>'
+        :'<p class="lens__hint">name yourself under options ▾ to say your line on a moment, and to see the lines of the hands you follow</p>');}
+  function lensHTML(at,ts){var beat=beatOf(ts);return beat?'<div class="lens" data-at="'+esc(at)+'" data-beat="'+beat+'">'+lensInner(beat)+'</div>':'';}
+  // SAY — your line lands in your own lens at the moment's beat, the mirror born latched to your key the first time
+  function sayLens(beat,text,me){var key=window.keyOf(me);if(!key)return Promise.reject(new Error('your key is needed — type it under options ▾'));
+    return readBlock('lens:'+me).then(function(b){var born=!b;b=b||{};var n=b;for(var i=0;i<beat.length-1;i++){var k=beat[i]==='0'?'_':beat[i];if(typeof n[k]==='string')n[k]={_:n[k]};else if(!n[k]||typeof n[k]!=='object')n[k]={};n=n[k];}
+      var last=beat[beat.length-1];if(n[last]&&typeof n[last]==='object')n[last]._=text;else n[last]=text;
+      var body={block:'lens:'+me,content:b,confirm:true,secret:key};if(born)body.new_lock=key;return post(body).then(function(){LENS.blocks[me]=b;});});}
+  function wireLens(box){Array.prototype.forEach.call(box.querySelectorAll('.lens'),function(strip){var f=strip.querySelector('.lens__say');if(!f)return;var inp=f.querySelector('input'),btn=f.querySelector('button');
+    var go=function(){var text=inp.value.trim(),me=viewerName();if(!text||!me)return;btn.disabled=true;btn.textContent='…';
+      sayLens(strip.dataset.beat,text,me).then(function(){strip.innerHTML=lensInner(strip.dataset.beat);wireLens(strip.parentNode);}).catch(function(e){btn.disabled=false;btn.textContent='say';inp.placeholder=e.message;inp.value='';});};
+    btn.addEventListener('click',go);inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();go();}});});}
+  // THE FOLLOWS — one line each at lists:<me> 4, rank as depth, under your own key at the beach's home
+  function keepFollows(){var me=viewerName(),key=window.keyOf(me),f=document.getElementById('follows');if(!me||!key||!f)return Promise.resolve();
+    var names=f.value.split(',').map(function(x){return x.trim();}).filter(Boolean).filter(function(x,i,a){return a.indexOf(x)===i;});
+    if(names.join(',')===LENS.follows.join(','))return Promise.resolve();
+    var node={_:'The hands this hand follows — whose lens lines read into this hand\'s folds (function:lens 2), rank as depth: first the one listened to most.'},n=node;
+    names.forEach(function(h){n['1']={_:h};n=n['1'];});
+    return apexBlock('lists:'+me).then(function(l){var body={block:'lists:'+me,spindle:'4',content:node,secret:key};if(!l)body.new_lock=key;
+      return fetch(APEX+'/.well-known/pscale-beach',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||('the beach refused ('+r.status+')'));LENS.loaded=null;return loadLens();});});});}
   // THE RECIPE lives at the beach (ways:stills 6); this page only assembles in the order it states
   var RECIPE={look:DEFAULT_LOOK,bind:'Each reference photograph of a face is one named person’s and only theirs: that person must have that face, exactly, in period dress. Everyone else in the picture has a face of their own, unlike any reference and unlike one another.',never:'No text or lettering, no modern objects, nothing overtly fantastical.',place:'The last reference image is this same place as pictured before; keep its look, its light and its things.'};
   function readRecipe(){return fetch(APEX+'/.well-known/pscale-beach?block=ways:stills',{headers:{Accept:'application/json'}}).then(function(r){return r.ok?r.json():null;}).then(function(w){var six=w&&w['6'];if(!six||typeof six!=='object')return;var l=voiceOf(six['1']),b=voiceOf(six['2']),n=voiceOf(six['3']),pl=voiceOf(six['5']);if(l)RECIPE.look=l;if(b)RECIPE.bind=b;if(n)RECIPE.never=n;if(pl){var m=pl.match(/—\s*(The last reference image[^.]*\.[^.]*\.)/);if(m)RECIPE.place=m[1];}}).catch(function(){});}
-  function composeShot(text,cast,looks,style,place,placeRef,people){
+  function composeShot(text,cast,looks,style,place,placeRef,people,direction){
     var who=cast.map(function(h){return h+': '+(looks[h]||'as described');}).join(' · ');
-    return [text.length>1100?text.slice(0,1100)+'…':text, place?'The place — '+place.replace(/[\s,;:—-]+$/,'')+(/[.!?…]$/.test(place.trim())?'':'.'):'',
+    return [text.length>1100?text.slice(0,1100)+'…':text, direction?'Direction from the hands you follow — '+direction+'.':'', place?'The place — '+place.replace(/[\s,;:—-]+$/,'')+(/[.!?…]$/.test(place.trim())?'':'.'):'',
       people?'The people who keep this place, as they always look — draw only those this moment shows, and draw them like this: '+people:'',
       cast.length?'In frame — '+who+'.':'', 'The picture is '+style, cast.length?RECIPE.bind:'', placeRef?RECIPE.place:'', RECIPE.never].filter(Boolean).join(' ');
   }
@@ -493,7 +542,7 @@
   function shotHTML(s,showTaker){
     var door=s.home===APEX?personLink(s.book.slice(8)):charLink(s.book.slice(8));
     var momentAt=s.local&&/^pool:\d+(?:\.\d+)?:\d+$/.test(s.local)?s.local:'';
-    return '<figure class="shot"><div class="shot__frame"><img loading="lazy" alt="'+esc(s.cap||'a picture')+'" src="'+esc(s.img)+'"></div>'+(s.cap?capHTML(s.cap,momentAt):'')+
+    return '<figure class="shot"><div class="shot__frame"><img loading="lazy" alt="'+esc(s.cap||'a picture')+'" src="'+esc(s.img)+'"></div>'+(s.cap?capHTML(s.cap,momentAt):'')+(momentAt&&MOMENT_TS[momentAt]?lensHTML(momentAt,MOMENT_TS[momentAt]):'')+
       '<div class="shot__meta">'+(s.who?'<span class="who">'+(showTaker&&s.book?'taken by <a href="'+door+'">'+esc(s.who)+'</a>':'taken by '+esc(s.who))+'</span>':'')+(s.at?'<span>'+renders(s.at)+'</span>':'')+(s.ts?'<span title="when the picture was taken">'+esc(when(s.ts))+'</span>':'')+xButton(s)+'</div></figure>';
   }
   function filmHTML(film){return '<p class="eyebrow">The film</p><figure class="film"><div class="frame">'+embed(film.img)+'</div><figcaption>'+esc(film.cap)+(film.who?' · by '+esc(film.who):'')+(film.ts?' · '+esc(when(film.ts)):'')+'</figcaption></figure>';}
@@ -503,7 +552,7 @@
   // THE CHARACTER: every moment they were in, with the picture when there is one
   function renderCharacter(){
     var box=document.getElementById('shots'), filmEl=document.getElementById('film');
-    Promise.all([characterMoments(HANDLE),tableStills()]).then(function(r){
+    Promise.all([characterMoments(HANDLE),tableStills(),loadLens()]).then(function(r){
       var moments=r[0], stills=r[1].filter(function(s){return !isVideo(s.img);}).sort(function(a,b){return String(a.ts).localeCompare(String(b.ts));}), byAt={};
       stills.forEach(function(s){byAt[s.local]=s;});
       var films=r[1].filter(function(s){return isVideo(s.img);});
@@ -513,9 +562,10 @@
       if(!moments.length){box.innerHTML='<p class="empty">'+esc(HANDLE)+' has not been in a moment at this table yet. Play, and the moments appear here.</p>';return;}
       box.innerHTML=moments.map(function(b){var s=byAt['pool:'+b.room+':'+b.slot], at='pool:'+b.room+':'+b.slot;
         return '<figure class="shot" data-at="'+esc(at)+'"><div class="shot__frame">'+(s?'<img loading="lazy" alt="" src="'+esc(s.img)+'">':'<div class="nopic">no picture yet<br><button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'">📷 take one</button></div>')+'</div>'+
-          capHTML(b.text,'')+
+          capHTML(b.text,'')+lensHTML(at,b.ts)+
           '<div class="shot__meta"><span><a href="'+roomLink(b.room)+'">'+esc(placeName(b.room))+'</a></span>'+(b.ts?'<span title="when the moment happened">happened '+esc(when(b.ts))+'</span>':'')+(s&&s.who?'<span class="who">taken'+(s.ts?' '+esc(when(s.ts)):'')+' by '+esc(s.who)+'</span>':'')+(s?'<button type="button" class="pill small take" data-room="'+esc(b.room)+'" data-slot="'+esc(b.slot)+'" title="take it again — the newest picture is the one that shows; the earlier one stays in the record">📷 take again</button>':'')+(s?xButton(s):'')+'</div></figure>';}).join('');
       Array.prototype.forEach.call(box.querySelectorAll('.take'),function(btn){btn.addEventListener('click',function(){var b=moments.filter(function(m){return m.room===btn.dataset.room&&m.slot===btn.dataset.slot;})[0];if(b&&window.takeOne)window.takeOne(b,btn);});});
+      wireLens(box);
     }).catch(function(e){box.innerHTML='<p class="empty">Couldn’t read the table just now — '+esc(e.message)+'.</p>';});
   }
   function renderFaceCard(){
@@ -527,15 +577,18 @@
       giveFace(HANDLE,f,say).then(function(){say('kept — every picture of '+HANDLE+' from now on wears this face','ok');renderFaceCard();}).catch(function(e){say(e.message,'err');});});
   }
   // THE ROOM: every picture of it
+  var MOMENT_TS={};
   function renderRoom(){
     var box=document.getElementById('shots'), filmEl=document.getElementById('film');
-    roomStills().then(function(all){
+    Promise.all([roomStills(),readBlock('pool:'+ROOM).catch(function(){return null;}),loadLens()]).then(function(r){var all=r[0];
+      (r[1]?beatsOf(r[1]):[]).forEach(function(b){MOMENT_TS['pool:'+ROOM+':'+b.slot]=b.ts;});
       var films=all.filter(function(s){return isVideo(s.img);}), shots=all.filter(function(s){return !isVideo(s.img);}).sort(function(a,b){return String(b.ts).localeCompare(String(a.ts));});
       var film=films.filter(function(s){return s.local==='pool:'+ROOM;}).sort(function(a,b){return String(a.ts).localeCompare(String(b.ts));}).pop();
       filmEl.innerHTML=film?filmHTML(film):'';
       var takers=[];shots.forEach(function(s){if(s.who&&takers.indexOf(s.who)<0)takers.push(s.who);});
       document.getElementById('eyebrow').textContent=shots.length?('The pictures — '+shots.length+(takers.length?' · taken by '+takers.join(', '):'')):'The pictures';
       box.innerHTML=shots.length?shots.map(function(s){return shotHTML(s,true);}).join(''):'<p class="empty">No pictures of this room yet. Take the first one above.</p>';
+      wireLens(box);
     }).catch(function(e){box.innerHTML='<p class="empty">Couldn’t read the pictures just now — '+esc(e.message)+'.</p>';});
   }
   // A PERSON's own pictures, at the beach's home or at a table
@@ -651,7 +704,7 @@
     document.getElementById('vault-image').addEventListener('click',function(){keepIn('image');});
     document.getElementById('vault-seat').addEventListener('click',function(){keepIn('seat');});
     document.getElementById('vault-place').addEventListener('click',function(){keepIn('place');});
-    document.getElementById('key-keep').addEventListener('click',function(){remember();labelKey();keyHint.className='hint ok';keyHint.textContent=(keyed()?'pictures on '+NAMES[provider.value]+', under '+who():'no image key — the free service, without faces')+(REMEMBER()?' — kept on this device':' — for this tab only');setTimeout(function(){card.close();keyHint.textContent='';},1100);});
+    document.getElementById('key-keep').addEventListener('click',function(){remember();labelKey();keepFollows().then(function(){if(LENS.loaded)render();}).catch(function(e){keyHint.className='hint err';keyHint.textContent='your follows were not kept — '+e.message;});keyHint.className='hint ok';keyHint.textContent=(keyed()?'pictures on '+NAMES[provider.value]+', under '+who():'no image key — the free service, without faces')+(REMEMBER()?' — kept on this device':' — for this tab only');setTimeout(function(){card.close();keyHint.textContent='';},1100);});
     document.getElementById('key-forget').addEventListener('click',function(){key.value='';provider.value='free';pass.value='';seat.value='';placeKey.value='';SEATS={};VAULT={exists:false,slots:{}};['gallery:key','gallery:pass','gallery:place-key'].forEach(function(k){hold(k,'');});if(MODE==='character')hold(seatLatch(HANDLE),'');vault.forget();remember();labelKey();vsay('');keyHint.className='hint';keyHint.textContent='forgotten — this browser holds no key now';});
     labelKey();
     var CARD=null;   /* the moment's card that was pressed — it shows the state in place, beside the button */
@@ -663,11 +716,11 @@
     // one moment → one picture, kept under the taker's name, addressed to the moment
     function takePicture(beat,prov,k){
       var pps={}, room=beat.room||ROOM;
-      return Promise.all(HANDLES.map(function(h){return readBlock('passport:'+h).then(function(p){pps[h]=p;}).catch(function(){});}).concat([peopleFor(room),placeFor(room)])).then(function(r){
+      return Promise.all(HANDLES.map(function(h){return readBlock('passport:'+h).then(function(p){pps[h]=p;}).catch(function(){});}).concat([peopleFor(room),placeFor(room),loadLens()])).then(function(r){
         var looks={}; HANDLES.forEach(function(h){looks[h]=lookOf(pps[h]);});
-        var cast=castOf(beat), place=r[r.length-1]||'', people=r[r.length-2]||'';
+        var cast=castOf(beat), place=r[r.length-2]||'', people=r[r.length-3]||'', direction=directionFor(beatOf(beat.ts));
         return referencesFor(beat,cast,prov).then(function(ref){
-          var prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText(),place,ref.placeRef,people);
+          var prompt=composeShot(shot.value.trim()||beat.text,cast,looks,styleText(),place,ref.placeRef,people,direction);
           /* whose picture each reference is — so one person's face is never laid on another (ways:stills 6.2) */
           if(ref.labels&&ref.labels.length)prompt+=prov==='grok'?' Reference images: '+ref.labels.map(function(l,i){return '<IMAGE_'+i+'> is '+l;}).join('; ')+'.'
             :' The reference pictures, in the order given: '+ref.labels.map(function(l,i){return (i+1)+' is '+l;}).join('; ')+'.';
