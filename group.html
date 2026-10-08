@@ -458,7 +458,6 @@ function envelopeOf(text){
   return { ways, dice };
 }
 const wayName = label => String(label || '').split(/\s[—–-]\s/)[0].replace(/\.\s*$/, '');
-const cleanHandle = v => String(v || '').replace(/[^a-z0-9_-]/gi, '').trim();
 
 /* ── the party — named in the link (/group/Ugarth+Astrel?world=<table>), or built at the table
    by adding a name and its key; kept on this device per table, and said back into the address ── */
@@ -466,9 +465,12 @@ let PARTY = [], URL_PARTY = [];
 {
   const m = location.pathname.match(/\/group\/([^\/]+)\/?$/);
   const q = new URLSearchParams(location.search);
-  const raw = (m && decodeURIComponent(m[1])) || q.get('party') || '';
+  /* the names are split where the address joins them, at + or a comma, BEFORE each is
+     decoded, so a space inside a name (%20, as in Mark%20Beall) stays inside it */
+  const raw = (m && m[1]) || (location.search.match(/[?&]party=([^&#]*)/) || [])[1] || '';
   const seen = new Set();
-  URL_PARTY = raw.split(/[+,\s]+/).map(cleanHandle).filter(h => h && !seen.has(h.toLowerCase()) && seen.add(h.toLowerCase())).slice(0, 9);
+  URL_PARTY = raw.split(/\+|,|%2B|%2C/i).map(s => { try { return cleanHandle(decodeURIComponent(s)); } catch(e){ return ''; } })
+    .filter(h => h && !seen.has(h.toLowerCase()) && seen.add(h.toLowerCase())).slice(0, 9);
   WORLD_PARAM = (q.get('world') || '').trim().replace(/[^a-z0-9._:\/-]/gi, '') || null;
 }
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
@@ -485,7 +487,12 @@ const partyHome = () => 'group:party:' + host(BEACH);
 function saveParty(){
   store(partyHome(), JSON.stringify(PARTY));
   const q = new URLSearchParams(location.search);
-  if (/\.html$/.test(location.pathname)){ if (PARTY.length) q.set('party', PARTY.join('+')); else q.delete('party'); history.replaceState(null, '', location.pathname + '?' + q.toString()); }
+  if (/\.html$/.test(location.pathname)){
+    /* written as the path form is, so a name's space travels as %20 and + only joins */
+    q.delete('party');
+    const rest = q.toString(), party = PARTY.map(encodeURIComponent).join('+');
+    history.replaceState(null, '', location.pathname + '?' + (party ? 'party=' + party + (rest ? '&' + rest : '') : rest));
+  }
   else history.replaceState(null, '', (PARTY.length ? '/group/' + PARTY.map(encodeURIComponent).join('+') : '/group') + '?' + q.toString());
 }
 

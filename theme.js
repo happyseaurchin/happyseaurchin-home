@@ -250,6 +250,33 @@
 })();
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * cleanHandle: the one rule for a handle, on every page.
+ *
+ * A handle is letters, digits, underscore and hyphen, with one space between
+ * words: never a space at either end, never two together. A handle may hold a
+ * space. Mark Beall's is "Mark Beall" (David, 2026-10-08), and a door that
+ * dropped the space opened the empty now:MarkBeall instead of his now. Every
+ * page reads a handle through this, from its address, its boxes and this
+ * device, so the rule lives here and nowhere else:
+ *
+ *     HANDLE = cleanHandle(decodeURIComponent(m[1])) || null;
+ *
+ * In an address the space travels as %20 (encodeURIComponent on the way out,
+ * decodeURIComponent on the way in); in a block name it stands as itself,
+ * now:Mark Beall. A box that cleans itself while the person types passes
+ * `typing`, which keeps the one space just typed before the next word:
+ *
+ *     const c = cleanHandle(box.value, true); if (c !== box.value) box.value = c;
+ * ───────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  window.cleanHandle = function(v, typing){
+    var s = String(v || '').replace(/[^a-z0-9_\s-]/gi, '').replace(/\s+/g, ' ');
+    return typing ? s.replace(/^ /, '') : s.trim();
+  };
+})();
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * dictate — every write box takes the voice as well as the keys.
  *
  * David's ruling (2026-09-07): add dictation. Browser-native — the Web Speech
@@ -644,7 +671,7 @@
    * whose pages the site's own menu should offer when a page carries no handle of its
    * own, and the way back to them from anyone else's (the switch, below). */
   function knownName(){
-    try { return String(localStorage.getItem('render:who') || '').replace(/[^a-z0-9_-]/gi, '').trim() || null; }
+    try { return window.cleanHandle(localStorage.getItem('render:who')) || null; }
     catch(e){ return null; }
   }
 
@@ -1203,7 +1230,7 @@
     var go = document.createElement('button');
     go.type = 'button'; go.className = 'projrow__ask-go'; go.textContent = 'ok';
     function land(){
-      var h = input.value.replace(/[^a-z0-9 _-]/gi, '').trim();
+      var h = window.cleanHandle(input.value);
       if (!h) { input.focus(); return; }
       /* the page keeps its own shape: a family page keeps its family and gains a
        * handle; a page that takes only a handle takes it and nothing else */
@@ -1736,7 +1763,7 @@
       var ok = document.createElement('button');
       ok.type = 'button'; ok.textContent = 'go'; ok.setAttribute('data-keep-open', '');
       function land(){
-        var h = input.value.replace(/[^a-z0-9_-]/gi, '').trim();
+        var h = window.cleanHandle(input.value);
         if (h) goAs(h); else input.focus();
       }
       ok.addEventListener('click', function(e){ e.stopPropagation(); land(); });
@@ -1879,7 +1906,7 @@
       readIndex(cfg.beach).then(function(blocks){
         CAST = blocks.filter(function(b){ return b.indexOf('passport:') === 0; })
           .map(function(b){ return b.slice(9); })
-          .filter(function(n){ return /^[a-z0-9_-]+$/i.test(n); })
+          .filter(function(n){ return n && n === window.cleanHandle(n); })
           .sort(function(x, y){ return x.localeCompare(y); });
         paint();
       }).catch(function(){});
