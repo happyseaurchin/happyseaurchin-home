@@ -658,6 +658,7 @@
     ['connect',     'connect your AI'],
     ['experiences', 'experiences'],
     ['animations',  'animations'],
+    ['dashboard',   'the beach, live'],
     ['path',        'part by part', '/path/beach-venture'],
     ['tree',        'every field'],
     ['found',       'found a field'],
