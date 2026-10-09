@@ -264,6 +264,25 @@
     .an-cover { position: absolute; inset: 0; z-index: 2; border-radius: inherit; }
     .an-cover:focus-visible { outline: 2px solid #e6ba45; outline-offset: 3px; }
     @media (max-width: 640px) { .an-stage { aspect-ratio: 16 / 10; } .an-text { padding: 1.6rem 1.5rem 2rem; } }
+    /* ── the beach, live: its own census read as you look, leading to the dashboard ── */
+    .walkthrough-band.live {
+      background:
+        radial-gradient(ellipse at 82% 0%, rgba(51,194,210,0.13) 0%, transparent 60%),
+        var(--bg-surface);
+    }
+    .walkthrough-band.live:hover { border-color: #33c2d2; }
+    .walkthrough-band.live .wt-eyebrow { color: #33c2d2; display: flex; align-items: center; gap: 0.6rem; }
+    .walkthrough-band.live h2 { color: #d3f1f4; }
+    .walkthrough-band.live .wt-enter { color: #33c2d2; }
+    .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-dim); flex: none; }
+    .walkthrough-band.live.is-live .live-dot { background: #33c2d2; box-shadow: 0 0 10px #33c2d2; animation: live-pulse 2.4s ease-in-out infinite; }
+    @keyframes live-pulse { 50% { opacity: 0.45; } }
+    @media (prefers-reduced-motion: reduce) { .walkthrough-band.live.is-live .live-dot { animation: none; } }
+    .live-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin: 1.4rem 0 1.3rem; }
+    .live-num { border-left: 2px solid rgba(51,194,210,0.35); padding: 0.1rem 0 0.1rem 0.9rem; min-width: 0; }
+    .live-num b { display: block; font-family: var(--font-heading); font-weight: 600; font-size: 2.1rem; line-height: 1.1; color: var(--torus-ice); font-variant-numeric: lining-nums tabular-nums; }
+    .live-num span { display: block; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; margin-top: 0.2rem; overflow-wrap: anywhere; }
+    @media (max-width: 760px) { .live-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (max-width: 760px) {
       .choice-grid { grid-template-columns: 1fr; }
       .choice-grid .walkthrough-band { padding: 2rem 1.75rem; }
@@ -316,6 +335,22 @@
       </div>
       <a class="an-cover" href="/animations" aria-label="Animations: watch the films"></a>
     </div>
+  </section>
+
+  <!-- ── the beach, live: its own census read as you look, leading to the dashboard ── -->
+  <section>
+    <a href="/dashboard" class="walkthrough-band live" id="beach-live">
+      <div class="wt-eyebrow"><span class="live-dot"></span>the beach &middot; live</div>
+      <h2>The beach, right now</h2>
+      <div class="live-strip" aria-live="polite">
+        <div class="live-num"><b data-live="blocks">&mdash;</b><span>blocks on the beach</span></div>
+        <div class="live-num"><b data-live="changed_24h">&mdash;</b><span>changed in the last day</span></div>
+        <div class="live-num"><b data-live="born_7d">&mdash;</b><span>new this week</span></div>
+        <div class="live-num"><b data-live="last_ago">&mdash;</b><span data-live="last_block">since the last change</span></div>
+      </div>
+      <p>Read straight from the beach&rsquo;s own census as you look &mdash; every block, when it was born and when it last changed. The dashboard adds who is on the o-pages now, who writes and through which doors, and every table in play.</p>
+      <span class="wt-enter">open the dashboard</span>
+    </a>
   </section>
 
   <!-- ── the open commons: why open, why now ── -->
@@ -642,6 +677,37 @@
         document.getElementById('vault-status').textContent = 'error saving key';
       }
     }
+
+    /* the beach, live: the census read straight from the beach (it answers any page),
+       again every minute while this page is in view; on a failed read the dashes stay */
+    (function () {
+      var band = document.getElementById('beach-live');
+      if (!band) return;
+      var set = function (k, v) { band.querySelectorAll('[data-live="' + k + '"]').forEach(function (el) { el.textContent = v; }); };
+      var int = function (n) { return Number(n).toLocaleString('en-GB'); };
+      function read() {
+        fetch('https://beach.happyseaurchin.com/.well-known/pscale-beach', { cache: 'no-store', headers: { Accept: 'application/json' } })
+          .then(function (r) { if (!r.ok) throw new Error('the beach answered ' + r.status); return r.json(); })
+          .then(function (c) {
+            var served = Date.parse(c.now && c.now.iso) || Date.now(), touched = c.touched || {}, born = c.born || {};
+            var within = function (t, h) { return !!t && served - Date.parse(t) <= h * 3600000; };
+            var blocks = c.blocks || [], last = null;
+            blocks.forEach(function (b) { if (touched[b] && (!last || touched[b] > touched[last])) last = b; });
+            set('blocks', int(blocks.length));
+            set('changed_24h', int(blocks.filter(function (b) { return within(touched[b], 24); }).length));
+            set('born_7d', int(blocks.filter(function (b) { return within(born[b], 168); }).length));
+            if (last) {
+              var m = Math.max(0, Math.round((served - Date.parse(touched[last])) / 60000));
+              set('last_ago', m < 1 ? 'now' : m < 60 ? m + ' min' : m < 2880 ? Math.round(m / 60) + ' h' : Math.round(m / 1440) + ' d');
+              set('last_block', 'since ' + last + ' changed');
+            }
+            band.classList.add('is-live');
+          })
+          .catch(function () { band.classList.remove('is-live'); });
+      }
+      read();
+      setInterval(function () { if (document.visibilityState === 'visible') read(); }, 60000);
+    })();
 
     async function clearKey() {
       try {

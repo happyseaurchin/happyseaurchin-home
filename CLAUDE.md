@@ -20,6 +20,7 @@ This repo is **David's personal site** at https://happyseaurchin.com — the lan
 | `components/` + `docs/components/` | numbered component inventory — HTML pages + source `.md` files, fed by the ingest pipeline |
 | `pscale/starstone/` | starstone format reference (JSON variants + bsp-star walkers in js/ts/py) |
 | `packages/`, `real-organic-human/`, `virtual-ai-agents/` | static site sections |
+| `dashboard/` | the beach dashboard — keel's claude.ai dashboard (`dash.js`, near-verbatim) on a small runtime (`runtime.js`) that reads the census, the `presence` block and each `/w/` table's census straight from the beach in the browser. The "who writes / doors / tables" tabs read keel's snapshot in `dashboard/data/` (only the fields drawn — no notes or aliases); refresh it by re-exporting from the claude.ai dashboard when keel recompiles. The virtual page's "the beach, right now" band reads the same census. |
 | `api/` | four serverless functions (see below) |
 | `scripts/` | inventory pipeline (active) + legacy beach ops (read the warnings) |
 
