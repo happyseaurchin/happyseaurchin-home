@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ring — a meeting drawn as one ring</title>
+<meta name="description" content="A meeting's design drawn as one ring: each phase a slice sized by its minutes, its parts on the outer ring. Tap any part for what it is for, when it is done, what people said about it and the synthesis; run it live and keep the record.">
+<meta property="og:title" content="Ring — a meeting drawn as one ring">
+<meta property="og:description" content="Phases sized by their minutes, parts on the outer ring, readings beside every part, and a run that records what actually happened.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* THE RING — the reader of a MEETING family (function:meeting). spine:<name> is the design: the
+     meeting at the root, its phases at 1-9 in the order they are played, a phase's parts at its own
+     digits, each line opening with its minutes and a phase's line ending "Done when …". The ring draws
+     the phases as slices sized by those minutes, the parts on the outer ring; a phase with no minutes is
+     a door before or after the hour. <name>:<handle> are readings; <name>:<beat>:<handle> are runs (dated
+     mirrors at the same addresses); the bare <name> is the fold. /ring/<name> or /ring?f=<name>. */
+  :root{
+    --p1:#3987e5; --p2:#d95926; --p3:#199e70; --p4:#c98500; --p5:#d55181; --p6:#008300; --p7:#9085e9; --p8:#e66767;
+    --over:#d03b3b; --good:#0ca30c;
+    --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace;
+  }
+  :root[data-theme="light"]{
+    --p1:#2a78d6; --p2:#eb6834; --p3:#1baf7a; --p4:#eda100; --p5:#e87ba4; --p6:#008300; --p7:#4a3aa7; --p8:#e34948;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--abyss);color:var(--foam);font-family:var(--body);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--liquid);text-underline-offset:3px}
+  .bar{position:sticky;top:0;z-index:10;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:12px 18px;
+    font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 56px}
+
+  .top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 28px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 6px}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,4.4vw,44px);line-height:1.04;margin:0;text-wrap:balance}
+  .lede{margin:8px 0 0;color:var(--vapour);max-width:60ch}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden}
+  .toggle button,.plain{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 13px;background:none;color:var(--vapour);border:0;cursor:pointer}
+  .toggle button+button{border-left:1px solid var(--line-strong)}
+  .toggle button[aria-pressed="true"]{background:var(--liquid);color:var(--abyss)}
+  .plain{border:1px solid var(--line-strong);border-radius:6px}
+  .plain[aria-pressed="true"]{border-color:var(--liquid);color:var(--liquid)}
+  .field{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  select,input,textarea{font:inherit;color:var(--foam);background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:6px}
+  select{font-family:var(--mono);font-size:12px;padding:8px 10px;max-width:220px}
+  select:disabled{opacity:0.6}
+  button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,.seg:focus-visible,.hub:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
+  .formnote{margin:12px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+
+  .main{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:28px;margin-top:20px;align-items:start}
+  @media (max-width:880px){.main{grid-template-columns:minmax(0,1fr)}.ringcol{display:contents}.doors{order:1}.ringbox{order:2}.panel{order:3}.tablebox{order:4;margin-top:0}}
+  .ringcol{min-width:0}
+  .doors{display:flex;justify-content:center;gap:10px;flex-wrap:wrap;margin:0 auto 4px;max-width:580px}
+  .door{display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;background:var(--deep);border:1px dashed var(--line-strong);border-radius:999px;padding:6px 16px;color:var(--foam);font:inherit;cursor:pointer;text-align:left}
+  .door .k{font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim)}
+  .door .t{font-family:var(--display);font-weight:700;font-size:14px}
+  .door[aria-pressed="true"]{border-style:solid;border-color:var(--foam)}
+  .ringbox{position:relative;max-width:580px;margin:0 auto}
+  svg.ring{display:block;width:100%;height:auto;overflow:visible}
+  .seg{cursor:pointer;stroke:var(--abyss);stroke-width:2}
+  .seg.part{fill-opacity:0.6}
+  .seg.sel{stroke:var(--foam);stroke-width:2.5;fill-opacity:1}
+  .seg.now{fill-opacity:1}
+  .lab{font-family:var(--display);font-weight:700;fill:var(--foam);stroke:var(--abyss);stroke-width:3px;stroke-linejoin:round;paint-order:stroke;pointer-events:none}
+  .lab.part{font-family:var(--body);font-weight:600}
+  .lab.min{font-family:var(--mono);font-weight:400;fill:var(--vapour)}
+  .hub{cursor:pointer}
+  .hub-disc{fill:var(--deep);stroke:var(--line-strong);stroke-width:1}
+  .hub.sel .hub-disc{stroke:var(--foam);stroke-width:2}
+  .hub-big{font-family:var(--display);font-weight:800;font-size:30px;fill:var(--foam)}
+  .hub-small{font-family:var(--mono);font-size:8.5px;letter-spacing:0.14em;fill:var(--vapour-dim)}
+  .track{fill:none;stroke:var(--line-strong);stroke-width:1;stroke-dasharray:2 3}
+  .hand{stroke:var(--foam);stroke-width:2;stroke-linecap:round}
+  .hand-dot{fill:var(--foam)}
+  .act{stroke:var(--abyss);stroke-width:1.5}
+  .act-over{fill:var(--over)}
+  .tick{stroke:var(--vapour-dim);stroke-width:1}
+  .tick-l{font-family:var(--mono);font-size:8px;fill:var(--vapour-dim)}
+  .tip{position:absolute;pointer-events:none;background:var(--card);border:1px solid var(--line-strong);border-radius:6px;padding:6px 10px;font-size:14px;line-height:1.35;color:var(--foam);max-width:240px;box-shadow:0 6px 18px rgba(var(--well-rgb),0.35)}
+  .tip .m{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);display:block}
+
+  .tablebox{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:8px}
+  table{border-collapse:collapse;width:100%;font-size:15px}
+  caption{caption-side:top;text-align:left;padding:10px 12px 0;font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim)}
+  th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+  th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim);font-weight:400;white-space:nowrap}
+  td.num,th.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+  td.done{color:var(--vapour);font-size:14px;min-width:14em}
+  @media (max-width:560px){.share{display:none}td.done{min-width:9em}}
+  tbody tr{cursor:pointer}
+  tbody tr:hover td,tr.rowsel td{background:rgba(var(--wash-rgb),0.045)}
+  tbody tr:last-child td{border-bottom:0}
+  tr.door-row td{color:var(--vapour-dim)}
+  .sw{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px}
+  .sw.door-sw{background:none;border:1px dashed var(--vapour-dim)}
+  .ph{font-family:var(--display);font-weight:700;white-space:nowrap}
+  .over-t{color:var(--over)}
+  .under-t{color:var(--good)}
+
+  .panel{background:var(--deep);border:1px solid var(--line);border-radius:10px;padding:18px 20px 22px;min-width:0}
+  .crumbs{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);display:flex;flex-wrap:wrap;gap:4px 8px;align-items:baseline}
+  .crumbs button{background:none;border:0;padding:0;color:var(--vapour);font:inherit;cursor:pointer;text-decoration:underline;text-decoration-color:var(--line-strong);text-underline-offset:3px}
+  .phead{display:flex;align-items:center;gap:10px;margin:10px 0 8px}
+  .phead .sw{width:14px;height:14px;border-radius:3px;margin:0;flex:none}
+  .phead h2{font-family:var(--display);font-weight:700;font-size:25px;line-height:1.15;margin:0;text-wrap:balance}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}
+  .chip{font-family:var(--mono);font-size:11.5px;color:var(--vapour);border:1px solid var(--line-strong);border-radius:999px;padding:2px 10px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .card{display:inline-block;width:11px;height:15px;border-radius:2px;margin-right:6px;vertical-align:-2px}
+  .card.green{background:var(--good)} .card.yellow{background:#e8c22e} .card.red{background:var(--over)}
+  .purpose{margin:0 0 12px;font-size:18.5px;line-height:1.5}
+  .done-box{border-left:3px solid var(--solid);padding:7px 10px 8px 12px;margin:0 0 4px;background:rgba(var(--wash-rgb),0.045);border-radius:0 6px 6px 0}
+  .done-box b{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--solid);font-weight:700;margin-bottom:2px}
+  h3{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim);font-weight:700;margin:20px 0 8px}
+  .list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+  .list button{width:100%;display:flex;gap:10px;align-items:baseline;text-align:left;background:rgba(var(--wash-rgb),0.045);border:1px solid var(--line);border-radius:6px;padding:8px 10px;color:var(--foam);font:inherit;font-size:16px;cursor:pointer}
+  .list button:hover{border-color:var(--line-strong)}
+  .list .a{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);flex:none}
+  .list .m{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin-left:auto;white-space:nowrap;padding-left:8px}
+  .reading{margin:0 0 10px;padding:8px 12px 9px;border-left:2px solid var(--line-strong);background:rgba(var(--wash-rgb),0.045);border-radius:0 6px 6px 0}
+  .reading p{margin:0}
+  .reading .who{display:flex;flex-wrap:wrap;gap:4px 10px;margin-top:5px;font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .reading .who b{color:var(--vapour);font-weight:700}
+  .reading.run{border-left-color:var(--solid)}
+  .empty{color:var(--vapour-dim);font-style:italic;margin:0}
+  .synth{margin:0;padding:10px 12px;border:1px dashed var(--line-strong);border-radius:8px}
+  .synth p{margin:0}
+  .note{font-size:14px;color:var(--vapour-dim);margin:6px 0 0}
+  .est{font-family:var(--mono);font-size:12px;color:var(--vapour);margin:0 0 8px;font-variant-numeric:tabular-nums}
+  .box{display:grid;gap:8px}
+  .box .row{display:flex;flex-wrap:wrap;gap:8px}
+  .box input{flex:1 1 140px;min-width:0;padding:8px 10px}
+  .box input.mins{flex:0 1 120px;font-family:var(--mono);font-size:14px}
+  .box textarea{width:100%;min-height:78px;padding:8px 10px;resize:vertical}
+  .box label{font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour-dim)}
+  .hint{font-size:14px;color:var(--vapour-dim);margin:2px 0 0}
+  .hint.err{color:var(--over)} .hint.ok{color:var(--good)}
+  .btn{font-family:var(--mono);font-size:12px;letter-spacing:0.07em;text-transform:uppercase;padding:9px 14px;border-radius:6px;border:1px solid var(--liquid);background:var(--liquid);color:var(--abyss);cursor:pointer}
+  .btn.ghost{background:none;color:var(--liquid)}
+  .btn.warn{border-color:var(--line-strong);background:none;color:var(--vapour)}
+  .btn:disabled{opacity:0.45;cursor:default}
+
+  .run{border:1px solid var(--line-strong);border-radius:8px;padding:12px 14px 14px;margin:0 0 16px;background:rgba(var(--wash-rgb),0.045)}
+  .runline{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+  .clock{font-family:var(--mono);font-size:28px;font-variant-numeric:tabular-nums;line-height:1.1}
+  .runsub{font-family:var(--mono);font-size:12px;color:var(--vapour)}
+  .runbtns{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .met{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .met button{font-family:var(--mono);font-size:11.5px;padding:5px 10px;border-radius:999px;border:1px solid var(--line-strong);background:none;color:var(--vapour);cursor:pointer}
+  .met button[aria-pressed="true"]{background:var(--solid);border-color:var(--solid);color:var(--abyss)}
+  .run textarea{width:100%;min-height:64px;padding:8px 10px;margin-top:6px;resize:vertical}
+  .runlabel{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;color:var(--vapour-dim);margin-top:10px;display:block}
+  pre.rec{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:12px;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line);border-radius:6px;padding:10px;max-height:240px;overflow:auto;margin:8px 0 0}
+  .viewing{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;border:1px solid var(--solid);border-radius:8px;padding:8px 12px;margin:0 0 14px;font-family:var(--mono);font-size:12px;color:var(--vapour)}
+  .viewing button{margin-left:auto}
+
+  .how{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px 26px}
+  .how h4{font-family:var(--display);font-weight:700;font-size:16px;margin:0 0 4px}
+  .how p{margin:0;font-size:15.5px;color:var(--vapour)}
+  .how code{font-family:var(--mono);font-size:13px;color:var(--foam);word-break:break-word}
+  .foot{margin-top:26px;display:flex;flex-wrap:wrap;gap:8px 18px;font-family:var(--mono);font-size:12px}
+  .loading{color:var(--vapour-dim);font-style:italic}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.remove('no-js');</script>
+<div class="bar">
+  <span class="dot"></span>
+  <span><b id="bar-name">ring</b> · a meeting drawn as one ring</span>
+  <span class="spacer"></span>
+  <button id="btn-theme" title="light or dark">◐</button>
+</div>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">A meeting, drawn as one ring</p>
+      <h1 id="title">The ring</h1>
+      <p class="lede" id="lede">Each phase of the meeting is a slice of the ring, sized by the minutes it gets, with its parts on the outer ring. Tap any part to see what it is for, when it is done, what people said about it, and the synthesis.</p>
+    </div>
+    <div class="controls">
+      <div class="toggle" role="group" aria-label="Mode">
+        <button type="button" id="m-design" aria-pressed="true">Design</button>
+        <button type="button" id="m-run" aria-pressed="false">Run</button>
+      </div>
+      <label class="field" for="dur">Length <select id="dur"></select></label>
+      <button type="button" class="plain" id="nums" aria-pressed="false" title="Show the numbering, which is each part's address">Numbers</button>
+      <label class="field" for="runs" id="runs-f" hidden>Runs <select id="runs"></select></label>
+    </div>
+  </header>
+  <p class="formnote" id="formnote" hidden></p>
+
+  <div class="main">
+    <div class="ringcol">
+      <div class="doors" id="doors"></div>
+      <div class="ringbox" id="ringbox">
+        <svg class="ring" id="ring" viewBox="-12 -12 424 424" role="group" aria-label="The meeting as a ring of phases"></svg>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+      <div class="tablebox"><table id="tbl"></table></div>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite"><p class="loading">reading the beach…</p></aside>
+  </div>
+
+  <section class="how" id="how" aria-label="How it lives on the beach"></section>
+  <nav class="foot" id="foot" aria-label="Where this comes from"></nav>
+</div>
+
+<script>
+(function(){
+"use strict";
+const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+const RENDER = 'https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=';
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const fromPath = (location.pathname.match(/^\/ring\/([^\/?#]+)/) || [])[1] || '';
+const FAMILY = (Q.get('f') || decodeURIComponent(fromPath) || 'action-cycle').trim().toLowerCase().replace(/[^a-z0-9-]/g, '') || 'action-cycle';
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+/* a copy of this page read away from the beach carries a snapshot of the family and never writes */
+const SNAP = window.RING_SNAPSHOT || null;
+const clean = v => window.cleanHandle ? window.cleanHandle(v) : String(v || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+/* ---------- the beach ---------- */
+async function readBlock(name){
+  if (SNAP) return SNAP.blocks[name] || null;
+  const r = await fetch(ORIGIN + '?block=' + encodeURIComponent(name), { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('beach read failed: ' + r.status);
+  return r.json();
+}
+async function readIndex(){
+  if (SNAP) return { blocks: Object.keys(SNAP.blocks), touched: {} };
+  const r = await fetch(ORIGIN, { headers:{Accept:'application/json'}, cache:'no-store' });
+  if (!r.ok) throw new Error('beach index failed: ' + r.status);
+  const ix = await r.json();
+  return { blocks: (ix.blocks || []).map(b => typeof b === 'string' ? b : (b && b.name) || ''), touched: ix.touched || {} };
+}
+/* a surgical write names its block in the body; a whole-block replace names it in the query and confirms */
+async function post(body, whole){
+  if (SNAP) return { ok: false, status: 0, data: { error: 'this copy is a snapshot; readings and runs are kept on the live page, happyseaurchin.com/ring/' + FAMILY } };
+  const r = await fetch(ORIGIN + (whole ? '?block=' + encodeURIComponent(whole) : ''), { method:'POST', cache:'no-store',
+    headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify(body) });
+  let d = null; try { d = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, data: d };
+}
+const refusal = w => {
+  const code = w && w.data && (w.data.code || w.data.error);
+  if (code === 'handle_bound') return 'That name has a passport here with its own key: use the key your passport uses, or choose another name.';
+  if (code === 'lock_required' || w.status === 403) return 'That name’s blocks are kept under another key. If it is yours, check the key (phones capitalise the first letter).';
+  return (w.data && (w.data.error || w.data.message)) || ('the beach said ' + w.status);
+};
+
+/* ---------- reading a block ---------- */
+function voiceOf(node){
+  let n = node;
+  while (n && typeof n === 'object') { if (!('_' in n)) return null; n = n['_']; }
+  return typeof n === 'string' && n.trim() ? n.trim() : null;
+}
+const digits = node => (node && typeof node === 'object') ? Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort() : [];
+function nodeAt(block, addr){
+  let n = block;
+  for (const d of String(addr || '').replace(/\D/g, '')) { if (!n || typeof n !== 'object') return undefined; n = n[d]; }
+  return n;
+}
+const lineAt = (block, addr) => voiceOf(nodeAt(block, addr));
+
+/* a line opens with its minutes: "30 (20-40) — TITLE: words. Done when …" */
+const MINS = /^(\d+(?:\.\d+)?)\s*(?:\((\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\))?\s*[—–-]\s+([\s\S]*)$/;
+function niceTitle(t){
+  t = String(t || '').trim();
+  if (t && !/[a-z]/.test(t) && /[A-Z]/.test(t)) t = t.charAt(0) + t.slice(1).toLowerCase();
+  return t;
+}
+function parseLine(s){
+  s = String(s || '').trim();
+  const m = s.match(MINS);
+  let min = null, lo = null, hi = null, rest = s;
+  if (m){ min = +m[1]; lo = m[2] != null ? +m[2] : null; hi = m[3] != null ? +m[3] : null; rest = m[4]; }
+  let done = '';
+  const dm = rest.match(/\s*Done when[:,]?\s+([\s\S]*)$/i);
+  if (dm){ done = dm[1].trim(); rest = rest.slice(0, dm.index).trim(); }
+  let title = rest, text = '';
+  const c = rest.indexOf(':');
+  if (c > 0 && c <= 48){ title = rest.slice(0, c).trim(); text = rest.slice(c + 1).trim(); }
+  else { title = rest.split(/[.;:—]/)[0].trim(); text = rest; if (title.length > 48) title = title.slice(0, 45).trim() + '…'; }
+  return { min, lo, hi, title: niceTitle(title), text, done };
+}
+
+/* ---------- the design ---------- */
+let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [];
+function buildModel(spine){
+  const root = parseLine(voiceOf(spine) || FAMILY);
+  root.addr = ''; root.kind = 'root';
+  const phases = digits(spine).map(k => {
+    const n = spine[k], p = parseLine(voiceOf(n) || '');
+    p.addr = k; p.kind = 'phase';
+    p.parts = digits(n).map(j => { const q = parseLine(voiceOf(n[j]) || ''); q.addr = k + '.' + j; q.kind = 'part'; q.phase = p; return q; });
+    return p;
+  });
+  const timed = phases.map((p, i) => p.min != null ? i : -1).filter(i => i >= 0);
+  let ring, before = [], after = [];
+  if (!timed.length){ phases.forEach(p => { p.min = 60 / (phases.length || 1); p.nominal = true; }); ring = phases.slice(); }
+  else {
+    const a = timed[0], b = timed[timed.length - 1];
+    before = phases.slice(0, a); after = phases.slice(b + 1); ring = phases.slice(a, b + 1);
+    const avg = timed.reduce((s, i) => s + phases[i].min, 0) / timed.length;
+    ring.forEach(p => { if (p.min == null){ p.min = avg; p.nominal = true; } });
+  }
+  before.forEach(p => { p.door = 'before'; p.parts.forEach(q => q.door = 'before'); });
+  after.forEach(p => { p.door = 'after'; p.parts.forEach(q => q.door = 'after'); });
+  const sum = ring.reduce((s, p) => s + p.min, 0) || 1;
+  let cum = 0;
+  ring.forEach((p, i) => {
+    p.idx = i; p.d0 = cum / sum * 360; cum += p.min; p.d1 = cum / sum * 360;
+    const all = p.parts.length && p.parts.every(q => q.min != null);
+    const tot = all ? p.parts.reduce((s, q) => s + q.min, 0) : p.parts.length;
+    let c2 = 0;
+    p.parts.forEach(q => {
+      const w = all ? q.min : 1;
+      q.share = tot ? w / tot : 0; q.plan = p.min * q.share;
+      q.d0 = p.d0 + c2 / tot * (p.d1 - p.d0); c2 += w; q.d1 = p.d0 + c2 / tot * (p.d1 - p.d0);
+    });
+  });
+  const steps = [];
+  ring.forEach(p => { if (p.parts.length) p.parts.forEach(q => steps.push({ p, q, addr: q.addr, plan: q.plan })); else steps.push({ p, q: null, addr: p.addr, plan: p.min }); });
+  return { root, phases, ring, before, after, sum, steps };
+}
+function find(a){
+  if (!a) return M.root;
+  const [pd] = a.split('.'), p = M.phases.find(x => x.addr === pd);
+  if (!p) return M.root;
+  return a.indexOf('.') < 0 ? p : (p.parts.find(q => q.addr === a) || p);
+}
+const phaseOf = n => n.kind === 'part' ? n.phase : n;
+const colorOf = n => { const p = phaseOf(n); return p && p.idx != null && p.idx < 8 ? 'var(--p' + (p.idx + 1) + ')' : 'var(--vapour-dim)'; };
+const cardOf = n => { const m = /\b(green|yellow|red) card\b/i.exec((n.text || '') + ' ' + (n.title || '')); return m ? m[1].toLowerCase() : ''; };
+
+/* ---------- state, kept on this device ---------- */
+const KEY = 'ring:' + FAMILY;
+const S = { mode:'design', sel:'', total:null, run:null, nums:false, view:'' };
+function restore(){
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (s){ S.run = s.run || null; S.total = s.total || null; S.nums = !!s.nums; if (S.run && !S.run.end) S.mode = 'run'; }
+  } catch(e){}
+}
+function save(){ try { localStorage.setItem(KEY, JSON.stringify({ run:S.run, total:S.total, nums:S.nums })); } catch(e){} }
+function setSel(a){
+  S.sel = a || '';
+  try { history.replaceState(null, '', location.pathname + location.search + (S.sel ? '#' + S.sel : '')); } catch(e){}
+}
+
+const len = () => (S.mode === 'run' && S.run) ? S.run.total : (S.total || M.sum);
+const scale = () => len() / M.sum;
+function fmt(min){
+  if (min == null || isNaN(min)) return '—';
+  if (min >= 1){ const r = Math.round(min * 10) / 10; return String(r).replace(/\.0$/, '') + '′'; }
+  return Math.max(1, Math.round(min * 60)) + '″';
+}
+const num = v => String(Math.round(v * 10) / 10);
+function clock(ms){ const s = Math.max(0, Math.floor(ms / 1000)), h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), ss = s % 60; return (h ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(ss).padStart(2, '0'); }
+const rangeOf = (n, k) => n.lo != null && n.hi != null ? num(n.lo * k) + '–' + num(n.hi * k) + '′' : '';
+/* the sundial address of the beat an instant falls in (as gallery.html computes it) */
+function beatOf(ts){
+  const t = new Date(ts); if (!isFinite(t)) return '';
+  const y = t.getUTCFullYear(), m0 = t.getUTCMonth(), d = t.getUTCDate();
+  const secs = t.getUTCHours() * 3600 + t.getUTCMinutes() * 60 + t.getUTCSeconds();
+  const part = Math.floor(secs / (86400 / 9)), beat = Math.floor((secs - part * (86400 / 9)) / (86400 / 81));
+  return String(y) + (Math.floor(m0 / 3) + 1) + ((m0 % 3) + 1) + (Math.floor((d - 1) / 7) + 1) + (((d - 1) % 7) + 1) + (part + 1) + (beat + 1);
+}
+/* citations in the house style, [block address], open the record they cite */
+function cited(s){
+  return esc(s).replace(/\[([a-z0-9][a-z0-9:_-]*)\s+([0-9][0-9.,]*)\]/gi, (all, b, a) =>
+    '<a href="' + RENDER + encodeURIComponent(b) + '&spindle=' + encodeURIComponent(a) + '" target="_blank" rel="noopener">[' + b + ' ' + a + ']</a>');
+}
+
+/* ---------- runs kept on the beach: <family>:<beat>:<handle> ---------- */
+function parseRun(name, b){
+  const rest = name.slice(FAMILY.length + 1).split(':');
+  const root = voiceOf(b) || '';
+  const iso = (root.match(/began (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?Z)/) || [])[1] || '';
+  const planned = +((root.match(/(\d+(?:\.\d+)?) minutes planned/) || [])[1] || 0);
+  const taken = +((root.match(/(\d+(?:\.\d+)?) taken/) || [])[1] || 0);
+  return { name, beat: rest[0], who: rest[1], b, root, start: iso ? Date.parse(iso) : null, planned, taken };
+}
+function runAt(run, addr){
+  const s = lineAt(run.b, addr); if (!s) return null;
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*[—–-]\s*([\s\S]*)$/);
+  const met = (s.match(/done:\s*(yes|partly|no)\b/i) || [])[1] || '';
+  return { line: s, took: m ? +m[1] : null, met: met.toLowerCase(), reached: !/not reached/i.test(s) };
+}
+const runDate = run => run.start ? new Date(run.start).toLocaleString([], { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : run.beat;
+
+async function load(){
+  IX = await readIndex();
+  const has = new Set(IX.blocks);
+  const base = FAMILY + ':';
+  const hands = IX.blocks.filter(n => n.startsWith(base) && n.indexOf(':', base.length) < 0).map(n => n.slice(base.length));
+  const runs = IX.blocks.filter(n => { if (!n.startsWith(base)) return false; const r = n.slice(base.length).split(':'); return r.length === 2 && /^\d{10}$/.test(r[0]) && !!r[1]; });
+  const [spine, law, fold, mirrors, kept] = await Promise.all([
+    has.has('spine:' + FAMILY) ? readBlock('spine:' + FAMILY) : null,
+    has.has('function:' + FAMILY) ? readBlock('function:' + FAMILY) : null,
+    has.has(FAMILY) ? readBlock(FAMILY) : null,
+    Promise.all(hands.map(h => readBlock(base + h).then(b => ({ h, b })).catch(() => ({ h, b: null })))),
+    Promise.all(runs.map(n => readBlock(n).then(b => b ? parseRun(n, b) : null).catch(() => null)))
+  ]);
+  SPINE = spine; LAW = law; FOLD = fold;
+  MIRRORS = mirrors.filter(m => m.b);
+  RUNS = kept.filter(Boolean).sort((a, b) => (b.start || 0) - (a.start || 0));
+  if (SPINE) M = buildModel(SPINE);
+}
+
+/* ---------- the ring ---------- */
+const NS = 'http://www.w3.org/2000/svg', CX = 200, CY = 200;
+const R = { hub:56, p0:64, p1:122, q0:126, q1:164, a0:171, a1:180, o0:184, o1:190 };
+const svg = $('ring'), tip = $('tip'), box = $('ringbox');
+let defs = null, uid = 0;
+function pt(r, d){ const t = (d - 90) * Math.PI / 180; return [CX + r * Math.cos(t), CY + r * Math.sin(t)]; }
+const f2 = v => v.toFixed(2);
+function sector(r0, r1, d0, d1){
+  if (d1 - d0 >= 359.99) d1 = d0 + 359.99;
+  const lg = (d1 - d0) > 180 ? 1 : 0, a = pt(r1, d0), b = pt(r1, d1), c = pt(r0, d1), e = pt(r0, d0);
+  return 'M' + f2(a[0]) + ' ' + f2(a[1]) + 'A' + r1 + ' ' + r1 + ' 0 ' + lg + ' 1 ' + f2(b[0]) + ' ' + f2(b[1]) +
+         'L' + f2(c[0]) + ' ' + f2(c[1]) + 'A' + r0 + ' ' + r0 + ' 0 ' + lg + ' 0 ' + f2(e[0]) + ' ' + f2(e[1]) + 'Z';
+}
+function el(tag, attrs, parent){ const x = document.createElementNS(NS, tag); for (const k in attrs) x.setAttribute(k, attrs[k]); if (parent) parent.appendChild(x); return x; }
+/* a title laid along its arc: upright on the bottom half, measured, shrunk to fit, cut short only as a last resort */
+function arcText(text, rMid, d0, d1, size, cls){
+  if (!text) return;
+  if (d1 - d0 >= 359.99) d1 = d0 + 359.99;
+  const mid = (d0 + d1) / 2, flip = mid > 90 && mid < 270;
+  const r = flip ? rMid + size * 0.34 : rMid - size * 0.34;
+  const room = (d1 - d0) / 360 * 2 * Math.PI * r - 6;
+  if (room < 14) return;
+  const id = 'arc' + (++uid), a = pt(r, flip ? d1 : d0), b = pt(r, flip ? d0 : d1);
+  el('path', { id, d: 'M' + f2(a[0]) + ' ' + f2(a[1]) + 'A' + r + ' ' + r + ' 0 ' + ((d1 - d0) > 180 ? 1 : 0) + ' ' + (flip ? 0 : 1) + ' ' + f2(b[0]) + ' ' + f2(b[1]), fill:'none' }, defs);
+  const tx = el('text', { 'class': 'lab ' + cls, 'font-size': size }, svg);
+  const tp = el('textPath', { href: '#' + id, startOffset: '50%', 'text-anchor': 'middle' }, tx);
+  tp.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', '#' + id);
+  tp.textContent = text;
+  let L = tx.getComputedTextLength();
+  if (L <= room) return;
+  tx.setAttribute('font-size', Math.max(size * 0.74, size * room / L));
+  L = tx.getComputedTextLength();
+  let t = text;
+  while (L > room && t.length > 3){ t = t.slice(0, -1).trimEnd(); tp.textContent = t + '…'; L = tx.getComputedTextLength(); }
+  if (L > room) tx.remove();
+}
+
+/* what actually happened, step by step: a live run, or a kept one being viewed */
+function runInfo(){
+  const r = S.run; if (!r) return null;
+  const now = r.end || Date.now(), acts = []; let prev = r.start;
+  r.marks.forEach(t => { acts.push((t - prev) / 60000); prev = t; });
+  const cur = (!r.end && r.marks.length < M.steps.length) ? r.marks.length : -1;
+  return { acts, cur, curStart: prev, elapsed: (now - r.start) / 60000, now, total: r.total, live: !r.end };
+}
+function viewed(){ return S.mode === 'design' && S.view ? RUNS.find(x => x.name === S.view) || null : null; }
+function keptActs(run){
+  const acts = [];
+  for (const st of M.steps){ const a = runAt(run, st.addr); if (!a || !a.reached || a.took == null) break; acts.push(a.took); }
+  return acts;
+}
+function overlay(){
+  if (S.mode === 'run' && S.run){ const ri = runInfo(); const acts = ri.acts.slice(); if (ri.cur >= 0) acts.push((ri.now - ri.curStart) / 60000); return { acts, total: ri.total, ri }; }
+  const v = viewed(); if (v) return { acts: keptActs(v), total: v.planned || M.sum, ri: null };
+  return null;
+}
+
+function drawRing(){
+  svg.textContent = ''; uid = 0; defs = el('defs', {}, svg);
+  if (!M) return;
+  const ov = overlay(), total = ov ? ov.total : len(), k = scale(), ri = ov && ov.ri;
+  for (let i = 0; i < 4; i++){
+    const d = i * 90, p1 = pt(R.q1 + 2, d), p2 = pt(R.a1 + 3, d);
+    el('line', { x1:p1[0], y1:p1[1], x2:p2[0], y2:p2[1], 'class':'tick' }, svg);
+    const lp = pt(R.o1 + 8, d), t = el('text', { x:lp[0], y:lp[1] + 3, 'text-anchor':'middle', 'class':'tick-l' }, svg);
+    t.textContent = i === 0 ? '0′' : fmt(total * i / 4);
+  }
+  if (ov) el('circle', { cx:CX, cy:CY, r:(R.a0 + R.a1) / 2, 'class':'track' }, svg);
+  const curStep = ri && ri.cur >= 0 ? M.steps[ri.cur] : null;
+  M.ring.forEach(p => {
+    const g = el('path', { d: sector(R.p0, R.p1, p.d0, p.d1), 'class':'seg phase', tabindex:'0', role:'button',
+      'aria-label': 'Phase ' + p.title + ', ' + fmt(p.min * k), 'data-a': p.addr }, svg);
+    g.style.fill = colorOf(p);
+    if (S.sel === p.addr) g.classList.add('sel');
+    if (curStep && curStep.p === p) g.classList.add('now');
+    p.parts.forEach(q => {
+      const gq = el('path', { d: sector(R.q0, R.q1, q.d0, q.d1), 'class':'seg part', tabindex:'0', role:'button',
+        'aria-label': 'Part ' + q.title + ' of ' + p.title + ', ' + fmt(q.plan * k), 'data-a': q.addr }, svg);
+      gq.style.fill = colorOf(q);
+      if (S.sel === q.addr) gq.classList.add('sel');
+      if (curStep && curStep.q === q) gq.classList.add('now');
+    });
+  });
+  M.ring.forEach(p => {
+    const mid = (p.d0 + p.d1) / 2, flip = mid > 90 && mid < 270, wide = p.d1 - p.d0;
+    const t = (S.nums ? p.addr + '  ' : '') + p.title;
+    const mins = fmt(p.min * k) + (p.lo != null ? ' · ' + rangeOf(p, k) : '');
+    arcText(t, flip ? 84 : 102, p.d0, p.d1, wide > 40 ? 13 : 11.5, 'phase');
+    arcText(mins, flip ? 104 : 83, p.d0, p.d1, 9, 'min');
+    p.parts.forEach(q => arcText((S.nums ? q.addr.split('.')[1] + ' · ' : '') + q.title, (R.q0 + R.q1) / 2, q.d0, q.d1, 11, 'part'));
+  });
+  if (ov){
+    let cum = 0;
+    const arc = (i, mins) => {
+      const a0 = cum / total * 360, a1 = (cum + mins) / total * 360, st = M.steps[i];
+      if (a0 < 360){ const path = el('path', { d: sector(R.a0, R.a1, a0, Math.min(a1, 360)), 'class':'act' }, svg); path.style.fill = colorOf(st.q || st.p); }
+      if (a1 > 360) el('path', { d: sector(R.o0, R.o1, Math.max(a0, 360) - 360, Math.min(a1 - 360, 359.9)), 'class':'act act-over' }, svg);
+      cum += mins;
+    };
+    ov.acts.forEach((m, i) => { if (i < M.steps.length) arc(i, m); });
+    if (ri && ri.live){
+      const hd = (ri.elapsed / total * 360) % 360, h0 = pt(R.hub + 3, hd), h1 = pt(R.a1 + 5, hd);
+      el('line', { x1:h0[0], y1:h0[1], x2:h1[0], y2:h1[1], 'class':'hand' }, svg);
+      el('circle', { cx:h1[0], cy:h1[1], r:3.5, 'class':'hand-dot' }, svg);
+    }
+  }
+  const hub = el('g', { 'class':'hub' + (S.sel === '' ? ' sel' : ''), tabindex:'0', role:'button', 'aria-label':'The whole meeting', 'data-a':'' }, svg);
+  el('circle', { cx:CX, cy:CY, r:R.hub, 'class':'hub-disc' }, hub);
+  const big = el('text', { x:CX, y:CY + 6, 'text-anchor':'middle', 'class':'hub-big' }, hub);
+  const small = el('text', { x:CX, y:CY + 24, 'text-anchor':'middle', 'class':'hub-small' }, hub);
+  const top = el('text', { x:CX, y:CY - 22, 'text-anchor':'middle', 'class':'hub-small' }, hub);
+  if (ri){ big.textContent = clock(ri.elapsed * 60000); small.textContent = 'OF ' + clock(ri.total * 60000); top.textContent = ri.live ? 'RUNNING' : 'RAN'; big.setAttribute('style', 'font-size:22px'); }
+  else if (viewed()){ const v = viewed(); big.textContent = fmt(v.taken || 0); small.textContent = 'OF ' + fmt(v.planned || M.sum); top.textContent = 'A RUN'; }
+  else { big.textContent = fmt(len()); small.textContent = Math.abs(len() - 60) < 0.01 ? 'THE HOUR' : 'THE MEETING'; top.textContent = ''; }
+}
+
+svg.addEventListener('pointermove', ev => {
+  if (ev.pointerType === 'touch' || !M) return;
+  const t = ev.target.closest ? ev.target.closest('[data-a]') : null;
+  if (!t){ tip.hidden = true; return; }
+  const n = find(t.getAttribute('data-a'));
+  tip.innerHTML = esc(n.kind === 'root' ? 'The whole meeting' : n.title) + '<span class="m">' + fmt((n.kind === 'root' ? M.sum : n.kind === 'part' ? n.plan : n.min) * scale()) + ' · tap to read</span>';
+  const bb = box.getBoundingClientRect();
+  tip.style.left = Math.min(ev.clientX - bb.left + 14, bb.width - 200) + 'px';
+  tip.style.top = (ev.clientY - bb.top + 14) + 'px';
+  tip.hidden = false;
+});
+svg.addEventListener('pointerleave', () => { tip.hidden = true; });
+svg.addEventListener('click', ev => { const t = ev.target.closest ? ev.target.closest('[data-a]') : null; if (t) select(t.getAttribute('data-a')); });
+svg.addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return;
+  const t = ev.target.closest ? ev.target.closest('[data-a]') : null; if (t){ ev.preventDefault(); select(t.getAttribute('data-a'), true); }
+});
+
+/* the doors: phases with no minutes stand outside the hour */
+function drawDoors(){
+  const d = $('doors');
+  if (!M || (!M.before.length && !M.after.length)){ d.innerHTML = ''; d.hidden = true; return; }
+  d.hidden = false;
+  const btn = (p, k) => '<button type="button" class="door" data-go="' + p.addr + '" aria-pressed="' + (S.sel.split('.')[0] === p.addr) + '"><span class="k">' +
+    (k === 'before' ? '← before the meeting' : 'after the meeting →') + '</span><span class="t">' + esc((S.nums ? p.addr + '  ' : '') + p.title) + '</span></button>';
+  d.innerHTML = M.before.map(p => btn(p, 'before')).join('') + M.after.map(p => btn(p, 'after')).join('');
+}
+$('doors').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) select(b.getAttribute('data-go')); });
+
+/* ---------- the table: the same ring, phase by phase ---------- */
+function drawTable(){
+  const t = $('tbl'); if (!M){ t.innerHTML = ''; return; }
+  const ov = overlay(), k = scale();
+  const actOf = i => { if (!ov) return null; let s = 0, any = false; M.steps.forEach((st, j) => { if (st.p === M.ring[i] && j < ov.acts.length){ s += ov.acts[j]; any = true; } }); return any ? s : null; };
+  let h = '<caption>The meeting, phase by phase</caption><thead><tr><th>Phase</th><th class="num">Minutes</th><th class="num share">Share</th>' +
+          (ov ? '<th class="num">Took</th><th class="num">±</th>' : '') + '<th>Done when</th></tr></thead><tbody>';
+  M.phases.forEach(p => {
+    const selRow = S.sel && S.sel.split('.')[0] === p.addr ? ' rowsel' : '';
+    if (p.door){
+      h += '<tr class="door-row' + selRow + '" data-a="' + p.addr + '"><td><span class="sw door-sw"></span><span class="ph">' + esc((S.nums ? p.addr + ' ' : '') + p.title) + '</span></td><td class="num">' +
+           (p.door === 'before' ? 'before' : 'after') + '</td><td class="num share"></td>' + (ov ? '<td></td><td></td>' : '') + '<td class="done">' + esc(cap(p.done)) + '</td></tr>';
+      return;
+    }
+    const plan = p.min * k, a = actOf(p.idx), diff = a == null ? null : a - plan;
+    h += '<tr class="' + selRow + '" data-a="' + p.addr + '"><td><span class="sw" style="background:' + colorOf(p) + '"></span><span class="ph">' + esc((S.nums ? p.addr + ' ' : '') + p.title) + '</span></td>' +
+         '<td class="num">' + fmt(plan) + (p.lo != null ? '<br><span style="color:var(--vapour-dim);font-size:11px">' + rangeOf(p, k) + '</span>' : '') + '</td><td class="num share">' + Math.round(p.min / M.sum * 100) + '%</td>';
+    if (ov) h += '<td class="num">' + (a == null ? '—' : fmt(a)) + '</td><td class="num ' + (diff == null ? '' : diff > 0.05 * plan ? 'over-t' : 'under-t') + '">' + (diff == null ? '—' : (diff >= 0 ? '+' : '−') + fmt(Math.abs(diff))) + '</td>';
+    h += '<td class="done">' + esc(cap(p.done)) + '</td></tr>';
+  });
+  t.innerHTML = h + '</tbody>';
+}
+$('tbl').addEventListener('click', ev => { const tr = ev.target.closest('tr[data-a]'); if (tr) select(tr.getAttribute('data-a')); });
+
+/* ---------- the panel ---------- */
+const panel = $('panel');
+function crumbs(n){
+  let h = '<nav class="crumbs" aria-label="Where you are"><button type="button" data-go="">' + esc(M.root.title) + '</button>';
+  if (n.kind !== 'root'){ const p = phaseOf(n); h += '<span>›</span><button type="button" data-go="' + p.addr + '">' + esc((S.nums ? p.addr + ' ' : '') + p.title) + '</button>'; }
+  if (n.kind === 'part') h += '<span>›</span><span>' + esc((S.nums ? n.addr + ' ' : '') + n.title) + '</span>';
+  return h + '</nav>';
+}
+function readingsAt(a){
+  return MIRRORS.map(m => {
+    const s = lineAt(m.b, a);
+    if (!s || (a === '' && /^MIRROR\b/.test(s))) return null;
+    const mm = s.match(/^(\d+(?:\.\d+)?)\s*[—–-]\s+([\s\S]*)$/);
+    return { who: m.h, text: mm ? mm[2] : s, est: mm ? +mm[1] : null };
+  }).filter(Boolean);
+}
+function readingsHtml(n){
+  const a = n.addr, rs = readingsAt(a), k = scale();
+  const plan = n.kind === 'root' ? M.sum : n.kind === 'part' ? n.plan : n.min;
+  let h = '';
+  const ests = rs.filter(r => r.est != null).map(r => r.est);
+  if (ests.length && !n.door){
+    const all = [plan].concat(ests).sort((x, y) => x - y), mid = all.length / 2;
+    const med = all.length % 2 ? all[Math.floor(mid)] : (all[mid - 1] + all[mid]) / 2;
+    h += '<p class="est">Minutes · planned ' + fmt(plan * k) + ' · readings give ' + ests.map(e => fmt(e * k)).join(', ') + ' · middle ' + fmt(med * k) + '</p>';
+  }
+  rs.forEach(r => {
+    h += '<div class="reading"><p>' + cited(r.text) + '</p><div class="who"><b>' + esc(r.who) + '</b>' + (r.est != null ? '<span>gives it ' + fmt(r.est * k) + '</span>' : '') +
+         '<a href="' + RENDER + encodeURIComponent(FAMILY + ':' + r.who) + (a ? '&spindle=' + encodeURIComponent(a) : '') + '" target="_blank" rel="noopener">in ' + esc(r.who) + '’s mirror</a></div></div>';
+  });
+  return h || '<p class="empty">No readings here yet. Yours can be the first.</p>';
+}
+function runsHtml(n){
+  if (!RUNS.length || n.door) return '';
+  const rows = RUNS.map(run => {
+    const s = n.kind === 'root' ? run.root : lineAt(run.b, n.addr);
+    return s ? '<div class="reading run"><p>' + cited(s) + '</p><div class="who"><b>' + esc(run.who) + '</b><span>' + esc(runDate(run)) + '</span><a href="' + RENDER + encodeURIComponent(run.name) +
+      (n.addr ? '&spindle=' + encodeURIComponent(n.addr) : '') + '" target="_blank" rel="noopener">the run</a></div></div>' : '';
+  }).join('');
+  return rows ? '<h3>In the runs</h3>' + rows : '';
+}
+function addBox(n){
+  if (SNAP) return '<h3>Add your reading</h3><p class="note">Readings are added on the live page, <a href="https://happyseaurchin.com/ring/' + encodeURIComponent(FAMILY) + (n.addr ? '#' + n.addr : '') + '" target="_blank" rel="noopener">happyseaurchin.com/ring/' + esc(FAMILY) + '</a>, where each lands in its writer’s own mirror.</p>';
+  const label = n.kind === 'root' ? 'the whole meeting' : n.title;
+  return '<h3>Add your reading</h3><div class="box" id="addbox" data-at="' + esc(n.addr) + '">' +
+    '<label for="f-text">What you see in ' + esc(label) + ', or what you would change</label><textarea id="f-text"></textarea>' +
+    (n.kind !== 'root' && !n.door ? '<div class="row"><input class="mins" id="f-min" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Minutes?" aria-label="How many minutes you would give it, at this length"></div>' : '') +
+    '<div class="row"><input id="f-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
+    '<input id="f-key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key">' +
+    '<button type="button" class="btn" id="f-send">Add my reading</button></div>' +
+    '<p class="hint" id="f-hint">It goes into your own mirror of this design, in your name, at this part; writing again here replaces it. Use your passport’s key, or with no passport yet, invent one: it keeps your words yours.</p></div>';
+}
+function runBox(){
+  const ri = runInfo(), r = S.run;
+  let h = '<section class="run" aria-label="Run the meeting">';
+  if (!r){
+    return h + '<div class="runline"><span class="clock">' + clock(len() * 60000) + '</span><span class="runsub">ready, ' + M.ring.length + ' phases, ' + M.steps.length + ' parts</span></div>' +
+      '<p class="note">Start when the meeting starts. Mark each change of part as it happens, and the outer ring records how long each one actually took against the plan.</p>' +
+      '<div class="runbtns"><button type="button" class="btn" data-run="start">Start the meeting</button></div></section>';
+  }
+  if (!r.end){
+    const st = M.steps[ri.cur], p = st.p, k = r.total / M.sum, took = (ri.now - ri.curStart) / 60000, note = r.notes[p.idx] || {};
+    const nx = M.steps[ri.cur + 1], last = !nx;
+    const nextLabel = last ? 'Finish' : (nx.p !== p ? 'Next phase: ' + nx.p.title + (nx.q ? ' · ' + nx.q.title : '') : 'Next: ' + (nx.q ? nx.q.title : nx.p.title)) + (last ? '' : ' →');
+    h += '<div class="runline"><span class="clock" id="rclock">' + clock(ri.elapsed * 60000) + '</span><span class="runsub">of ' + clock(r.total * 60000) + '</span></div>' +
+         '<p class="runsub" style="margin:6px 0 0">Now: <b>' + esc(p.title) + (st.q ? ' · ' + esc(st.q.title) : '') + '</b> · <span id="rphase">' + fmt(took) + '</span> of ' + fmt(st.plan * k) + '</p>' +
+         (p.done ? '<div class="done-box" style="margin-top:10px"><b>' + esc(p.title) + ' is done when</b>' + esc(cap(p.done)) + '</div>' : '') +
+         '<span class="runlabel">Was it done?</span><div class="met" role="group" aria-label="Was it done">' +
+         ['yes', 'partly', 'no'].map(v => '<button type="button" data-met="' + v + '" aria-pressed="' + (note.met === v) + '">' + cap(v) + '</button>').join('') + '</div>' +
+         '<label class="runlabel" for="rnote">What happened in ' + esc(p.title) + '</label><textarea id="rnote" data-note="' + p.idx + '">' + esc(note.text || '') + '</textarea>' +
+         '<div class="runbtns"><button type="button" class="btn" data-run="next">' + esc(nextLabel) + '</button>' +
+         '<button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard run</button></div>';
+    return h + '</section>';
+  }
+  h += '<div class="runline"><span class="clock">' + clock(ri.elapsed * 60000) + '</span><span class="runsub">taken, of ' + clock(r.total * 60000) + ' planned · began ' +
+       esc(new Date(r.start).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })) + '</span></div>';
+  if (SNAP){
+    h += '<p class="note">This copy is a snapshot, so it cannot keep the run on the beach. Copy the record, or run the meeting on the live page, <a href="https://happyseaurchin.com/ring/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">happyseaurchin.com/ring/' + esc(FAMILY) + '</a>.</p>';
+  } else if (r.kept){
+    h += '<p class="hint ok">Kept on the beach as <a href="' + RENDER + encodeURIComponent(r.kept) + '" target="_blank" rel="noopener">' + esc(r.kept) + '</a>. It now stands beside the design, and the synthesis can read it.</p>';
+  } else {
+    h += '<p class="note">Keep it beside the design: what was intended, what happened, and how each phase ended, at the design’s own addresses, in your name.</p>' +
+         '<div class="box" style="margin-top:8px"><div class="row"><input id="k-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
+         '<input id="k-key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key"></div>' +
+         '<input id="k-with" placeholder="who was there (optional)" aria-label="who was there, optional"></div>';
+  }
+  h += '<div class="runbtns">' + (r.kept || SNAP ? '' : '<button type="button" class="btn" data-run="keep">Keep this run</button>') +
+       '<button type="button" class="btn ghost" data-run="copy">Copy the record</button><button type="button" class="btn warn" data-run="reset">Start a new run</button></div>' +
+       '<p class="hint" id="k-hint"></p><pre class="rec" id="rec" hidden></pre>';
+  return h + '</section>';
+}
+function drawPanel(){
+  if (!M){ return; }
+  const n = find(S.sel), a = n.addr, k = scale();
+  let h = '';
+  if (S.mode === 'run') h += runBox();
+  const v = viewed();
+  if (v) h += '<div class="viewing"><span>Showing the run kept by <b>' + esc(v.who) + '</b>, ' + esc(runDate(v)) + ': ' + fmt(v.taken) + ' of ' + fmt(v.planned) + '</span><button type="button" class="btn warn" data-view="">Back to the design</button></div>';
+  h += crumbs(n);
+  const card = cardOf(n);
+  h += '<div class="phead">' + (n.kind !== 'root' ? '<span class="sw' + (n.door ? ' door-sw' : '') + '" style="' + (n.door ? '' : 'background:' + colorOf(n)) + '"></span>' : '') +
+       '<h2>' + (card ? '<span class="card ' + card + '" title="the ' + card + ' card"></span>' : '') + esc(n.kind === 'root' ? M.root.title : n.title) + '</h2></div>';
+  const mins = n.kind === 'root' ? M.sum : n.kind === 'part' ? n.plan : n.min;
+  h += '<div class="chips">' + (S.nums && a ? '<span class="chip">' + a + '</span>' : '');
+  if (n.door) h += '<span class="chip">' + (n.door === 'before' ? 'before the meeting' : 'after the meeting') + '</span>';
+  else {
+    h += '<span class="chip">' + fmt(mins * k) + (n.kind === 'root' ? '' : ' of ' + fmt(len())) + '</span>';
+    if (n.lo != null) h += '<span class="chip">' + rangeOf(n, k) + ' range</span>';
+    h += n.kind === 'root' ? '<span class="chip">' + M.ring.length + ' phases</span>' : '<span class="chip">' + Math.round(mins / M.sum * 100) + '% of the meeting</span>';
+  }
+  h += '</div>';
+  if (n.text) h += '<p class="purpose">' + cited(cap(n.text)) + '</p>';
+  if (n.kind === 'phase' && n.done) h += '<div class="done-box"><b>Done when</b>' + esc(cap(n.done)) + '</div>';
+  if (n.kind === 'part' && n.phase.done) h += '<div class="done-box"><b>' + esc(n.phase.title) + ' is done when</b>' + esc(cap(n.phase.done)) + '</div>';
+  const list = n.kind === 'root' ? M.phases : n.kind === 'phase' ? n.parts : [];
+  if (list.length){
+    h += '<h3>' + (n.kind === 'root' ? 'Phases' : 'Parts') + '</h3><ul class="list">' + list.map(x =>
+      '<li><button type="button" data-go="' + x.addr + '">' + (S.nums ? '<span class="a">' + x.addr + '</span>' : '') + '<span>' + esc(x.title) + '</span><span class="m">' +
+      (x.door ? (x.door === 'before' ? 'before' : 'after') : fmt((x.kind === 'part' ? x.plan : x.min) * k)) + '</span></button></li>').join('') + '</ul>';
+  }
+  h += '<h3>Readings</h3>' + readingsHtml(n);
+  h += runsHtml(n);
+  const syn = FOLD ? lineAt(FOLD, a) : null;
+  if (syn) h += '<h3>Synthesis</h3><div class="synth"><p>' + cited(syn) + '</p></div><p class="note">The fold at <a href="' + RENDER + encodeURIComponent(FAMILY) + (a ? '&spindle=' + encodeURIComponent(a) : '') + '" target="_blank" rel="noopener">' + esc(FAMILY) + '</a>: woven from the readings and the runs, and re-woven as they grow.</p>';
+  else if (n.kind === 'part' && FOLD && lineAt(FOLD, n.phase.addr)) h += '<p class="note">The synthesis is kept per phase: open <button type="button" class="btn ghost" style="padding:3px 8px" data-go="' + n.phase.addr + '">' + esc(n.phase.title) + '</button></p>';
+  if (S.mode === 'design') h += addBox(n);
+  panel.innerHTML = h;
+  const who = $('f-who') || $('k-who');
+  if (who){ try { who.value = localStorage.getItem('venture:who') || localStorage.getItem('render:who') || ''; } catch(e){} }
+}
+
+panel.addEventListener('click', ev => {
+  const g = ev.target.closest('[data-go]');
+  if (g){ select(g.getAttribute('data-go')); return; }
+  const vw = ev.target.closest('[data-view]');
+  if (vw){ S.view = vw.getAttribute('data-view'); $('runs').value = S.view; render(); return; }
+  const m = ev.target.closest('[data-met]');
+  if (m && S.run && !S.run.end){ const ri = runInfo(), p = M.steps[ri.cur].p; (S.run.notes[p.idx] = S.run.notes[p.idx] || {}).met = m.getAttribute('data-met'); save(); drawPanel(); return; }
+  if (ev.target.id === 'f-send'){ addReading(); return; }
+  const r = ev.target.closest('[data-run]');
+  if (!r) return;
+  const act = r.getAttribute('data-run');
+  if (act === 'start'){ S.run = { start: Date.now(), marks: [], notes: {}, end: null, total: len() }; S.view = ''; setSel(M.steps[0].addr); }
+  else if (act === 'next'){ S.run.marks.push(Date.now()); if (S.run.marks.length >= M.steps.length) S.run.end = Date.now(); else setSel(M.steps[S.run.marks.length].addr); }
+  else if (act === 'end'){ S.run.marks.push(Date.now()); S.run.end = Date.now(); }
+  else if (act === 'reset'){ S.run = null; }
+  else if (act === 'copy'){ copyRecord(); return; }
+  else if (act === 'keep'){ keepRun(); return; }
+  save(); render(); tickControl();
+});
+panel.addEventListener('input', ev => {
+  if (ev.target.id === 'rnote' && S.run){ const i = ev.target.getAttribute('data-note'); (S.run.notes[i] = S.run.notes[i] || {}).text = ev.target.value; save(); }
+});
+
+/* ---------- a reading: one line in the reader's own mirror, <family>:<name>, at the address it answers ---------- */
+async function addReading(){
+  const bx = $('addbox'), hint = $('f-hint'), send = $('f-send');
+  const say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
+  const a = bx.getAttribute('data-at'), text = $('f-text').value.trim().replace(/\s+/g, ' ');
+  if (!text){ $('f-text').focus(); return; }
+  const name = clean($('f-who').value);
+  if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how your reading is signed.'); $('f-who').focus(); return; }
+  let secret = $('f-key').value.trim();
+  if (!secret){ try { secret = localStorage.getItem('mirror-latch:' + FAMILY + ':' + name) || localStorage.getItem('passport-latch:' + name) || ''; } catch(e){} }
+  if (!secret){ say('err', 'Enter your key: the one your passport uses, or, with no passport yet, one you invent. It keeps your reading yours.'); $('f-key').focus(); return; }
+  const mEl = $('f-min'), est = mEl && mEl.value ? parseFloat(mEl.value) : 0;
+  const line = (est > 0 ? num(est / scale()) + ' — ' : '') + text;
+  const block = FAMILY + ':' + name;
+  send.disabled = true; say('', 'putting it beside the design…');
+  try {
+    let mirror = await readBlock(block);
+    if (!mirror){
+      const born = { '_': a === '' ? line : 'MIRROR — ' + name + '’s readings of ' + FAMILY + ' (spine:' + FAMILY + '), at the design’s own addresses: what they see, what they would change, the minutes they would give a part. Sovereign to them; silence at a part is honest absence. First reading written from /ring.' };
+      const w = await post({ block, new_lock: secret, content: born });
+      if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
+      mirror = born;
+    }
+    let w;
+    if (a === '') w = await post({ block, spindle: '0', content: line, secret });
+    else {
+      const [pd, qd] = a.split('.');
+      let node = mirror[pd];
+      node = node == null ? null : JSON.parse(JSON.stringify(node));
+      if (qd){
+        if (node == null) node = {}; else if (typeof node === 'string') node = { '_': node };
+        if (node[qd] && typeof node[qd] === 'object') node[qd]['_'] = line; else node[qd] = line;
+      } else {
+        if (node && typeof node === 'object') node['_'] = line; else node = line;
+      }
+      w = await post({ block, spindle: pd, content: node, secret });
+    }
+    if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
+    try { localStorage.setItem('mirror-latch:' + FAMILY + ':' + name, secret); localStorage.setItem('venture:who', name); } catch(e){}
+    await load(); render();
+    const h2 = $('f-hint'); if (h2){ h2.className = 'hint ok'; h2.textContent = 'It stands beside the design in your name. Writing again here replaces it.'; }
+  } catch(e){ say('err', 'couldn’t put that on the beach: ' + e.message); send.disabled = false; }
+}
+
+/* ---------- a run: kept as a dated mirror, <family>:<beat>:<name>, at the design's own addresses ---------- */
+function runRecord(name, who){
+  const r = S.run, ri = runInfo(), k = r.total / M.sum;
+  const iso = new Date(r.start).toISOString().replace(/\.\d+Z$/, 'Z');
+  const out = [['_', 'RUN — ' + M.root.title + ' (spine:' + FAMILY + '), kept by ' + name + ': began ' + iso + ' (' + beatOf(r.start) + '); ' + num(r.total) + ' minutes planned, ' +
+    num(ri.elapsed) + ' taken' + (who ? '; with ' + who : '') + '. Each line opens with the minutes it took there; a phase line then says whether its done-when held (yes, partly or no) and what happened.']];
+  const actAt = i => i < ri.acts.length ? ri.acts[i] : null;
+  M.ring.forEach(p => {
+    let took = null;
+    M.steps.forEach((st, j) => { if (st.p === p && actAt(j) != null) took = (took || 0) + actAt(j); });
+    const note = r.notes[p.idx] || {};
+    const line = (took == null ? '0 — not reached.' : num(took) + ' — done: ' + (note.met || 'not said') + '.') + ' Planned ' + num(p.min * k) +
+      (p.lo != null ? ' (' + num(p.lo * k) + '-' + num(p.hi * k) + ')' : '') + '.' + (note.text ? ' ' + note.text.trim() : '');
+    if (!p.parts.length){ out.push([p.addr, line]); return; }
+    const node = [['_', line]];
+    p.parts.forEach(q => { const j = M.steps.findIndex(st => st.q === q), a = actAt(j); node.push([q.addr.split('.')[1], a == null ? '0 — not reached.' : num(a) + ' — planned ' + num(q.plan * k) + '.']); });
+    out.push([p.addr, node]);
+  });
+  return out;
+}
+const toObj = pairs => { const o = {}; pairs.forEach(([k, v]) => { o[k] = Array.isArray(v) ? toObj(v) : v; }); return o; };
+function toText(pairs, ind){
+  ind = ind || ' ';
+  return '{\n' + pairs.map(([k, v]) => ind + JSON.stringify(k) + ': ' + (Array.isArray(v) ? toText(v, ind + ' ') : JSON.stringify(v))).join(',\n') + '\n' + ind.slice(1) + '}';
+}
+async function keepRun(){
+  const hint = $('k-hint'), say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
+  const name = clean($('k-who').value), who = ($('k-with').value || '').trim().replace(/\s+/g, ' ').slice(0, 200);
+  if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how the run is signed.'); $('k-who').focus(); return; }
+  let secret = $('k-key').value.trim();
+  if (!secret){ try { secret = localStorage.getItem('mirror-latch:' + FAMILY + ':' + name) || localStorage.getItem('passport-latch:' + name) || ''; } catch(e){} }
+  if (!secret){ say('err', 'Enter your key: the one your passport uses, or one you invent.'); $('k-key').focus(); return; }
+  const block = FAMILY + ':' + beatOf(S.run.start) + ':' + name, content = toObj(runRecord(name, who));
+  say('', 'keeping it beside the design…');
+  try {
+    const stands = await readBlock(block);
+    const w = stands ? await post({ confirm: true, content, secret }, block) : await post({ block, new_lock: secret, content });
+    if (!w.ok){ say('err', refusal(w)); return; }
+    S.run.kept = block; save();
+    try { localStorage.setItem('mirror-latch:' + FAMILY + ':' + name, secret); localStorage.setItem('venture:who', name); } catch(e){}
+    await load(); render();
+  } catch(e){ say('err', 'couldn’t keep it: ' + e.message); }
+}
+function copyRecord(){
+  const pre = $('rec'), hint = $('k-hint');
+  const name = clean(($('k-who') && $('k-who').value) || '') || 'you';
+  const txt = toText(runRecord(name, ($('k-with') && $('k-with').value) || ''));
+  pre.textContent = txt; pre.hidden = false;
+  const shown = () => { const rg = document.createRange(); rg.selectNodeContents(pre); const s = window.getSelection(); s.removeAllRanges(); s.addRange(rg); hint.className = 'hint'; hint.textContent = 'Selected: copy it from here.'; };
+  try { navigator.clipboard.writeText(txt).then(() => { hint.className = 'hint ok'; hint.textContent = 'Copied.'; }, shown); } catch(e){ shown(); }
+}
+
+/* ---------- the page around the ring ---------- */
+function drawHow(){
+  const hands = MIRRORS.map(m => '<a href="' + RENDER + encodeURIComponent(FAMILY + ':' + m.h) + '" target="_blank" rel="noopener">' + esc(m.h) + '</a>').join(', ');
+  $('how').innerHTML =
+    '<div><h4>The design is a block</h4><p>The meeting at the centre, its phases at 1 to 9 in order, their parts beneath; each line opens with its minutes, and a phase says when it is done. ' +
+      '<a href="' + RENDER + encodeURIComponent('spine:' + FAMILY) + '" target="_blank" rel="noopener"><code>spine:' + esc(FAMILY) + '</code></a></p></div>' +
+    '<div><h4>Readings are mirrors</h4><p>A reading lands in its writer’s own mirror, <code>' + esc(FAMILY) + ':&lt;name&gt;</code>, at the part it answers, so every voice stands side by side.' + (hands ? ' Here now: ' + hands + '.' : '') + '</p></div>' +
+    '<div><h4>The synthesis is the fold</h4><p>Woven from every reading and every run, phase by phase, and re-woven as they grow. ' +
+      (FOLD ? '<a href="' + RENDER + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener"><code>' + esc(FAMILY) + '</code></a>' : 'None woven yet.') + '</p></div>' +
+    '<div><h4>A run is a dated mirror</h4><p>Each meeting played on the design is kept at <code>' + esc(FAMILY) + ':&lt;beat&gt;:&lt;name&gt;</code>, at the same addresses, so every run lies against the plan and against every other run. ' +
+      (RUNS.length ? RUNS.length + ' kept so far.' : 'None kept yet.') + '</p></div>';
+  $('foot').innerHTML = '<a href="' + RENDER + encodeURIComponent('function:' + FAMILY) + '" target="_blank" rel="noopener">this meeting’s law →</a>' +
+    '<a href="' + RENDER + encodeURIComponent('function:meeting') + '" target="_blank" rel="noopener">the meeting form →</a>' +
+    '<a href="https://happyseaurchin.com/walk/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">walk the family →</a>';
+}
+function drawControls(){
+  const dur = $('dur'), locked = S.mode === 'run' && !!S.run;
+  const opts = [M.sum, 2, 10, 20, 30, 40, 60, 90, 120, 180].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
+  dur.innerHTML = opts.map(v => '<option value="' + v + '">' + (v === M.sum ? fmt(v) + ' · as designed' : v === 2 ? '2′ · to try a run' : v >= 120 ? (v / 60) + ' hours' : v + ' min') + '</option>').join('');
+  dur.value = String(len()); dur.disabled = locked; dur.title = locked ? 'Fixed for this run. Start a new run to change it.' : '';
+  $('nums').setAttribute('aria-pressed', String(S.nums));
+  const rf = $('runs-f'), rs = $('runs');
+  rf.hidden = !RUNS.length || S.mode === 'run';
+  rs.innerHTML = '<option value="">the design</option>' + RUNS.map(r => '<option value="' + esc(r.name) + '">' + esc(runDate(r) + ' · ' + r.who) + '</option>').join('');
+  rs.value = S.view;
+  $('m-design').setAttribute('aria-pressed', String(S.mode === 'design'));
+  $('m-run').setAttribute('aria-pressed', String(S.mode === 'run'));
+}
+function render(){ if (!M) return; drawControls(); drawDoors(); drawRing(); drawTable(); drawPanel(); }
+function select(a, focus){
+  setSel(a); render();
+  if (focus){ const t = svg.querySelector('[data-a="' + (S.sel || '') + '"]'); if (t && t.focus) t.focus(); }
+}
+$('m-design').addEventListener('click', () => { S.mode = 'design'; render(); tickControl(); });
+$('m-run').addEventListener('click', () => { S.mode = 'run'; S.view = ''; render(); tickControl(); });
+$('dur').addEventListener('change', () => { S.total = parseFloat($('dur').value) || null; if (S.total === M.sum) S.total = null; save(); render(); });
+$('nums').addEventListener('click', () => { S.nums = !S.nums; save(); render(); });
+$('runs').addEventListener('change', () => { S.view = $('runs').value; render(); });
+
+/* while a run is live the ring and the clock move once a second; the panel is left alone so typing is never lost */
+let timer = null;
+function tickControl(){
+  const live = S.mode === 'run' && S.run && !S.run.end;
+  if (live && !timer){
+    timer = setInterval(() => {
+      drawRing(); drawTable();
+      const ri = runInfo(), c = $('rclock'), ph = $('rphase');
+      if (ri && c) c.textContent = clock(ri.elapsed * 60000);
+      if (ri && ph) ph.textContent = fmt((ri.now - ri.curStart) / 60000);
+    }, 1000);
+  } else if (!live && timer){ clearInterval(timer); timer = null; }
+}
+
+restore();
+load().then(() => {
+  if (!SPINE){
+    panel.innerHTML = '<p class="empty">No meeting called <b>' + esc(FAMILY) + '</b> stands on the beach yet. <a href="https://happyseaurchin.com/ring/action-cycle">The action cycle</a> is one that does.</p>';
+    $('title').textContent = FAMILY; return;
+  }
+  if (S.run && S.run.marks && S.run.marks.length > M.steps.length) S.run = null;
+  document.title = M.root.title + ' — the ring';
+  $('title').textContent = M.root.title;
+  if (M.root.text) $('lede').innerHTML = cited(cap(M.root.text.split(/(?<=[.!?])\s+(?=[A-Z])/)[0]));
+  const mode = ((LAW && voiceOf(LAW['1'])) || '').match(/^\s*mode:\s*([a-z][\w-]*)/i);
+  const fn = $('formnote');
+  if (SNAP){ fn.hidden = false; fn.innerHTML = 'A snapshot of the beach, taken ' + esc(SNAP.taken) + '. The live page, where readings and runs are kept, is <a href="https://happyseaurchin.com/ring/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">happyseaurchin.com/ring/' + esc(FAMILY) + '</a>.'; }
+  else if (!LAW){ fn.hidden = false; fn.textContent = 'No law stands at function:' + FAMILY + ' yet, so this is drawn as a draft.'; }
+  else if (!mode || mode[1].toLowerCase() !== 'meeting'){ fn.hidden = false; fn.textContent = 'This family’s law reads mode: ' + (mode ? mode[1] : 'none') + ', not a meeting, so the ring draws it as a draft: its phases share the time equally where no minutes are given.'; }
+  const h = decodeURIComponent((location.hash || '').slice(1));
+  if (/^[1-9](\.[1-9])?$/.test(h) && find(h).addr === h) S.sel = h;
+  if (S.mode === 'run' && S.run && !S.run.end){ const ri = runInfo(); if (ri.cur >= 0) setSel(M.steps[ri.cur].addr); }
+  drawHow(); render(); tickControl();
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => drawRing());
+  if (window.nameLinks) nameLinks(document.body, { blocks: IX.blocks });
+}).catch(e => { panel.innerHTML = '<p class="empty">' + esc('Couldn’t read the beach: ' + e.message) + '</p>'; });
+
+const CARRIED = clean(Q.get('h')) || null;
+if (window.siteDoors) siteDoors({ handle: CARRIED, here: 'ring', site: true });
+})();
+</script>
+</body>
+</html>
