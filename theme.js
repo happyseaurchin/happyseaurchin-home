@@ -660,6 +660,7 @@
     ['animations',  'animations'],
     ['dashboard',   'the beach, live'],
     ['path',        'part by part', '/path/beach-venture'],
+    ['tracks',      'the tracks',   '/tracks/beach-venture'],
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
