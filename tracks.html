@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tracks — a path drawn as parallel tracks</title>
+<meta name="description" content="A project's path drawn as parallel tracks: each part a brick along its track, marked by where it stands at the last fold, read live from the beach. Tap a track to lay its parts out, tap a part to read it or to add your own word.">
+<meta property="og:title" content="Tracks — a path drawn as parallel tracks">
+<meta property="og:description" content="Each part a brick along its track, marked by where it stands; every person's own word beside it; the cards taken from it; read live from the beach.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Young+Serif&display=swap">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* TRACKS — a path (function:path) drawn as parallel tracks. Each first part of spine:<V>-path is a
+     lane: its name on the left, its parts as parallelograms along a rail in digit order, a part's
+     children smaller just after it, a ladder (a run down digit 1, function:path 1.1) one unbroken
+     stretch. A brick's mark is the fold's line at that part (<V>-path, function:path 2). A tap on a
+     lane lays its parts out beneath it; a tap on a part opens what it is and when it is done (the
+     spine), where it stands (the fold), each hand's own word there (<V>-path:<handle>), the cards
+     taken from it (ahead:<handle>, the part at the card's 5) and a box for the reader's own word,
+     written into their own mirror. Nothing here is kept but on the beach; the page stores no part.
+     /tracks/<project>[/<handle>] or /tracks?f=<project>. The look is David's sketch, Beach Venture
+     Tracks v4 (2026-10-09, pool:weft 173 and 175); the data is the beach's. */
+  :root{
+    --shore:#EDF1EE; --paper:#F9FBF9; --ink:#122E2B; --muted:#56706A; --thread:#C2CFCA;
+    --done:#2B8A75; --doing:#1A83A6; --blocked:#B4552A; --held:#A87D0C; --accent:#2F4FA2;
+    --shadow:rgba(10,30,28,.20);
+    --f-display:"Young Serif", Georgia, "Times New Roman", serif;
+    --f-body:"Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --f-mono:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --shore:#0E1C1B; --paper:#152826; --ink:#E1EAE6; --muted:#97ACA6; --thread:#2D4642;
+      --done:#5ABDA6; --doing:#5DB7D5; --blocked:#E58C5E; --held:#E0B64A; --accent:#9FB3F1;
+      --shadow:rgba(0,0,0,.55); color-scheme:dark;
+    }
+  }
+  :root[data-theme="dark"]{
+    --shore:#0E1C1B; --paper:#152826; --ink:#E1EAE6; --muted:#97ACA6; --thread:#2D4642;
+    --done:#5ABDA6; --doing:#5DB7D5; --blocked:#E58C5E; --held:#E0B64A; --accent:#9FB3F1;
+    --shadow:rgba(0,0,0,.55); color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  html{scroll-padding-top:4rem}
+  body{margin:0;background:var(--shore);color:var(--ink);font-family:var(--f-body);font-size:1rem;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--accent);text-underline-offset:2px}
+  button{font:inherit}
+  button:focus-visible,a:focus-visible,textarea:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+  code{font-family:var(--f-mono);font-size:.86em;color:var(--ink);overflow-wrap:anywhere}
+
+  /* the bar every page here carries: theme.js gathers its buttons under options and adds the places */
+  .bar{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:10px;padding:10px clamp(16px,4vw,40px);
+    background:color-mix(in srgb,var(--shore) 88%,transparent);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--thread);font-family:var(--f-mono);font-size:12px;letter-spacing:.04em;color:var(--muted)}
+  .bar .dot{width:7px;height:7px;border-radius:50%;background:var(--doing);flex:none}
+  .bar b{color:var(--ink);font-weight:500}
+  .bar .bar-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--thread);border-radius:4px;color:var(--muted);font-family:var(--f-mono);font-size:12px;padding:6px 10px;cursor:pointer}
+  .bar button:hover{color:var(--ink);border-color:var(--ink)}
+
+  .wrap{max-width:1180px;margin-inline:auto;display:grid;gap:2rem;padding:clamp(20px,4vw,40px) clamp(16px,4vw,40px)}
+
+  /* header */
+  .eyebrow{margin:0 0 .45rem;font-family:var(--f-mono);font-size:.76rem;letter-spacing:.04em;color:var(--muted)}
+  h1{font-family:var(--f-display);font-weight:400;font-size:clamp(2rem,5vw,3.2rem);line-height:1.05;margin:0;text-wrap:balance}
+  .lede{max-width:62ch;margin:.8rem 0 0}
+  .whole{max-width:66ch;margin:.2rem 0 0;padding:.55rem .85rem;border-left:3px solid var(--doing);background:color-mix(in srgb,var(--doing) 7%,transparent);border-radius:0 8px 8px 0}
+  .whole summary{cursor:pointer;list-style:none}
+  .whole summary::-webkit-details-marker{display:none}
+  .whole summary .k{font-family:var(--f-mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-right:.4rem}
+  .whole summary .more{color:var(--accent);font-size:.88rem;white-space:nowrap}
+  .whole[open] summary .more{display:none}
+  .whole p{margin:.45rem 0 0}
+  .stamp{margin:.7rem 0 0;color:var(--muted);font-size:.9rem}
+  .stamp .addr{color:var(--ink);font-family:var(--f-mono);font-variant-numeric:tabular-nums;margin-right:.35rem}
+
+  /* status vocabulary: colour and form together */
+  [data-s="done"]{--c:var(--done)}
+  [data-s="doing"]{--c:var(--doing)}
+  [data-s="next"],[data-s="other"]{--c:var(--ink)}
+  [data-s="blocked"]{--c:var(--blocked)}
+  [data-s="none"]{--c:var(--muted)}
+  [data-s="held"]{--c:var(--held)}
+
+  /* the parallelogram brick, at three sizes in a lane and a mini in the key and the chips */
+  .pg{--bw:clamp(1.5rem,4.6vw,3.4rem);position:relative;display:inline-block;flex:0 1 auto;width:var(--bw);min-width:4px;height:1.75rem;margin-left:.32rem;
+    transform:skewX(-20deg);border:1.5px solid var(--c);border-radius:2px;background:var(--c);z-index:1}
+  .pg.join{margin-left:-1.5px}
+  .pg[data-s="doing"]{background:linear-gradient(90deg,var(--c) 50%,var(--paper) 50%)}
+  .pg[data-s="next"],.pg[data-s="other"]{background:var(--paper)}
+  .pg[data-s="none"]{background:var(--paper);border-style:dashed}
+  .pg[data-s="blocked"]::after{content:"";position:absolute;left:22%;right:22%;top:50%;height:2px;margin-top:-1px;border-radius:1px;background:var(--shore)}
+  .pg.kid{--bw:clamp(1.1rem,3.2vw,2.3rem);height:1.2rem}
+  .pg.kid2{--bw:clamp(.8rem,2.3vw,1.6rem);height:.95rem}
+  .pg[data-s="held"]{flex:none;width:.8rem;height:.8rem;transform:rotate(45deg);border-radius:1px}
+  .pg.mini{flex:none;width:.95rem;height:.8rem;margin-left:0}
+  .pg.mini[data-s="held"]{width:.62rem;height:.62rem}
+  .pg.mini[data-s="blocked"]::after{height:1.5px;margin-top:-.75px;left:18%;right:18%}
+  /* waits on someone: a dot over the brick, on while that person's switch is on */
+  .pg.waiting::before{content:"";position:absolute;top:-.6rem;left:50%;width:6px;height:6px;margin-left:-3px;border-radius:50%;background:var(--blocked);transform:skewX(20deg)}
+
+  /* key and switches */
+  .board{display:grid;gap:1rem}
+  .legend{display:flex;flex-wrap:wrap;gap:.5rem 1.1rem;font-size:.88rem;align-items:center}
+  .legend .item{display:inline-flex;align-items:center;gap:.5rem}
+  .legend .n{font-family:var(--f-mono);font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+  .toggle{display:inline-flex;align-items:center;gap:.45rem;border:1px solid var(--thread);background:transparent;color:var(--ink);border-radius:999px;padding:.3rem .8rem;cursor:pointer;font-size:.88rem}
+  .toggle .dotr{width:8px;height:8px;border-radius:50%;background:var(--blocked)}
+  .wait-pill[aria-pressed="true"]{border-color:var(--blocked);background:color-mix(in srgb,var(--blocked) 12%,transparent)}
+  #num-toggle[aria-pressed="true"]{border-color:var(--ink);background:color-mix(in srgb,var(--ink) 8%,transparent)}
+  body:not(.nums) .addr,body:not(.nums) .addr-ref{display:none}
+  .board-note{margin:0;max-width:66ch}
+
+  /* the lanes */
+  .tracks{list-style:none;margin:0;padding:0;border-bottom:1px solid var(--thread)}
+  .track{border-top:1px solid var(--thread)}
+  .row{display:grid;grid-template-columns:minmax(6.4rem,11.5rem) minmax(0,1fr);align-items:center;gap:.9rem;width:100%;padding:.55rem .4rem;border:0;background:transparent;color:var(--ink);text-align:left;cursor:pointer}
+  .row:hover{background:color-mix(in srgb,var(--ink) 4%,transparent)}
+  .row[aria-expanded="true"]{background:var(--paper)}
+  .tname{font-family:var(--f-display);font-size:1.08rem;line-height:1.2;text-wrap:balance;display:flex;align-items:center;gap:.5rem;min-width:0}
+  .tname .caret{font-family:var(--f-body);font-size:.8rem;color:var(--muted);transition:transform .2s ease;flex:none}
+  .tname .addr{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);flex:none}
+  .row[aria-expanded="true"] .caret{transform:rotate(90deg)}
+  /* room at both ends for the slant of the first and last brick, so a full lane is never clipped */
+  .lane{position:relative;display:flex;align-items:center;min-width:0;padding-block:.7rem;padding-left:.15rem;padding-right:.7rem;overflow:hidden}
+  .lane::before{content:"";position:absolute;left:0;right:0;top:50%;height:2px;margin-top:-1px;border-radius:1px;background:var(--thread)}
+  .heldtag{position:relative;z-index:1;flex:none;display:inline-flex;align-items:center;gap:.35rem;margin-left:.6rem;padding:.08rem .45rem .08rem .4rem;border-radius:999px;background:var(--shore);
+    border:1px solid color-mix(in srgb,var(--held) 55%,var(--thread));font-family:var(--f-mono);font-size:.7rem;color:var(--ink);white-space:nowrap}
+  .row[aria-expanded="true"] .heldtag{background:var(--paper)}
+  .heldtag .pg{width:.55rem;height:.55rem;margin-left:0}
+
+  /* a lane's line, opened beneath it */
+  .line{background:var(--paper);padding:.2rem clamp(.6rem,2.5vw,1.4rem) 1.3rem;display:grid;gap:.9rem;overflow:hidden}
+  .line:not([hidden]){animation:open .2s ease-out}
+  @keyframes open{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  .tline{margin:0;color:var(--muted);max-width:66ch}
+  .tstand{margin:0;max-width:66ch;font-size:.95rem}
+  .tstand .chip{margin-right:.4rem}
+  .linkish{border:0;background:none;padding:0;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:2px;font-size:.9rem}
+  .tiles{list-style:none;margin:0;padding:0 .6rem;display:flex;flex-wrap:wrap;gap:.7rem .8rem}
+  .tiles li{display:flex;align-items:center;min-width:0}
+  .tiles li.joined{margin-left:-.45rem}
+  .tiles li.joined::before{content:"›";color:var(--muted);font-family:var(--f-mono);margin-right:.3rem}
+  .tile{transform:skewX(-14deg);border:1.5px solid color-mix(in srgb,var(--c,var(--thread)) 55%,var(--thread));background:color-mix(in srgb,var(--c,var(--thread)) 11%,var(--paper));
+    color:var(--ink);border-radius:3px;padding:.6rem 1.05rem;min-width:8.6rem;max-width:22rem;cursor:pointer;text-align:left;transition:border-color .15s,box-shadow .15s}
+  .tile:hover{border-color:var(--c,var(--ink))}
+  .tile .in{transform:skewX(14deg);display:flex;align-items:center;gap:.55rem}
+  .tile .addr{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);font-variant-numeric:tabular-nums}
+  .tile .tt{font-size:.95rem;line-height:1.25}
+  .tile .who{font-family:var(--f-mono);font-size:.68rem;color:var(--muted)}
+  .tile[data-s="next"],.tile[data-s="other"]{background:var(--paper)}
+  .tile[data-s="none"]{border-style:dashed;background:transparent}
+  .tile.small{min-width:7rem;padding:.45rem .85rem}
+  .tile.small .tt{font-size:.88rem}
+  .tile.on{box-shadow:0 0 0 2px var(--accent)}
+  .tile.waiting{box-shadow:0 0 0 1.5px var(--blocked)}
+  .tile.waiting.on{box-shadow:0 0 0 2px var(--accent)}
+  .inside{display:grid;gap:.5rem;padding-left:1rem;border-left:2px dashed var(--thread);margin-left:.6rem}
+  .inside.held{border-left:2px solid color-mix(in srgb,var(--held) 60%,var(--thread))}
+  .sub-h{margin:0;font-size:.84rem;color:var(--muted)}
+  .inside .tiles{padding-left:.4rem}
+  .inside .tile{min-width:8rem;padding:.5rem .95rem}
+
+  /* chips */
+  .chip{display:inline-flex;align-items:center;gap:.4rem;font-family:var(--f-mono);font-size:.72rem;padding:.08rem .5rem;border-radius:999px;border:1px solid color-mix(in srgb,var(--c) 50%,transparent);color:var(--ink);white-space:nowrap;vertical-align:.1em}
+
+  /* where things live */
+  .where{border-top:1px solid var(--thread);padding-top:1.4rem}
+  .where h2{font-family:var(--f-display);font-weight:400;font-size:1.35rem;margin:0 0 .9rem}
+  .where dl{display:grid;grid-template-columns:minmax(0,13rem) minmax(0,1fr);gap:.75rem 1.5rem;margin:0}
+  .where dt{font-weight:700}
+  .where dd{margin:0;max-width:66ch}
+  .foot{font-size:.9rem;color:var(--muted);display:grid;gap:.6rem}
+  .foot p{margin:0;max-width:70ch}
+  .foot .links{display:flex;flex-wrap:wrap;gap:.4rem 1.2rem}
+
+  /* the reading sheet */
+  .sheet{position:fixed;z-index:30;background:var(--paper);color:var(--ink);border:1px solid var(--thread);box-shadow:0 18px 48px var(--shadow);overflow:auto;padding:1.1rem 1.25rem 1.4rem}
+  .sheet:not([hidden]){animation:rise .2s ease-out}
+  @keyframes rise{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
+  .sheet-top{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+  .sheet .addrline{font-family:var(--f-mono);font-size:.76rem;color:var(--muted);display:flex;flex-wrap:wrap;gap:.4rem .6rem;align-items:center}
+  .sheet-acts{display:flex;gap:.4rem;flex:none}
+  .close,.navb{border:1px solid var(--thread);background:transparent;color:var(--ink);border-radius:999px;padding:.3rem .8rem;cursor:pointer;flex:none}
+  .navb{padding:.3rem .65rem;font-family:var(--f-mono)}
+  .close:hover,.navb:hover{border-color:var(--ink)}
+  .navb:disabled{opacity:.35;cursor:default;border-color:var(--thread)}
+  .sheet h3{font-family:var(--f-display);font-weight:400;font-size:1.55rem;line-height:1.15;margin:.55rem 0 .15rem;text-wrap:balance}
+  .sheet .track-of{margin:0;font-size:.85rem;color:var(--muted)}
+  .sheet .track-of .linkish{font-size:.85rem}
+  .sheet section{margin-top:1rem}
+  .sheet h4{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 .25rem;font-weight:700}
+  .sheet p{margin:0;max-width:60ch}
+  .refs{font-family:var(--f-mono);font-size:.74rem;color:var(--muted);margin-top:1rem!important;overflow-wrap:anywhere}
+  .note{margin-top:1rem;padding:.7rem .9rem;border-left:3px solid var(--c,var(--thread));background:color-mix(in srgb,var(--c,var(--thread)) 9%,transparent)}
+  .note p + p{margin-top:.45rem}
+  .stands .chip{margin-right:.4rem}
+  .stands .when{display:block;margin-top:.25rem;font-size:.8rem;color:var(--muted)}
+  .readings,.cards{list-style:none;margin:0;padding:0;display:grid;gap:.5rem}
+  .readings li,.cards li{padding:.5rem .7rem .55rem;border-left:2px solid var(--thread);background:color-mix(in srgb,var(--ink) 4%,transparent);border-radius:0 6px 6px 0}
+  .readings li .chip{margin-right:.4rem}
+  .cards li{border-left-color:color-mix(in srgb,var(--held) 60%,var(--thread))}
+  .readings .who,.cards .who{display:flex;flex-wrap:wrap;gap:.2rem .7rem;margin-top:.3rem;font-family:var(--f-mono);font-size:.72rem;color:var(--muted)}
+  .readings .who b,.cards .who b{color:var(--ink);font-weight:500}
+  .empty{color:var(--muted);font-style:italic;margin:0}
+  .sheet .go{margin-top:1.1rem;display:flex;flex-wrap:wrap;gap:.4rem 1rem;font-size:.92rem}
+
+  /* your own word, into your own mirror */
+  .say{margin-top:1.3rem!important;padding-top:1rem;border-top:1px solid var(--thread);display:grid;gap:.55rem}
+  .say h4{margin:0}
+  .marks{display:flex;flex-wrap:wrap;gap:.4rem}
+  .marks button{display:inline-flex;align-items:center;gap:.35rem;border:1px solid color-mix(in srgb,var(--c) 55%,var(--thread));background:transparent;color:var(--ink);border-radius:999px;padding:.22rem .7rem;cursor:pointer;font-size:.85rem}
+  .marks button[aria-pressed="true"]{background:color-mix(in srgb,var(--c) 22%,var(--paper));border-color:var(--c)}
+  .say-box{position:relative}
+  .say textarea{display:block;width:100%;min-height:5.5rem;font:inherit;padding:.55rem .7rem;border:1px solid var(--thread);border-radius:8px;background:var(--shore);color:var(--ink);resize:vertical}
+  .say .row2{display:flex;flex-wrap:wrap;gap:.5rem}
+  .say input{flex:1 1 8rem;min-width:0;font:inherit;padding:.48rem .65rem;border:1px solid var(--thread);border-radius:8px;background:var(--shore);color:var(--ink)}
+  .btn{border:1px solid var(--accent);background:var(--accent);color:var(--paper);border-radius:999px;padding:.45rem 1rem;cursor:pointer;flex:none}
+  .btn:disabled{opacity:.5;cursor:default}
+  .hint{font-size:.86rem;color:var(--muted);margin:0}
+  .hint.err{color:var(--blocked)}
+  .hint.ok{color:var(--done)}
+
+  @media (min-width:900px){
+    /* below the bar, so its options and places stay in reach while a part is open */
+    .sheet{top:calc(env(safe-area-inset-top,0px) + 64px);right:16px;bottom:16px;width:min(26rem,38vw);border-radius:14px}
+    body.sheet-open .wrap{padding-right:calc(min(26rem,38vw) + 40px)}
+    .pg{height:1.95rem}
+    .pg.kid{height:1.3rem}
+    .pg.kid2{height:1rem}
+  }
+  @media (max-width:899.98px){
+    .sheet{left:0;right:0;bottom:0;max-height:74vh;border-radius:14px 14px 0 0;padding-bottom:calc(1.4rem + env(safe-area-inset-bottom,0px))}
+    body.sheet-open .wrap{padding-bottom:76vh}
+  }
+  @media (max-width:720px){
+    .where dl{grid-template-columns:minmax(0,1fr);gap:.2rem}
+    .where dd{margin-bottom:.7rem}
+    .tname{font-size:1rem}
+    .row{gap:.6rem;padding-inline:.2rem;grid-template-columns:8rem minmax(0,1fr)}
+    .pg{--bw:clamp(1.2rem,4.6vw,3.4rem)}
+    .pg.kid{--bw:clamp(.9rem,3.2vw,2.3rem)}
+    .heldtag{margin-left:.35rem;padding-inline:.35rem}
+    .heldtag .dw{display:none}
+    .tile{min-width:8.2rem;padding:.55rem .9rem}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .sheet:not([hidden]),.line:not([hidden]){animation:none}
+    .tile,.tname .caret{transition:none}
+  }
+</style>
+</head>
+<body>
+<div class="bar">
+  <span class="dot" aria-hidden="true"></span>
+  <span class="bar-name"><b id="bar-name">tracks</b> · a path drawn as parallel tracks</span>
+  <span class="spacer"></span>
+  <button type="button" id="btn-theme" title="light or dark">◐</button>
+</div>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow" id="eyebrow">a path · drawn as parallel tracks</p>
+    <h1 id="title">Tracks</h1>
+    <p class="lede" id="lede">Reading the beach…</p>
+    <p class="stamp" id="stamp"></p>
+  </header>
+
+  <section class="board" aria-label="The tracks">
+    <div class="legend" id="legend"></div>
+    <p class="board-note" id="board-note" hidden></p>
+    <ol class="tracks" id="tracks"></ol>
+    <details class="whole" id="whole" hidden></details>
+  </section>
+
+  <section class="where" id="where-s" aria-labelledby="where-h" hidden>
+    <h2 id="where-h">Where each thing lives</h2>
+    <dl id="where"></dl>
+  </section>
+
+  <footer class="foot" id="foot"></footer>
+</div>
+
+<aside id="sheet" class="sheet" hidden aria-labelledby="sheet-title">
+  <div class="sheet-top">
+    <div class="addrline" id="sheet-addr"></div>
+    <div class="sheet-acts"><span id="sheet-nav"></span><button type="button" class="close" id="sheet-close">Close</button></div>
+  </div>
+  <div id="sheet-body"></div>
+</aside>
+
+<noscript><p style="padding:1rem">This page reads the beach live and needs JavaScript. The same parts are at <a href="/path/beach-venture">/path/beach-venture</a>.</p></noscript>
+
+<script>
+(function(){
+'use strict';
+const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+const RENDER = 'https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=';
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const clean = v => window.cleanHandle ? window.cleanHandle(v) : String(v || '').replace(/[^a-z0-9_\s-]/gi, '').replace(/\s+/g, ' ').trim();
+/* /tracks/<project>[/<handle>] draws <project>-path; a thing that is its own path (function:make) draws itself */
+const PM = location.pathname.match(/^\/tracks\/([^\/?#]+)(?:\/([^\/?#]+))?/);
+const WANT = ((Q.get('f') || (PM ? decodeURIComponent(PM[1]) : '') || 'beach-venture').toLowerCase().replace(/[^a-z0-9-]/g, '')) || 'beach-venture';
+const HANDLE = clean((PM && PM[2] ? decodeURIComponent(PM[2]) : '') || Q.get('h') || '') || null;
+
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+const lower = s => s ? s.charAt(0).toLowerCase() + s.slice(1) : s;
+const store = {
+  get: k => { try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+  set: (k, v) => { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch(e){} }
+};
+function h(tag, attrs){
+  const e = document.createElement(tag);
+  if (attrs) Object.keys(attrs).forEach(k => {
+    const v = attrs[k];
+    if (v === null || v === undefined || v === false) return;
+    if (k === 'class') e.className = v;
+    else if (k === 'html') e.innerHTML = v;
+    else e.setAttribute(k, v === true ? '' : v);
+  });
+  for (let i = 2; i < arguments.length; i++){
+    const kid = arguments[i];
+    if (kid === null || kid === undefined || kid === false) continue;
+    (Array.isArray(kid) ? kid : [kid]).forEach(x => { if (x != null && x !== false) e.append(x.nodeType ? x : document.createTextNode(String(x))); });
+  }
+  return e;
+}
+
+/* ── the beach — the same dialect every page here speaks ── */
+async function readBlock(name){
+  const r = await fetch(ORIGIN + '?block=' + encodeURIComponent(name), { headers:{ Accept:'application/json' }, cache:'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('beach read failed: ' + r.status);
+  return r.json();
+}
+async function readIndex(){
+  const r = await fetch(ORIGIN, { headers:{ Accept:'application/json' }, cache:'no-store' });
+  if (!r.ok) throw new Error('beach index failed: ' + r.status);
+  return r.json();
+}
+async function post(body){
+  const r = await fetch(ORIGIN, { method:'POST', cache:'no-store', headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify(body) });
+  let d = null; try { d = await r.json(); } catch(e){}
+  return { ok: r.ok, status: r.status, data: d };
+}
+const refusal = w => {
+  const code = w && w.data && (w.data.code || w.data.error);
+  if (code === 'handle_bound') return 'That name has a passport here with its own key: use the key your passport uses, or choose another name.';
+  if (code === 'lock_required' || w.status === 403) return 'That name’s blocks are kept under another key. If it is yours, check the key (phones capitalise the first letter).';
+  return (w.data && (w.data.error || w.data.message)) || ('the beach said ' + w.status);
+};
+
+/* ── walking a block ── */
+function voiceOf(node){
+  let n = node;
+  while (n && typeof n === 'object'){ if (!('_' in n)) return null; n = n['_']; }
+  return typeof n === 'string' && n.trim() ? n.trim() : null;
+}
+const digits = n => (n && typeof n === 'object') ? Object.keys(n).filter(k => /^[1-9]$/.test(k)).sort() : [];
+const isLeaf = n => !n || typeof n !== 'object' || !digits(n).length;
+function nodeAt(block, addr){
+  let n = block;
+  for (const d of String(addr || '')){ if (!n || typeof n !== 'object') return undefined; n = n[d]; }
+  return n;
+}
+const lineAt = (block, addr) => block ? voiceOf(nodeAt(block, addr)) : null;
+function floorOf(block){ let n = 0, node = block; while (node && typeof node === 'object' && ('_' in node)){ node = node['_']; n++; } return n; }
+/* a part's reference, as a card dealt from it carries it at its 5: the decimal at the spine's floor */
+const ref = a => { const s = String(a); return s.length <= FLOOR ? s.padEnd(FLOOR, '0') : s.slice(0, FLOOR) + '.' + s.slice(FLOOR); };
+const canon = r => String(r || '').replace(/\./g, '').replace(/0+$/, '');
+
+/* ── THE ROW GRAMMAR (tree 9.3, function:path 1): a part opens with its title in capitals, then
+ * ' — ', then the line for the person; brackets hold references for minds. As walk.html reads it. ── */
+const KEEP_CAPS = /^(?:[B-DF-HJ-NP-TV-XZ]{2,5}|AI)$/;     /* RPG, MCP, LLM keep their capitals */
+const niceTitle = T => T.split(/(\s+|-)/).map((w, i) => KEEP_CAPS.test(w) ? w : (i === 0 ? w.charAt(0) + w.slice(1).toLowerCase() : w.toLowerCase())).join('');
+function titled(text){
+  let t = String(text || '').trim();
+  const own = t.match(/^[a-z][\w-]*:[\w:-]+\s+—\s+/);           /* a root naming its own block first */
+  if (own) t = t.slice(own[0].length);
+  const m = t.match(/^([^a-z—]{2,80}?)\s+—\s+([^]*)$/) || t.match(/^([A-Z][A-Z0-9 ,'’&()-]{2,60})\.\s+([^]*)$/);
+  if (!m || /[a-z]/.test(m[1]) || !/[A-Z]{2}/.test(m[1])) return null;
+  const title = m[1].trim(), line = m[2].trim();
+  /* a title that only names the kind of node lends itself the line's opening clause */
+  if (/^SIDE-ROOM$/.test(title)){ const c = line.match(/^[^.:;]{3,70}/); if (c) return { title: cap(c[0]), line }; }
+  return { title: niceTitle(title), line };
+}
+/* the person's reading of a line: a bracket holding an address or a block name is for minds and goes */
+function plain(line){
+  const fam = FAMILY.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(line || '')
+    .replace(/\s*\[[^\[\]]*\]/g, '')
+    .replace(/\s*\(([^()]*)\)/g, (m, inner) =>
+      /^\s*(see\s+)?[1-9](\.[1-9]+)?(\s*(,|;|–|-|and|to)\s*[1-9](\.[1-9]+)?)*\s*$/.test(inner)
+      || /(^|[\s,;])[1-9]\.[1-9]+\b/.test(inner) || /\b[a-z][\w-]*:[a-z<][\w<>-]*/.test(inner) ? '' : m)
+    .replace(new RegExp('\\b' + fam + ':<your-handle>', 'g'), 'your own mirror')
+    .replace(new RegExp('\\bspine:' + fam + '\\b', 'g'), 'the plan')
+    .replace(new RegExp('\\bfunction:' + fam + '\\b', 'g'), 'the law')
+    .replace(/\s+([,.;:])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+}
+/* a bracket holding a site path stays a way on for a person: [/animations] links to that page here */
+function plainHtml(line){
+  const refs = [];
+  const t = plain(String(line || '').replace(/\[(\/(?![\/\\])[^\s\[\]"'<>\\]*)\]/g, (m, p) => '' + (refs.push(p) - 1) + ''));
+  return esc(cap(t)).replace(/(\d+)/g, (m, i) => '<a href="' + esc(refs[i]) + '">' + esc(refs[i]) + '</a>');
+}
+/* the finish line (function:path 1.4): "Done when …", "Opens when …", "Done, for October, when …" */
+const WHEN = /(^|[.;!?]\s+)((?:Done|Opens)(?:,\s*[^,.;]{1,40},)?\s+when)\b[:,]?\s*/i;
+function splitWhen(line){
+  const m = WHEN.exec(line);
+  if (!m) return { what: line, whens: [] };
+  const what = line.slice(0, m.index + m[1].length).trim();
+  const tail = line.slice(m.index + m[0].length), m2 = WHEN.exec(tail);
+  const whens = m2
+    ? [{ head: m[2], text: tail.slice(0, m2.index + m2[1].length).trim() }, { head: m2[2], text: tail.slice(m2.index + m2[0].length).trim() }]
+    : [{ head: m[2], text: tail.trim() }];
+  return { what, whens };
+}
+function refsIn(raw){
+  const out = [];
+  String(raw || '').replace(/\[([^\[\]]+)\]/g, (m, inner) => { inner.split(';').forEach(t => { t = t.trim(); if (t && out.indexOf(t) < 0) out.push(t); }); return m; });
+  return out;
+}
+/* WHOM A PART WAITS ON is read off the fold line's pointer to that person's hand — [ahead:<handle>],
+ * or the card itself, [ahead:<handle> <address>] — never off its words (function:path 2.3) */
+function handsIn(raw){
+  const out = [];
+  refsIn(raw).forEach(t => { const m = t.match(/^ahead:(.+?)(?:\s+\d[\d.,\s]*)?$/); const w = m && clean(m[1]); if (w && out.indexOf(w) < 0) out.push(w); });
+  return out;
+}
+function refHtml(t){
+  let m = t.match(/^\/(?![\/\\])\S*$/);
+  if (m) return '<a href="' + esc(t) + '">' + esc(t) + '</a>';
+  m = t.match(/^(bsp-mcp|happyseaurchin-home)\s+#(\d+)$/);
+  if (m) return '<a href="https://github.com/' + (m[1] === 'bsp-mcp' ? 'pscale-commons/bsp-mcp-server' : 'happyseaurchin/happyseaurchin-home') + '/pull/' + m[2] + '" target="_blank" rel="noopener">' + esc(t) + '</a>';
+  m = t.match(/^([a-z][a-z0-9-]*:[A-Za-z0-9 _:-]*?)(?:\s+(\d[\d.,\s]*))?$/);
+  if (m && HAS.has(m[1].trim())) return '<a href="' + RENDER + encodeURIComponent(m[1].trim()) + (m[2] ? '&spindle=' + encodeURIComponent(m[2].split(/[,\s]/)[0]) : '') + '" target="_blank" rel="noopener">' + esc(t) + '</a>';
+  return esc(t);
+}
+
+/* ── the hands: a card is a node, _ its words, 2 toward, 4 its state, 5 where it was dealt from
+ * (function:ahead 2) — the plane of piles read exactly as walk.html reads it ── */
+function isEntryNode(n){
+  if (!n || typeof n !== 'object' || typeof n._ !== 'string') return false;
+  for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
+  return true;
+}
+function planeCards(deck){
+  if (!deck) return [];
+  const mfloor = floorOf(deck) || 1, found = [];
+  (function plane(node, ds){
+    if (typeof node === 'string'){
+      if (ds.length < mfloor || ds.every(d => d === '0')) return;
+      if (ds.length > mfloor && ds.slice(mfloor).every(d => d === '0')) return;
+      if (node.trim()) found.push({ addr: ds.join(''), node: node.trim() });
+      return;
+    }
+    if (!node || typeof node !== 'object') return;
+    if (isEntryNode(node)){ if (ds.length >= mfloor) found.push({ addr: ds.join(''), node }); return; }
+    if ('_' in node) plane(node['_'], ds.concat('0'));
+    for (const d of digits(node)) plane(node[d], ds.concat(d));
+  })(deck, []);
+  return found;
+}
+function openCardsOf(deck){
+  const out = [];
+  planeCards(deck).forEach(c => {
+    const n = c.node, obj = typeof n === 'object';
+    const text = obj ? String(n._ || '').trim() : String(n).trim();
+    if (!text) return;
+    const state = obj ? (n['4'] || null) : null;
+    if (state === 'done' || state === 'drop') return;
+    out.push({ addr: c.addr, text, held: state === 'doing' ? 'doing now' : 'in hand', toward: obj ? (n['2'] || null) : null, from: obj ? (n['5'] || null) : null });
+  });
+  return out;
+}
+/* the spine's 9 is the family's operator stem, never a part (walk.html nineIsOperator) */
+function nineIsOperator(spine, law){
+  const opLines = n => typeof n === 'string' ? /^(mode|respond|disarm|access|cards):\s*\S/i.test(n)
+    : !!n && typeof n === 'object' && (opLines(voiceOf(n)) || digits(n).some(d => opLines(n[d])));
+  return opLines(law) || /^(operator\s*[—:-]|(mode|respond|disarm|access|cards):)/i.test(voiceOf(spine && spine['9']) || '');
+}
+
+/* ── state ── */
+let IX = null, HAS = new Set(), FAMILY = '', PROJECT = '', OWN = false, NOTPATH = '';
+let SPINE = null, FOLD = null, LAW = null, FLOOR = 1, NINE_OFF = false, MAKE = false;
+let MIRRORS = [], HANDS = [], TRACKS = [], ORDER = [], WAITS = {}, PEOPLE = [];
+let OPEN = null, OPENER = null, SHEET_AT = null, WAITON = '', MARK = '';
+let NUMS = store.get('view:numbers') === 'on';
+const rows = {}, lines = {}, PARTS = new Map();
+
+async function load(){
+  IX = await readIndex();
+  const blocks = (IX.blocks || []).map(b => typeof b === 'string' ? b : (b && b.name) || '');
+  HAS = new Set(blocks);
+  if (HAS.has('spine:' + WANT + '-path')){ FAMILY = WANT + '-path'; PROJECT = WANT; OWN = false; }
+  else if (/-path$/.test(WANT) && HAS.has('spine:' + WANT)){ FAMILY = WANT; PROJECT = WANT.slice(0, -5); OWN = false; }
+  else if (HAS.has('spine:' + WANT)){ FAMILY = WANT; PROJECT = WANT; OWN = true; }
+  else { FAMILY = ''; return; }
+  const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
+  const mNames = blocks.filter(b => b.indexOf(FAMILY + ':') === 0 && nameOk(b.slice(FAMILY.length + 1)));
+  const hNames = blocks.filter(b => b.indexOf('ahead:') === 0 && nameOk(b.slice(6)));
+  const [spine, fold, law, mirrors, hands] = await Promise.all([
+    readBlock('spine:' + FAMILY),
+    HAS.has(FAMILY) ? readBlock(FAMILY).catch(() => null) : null,
+    HAS.has('function:' + FAMILY) ? readBlock('function:' + FAMILY).catch(() => null) : null,
+    Promise.all(mNames.map(n => readBlock(n).then(b => ({ who: n.slice(FAMILY.length + 1), b })).catch(() => null))),
+    Promise.all(hNames.map(n => readBlock(n).then(b => ({ who: n.slice(6), cards: openCardsOf(b) })).catch(() => null)))
+  ]);
+  SPINE = spine; FOLD = fold; LAW = law;
+  MIRRORS = mirrors.filter(m => m && m.b && typeof m.b === 'object');
+  HANDS = hands.filter(x => x && x.cards.length);
+  FLOOR = Math.max(1, floorOf(SPINE) || 1);
+  NINE_OFF = nineIsOperator(SPINE, LAW);
+  const lawOne = voiceOf(LAW && LAW['1']) || (LAW && typeof LAW['1'] === 'string' ? LAW['1'] : '') || '';
+  MAKE = /\bfunction:make\b/.test(lawOne);
+  const mode = (lawOne.match(/^\s*mode:\s*([a-z][\w-]*)/i) || [])[1] || '';
+  NOTPATH = !SPINE ? 'missing' : floorOf(SPINE) >= 10 ? 'clock' : /^(document|meeting)$/i.test(mode) ? mode.toLowerCase() : '';
+  PARTS.clear();
+}
+
+/* ── a part: its words (the spine), where it stands (the fold), whose word (the mirrors), whose card (the hands) ── */
+function partOf(addr){
+  if (PARTS.has(addr)) return PARTS.get(addr);
+  const raw = lineAt(SPINE, addr) || '';
+  const t = titled(raw), line = t ? t.line : raw;
+  let title = t ? t.title : plain(raw).split(/[.;:—]/)[0].trim();
+  if (!t && title.length > 44) title = title.slice(0, 41).replace(/\s+\S*$/, '') + '…';
+  const sw = splitWhen(line);
+  const p = { addr, raw, title: title || ref(addr), what: sw.what, whens: sw.whens, refs: refsIn(raw) };
+  PARTS.set(addr, p);
+  return p;
+}
+const MARK_RE = /^([A-Z]{3,})(?=[\s,.:;—-]|$)/;
+const KNOWN = { done:1, doing:1, next:1, blocked:1 };
+function standOf(addr){
+  const s = lineAt(FOLD, addr);
+  if (!s) return null;
+  const m = MARK_RE.exec(s);
+  return { mark: m ? m[1].toLowerCase() : '', words: m ? s.slice(m[0].length).replace(/^\s*[—:-]\s*/, '') : s, raw: s, hands: handsIn(s) };
+}
+const statusOf = addr => { const st = standOf(addr); return !st ? 'none' : KNOWN[st.mark] ? st.mark : 'other'; };
+function readingsAt(addr){
+  return MIRRORS.map(m => {
+    const s = lineAt(m.b, addr);
+    if (!s) return null;
+    const mm = MARK_RE.exec(s);
+    return { who: m.who, text: mm ? s.slice(mm[0].length).replace(/^\s*[—:-]\s*/, '') : s, mark: mm ? mm[1] : '' };
+  }).filter(Boolean);
+}
+/* the open cards dealt from the parts of this path: toward the project at 2, the part at 5 */
+function allCards(){
+  const out = [];
+  HANDS.forEach(x => x.cards.forEach(c => {
+    if (c.toward !== PROJECT || !c.from || String(c.from).indexOf(FAMILY + ' ') !== 0) return;
+    out.push(Object.assign({ who: x.who, at: canon(String(c.from).slice(FAMILY.length + 1)) }, c));
+  }));
+  return out;
+}
+const cardsFrom = addr => allCards().filter(c => c.at === addr);
+const cardsInTrack = n => allCards().filter(c => c.at.charAt(0) === n);
+/* waits on a person: the fold's BLOCKED line points at their hand, or a card from the part is open in it */
+function waitsAt(addr){
+  const out = new Map(), st = standOf(addr);
+  if (st && st.mark === 'blocked') st.hands.forEach(w => out.set(w, 'fold'));
+  cardsFrom(addr).forEach(c => { if (!out.has(c.who)) out.set(c.who, 'card'); });
+  return out;
+}
+
+/* ── the lanes: each first part a track; its parts in digit order, a part's children smaller just
+ * after it; SEQUENCE IS DEPTH — a run down digit 1 is one ladder, drawn as one unbroken stretch,
+ * its steps' other branches their side-rooms (function:path 1.1; walk.html runFrom) ── */
+function runFrom(node, addr){
+  const sideOk = n => digits(n).every(d => d === '1' || isLeaf(n[d]));
+  const steps = [];
+  let n = node, a = addr;
+  while (n && typeof n === 'object' && n['1'] != null && sideOk(n)){ n = n['1']; a += '1'; steps.push({ addr: a, node: n }); }
+  return steps.length >= 2 ? steps : null;
+}
+function descend(node, addr, level, items){
+  const run = runFrom(node, addr);
+  if (run){
+    run.forEach((st, i) => {
+      items.push({ addr: st.addr, level, join: i > 0 || level > 0 });
+      const last = i === run.length - 1;
+      digits(st.node).forEach(d => {
+        if (d === '1' && !last) return;
+        const a = st.addr + d;
+        items.push({ addr: a, level: level + 1, join: true });
+        if (!isLeaf(st.node[d])) descend(st.node[d], a, level + 2, items);
+      });
+    });
+    digits(node).forEach(d => {
+      if (d === '1') return;
+      const a = addr + d;
+      items.push({ addr: a, level, join: false });
+      if (!isLeaf(node[d])) descend(node[d], a, level + 1, items);
+    });
+    return;
+  }
+  digits(node).forEach(d => {
+    const a = addr + d;
+    items.push({ addr: a, level, join: false });
+    if (!isLeaf(node[d])) descend(node[d], a, level + 1, items);
+  });
+}
+function buildModel(){
+  TRACKS = digits(SPINE).filter(d => !(NINE_OFF && d === '9')).map(n => {
+    const node = SPINE[n], items = [];
+    if (isLeaf(node)) items.push({ addr: n, level: 0, join: false });
+    else descend(node, n, 0, items);
+    return { n, items };
+  });
+  ORDER = [].concat.apply([], TRACKS.map(t => t.items.map(it => it.addr)));
+  WAITS = {};
+  const count = {};
+  ORDER.forEach(a => {
+    const w = waitsAt(a);
+    if (!w.size) return;
+    WAITS[a] = Array.from(w.keys());
+    WAITS[a].forEach(p => { count[p] = (count[p] || 0) + 1; });
+  });
+  PEOPLE = Object.keys(count).sort((a, b) => count[b] - count[a] || a.localeCompare(b)).map(p => ({ who: p, n: count[p] }));
+  if (WAITON && !count[WAITON]) WAITON = '';
+}
+
+/* ── drawing ── */
+const LABEL = { done:'Done', doing:'Doing', next:'Next', blocked:'Blocked', other:'Marked otherwise', none:'No mark yet', held:'Held in hands' };
+const SIZE = l => l <= 0 ? '' : l === 1 ? 'kid' : 'kid2';
+function brick(s, cls, addr){ return h('span', { class: 'pg' + (cls ? ' ' + cls : ''), 'data-s': s, 'data-addr': addr || null, 'aria-hidden': 'true' }); }
+function chip(s, word){ return h('span', { class: 'chip', 'data-s': s }, brick(s, 'mini'), String(word || LABEL[s]).toLowerCase()); }
+function when(iso){
+  const t = new Date(iso);
+  if (!isFinite(t)) return '';
+  const time = t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const d0 = new Date(); d0.setHours(0, 0, 0, 0);
+  const days = Math.round((d0 - new Date(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000);
+  if (days === 0) return 'today at ' + time;
+  if (days === 1) return 'yesterday at ' + time;
+  return t.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' }) + ' at ' + time;
+}
+const touched = name => IX && IX.touched && IX.touched[name] || '';
+
+function drawHead(){
+  const name = PROJECT.split('-').map(cap).join(' ');
+  document.title = name + ' Tracks';
+  $('title').textContent = name + ' Tracks';
+  $('bar-name').textContent = OWN ? FAMILY : PROJECT;
+  $('eyebrow').textContent = (OWN ? PROJECT + ', part by part' : 'the path of ' + PROJECT) + ' · drawn as parallel tracks';
+  const firstOf = s => (s.match(/^[\s\S]*?[.!?](?=\s+[A-Z]|$)/) || [s])[0].trim();
+  const root = voiceOf(SPINE) || '', t = titled(root), first = firstOf(plain(t ? t.line : root));
+  $('lede').textContent = (first ? cap(first) + ' ' : '') + 'Tap a track to lay out its parts, then a part to read it or to add your own word.';
+  /* the fold's own first line — where it all stands, when and by whom — kept below the tracks, folded shut */
+  const fr = voiceOf(FOLD), w = $('whole');
+  w.hidden = !fr;
+  if (fr){
+    const ft = titled(fr), all = plain(ft ? ft.line : fr), lead = firstOf(all), rest = all.slice(lead.length).trim();
+    w.innerHTML = '<summary><span class="k">' + esc(ft ? ft.title : 'where it all stands') + '</span>' + esc(cap(lead)) + (rest ? ' <span class="more">more…</span>' : '') + '</summary>' + (rest ? '<p>' + esc(rest) + '</p>' : '');
+  }
+  const now = IX.now || {}, voicing = String(now.voicing || '').replace(/\s*\(beat \d+\)\s*$/, '');
+  const tf = touched(FAMILY);
+  $('stamp').innerHTML = (now.address ? '<span class="addr">' + esc(now.address) + '</span>' : '') + 'Live from the beach, ' + esc(voicing) +
+    (tf ? ' · where each part stands was last written ' + esc(when(tf)) : ' · not folded yet');
+}
+
+function drawLegend(){
+  const L = $('legend');
+  L.textContent = '';
+  const c = { done:0, doing:0, next:0, blocked:0, other:0, none:0 };
+  ORDER.forEach(a => { c[statusOf(a)]++; });
+  ['done', 'doing', 'next', 'blocked', 'other', 'none'].forEach(s => {
+    if ((s === 'other' || s === 'none') && !c[s]) return;
+    L.append(h('span', { class: 'item', 'data-s': s }, brick(s, 'mini'), LABEL[s], h('span', { class: 'n' }, String(c[s]))));
+  });
+  const held = allCards().length;
+  if (held) L.append(h('span', { class: 'item', 'data-s': 'held' }, brick('held', 'mini'), held === 1 ? 'Card in a hand' : 'Cards in hands', h('span', { class: 'n' }, String(held))));
+  PEOPLE.forEach(p => {
+    const b = h('button', { type: 'button', class: 'toggle wait-pill', 'aria-pressed': String(WAITON === p.who), 'data-who': p.who, title: 'Dot the parts that wait on ' + p.who },
+      h('span', { class: 'dotr', 'aria-hidden': 'true' }), 'Waits on ' + p.who, h('span', { class: 'n' }, '· ' + p.n));
+    b.addEventListener('click', () => { WAITON = WAITON === p.who ? '' : p.who; applyWait(); });
+    L.append(b);
+  });
+  const nb = h('button', { type: 'button', class: 'toggle', id: 'num-toggle', 'aria-pressed': String(NUMS), title: 'Each part’s address, kept on or off on this device' }, 'Show numbers');
+  nb.addEventListener('click', () => setNums(!NUMS));
+  L.append(nb);
+}
+function setNums(on){
+  NUMS = !!on;
+  document.body.classList.toggle('nums', NUMS);
+  const b = $('num-toggle');
+  if (b) b.setAttribute('aria-pressed', String(NUMS));
+  store.set('view:numbers', NUMS ? 'on' : 'off');
+}
+function applyWait(){
+  document.querySelectorAll('[data-addr]').forEach(el => el.classList.toggle('waiting', !!WAITON && (WAITS[el.getAttribute('data-addr')] || []).indexOf(WAITON) >= 0));
+  document.querySelectorAll('.wait-pill').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-who') === WAITON)));
+}
+
+function summary(tr){
+  const c = {};
+  tr.items.forEach(it => { const s = statusOf(it.addr); c[s] = (c[s] || 0) + 1; });
+  const n = tr.items.length;
+  return partOf(tr.n).title + ': ' + n + (n === 1 ? ' part, ' : ' parts, ') +
+    ['done', 'doing', 'next', 'blocked', 'other', 'none'].filter(s => c[s]).map(s => c[s] + ' ' + LABEL[s].toLowerCase()).join(', ');
+}
+function drawTracks(){
+  const ol = $('tracks');
+  ol.textContent = '';
+  Object.keys(rows).forEach(k => { delete rows[k]; delete lines[k]; });
+  TRACKS.forEach(tr => {
+    const lane = h('span', { class: 'lane', 'aria-hidden': 'true' });
+    tr.items.forEach(it => lane.append(brick(statusOf(it.addr), SIZE(it.level) + (it.join ? ' join' : ''), it.addr)));
+    const held = cardsInTrack(tr.n).length;
+    if (held) lane.append(h('span', { class: 'heldtag', title: held + (held === 1 ? ' card' : ' cards') + ' held in hands, taken from this track' },
+      brick('held'), h('span', null, String(held)), h('span', { class: 'dw' }, held === 1 ? 'card' : 'cards')));
+    const row = h('button', { type: 'button', class: 'row', 'aria-expanded': 'false', 'aria-controls': 'line-' + tr.n, 'aria-label': summary(tr) },
+      h('span', { class: 'tname' }, h('span', { class: 'caret', 'aria-hidden': 'true' }, '›'), h('span', { class: 'addr' }, ref(tr.n)), h('span', null, partOf(tr.n).title)),
+      lane);
+    row.addEventListener('click', () => toggle(tr.n));
+    const line = h('div', { class: 'line', id: 'line-' + tr.n, hidden: true });
+    ol.append(h('li', { class: 'track' }, row, line));
+    rows[tr.n] = row; lines[tr.n] = line;
+  });
+}
+function tile(it){
+  const p = partOf(it.addr), s = statusOf(it.addr), st = standOf(it.addr);
+  const b = h('button', { type: 'button', class: 'tile' + (it.level > 1 ? ' small' : ''), 'data-s': s, 'data-addr': it.addr,
+      'aria-label': p.title + ', ' + (s === 'other' && st ? st.mark : LABEL[s]).toLowerCase() },
+    h('span', { class: 'in' }, brick(s, 'mini'), h('span', { class: 'addr' }, ref(it.addr)), h('span', { class: 'tt' }, p.title)));
+  b.addEventListener('click', () => openPart(it.addr, b));
+  return h('li', { class: it.join ? 'joined' : null }, b);
+}
+function cardTile(c){
+  const b = h('button', { type: 'button', class: 'tile', 'data-s': 'held', 'aria-label': c.text + ', a card in ' + c.who + '’s hand' },
+    h('span', { class: 'in' }, brick('held', 'mini'), h('span', { class: 'tt' }, c.text.length > 60 ? c.text.slice(0, 57).replace(/\s+\S*$/, '') + '…' : c.text), h('span', { class: 'who' }, c.who)));
+  b.addEventListener('click', () => openCard(c, b));
+  return h('li', null, b);
+}
+function whatHtml(p){
+  return [p.what ? plainHtml(p.what) : ''].concat(p.whens.map(w => '<b>' + esc(cap(w.head)) + '</b> ' + plainHtml(w.text).replace(/^./, c => c.toLowerCase()))).filter(Boolean).join(' ');
+}
+function fillLine(tr){
+  const line = lines[tr.n], p = partOf(tr.n), st = standOf(tr.n), kids = [];
+  kids.push(h('p', { class: 'tline', html: whatHtml(p) }));
+  if (st && tr.items.length > 1) kids.push(h('p', { class: 'tstand' }, chip(statusOf(tr.n), st.mark), h('span', { html: plainHtml(st.words) })));
+  if (tr.items.length > 1){
+    const whole = h('button', { type: 'button', class: 'linkish' }, 'the track as a whole: your word on it →');
+    whole.addEventListener('click', () => openPart(tr.n, null));
+    kids.push(h('p', { class: 'tline' }, whole));
+  }
+  const top = h('ol', { class: 'tiles', 'aria-label': p.title + ', its parts in order' });
+  tr.items.filter(it => it.level === 0).forEach(it => top.append(tile(it)));
+  kids.push(top);
+  let head = null, group = [];
+  const flush = () => {
+    if (head && group.length){
+      const kol = h('ol', { class: 'tiles', 'aria-label': 'Inside ' + lower(partOf(head.addr).title) });
+      group.forEach(it => kol.append(tile(it)));
+      kids.push(h('div', { class: 'inside' }, h('p', { class: 'sub-h' }, 'Inside ' + lower(partOf(head.addr).title)), kol));
+    }
+    group = [];
+  };
+  tr.items.forEach(it => { if (it.level === 0){ flush(); head = it; } else group.push(it); });
+  flush();
+  const cards = cardsInTrack(tr.n);
+  if (cards.length){
+    const hol = h('ol', { class: 'tiles', 'aria-label': 'Cards held in hands, taken from this track' });
+    cards.forEach(c => hol.append(cardTile(c)));
+    kids.push(h('div', { class: 'inside held' }, h('p', { class: 'sub-h' }, 'Held in hands, taken from this track'), hol));
+  }
+  line.replaceChildren.apply(line, kids);
+}
+function setHash(x){ try { history.replaceState(null, '', location.pathname + location.search + (x ? '#' + x : '')); } catch(e){} }
+function toggle(n, quiet){
+  const closing = OPEN === n;
+  if (OPEN && rows[OPEN]){ rows[OPEN].setAttribute('aria-expanded', 'false'); lines[OPEN].hidden = true; }
+  OPEN = null;
+  if (!closing && rows[n]){
+    fillLine(TRACKS.find(t => t.n === n));
+    rows[n].setAttribute('aria-expanded', 'true');
+    lines[n].hidden = false;
+    OPEN = n;
+  }
+  applyWait();
+  if (!quiet) setHash(OPEN ? ref(OPEN) : '');
+}
+
+/* ── the reading sheet ── */
+function section(title, html){ return html ? h('section', null, h('h4', null, title), h('p', { html })) : null; }
+function sheetNav(addr){
+  const nav = $('sheet-nav'), i = ORDER.indexOf(addr);
+  nav.textContent = '';
+  if (i < 0) return;
+  const prev = h('button', { type: 'button', class: 'navb', 'aria-label': 'the part before', disabled: i === 0 }, '‹');
+  const next = h('button', { type: 'button', class: 'navb', 'aria-label': 'the part after', disabled: i === ORDER.length - 1 }, '›');
+  prev.addEventListener('click', () => goPart(ORDER[i - 1]));
+  next.addEventListener('click', () => goPart(ORDER[i + 1]));
+  nav.append(prev, ' ', next);
+}
+function goPart(addr){
+  if (!addr) return;
+  const t = addr.charAt(0);
+  if (OPEN !== t && rows[t]) toggle(t, true);
+  const btn = document.querySelector('#line-' + t + ' .tile[data-addr="' + addr + '"]');
+  openPart(addr, btn);
+  if (btn) btn.scrollIntoView({ block: 'nearest' });
+}
+const pathPage = () => (OWN ? '/walk/' + encodeURIComponent(FAMILY) : '/path/' + encodeURIComponent(PROJECT)) + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '');
+function showSheet(btn){
+  if (OPENER) OPENER.classList.remove('on');
+  OPENER = btn || null;
+  if (OPENER) OPENER.classList.add('on');
+  $('sheet').hidden = false;
+  document.body.classList.add('sheet-open');
+  $('sheet-close').focus({ preventScroll: true });
+}
+function openPart(addr, btn){
+  const p = partOf(addr), s = statusOf(addr), st = standOf(addr), waits = waitsAt(addr), reads = readingsAt(addr), cards = cardsFrom(addr);
+  SHEET_AT = { kind: 'part', addr };
+  MARK = '';
+  $('sheet-addr').replaceChildren(chip(s, s === 'other' && st ? st.mark : null), h('span', { class: 'addr-ref' }, 'spine:' + FAMILY + ' ' + ref(addr)));
+  sheetNav(addr);
+  const B = $('sheet-body'), out = [];
+  out.push(h('h3', { id: 'sheet-title' }, p.title));
+  const of = h('p', { class: 'track-of' });
+  if (addr.length === 1) of.append(OWN ? 'one of ' + PROJECT + '’s tracks' : 'one of the tracks of ' + PROJECT);
+  else {
+    const tb = h('button', { type: 'button', class: 'linkish' }, partOf(addr.charAt(0)).title);
+    tb.addEventListener('click', () => openPart(addr.charAt(0), null));
+    of.append('in ', tb);
+    if (addr.length > 2){
+      const pa = addr.slice(0, -1), pb = h('button', { type: 'button', class: 'linkish' }, lower(partOf(pa).title));
+      pb.addEventListener('click', () => goPart(pa));
+      of.append(', inside ', pb);
+    }
+  }
+  out.push(of);
+  out.push(section('What it is', p.what ? plainHtml(p.what) : ''));
+  p.whens.forEach(w => out.push(section(cap(w.head), plainHtml(w.text))));
+  const stands = h('section', { class: 'stands' }, h('h4', null, 'Where it stands'));
+  if (st) stands.append(h('p', null, chip(s, s === 'other' ? st.mark : null), h('span', { html: plainHtml(st.words) }),
+    touched(FAMILY) ? h('span', { class: 'when' }, 'the fold, last written ' + when(touched(FAMILY))) : null));
+  else stands.append(h('p', { class: 'empty' }, 'No mark yet: the fold has not said where this part stands. The next fold gives it its first mark.'));
+  out.push(stands);
+  if (waits.size){
+    const ws = Array.from(waits.entries()).map(([who, why]) => who + (why === 'fold' ? ', named by the fold' : ', a card from this part in their hand'));
+    out.push(h('div', { class: 'note', 'data-s': 'blocked' }, h('h4', null, 'Waits on'), h('p', null, ws.join('; ') + '.')));
+  }
+  const rs = h('section', null, h('h4', null, 'In people’s own words'));
+  if (reads.length){
+    const ul = h('ul', { class: 'readings' });
+    reads.forEach(r => ul.append(h('li', null,
+      h('p', null, r.mark ? chip(r.mark === 'DONE' ? 'done' : r.mark === 'DOING' ? 'doing' : r.mark === 'BLOCKED' ? 'blocked' : r.mark === 'OFFER' ? 'held' : 'next', r.mark) : null, h('span', { html: plainHtml(r.text) })),
+      h('p', { class: 'who' }, h('b', null, h('span', { 'data-name': r.who }, r.who)),
+        h('a', { href: RENDER + encodeURIComponent(FAMILY + ':' + r.who) + '&spindle=' + encodeURIComponent(ref(addr)), target: '_blank', rel: 'noopener' }, 'in their own mirror ↗')))));
+    rs.append(ul);
+  } else rs.append(h('p', { class: 'empty' }, 'Nobody has said anything at this part yet. Yours can be the first.'));
+  out.push(rs);
+  if (cards.length){
+    const cs = h('section', null, h('h4', null, cards.length === 1 ? 'A card taken from it' : 'Cards taken from it'));
+    const ul = h('ul', { class: 'cards' });
+    cards.forEach(c => ul.append(h('li', null, h('p', null, c.text),
+      h('p', { class: 'who' }, h('b', null, h('span', { 'data-name': c.who }, c.who)), h('span', null, c.held),
+        h('a', { href: '/next/' + encodeURIComponent(c.who), target: '_blank', rel: 'noopener' }, 'their hand ↗')))));
+    cs.append(ul);
+    out.push(cs);
+  }
+  if (p.refs.length) out.push(h('p', { class: 'refs', html: '[' + p.refs.map(refHtml).join('; ') + ']' }));
+  out.push(sayBox(addr));
+  out.push(h('div', { class: 'go' }, h('a', { href: pathPage(), target: '_blank', rel: 'noopener' }, 'Take it into your hand, on the path page ↗')));
+  B.replaceChildren.apply(B, out.filter(Boolean));
+  wireSay(addr);
+  showSheet(btn);
+  setHash(ref(addr));
+  applyWait();
+}
+function openCard(c, btn){
+  SHEET_AT = { kind: 'card', c };
+  $('sheet-addr').replaceChildren(chip('held', 'a card'), h('span', { class: 'addr-ref' }, 'ahead:' + c.who + ' ' + c.addr));
+  $('sheet-nav').textContent = '';
+  const B = $('sheet-body'), part = partOf(c.at);
+  const pb = h('button', { type: 'button', class: 'linkish' }, part.title);
+  pb.addEventListener('click', () => goPart(c.at));
+  B.replaceChildren(
+    h('h3', { id: 'sheet-title' }, c.text),
+    h('p', { class: 'track-of' }, 'in ', h('span', { 'data-name': c.who }, c.who), '’s hand, ' + c.held),
+    h('section', null, h('h4', null, 'Taken from'), h('p', null, pb)),
+    h('div', { class: 'note', 'data-s': 'held' }, h('p', null, 'Cards live in hands. This one shows on /next for ' + c.who + ', and when it is done it lands on ' + PROJECT + '’s clock, where the next fold moves the part.')),
+    h('div', { class: 'go' }, h('a', { href: '/next/' + encodeURIComponent(c.who), target: '_blank', rel: 'noopener' }, 'Open ' + c.who + '’s hand ↗'))
+  );
+  showSheet(btn);
+}
+function closeSheet(){
+  $('sheet').hidden = true;
+  document.body.classList.remove('sheet-open');
+  SHEET_AT = null;
+  if (OPENER){ OPENER.classList.remove('on'); if (document.body.contains(OPENER)) OPENER.focus({ preventScroll: true }); OPENER = null; }
+  setHash(OPEN ? ref(OPEN) : '');
+}
+$('sheet-close').addEventListener('click', closeSheet);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('sheet').hidden) closeSheet(); });
+
+/* ── YOUR WORD HERE — one line in the reader's own mirror, <family>:<name>, at the part's own
+ * address, opening with its word (function:path 5); signed with their latch-key as /walk signs it,
+ * and kept under the same name on this device, so a key given on either page serves both ── */
+const WORDS = () => MAKE ? ['DONE', 'DOING', 'BLOCKED', 'OFFER', 'WANT'] : ['DONE', 'DOING', 'BLOCKED', 'OFFER'];
+const markS = w => ({ DONE: 'done', DOING: 'doing', BLOCKED: 'blocked', OFFER: 'held' })[w] || 'next';
+const latchFor = (block, name) => store.get('next-latch:' + block) || store.get('mirror-latch:' + block) || store.get('passport-latch:' + name) || store.get('next-latch:today-beach-deck:' + name);
+let clearDraft = () => {};
+function sayBox(addr){
+  const sec = h('section', { class: 'say', id: 'say', 'data-at': addr });
+  sec.append(h('h4', null, 'Your word here'));
+  const marks = h('div', { class: 'marks', role: 'group', 'aria-label': 'It opens with' });
+  WORDS().forEach(w => marks.append(h('button', { type: 'button', 'data-mark': w, 'data-s': markS(w), 'aria-pressed': 'false' }, brick(markS(w), 'mini'), cap(w.toLowerCase()))));
+  sec.append(marks);
+  sec.append(h('div', { class: 'say-box' }, h('textarea', { id: 'say-text', rows: '4', 'aria-label': 'Your word at this part',
+    placeholder: 'What you see at this part: what is done, what you are doing, what it waits on, or what you can bring.' })));
+  sec.append(h('div', { class: 'row2' },
+    h('input', { id: 'say-who', placeholder: 'your name', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'username', 'aria-label': 'your name' }),
+    h('input', { id: 'say-key', type: 'password', placeholder: 'your key', autocomplete: 'current-password', 'aria-label': 'your key' }),
+    h('button', { type: 'button', class: 'btn', id: 'say-send' }, 'Put it beside the part')));
+  sec.append(h('p', { class: 'hint', id: 'say-hint', html: 'It goes into your own mirror of the path, <code>' + esc(FAMILY) + ':‹your name›</code>, at this part, opening with the word you pick; writing again here replaces it, and the next fold reads it. Use your passport’s key, or with no passport yet, invent one: it keeps your words yours.' }));
+  return sec;
+}
+function setMark(w){
+  MARK = w;
+  document.querySelectorAll('#say .marks button').forEach(b => b.setAttribute('aria-pressed', String(b.getAttribute('data-mark') === MARK)));
+}
+function wireSay(addr){
+  const ta = $('say-text'), who = $('say-who'), key = $('say-key');
+  if (!ta) return;
+  document.querySelectorAll('#say .marks button').forEach(b => b.addEventListener('click', () => setMark(MARK === b.getAttribute('data-mark') ? '' : b.getAttribute('data-mark'))));
+  clearDraft = window.keepDraft ? window.keepDraft(ta, FAMILY + '@' + addr) : () => {};
+  if (window.dictate) window.dictate(ta);
+  who.value = HANDLE || clean(store.get('render:who')) || clean(store.get('venture:who')) || '';
+  const known = () => {
+    const n = clean(who.value);
+    key.placeholder = n && latchFor(FAMILY + ':' + n, n) ? 'your key (kept on this device)' : 'your key';
+    return n;
+  };
+  /* what you said here before stands in the box to be changed, unless a draft is waiting */
+  const n = known(), mine = n && MIRRORS.find(m => m.who === n), said = mine ? lineAt(mine.b, addr) : null;
+  if (!ta.value && said){
+    const mm = MARK_RE.exec(said);
+    if (mm && WORDS().indexOf(mm[1]) >= 0){ setMark(mm[1]); ta.value = said.slice(mm[0].length).replace(/^\s*[—:-]\s*/, ''); }
+    else ta.value = said;
+  }
+  who.addEventListener('input', () => { if (window.cleanHandle){ const c = window.cleanHandle(who.value, true); if (c !== who.value) who.value = c; } known(); });
+  $('say-send').addEventListener('click', () => sendWord(addr));
+}
+/* the deepest node the mirror already holds on the way to the address decides the write: a string
+ * written at an existing node is its line; a missing branch is written whole from the last node that
+ * stands; a line standing where a branch must grow is kept as that branch's own line, never lost */
+async function writeWord(addr, line, name, secret){
+  const block = FAMILY + ':' + name;
+  let mirror = await readBlock(block);
+  if (mirror !== null && typeof mirror !== 'object') return { ok: false, status: 0, data: { error: block + ' is not a block this page can write into' } };
+  if (!mirror){
+    let root = 'MIRROR — ' + name + '’s readings on the ' + FAMILY + ' field (spine:' + FAMILY + '), at the spine’s own addresses, in own words, revisable forever. Sovereign; silence at an address is honest absence. First entry written from /tracks.';
+    for (let i = 0; i < FLOOR; i++) root = { '_': root };
+    const born = await post({ block, new_lock: secret, content: root });
+    if (!born.ok) return born;
+    mirror = root;
+  }
+  const ds = String(addr).split('');
+  let node = mirror, depth = 0;
+  while (depth < ds.length && node[ds[depth]] && typeof node[ds[depth]] === 'object'){ node = node[ds[depth]]; depth++; }
+  if (depth === ds.length) return post({ block, spindle: addr, content: line, secret });
+  const there = node[ds[depth]], rest = ds.slice(depth + 1);
+  if (!rest.length) return post({ block, spindle: addr, content: line, secret });
+  let content = line;
+  for (let i = rest.length - 1; i >= 0; i--) content = { [rest[i]]: content };
+  if (typeof there === 'string' && there.trim()) content['_'] = there;
+  return post({ block, spindle: ds.slice(0, depth + 1).join(''), content, secret });
+}
+async function sendWord(addr){
+  const hint = $('say-hint'), send = $('say-send');
+  const say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
+  let text = $('say-text').value.trim().replace(/\s+/g, ' ');
+  if (!text){ $('say-text').focus(); return; }
+  const name = clean($('say-who').value);
+  if (!name || name.length > 32){ say('err', 'Your name, up to 32 letters, digits, spaces, - or _: it is how your word is signed.'); $('say-who').focus(); return; }
+  const block = FAMILY + ':' + name;
+  const secret = $('say-key').value.trim() || latchFor(block, name);
+  if (!secret){ say('err', 'Your key: the one your passport uses, or, with no passport yet, one you invent. It keeps your words yours.'); $('say-key').focus(); return; }
+  const m = MARK_RE.exec(text);
+  if (MARK && !(m && WORDS().indexOf(m[1]) >= 0)) text = MARK + ' — ' + text;
+  send.disabled = true;
+  say('', 'putting it beside the part…');
+  try {
+    const w = await writeWord(addr, text, name, secret);
+    if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
+    store.set('next-latch:' + block, secret);
+    store.set('venture:who', name);
+    if (!store.get('render:who')) store.set('render:who', name);
+    clearDraft();
+    await reload(addr);
+    const h2 = $('say-hint');
+    if (h2){ h2.className = 'hint ok'; h2.textContent = 'It stands beside the part in your name. Writing again here replaces it; the next fold reads it.'; }
+  } catch(e){ say('err', 'Could not put that on the beach: ' + e.message); send.disabled = false; }
+}
+
+/* ── where each thing lives — named from the family, so any path draws its own ── */
+function drawWhere(){
+  const code = name => '<a href="' + RENDER + encodeURIComponent(name) + '" target="_blank" rel="noopener"><code>' + esc(name) + '</code></a>';
+  const codeT = name => '<code>' + esc(name) + '</code>';
+  const hands = MIRRORS.map(m => '<span data-name="' + esc(m.who) + '">' + esc(m.who) + '</span>').join(', ');
+  const rowsW = [
+    ['The parts', code('spine:' + FAMILY) + ', written by the project’s designers: each part says what it is and when it is done, and never where it stands. Anyone else proposes a part in their own ' + codeT('spine:' + FAMILY + ':‹handle›') + ', and the designers adopt it or not.'],
+    ['Where each part stands', (HAS.has(FAMILY) ? code(FAMILY) : codeT(FAMILY)) + ', folded once a day from what was done: one line per part, opening DONE, DOING, BLOCKED or NEXT, with its pointer; its first line says when it was last folded, and by whom.' + (touched(FAMILY) ? ' Last written ' + esc(when(touched(FAMILY))) + '.' : ' Not folded yet.')],
+    ['Each person’s word', 'Their own mirror, ' + codeT(FAMILY + ':‹handle›') + ', at the part’s address, opening DONE, DOING, BLOCKED or OFFER' + (MAKE ? ' (or WANT, on a thing made together)' : '') + '. The box under every part writes it, signed with your key; the fold reads it.' + (hands ? ' Mirrors here now: ' + hands + '.' : '')],
+    ['What each person holds', 'Their hand, ' + codeT('ahead:‹handle›') + ', shown on <a href="/next">/next</a>. A card taken from a part names that part, and lands on the clock when it is done.'],
+    ['Waits on', 'A part whose fold line is BLOCKED and points at someone’s hand, ' + codeT('[ahead:‹handle›]') + ', or with a card taken from it still open in that hand. The switch above dots them.']
+  ];
+  if (!OWN && HAS.has('spine:' + PROJECT)) rowsW.push(['When things happen', 'The clock, ' + code('spine:' + PROJECT) + ', walked at <a href="/walk/' + encodeURIComponent(PROJECT) + '">/walk/' + esc(PROJECT) + '</a>.']);
+  rowsW.push(['The law', (LAW ? code('function:' + FAMILY) : codeT('function:' + FAMILY)) + ', on the form ' + code(MAKE ? 'function:make' : 'function:path') + ': how the parts are written and how each day’s work is folded onto them.']);
+  $('where').innerHTML = rowsW.map(r => '<dt>' + esc(r[0]) + '</dt><dd>' + r[1] + '</dd>').join('');
+  $('where-s').hidden = false;
+}
+function drawFoot(){
+  const hand = HANDLE ? '/next/' + encodeURIComponent(HANDLE) : '/next';
+  $('foot').innerHTML = '<p>Read live from the beach each time the page opens, and written only into the reader’s own mirror. The parts are never edited here.</p>' +
+    '<div class="links"><a href="' + esc(pathPage()) + '">The path, part by part →</a>' +
+    (!OWN && HAS.has('spine:' + PROJECT) ? '<a href="/walk/' + encodeURIComponent(PROJECT) + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') + '">The clock, walked →</a>' : '') +
+    '<a href="' + esc(hand) + '">' + (HANDLE ? esc(HANDLE) + '’s hand' : 'Your hand') + ' →</a></div>';
+}
+function render(){
+  buildModel();
+  const keep = OPEN;
+  OPEN = null;
+  drawHead(); drawLegend(); drawTracks(); drawWhere(); drawFoot();
+  if (keep && rows[keep]) toggle(keep, true);
+  document.body.classList.toggle('nums', NUMS);
+  applyWait();
+}
+/* a blip on the way to the beach is not an answer from it: the read is tried again, twice, before the page says so */
+async function loadSoon(){
+  for (let i = 0; ; i++){
+    try { return await load(); }
+    catch(e){ if (i >= 2) throw e; await new Promise(r => setTimeout(r, 1200 * (i + 1))); }
+  }
+}
+async function reload(addr){
+  await loadSoon();
+  render();
+  if (addr) goPart(addr);
+}
+function note(html){ const n = $('board-note'); n.innerHTML = html; n.hidden = false; $('legend').textContent = ''; }
+
+document.body.classList.toggle('nums', NUMS);
+loadSoon().then(() => {
+  if (!FAMILY){
+    $('title').textContent = 'Tracks';
+    $('lede').textContent = 'A project’s path drawn as parallel tracks: each part a brick along its track, marked by where it stands.';
+    note('No path called <b>' + esc(WANT) + '</b> stands on the beach yet. A path’s parts live at <code>spine:‹project›-path</code> (<a href="' + RENDER + 'function%3Apath" target="_blank" rel="noopener">function:path</a>). The beach venture’s does: <a href="/tracks/beach-venture">/tracks/beach-venture</a>.');
+    return;
+  }
+  if (NOTPATH){
+    $('title').textContent = WANT;
+    $('lede').textContent = 'This family is not a path, so it is not drawn as tracks.';
+    const where = NOTPATH === 'meeting' ? '<a href="/ring/' + encodeURIComponent(WANT) + '">/ring/' + esc(WANT) + '</a>' : '<a href="/walk/' + encodeURIComponent(WANT) + '">/walk/' + esc(WANT) + '</a>';
+    note('<b>' + esc(WANT) + '</b> is ' + (NOTPATH === 'clock' ? 'a clock' : NOTPATH === 'missing' ? 'a family with no spine to read' : 'a ' + esc(NOTPATH)) + ', read at ' + where + '. Tracks draw a path: the parts of what a project makes, beside its clock.');
+    return;
+  }
+  render();
+  const want = canon(decodeURIComponent((location.hash || '').slice(1)));
+  if (want && rows[want.charAt(0)]){
+    toggle(want.charAt(0), true);
+    if (want.length > 1 && ORDER.indexOf(want) >= 0) goPart(want);
+  }
+  if (window.nameLinks) window.nameLinks(document.body, { watch: true, blocks: Array.from(HAS) });
+}).catch(e => { note(esc('Couldn’t read the beach: ' + e.message)); });
+
+if (window.siteDoors) window.siteDoors({ handle: HANDLE, family: WANT, here: 'tracks', site: true });
+})();
+</script>
+</body>
+</html>
