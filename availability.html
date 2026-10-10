@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Availability — when people are free</title>
+<meta name="description" content="Each person's own calendar, kept on the beach's clock by their own AI: the week drawn in your time, everyone's blocks where they fall, the hours each keeps open, and where everyone shown is free.">
+<meta property="og:title" content="Availability — when people are free">
+<meta property="og:description" content="A traditional week over the beach's clock: each person's blocks, their hours, and the times everyone shown keeps open.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* AVAILABILITY — the reader of the availability family (function:availability, founded 2026-10-10).
+     spine:availability is the floor-10 clock and never anyone's content; availability:<handle> is each
+     holder's own, filled by their own AI from whatever calendar they keep. A line at a BEAT is a block,
+     opening with how — busy, in person (where), virtual — then what, if the holder chooses; the DAY's line
+     opens with the hours kept open in the holder's own place. A beat inside those hours with no line is
+     open; a day with no line is not known, never free. This page draws a traditional week in the viewer's
+     own time, a lane per person, and marks where everyone shown keeps open. Read-only: a holder writes
+     through their own AI (pscale_stream_engage, field='availability'). /availability[/<handle>]. */
+  :root{
+    --p1:#3987e5; --p2:#d95926; --p3:#199e70; --p4:#c98500; --p5:#d55181; --p6:#2f9e2f; --p7:#9085e9; --p8:#e66767;
+    --free:#2bb673;
+    --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace;
+    --hr:44px;
+  }
+  :root[data-theme="light"]{
+    --p1:#2a78d6; --p2:#eb6834; --p3:#1baf7a; --p4:#d18f00; --p5:#e87ba4; --p6:#1f8a1f; --p7:#4a3aa7; --p8:#e34948;
+    --free:#1a9a5a;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--abyss);color:var(--foam);font-family:var(--body);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--liquid);text-underline-offset:3px}
+  .bar{position:sticky;top:0;z-index:20;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:12px 18px;
+    font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .wrap{max-width:1240px;margin:0 auto;padding:24px 16px 56px}
+
+  .top{display:flex;flex-direction:column;gap:14px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 6px}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,4.4vw,44px);line-height:1.04;margin:0}
+  .lede{margin:8px 0 0;color:var(--vapour);max-width:62ch}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden}
+  .toggle button,.plain{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 12px;background:none;color:var(--vapour);border:0;cursor:pointer}
+  .toggle button+button{border-left:1px solid var(--line-strong)}
+  .toggle button[aria-pressed="true"]{background:var(--liquid);color:var(--abyss)}
+  .plain{border:1px solid var(--line-strong);border-radius:6px}
+  .range{font-family:var(--display);font-weight:700;font-size:18px;margin:0 4px}
+  .zone{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim)}
+  button:focus-visible,.blk:focus-visible,.dh:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
+  .people{display:flex;flex-wrap:wrap;gap:6px}
+  .who{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;color:var(--vapour);
+    border:1px solid var(--line-strong);border-radius:999px;padding:5px 12px 5px 9px;background:none;cursor:pointer}
+  .who .sw{width:10px;height:10px;border-radius:50%;background:var(--pc);flex:none}
+  .who[aria-pressed="false"]{opacity:0.5}
+  .who[aria-pressed="false"] .sw{background:none;border:1.5px solid var(--pc)}
+  .who[aria-pressed="true"]{color:var(--foam);border-color:var(--pc)}
+  .formnote{margin:12px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin:14px 0 10px;font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .lg{display:inline-block;width:18px;height:12px;border-radius:3px}
+  .lg.inp{background:var(--p1)}
+  .lg.vir{border:1.5px dashed var(--p1);background:rgba(var(--wash-rgb),0.04)}
+  .lg.bsy{background:repeating-linear-gradient(135deg,rgba(var(--vapour-rgb),0.55) 0 3px,rgba(var(--vapour-rgb),0.2) 3px 6px)}
+  .lg.opn{background:rgba(var(--liquid-rgb),0.10);border-left:2px solid rgba(var(--liquid-rgb),0.45)}
+  .lg.unk{background:repeating-linear-gradient(45deg,transparent 0 4px,rgba(var(--vapour-rgb),0.18) 4px 5px);border:1px solid var(--line)}
+  .lg.fre{width:6px;background:var(--free)}
+
+  /* THE WEEK — hour labels down the left, a column per day, and inside a day a gutter that marks where
+     everyone shown is free, then a lane per person. The grid scrolls sideways inside itself on a phone,
+     never the page. */
+  .gridwrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--deep)}
+  .grid{display:grid;grid-template-columns:52px minmax(0,1fr);min-width:max-content}
+  .msg{margin:0 0 10px}
+  .loading,.empty{color:var(--vapour-dim);font-style:italic}
+  .hcol{position:relative;border-right:1px solid var(--line)}
+  .hcol .hl{position:absolute;right:6px;transform:translateY(-50%);font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim)}
+  .days{display:grid;grid-template-columns:repeat(var(--ndays),minmax(var(--daymin),1fr))}
+  .day{border-right:1px solid var(--line);min-width:0}
+  .day:last-child{border-right:0}
+  .dh{display:block;width:100%;height:46px;padding:6px 8px;border:0;border-bottom:1px solid var(--line);background:none;color:var(--foam);
+    text-align:left;cursor:pointer;font:inherit}
+  .dh .wd{font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim);display:block}
+  .dh .dn{font-family:var(--display);font-weight:700;font-size:15px}
+  .dh.today .dn{color:var(--liquid)}
+  .dh[aria-pressed="true"]{background:rgba(var(--liquid-rgb),0.08)}
+  .lanes{position:relative;display:flex;height:calc(var(--hours) * var(--hr));
+    background:repeating-linear-gradient(to bottom,var(--line) 0 1px,transparent 1px var(--hr))}
+  .gut{position:relative;width:7px;flex:none;border-right:1px solid var(--line)}
+  .fr{position:absolute;left:1px;right:1px;background:var(--free);border-radius:2px}
+  .lane{position:relative;flex:1 1 0;min-width:14px;border-right:1px dotted var(--line)}
+  .lane:last-child{border-right:0}
+  .lane.unk{background:repeating-linear-gradient(45deg,transparent 0 6px,rgba(var(--vapour-rgb),0.10) 6px 7px)}
+  .lane>.opn{position:absolute;left:0;right:0;background:rgba(var(--liquid-rgb),0.08);border-left:2px solid rgba(var(--liquid-rgb),0.35)}
+  .blk{position:absolute;left:2px;right:2px;border-radius:4px;overflow:hidden;cursor:pointer;padding:2px 4px;border:0;text-align:left;
+    font-family:var(--body);font-size:12px;line-height:1.2;color:#fff;background:var(--pc)}
+  .blk.vir{background:rgba(var(--wash-rgb),0.06);border:1.5px dashed var(--pc);color:var(--foam)}
+  .blk.bsy{background:repeating-linear-gradient(135deg,rgba(var(--vapour-rgb),0.55) 0 4px,rgba(var(--vapour-rgb),0.25) 4px 8px);color:var(--foam)}
+  .blk .bt{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .blk.sel{outline:2px solid var(--foam);outline-offset:1px}
+  .nowline{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--liquid);pointer-events:none;z-index:3}
+
+  .detail{margin-top:14px;background:var(--deep);border:1px solid var(--line);border-radius:10px;padding:14px 18px 16px}
+  .detail h2{font-family:var(--display);font-weight:700;font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
+  .detail h2 .sw{width:12px;height:12px;border-radius:50%;background:var(--pc)}
+  .detail .when{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:0 0 8px}
+  .detail .line{margin:0 0 6px;font-size:18px}
+  .detail ul{margin:6px 0 0;padding:0;list-style:none}
+  .detail li{margin:4px 0}
+  .detail .addr{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .free{margin-top:22px}
+  .free h3,.how h4{font-family:var(--display);font-weight:700;margin:0 0 6px}
+  .free h3{font-size:18px}
+  .free ul{margin:0;padding:0;list-style:none}
+  .free li{margin:3px 0;font-size:16px}
+  .free .d{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);display:inline-block;min-width:9.5em}
+  .free .t{display:inline-block;margin-right:10px;border-left:3px solid var(--free);padding-left:6px}
+  .how{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:14px 26px}
+  .how h4{font-size:16px}
+  .how p{margin:0;font-size:15.5px;color:var(--vapour)}
+  .how code{font-family:var(--mono);font-size:13px;color:var(--foam);word-break:break-word}
+  .foot{margin-top:26px;display:flex;flex-wrap:wrap;gap:8px 18px;font-family:var(--mono);font-size:12px}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.remove('no-js');</script>
+<div class="bar">
+  <span class="dot"></span>
+  <span><b>availability</b> · when people are free</span>
+  <span class="spacer"></span>
+  <button id="btn-theme" title="light or dark">◐</button>
+</div>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow">When people are free</p>
+      <h1>Availability</h1>
+      <p class="lede">Each person’s own calendar, kept on the beach’s clock by their own AI. The week is drawn in your time: everyone’s blocks where they fall, the hours each keeps open, and a green mark where everyone shown is free.</p>
+    </div>
+    <div class="controls">
+      <button type="button" class="plain" id="prev" aria-label="Earlier">‹</button>
+      <button type="button" class="plain" id="home">This week</button>
+      <button type="button" class="plain" id="next" aria-label="Later">›</button>
+      <span class="range" id="range"></span>
+      <div class="toggle" role="group" aria-label="How much">
+        <button type="button" id="v-week" aria-pressed="true">Week</button>
+        <button type="button" id="v-day" aria-pressed="false">Day</button>
+      </div>
+      <div class="toggle" role="group" aria-label="Hours shown">
+        <button type="button" id="h-work" aria-pressed="true">7–21</button>
+        <button type="button" id="h-all" aria-pressed="false">All day</button>
+      </div>
+      <span class="zone" id="zone"></span>
+    </div>
+    <div class="people" id="people" role="group" aria-label="People shown"></div>
+  </header>
+  <p class="formnote" id="note" hidden></p>
+  <div class="legend" aria-label="Key">
+    <span><i class="lg inp"></i>in person</span>
+    <span><i class="lg vir"></i>virtual</span>
+    <span><i class="lg bsy"></i>busy</span>
+    <span><i class="lg opn"></i>hours kept open</span>
+    <span><i class="lg unk"></i>not known</span>
+    <span><i class="lg fre"></i>everyone shown is free</span>
+  </div>
+  <p class="empty msg" id="msg">reading the beach…</p>
+  <div class="gridwrap" id="gridwrap"><div class="grid" id="grid"></div></div>
+  <aside class="detail" id="detail" hidden aria-live="polite"></aside>
+  <section class="free" id="free" aria-live="polite"></section>
+  <section class="how" id="how" aria-label="How it lives on the beach"></section>
+  <nav class="foot" id="foot" aria-label="Where this comes from"></nav>
+</div>
+
+<script>
+(function(){
+"use strict";
+const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+const RENDER = 'https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=';
+const FIELD = 'availability';
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const PATH = location.pathname.match(/^\/availability\/([^\/?#]+)/) || [];
+const clean = v => window.cleanHandle ? window.cleanHandle(v) : String(v || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+/* /availability/<handle> (or ?h=) reads the week as that handle: their lane is marked as theirs */
+const HANDLE = clean(decodeURIComponent(PATH[1] || '') || Q.get('h') || '') || null;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+
+/* ---------- the clock (pscale://sundial) — eighty-one beats to a UTC day ---------- */
+const DAY = 86400000, HOUR = 3600000, MIN = 60000;
+const beatOf = ms => Math.floor(ms * 81 / DAY);
+const beatStart = k => k * DAY / 81;
+/* an instant → its ten-digit address: year, season, month, week band, day, gathering, beat */
+function addrOf(ms){
+  const t = new Date(ms), y = t.getUTCFullYear(), mo = t.getUTCMonth(), dom = t.getUTCDate();
+  const sec = t.getUTCHours() * 3600 + t.getUTCMinutes() * 60 + t.getUTCSeconds();
+  const part = Math.floor(sec / 9600), beat = Math.floor((sec - part * 9600) / (9600 / 9));
+  return String(y).padStart(4, '0') + (Math.floor(mo / 3) + 1) + (mo % 3 + 1) + (Math.floor((dom - 1) / 7) + 1) + ((dom - 1) % 7 + 1) + (part + 1) + (beat + 1);
+}
+const beatAddr = k => addrOf(beatStart(k) + DAY / 162);   /* read at the beat's middle */
+/* a day's address (its first eight digits) → its calendar date */
+function dateOfDay(a){
+  const y = +a.slice(0, 4), m0 = (+a[4] - 1) * 3 + (+a[5] - 1), d = (+a[6] - 1) * 7 + (+a[7]);
+  return [y, m0, d];
+}
+
+/* ---------- places — the clock keeps no time zone (sundial 8.3) ---------- */
+function placeOf(tok){
+  if (!tok) return null;
+  if (/^(z|utc|gmt)$/i.test(tok)) return 'UTC';
+  const off = /^(?:utc|gmt)?([+-])(\d{1,2})(?::?(\d{2}))?$/i.exec(tok);
+  if (off) return off[1] + pad(off[2]) + ':' + pad(off[3] || 0);
+  try { return new Intl.DateTimeFormat('en-US', { timeZone: tok }).resolvedOptions().timeZone; } catch(e){ return null; }
+}
+function offsetAt(zone, ms){
+  if (zone === 'UTC') return 0;
+  const fx = /^([+-])(\d{2}):(\d{2})$/.exec(zone);
+  if (fx) return (fx[1] === '-' ? -1 : 1) * (+fx[2] * 60 + +fx[3]) * MIN;
+  const f = new Intl.DateTimeFormat('en-US', { timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+  const p = {};
+  for (const x of f.formatToParts(new Date(ms))) if (x.type !== 'literal') p[x.type] = +x.value;
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) - Math.floor(ms / 1000) * 1000;
+}
+/* a wall time in a place → the instant, settled twice for the nights summer time moves */
+function zoned(y, m0, d, h, mi, zone){
+  const wall = Date.UTC(y, m0, d, h, mi);
+  const ms = wall - offsetAt(zone, wall);
+  return wall - offsetAt(zone, ms);
+}
+const wall = (ms, zone) => new Date(ms + offsetAt(zone, ms));   /* its UTC fields read as the place's wall clock */
+const hhmm = (ms, zone) => { const w = wall(Math.round(ms / MIN) * MIN, zone); return pad(w.getUTCHours()) + ':' + pad(w.getUTCMinutes()); };
+const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MO = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DEVICE = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch(e){ return 'UTC'; } })();
+const ZONE = placeOf(Q.get('tz')) || DEVICE;
+
+/* ---------- the beach ---------- */
+async function readIndex(){
+  const r = await fetch(ORIGIN, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+  if (!r.ok) throw new Error('beach index failed: ' + r.status);
+  const ix = await r.json();
+  return (ix.blocks || []).map(b => typeof b === 'string' ? b : (b && b.name) || '');
+}
+/* one month of a mirror — the node at its month's address, everything a week needs */
+async function readMonth(name, month){
+  const r = await fetch(ORIGIN + '?block=' + encodeURIComponent(name) + '&spindle=' + month + '0000', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+  if (!r.ok) return null;
+  try { return await r.json(); } catch(e){ return null; }
+}
+function voiceOf(node){
+  let n = node;
+  while (n && typeof n === 'object') { if (!('_' in n)) return null; n = n['_']; }
+  return typeof n === 'string' && n.trim() ? n.trim() : null;
+}
+
+/* ---------- what a mirror says ---------- */
+const S = { people: [], shown: new Set(), months: {}, offset: 0, view: innerWidth < 760 ? 'day' : 'week', dayPick: 0, hours: 'work', sel: null };
+function dayNode(h, a){
+  const m = S.months[h] && S.months[h][a.slice(0, 6)];
+  if (!m || typeof m !== 'object') return undefined;
+  const band = m[a[6]];
+  return band && typeof band === 'object' ? band[a[7]] : undefined;
+}
+const dayLine = (h, a) => voiceOf(dayNode(h, a));
+function beatLine(h, a){
+  const d = dayNode(h, a);
+  if (!d || typeof d !== 'object') return null;
+  const g = d[a[8]];
+  return g && typeof g === 'object' ? voiceOf(g[a[9]]) : null;
+}
+/* how a block opens: in person, virtual, or busy (anything else is drawn as busy, its words kept) */
+const kindOf = t => /^\s*in[\s-]person\b/i.test(t) ? 'inp' : /^\s*virtual\b/i.test(t) ? 'vir' : 'bsy';
+/* the day's line opens with the hours kept open in the holder's own place — '09:00–17:30 Europe/London',
+   several ranges joined by commas, or 'closed'. null: no line (not known); 'unstated': a line without hours */
+function hoursOf(h, a){
+  const line = dayLine(h, a);
+  if (!line) return null;
+  const head = line.split(/\s+—\s+/)[0];
+  if (/^\s*closed\b/i.test(head)) return { ranges: [], zone: null, line };
+  const zm = head.match(/[A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+|\b(?:UTC|GMT)\b|[+-]\d{2}:?\d{2}/);
+  const zone = (zm && placeOf(zm[0])) || 'UTC';
+  const [y, m0, d] = dateOfDay(a);
+  const ranges = [];
+  head.replace(/(\d{1,2})[:.](\d{2})\s*[–—-]\s*(\d{1,2})[:.](\d{2})/g, (_, a1, b1, c1, d1) => {
+    const s = zoned(y, m0, d, +a1, +b1, zone); let e = zoned(y, m0, d, +c1, +d1, zone);
+    if (e <= s) e += DAY;
+    ranges.push([s, e]);
+    return _;
+  });
+  return ranges.length ? { ranges, zone, line } : 'unstated';
+}
+/* every block of a holder in [from, to): consecutive beats saying one thing are one block */
+function blocksOf(h, from, to){
+  const out = [];
+  let open = null;
+  for (let k = beatOf(from), last = beatOf(to - 1); k <= last; k++){
+    const a = beatAddr(k), t = beatLine(h, a);
+    if (t && open && open.text === t){ open.end = beatStart(k + 1); open.last = a; }
+    else if (t){ open = { start: beatStart(k), end: beatStart(k + 1), text: t, first: a, last: a }; out.push(open); }
+    else open = null;
+  }
+  return out;
+}
+/* the hours a holder keeps open that touch [from, to), from the day lines of the clock days around it */
+function openOf(h, from, to){
+  const out = [];
+  for (let ms = from - DAY; ms < to + DAY; ms += DAY){
+    const hrs = hoursOf(h, addrOf(ms));
+    if (hrs && hrs !== 'unstated') for (const r of hrs.ranges) if (r[1] > from && r[0] < to) out.push(r);
+  }
+  return out;
+}
+/* whether a holder has said anything of a local day: a line at the clock's day of that date */
+const knownOn = (h, y, m0, d) => !!dayLine(h, addrOf(Date.UTC(y, m0, d, 12)));
+/* the stretches inside [from, to) where every shown holder keeps open and holds no block */
+function freeOf(hs, from, to){
+  if (!hs.length) return [];
+  const opens = hs.map(h => openOf(h, from, to));
+  const out = [];
+  let run = null;
+  for (let k = beatOf(from), last = beatOf(to - 1); k <= last; k++){
+    const bs = beatStart(k), be = beatStart(k + 1);
+    const a = beatAddr(k);
+    const ok = bs >= from && be <= to && hs.every((h, i) => opens[i].some(r => bs >= r[0] && be <= r[1]) && !beatLine(h, a));
+    if (ok && run) run.end = be;
+    else if (ok){ run = { start: bs, end: be }; out.push(run); }
+    else run = null;
+  }
+  return out;
+}
+
+/* ---------- the week, in the viewer's own place ---------- */
+function weekDays(){
+  const now = wall(Date.now(), ZONE);
+  const dow = (now.getUTCDay() + 6) % 7;   /* Monday first */
+  const base = [now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dow + 7 * S.offset];
+  const days = [];
+  for (let i = 0; i < 7; i++){
+    const t = new Date(Date.UTC(base[0], base[1], base[2] + i));
+    days.push([t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate()]);
+  }
+  return days;
+}
+function shownDays(){
+  const w = weekDays();
+  return S.view === 'week' ? w : [w[S.dayPick]];
+}
+function todayIndex(){
+  const now = wall(Date.now(), ZONE);
+  return (now.getUTCDay() + 6) % 7;
+}
+const isToday = d => { const n = wall(Date.now(), ZONE); return n.getUTCFullYear() === d[0] && n.getUTCMonth() === d[1] && n.getUTCDate() === d[2]; };
+const span = () => S.hours === 'work' ? [7, 21] : [0, 24];
+
+/* the months the shown days touch, a day either side, each read once per holder */
+async function loadMonths(){
+  const days = shownDays();
+  const first = zoned(days[0][0], days[0][1], days[0][2], 0, 0, ZONE) - DAY;
+  const last = zoned(days[days.length - 1][0], days[days.length - 1][1], days[days.length - 1][2] + 1, 0, 0, ZONE) + DAY;
+  const months = new Set();
+  for (let ms = first; ms <= last; ms += DAY / 2) months.add(addrOf(ms).slice(0, 6));
+  const asks = [];
+  for (const h of S.people){
+    S.months[h] = S.months[h] || {};
+    for (const m of months) if (!(m in S.months[h])){
+      S.months[h][m] = null;
+      asks.push(readMonth(FIELD + ':' + h, m).then(n => { S.months[h][m] = n; }));
+    }
+  }
+  await Promise.all(asks);
+}
+
+/* ---------- drawing ---------- */
+const colourOf = h => 'var(--p' + (S.people.indexOf(h) % 8 + 1) + ')';
+function drawPeople(){
+  const box = $('people');
+  box.innerHTML = '';
+  if (!S.people.length) return;
+  for (const h of S.people){
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'who';
+    b.style.setProperty('--pc', colourOf(h));
+    b.setAttribute('aria-pressed', S.shown.has(h) ? 'true' : 'false');
+    b.innerHTML = '<span class="sw"></span>' + esc(h) + (h === HANDLE ? ' (you)' : '');
+    b.onclick = () => { if (S.shown.has(h)) S.shown.delete(h); else S.shown.add(h); drawPeople(); draw(); };
+    box.appendChild(b);
+  }
+}
+function draw(){
+  const days = shownDays(), [h0, h1] = span(), hs = S.people.filter(h => S.shown.has(h));
+  const w = weekDays();
+  $('range').textContent = S.view === 'week'
+    ? (w[0][1] === w[6][1] ? w[0][2] + '–' + w[6][2] + ' ' + MO[w[0][1]] + ' ' + w[0][0] : w[0][2] + ' ' + MO[w[0][1]] + ' – ' + w[6][2] + ' ' + MO[w[6][1]] + ' ' + w[6][0])
+    : WD[new Date(Date.UTC(days[0][0], days[0][1], days[0][2])).getUTCDay()] + ' ' + days[0][2] + ' ' + MO[days[0][1]] + ' ' + days[0][0];
+  $('zone').textContent = 'times in ' + ZONE.replace(/_/g, ' ');
+  const grid = $('grid');
+  grid.innerHTML = '';
+  grid.style.setProperty('--hours', h1 - h0);
+  const hcol = document.createElement('div');
+  hcol.className = 'hcol';
+  hcol.style.paddingTop = '46px';
+  const inner = document.createElement('div');
+  inner.style.position = 'relative';
+  inner.style.height = 'calc(' + (h1 - h0) + ' * var(--hr))';
+  for (let hr = h0; hr <= h1; hr++){
+    if (hr === h0 || hr === h1) continue;
+    const l = document.createElement('span');
+    l.className = 'hl'; l.textContent = pad(hr) + ':00';
+    l.style.top = 'calc(' + (hr - h0) + ' * var(--hr))';
+    inner.appendChild(l);
+  }
+  hcol.appendChild(inner);
+  grid.appendChild(hcol);
+  const cols = document.createElement('div');
+  cols.className = 'days';
+  cols.style.setProperty('--ndays', days.length);
+  cols.style.setProperty('--daymin', days.length === 1 ? '260px' : Math.max(96, 26 * Math.max(1, hs.length) + 12) + 'px');
+  const perMin = ms => 'calc(' + (ms / HOUR).toFixed(4) + ' * var(--hr))';
+  days.forEach((d, i) => {
+    const col = document.createElement('div');
+    col.className = 'day';
+    const from = zoned(d[0], d[1], d[2], h0, 0, ZONE), to = zoned(d[0], d[1], d[2], h1, 0, ZONE);
+    const dayFrom = zoned(d[0], d[1], d[2], 0, 0, ZONE), dayTo = zoned(d[0], d[1], d[2] + 1, 0, 0, ZONE);
+    const head = document.createElement('button');
+    head.type = 'button'; head.className = 'dh' + (isToday(d) ? ' today' : '');
+    head.setAttribute('aria-pressed', S.sel && S.sel.day === d.join('-') && !S.sel.block ? 'true' : 'false');
+    head.innerHTML = '<span class="wd">' + WD[new Date(Date.UTC(d[0], d[1], d[2])).getUTCDay()].slice(0, 3) + '</span><span class="dn">' + d[2] + ' ' + MO[d[1]].slice(0, 3) + '</span>';
+    head.onclick = () => { S.sel = { day: d.join('-'), d }; draw(); detail(); };
+    col.appendChild(head);
+    const lanes = document.createElement('div');
+    lanes.className = 'lanes';
+    const gut = document.createElement('div');
+    gut.className = 'gut';
+    if (hs.length) for (const f of freeOf(hs, dayFrom, dayTo)){
+      const s = Math.max(f.start, from), e = Math.min(f.end, to);
+      if (e <= s) continue;
+      const bar = document.createElement('span');
+      bar.className = 'fr';
+      bar.style.top = perMin(s - from); bar.style.height = perMin(e - s);
+      bar.title = 'everyone shown is free ' + hhmm(f.start, ZONE) + '–' + hhmm(f.end, ZONE);
+      gut.appendChild(bar);
+    }
+    lanes.appendChild(gut);
+    for (const h of hs){
+      const lane = document.createElement('div');
+      lane.className = 'lane' + (knownOn(h, d[0], d[1], d[2]) ? '' : ' unk');
+      lane.style.setProperty('--pc', colourOf(h));
+      lane.title = h;
+      for (const r of openOf(h, from, to)){
+        const s = Math.max(r[0], from), e = Math.min(r[1], to);
+        if (e <= s) continue;
+        const o = document.createElement('span');
+        o.className = 'opn'; o.style.top = perMin(s - from); o.style.height = perMin(e - s);
+        lane.appendChild(o);
+      }
+      for (const b of blocksOf(h, dayFrom, dayTo)){
+        const s = Math.max(b.start, from), e = Math.min(b.end, to);
+        if (e <= s) continue;
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'blk ' + kindOf(b.text) + (S.sel && S.sel.block === h + '|' + b.first ? ' sel' : '');
+        el.style.top = perMin(s - from); el.style.height = perMin(e - s);
+        el.setAttribute('aria-label', h + ', ' + hhmm(b.start, ZONE) + ' to ' + hhmm(b.end, ZONE) + ': ' + b.text);
+        el.innerHTML = '<span class="bt">' + esc(b.text) + '</span>';
+        el.onclick = () => { S.sel = { block: h + '|' + b.first, h, b, d }; draw(); detail(); };
+        lane.appendChild(el);
+      }
+      lanes.appendChild(lane);
+    }
+    const now = Date.now();
+    if (now >= from && now < to){
+      const nl = document.createElement('span');
+      nl.className = 'nowline'; nl.style.top = perMin(now - from);
+      lanes.appendChild(nl);
+    }
+    col.appendChild(lanes);
+    cols.appendChild(col);
+  });
+  grid.appendChild(cols);
+  const msg = $('msg');
+  msg.hidden = !!hs.length;
+  if (!S.people.length) msg.innerHTML = 'Nobody has given their availability yet. Yours can be the first: ask your AI, with the beach connector (<a href="/connect">connect your AI →</a>), to sync your calendar into your availability.';
+  else if (!hs.length) msg.textContent = 'Nobody is switched on. Tap a name above to show their week.';
+  drawFree(days, hs);
+}
+function drawFree(days, hs){
+  const box = $('free');
+  if (!hs.length){ box.innerHTML = ''; return; }
+  const rows = [];
+  for (const d of days){
+    const runs = freeOf(hs, zoned(d[0], d[1], d[2], 0, 0, ZONE), zoned(d[0], d[1], d[2] + 1, 0, 0, ZONE)).filter(r => r.end - r.start >= 2 * DAY / 81 - 1);
+    const unknown = hs.filter(h => !knownOn(h, d[0], d[1], d[2]));
+    const label = WD[new Date(Date.UTC(d[0], d[1], d[2])).getUTCDay()].slice(0, 3) + ' ' + d[2] + ' ' + MO[d[1]].slice(0, 3);
+    rows.push('<li><span class="d">' + esc(label) + '</span>' +
+      (runs.length ? runs.map(r => '<span class="t">' + hhmm(r.start, ZONE) + '–' + hhmm(r.end, ZONE) + '</span>').join('')
+        : '<span class="empty">' + (unknown.length ? 'not known for ' + esc(unknown.join(', ')) : 'no shared time') + '</span>') + '</li>');
+  }
+  box.innerHTML = '<h3>' + (hs.length === 1 ? 'When ' + esc(hs[0]) + ' is free' : 'When everyone shown is free') + '</h3>' +
+    '<p class="formnote" style="margin:0 0 8px">Stretches of half an hour or more, in your time, inside the hours each keeps open and clear of every block. A day someone has said nothing of is not known, never free.</p>' +
+    '<ul>' + rows.join('') + '</ul>';
+}
+function detail(){
+  const box = $('detail'), sel = S.sel;
+  if (!sel){ box.hidden = true; return; }
+  box.hidden = false;
+  if (sel.block){
+    const hrs = hoursOf(sel.h, sel.b.first);
+    const theirs = hrs && hrs !== 'unstated' && hrs.zone && hrs.zone !== ZONE ? ' · ' + hhmm(sel.b.start, hrs.zone) + '–' + hhmm(sel.b.end, hrs.zone) + ' in ' + esc(hrs.zone.replace(/_/g, ' ')) : '';
+    box.style.setProperty('--pc', colourOf(sel.h));
+    box.innerHTML = '<h2><span class="sw"></span>' + esc(sel.h) + '</h2>' +
+      '<p class="when">' + WD[new Date(sel.b.start + offsetAt(ZONE, sel.b.start)).getUTCDay()] + ' ' + hhmm(sel.b.start, ZONE) + '–' + hhmm(sel.b.end, ZONE) + ' your time' + theirs + '</p>' +
+      '<p class="line">' + esc(sel.b.text) + '</p>' +
+      (dayLine(sel.h, sel.b.first) ? '<p class="note">Their day: ' + esc(dayLine(sel.h, sel.b.first)) + '</p>' : '') +
+      '<p class="addr">beats ' + sel.b.first + (sel.b.last !== sel.b.first ? ' … ' + sel.b.last : '') + ' · a block reaches the edges of the beats it touches, so it can be drawn a little wider than the event</p>';
+    return;
+  }
+  const d = sel.d, a = addrOf(Date.UTC(d[0], d[1], d[2], 12));
+  const hs = S.people.filter(h => S.shown.has(h));
+  box.style.removeProperty('--pc');
+  box.innerHTML = '<h2>' + WD[new Date(Date.UTC(d[0], d[1], d[2])).getUTCDay()] + ' ' + d[2] + ' ' + MO[d[1]] + '</h2>' +
+    '<p class="when">each person’s own line for the day</p><ul>' +
+    (hs.length ? hs.map(h => '<li><b>' + esc(h) + '</b>: ' + (dayLine(h, a) ? esc(dayLine(h, a)) : '<span class="empty">no line — not known</span>') + '</li>').join('') : '<li class="empty">nobody is switched on</li>') +
+    '</ul><p class="addr">the clock’s day ' + a.slice(0, 8) + '00</p>';
+}
+function drawHow(){
+  $('how').innerHTML =
+    '<div><h4>Yours, filled by your AI</h4><p>Your availability is <code>availability:' + esc(HANDLE || '<you>') + '</code>, kept under your key. Ask your AI, with the beach connector, to sync your calendar into it: it says each block at its time — busy, virtual, or in person with where — and each day’s hours, and tells only what you let it.</p></div>' +
+    '<div><h4>Finding a time</h4><p>Ask your AI when the people you name are free. It reads everyone’s blocks across the span in one call, on your clock, and gives you the times everyone keeps open; for meeting in person it allows for the journey.</p></div>' +
+    '<div><h4>A meeting’s time</h4><p>Every meeting on the <a href="/ring">ring</a> opens with a pre-meeting, where each person’s AI offers times from these calendars; the time everyone names is booked in their own now.</p></div>' +
+    '<div><h4>Where it lives</h4><p>The law, <a href="' + RENDER + 'function%3Aavailability">function:availability</a>; the clock, <a href="/walk/availability">spine:availability</a>; the room, <a href="' + RENDER + 'pool%3Aavailability">pool:availability</a>; and how it was scoped, <a href="/walk/availability-scope">availability-scope</a>.</p></div>';
+  $('foot').innerHTML = '<a href="/walk/availability">walk the clock →</a><a href="/connect">connect your AI →</a>';
+}
+
+/* ---------- controls ---------- */
+function setView(v){
+  S.view = v;
+  $('v-week').setAttribute('aria-pressed', v === 'week' ? 'true' : 'false');
+  $('v-day').setAttribute('aria-pressed', v === 'day' ? 'true' : 'false');
+  $('home').textContent = v === 'week' ? 'This week' : 'Today';
+  refresh();
+}
+function step(n){
+  if (S.view === 'week') S.offset += n;
+  else { S.dayPick += n; while (S.dayPick < 0){ S.dayPick += 7; S.offset--; } while (S.dayPick > 6){ S.dayPick -= 7; S.offset++; } }
+  S.sel = null; detail(); refresh();
+}
+async function refresh(){ draw(); await loadMonths(); draw(); detail(); }
+$('prev').onclick = () => step(-1);
+$('next').onclick = () => step(1);
+$('home').onclick = () => { S.offset = 0; S.dayPick = todayIndex(); S.sel = null; detail(); refresh(); };
+$('v-week').onclick = () => setView('week');
+$('v-day').onclick = () => setView('day');
+$('h-work').onclick = () => { S.hours = 'work'; $('h-work').setAttribute('aria-pressed', 'true'); $('h-all').setAttribute('aria-pressed', 'false'); draw(); };
+$('h-all').onclick = () => { S.hours = 'all'; $('h-all').setAttribute('aria-pressed', 'true'); $('h-work').setAttribute('aria-pressed', 'false'); draw(); };
+
+async function start(){
+  S.dayPick = todayIndex();
+  if (S.view === 'day'){ $('v-week').setAttribute('aria-pressed', 'false'); $('v-day').setAttribute('aria-pressed', 'true'); $('home').textContent = 'Today'; }
+  const names = await readIndex();
+  S.people = names.filter(n => n.indexOf(FIELD + ':') === 0).map(n => n.slice(FIELD.length + 1)).filter(h => h && h.indexOf(':') < 0).sort();
+  if (HANDLE && S.people.indexOf(HANDLE) < 0){
+    const n = $('note'); n.hidden = false;
+    n.textContent = HANDLE + ' has not given their availability yet — their AI fills it, with the beach connector.';
+  }
+  const want = (Q.get('with') || '').split(',').map(clean).filter(Boolean);
+  for (const h of S.people) if (!want.length || want.indexOf(h) >= 0 || h === HANDLE) S.shown.add(h);
+  drawPeople(); drawHow();
+  await refresh();
+}
+start().catch(e => { const m = $('msg'); m.hidden = false; m.textContent = 'Couldn’t read the beach: ' + e.message; });
+
+if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'availability', site: true });
+})();
+</script>
+</body>
+</html>
