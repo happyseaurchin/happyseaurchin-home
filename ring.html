@@ -262,10 +262,8 @@
       <p class="mk-link" id="mk-link"></p>
       <label for="mk-what">What it is for, or where (optional)</label>
       <input id="mk-what" maxlength="200" placeholder="e.g. the Coach House, Sheffield" autocomplete="off">
-      <div class="row">
-        <input id="mk-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">
-        <input id="mk-key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key">
-      </div>
+      <label for="mk-who">Your name, that it is kept under</label>
+      <input id="mk-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username">
       <p class="hint" id="mk-hint">The copy is yours: it is kept under your key, so only you can change what it says. Anyone with its link can say when they can come, and what they think.</p>
       <div class="runbtns"><button type="submit" class="btn" id="mk-go">Duplicate</button><button type="button" class="btn warn" id="mk-cancel">Cancel</button></div>
       <p class="note mk-type">To change a copy’s phases and timings once it is made, or for a meeting unlike any here, ask Claude with the beach connector, or say what you have in mind in the meeting room, <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&amp;block=pool%3Ameeting" target="_blank" rel="noopener">pool:meeting</a>.</p>
@@ -344,9 +342,9 @@ const ringHref = (name, share) => ON_SITE || SNAP || share
   ? 'https://happyseaurchin.com/ring/' + encodeURIComponent(name) + (HANDLE && !share && !SNAP ? '/' + encodeURIComponent(HANDLE) : '')
   : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
 const pathFor = name => ON_SITE ? '/ring/' + encodeURIComponent(name) + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
-/* the key a name writes with, as the portal and the venture pages keep it: this meeting's mirror, then the passport's.
-   Nothing is said about it on the page: the browser asks to remember a key and fills it in, which is how every other
-   page here works, and a reader at /ring/<name>/<handle> has the name filled so the browser can match it */
+/* the key a name writes with, as /now, /walk and /recency keep it: this meeting's mirror, then the passport's.
+   The page has no box for it: when a write needs a key the device does not keep, the browser asks, and the key is
+   kept on this device once a write lands with it, which is how every other page here works */
 function keyFor(name){
   if (!name) return '';
   try {
@@ -360,6 +358,29 @@ function remember(fam, name, secret){
   try {
     localStorage.setItem('mirror-latch:' + fam + ':' + name, secret); localStorage.setItem('venture:who', name);
   } catch(e){}
+}
+const lockRequired = w => !w.ok && !!w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+const handleBound = w => !w.ok && !!w.data && w.data.code === 'handle_bound';
+const KEPT = ' (kept on this device; check the first letter — phones capitalise it):';
+const askKey = text => { const v = prompt(text); return v && v.trim() ? v.trim() : ''; };
+/* a write under a name's key: the one this device keeps, else asked for (`founds` says what a first write founds,
+   empty when the block stands); asked once more when the beach refuses it, and kept once a write lands.
+   `write(secret)` is the whole act, founding whatever is not there yet. Answers null when no key was given:
+   nothing is written and nothing is said */
+async function keyed(fam, name, block, founds, write){
+  let secret = keyFor(name);
+  const asked = !secret;
+  if (asked) secret = askKey(founds ? founds + ', locked to you.\nEnter your key — the one your passport uses, if you have one' + KEPT : block + ' is latched — enter your key' + KEPT);
+  if (!secret) return null;
+  let w = await write(secret);
+  if (lockRequired(w) || handleBound(w)){
+    secret = askKey(handleBound(w) ? 'The beach binds ' + block + ' to ' + name + '’s passport key — enter that key' + KEPT
+      : block + ' is latched, and the key ' + (asked ? 'given' : 'this device kept') + ' was refused — enter your key' + KEPT);
+    if (!secret) return null;
+    w = await write(secret);
+  }
+  if (w.ok) remember(fam, name, secret);
+  return w;
 }
 const draftKey = a => 'ring:' + FAMILY + ':' + (a || 'root');
 const whoHere = () => { if (HANDLE) return HANDLE; try { return localStorage.getItem('venture:who') || localStorage.getItem('render:who') || ''; } catch(e){ return ''; } };
@@ -779,9 +800,8 @@ function addBox(n){
     '<label for="f-text">What you see in ' + esc(label) + ', or what you would change</label><textarea id="f-text"></textarea>' +
     (n.kind !== 'root' && !n.door ? '<div class="row"><input class="mins" id="f-min" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Minutes?" aria-label="How many minutes you would give it, at this length"></div>' : '') +
     '<div class="row"><input id="f-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
-    '<input id="f-key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key">' +
     '<button type="button" class="btn" id="f-send">Add my reading</button></div>' +
-    '<p class="hint" id="f-hint">It goes into your own mirror of this meeting, in your name, at this part; writing again here replaces it. Use your passport’s key, or with no passport yet, invent one: it keeps your words yours.</p></div>';
+    '<p class="hint" id="f-hint">It goes into your own mirror of this meeting, in your name, at this part; writing again here replaces it.</p></div>';
 }
 function runBox(){
   const ri = runInfo(), r = S.run;
@@ -815,8 +835,7 @@ function runBox(){
   } else {
     h += '<p class="note">Keep it beside the plan: what was intended, what happened, and how each phase ended, at the meeting’s own addresses, in your name.</p>' +
          '<div class="box" style="margin-top:8px"><div class="row"><input id="k-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
-         '<input id="k-key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key"></div>' +
-         '<input id="k-with" placeholder="who was there (optional)" aria-label="who was there, optional"></div>';
+         '<input id="k-with" placeholder="who was there (optional)" aria-label="who was there, optional"></div></div>';
   }
   h += '<div class="runbtns">' + (r.kept || SNAP ? '' : '<button type="button" class="btn" data-run="keep">Keep this run</button>') +
        '<button type="button" class="btn ghost" data-run="copy">Copy the record</button><button type="button" class="btn warn" data-run="reset">Start a new run</button></div>' +
@@ -908,24 +927,22 @@ async function addReading(){
   if (!text){ $('f-text').focus(); return; }
   const name = clean($('f-who').value);
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how your reading is signed.'); $('f-who').focus(); return; }
-  let secret = $('f-key').value.trim();
-  if (!secret) secret = keyFor(name);
-  if (!secret){ say('err', 'Enter your key: the one your passport uses, or, with no passport yet, one you invent. It keeps your reading yours.'); $('f-key').focus(); return; }
   const mEl = $('f-min'), est = mEl && mEl.value ? parseFloat(mEl.value) : 0;
   const line = (est > 0 ? num(est / scale()) + ' — ' : '') + text;
   const block = FAMILY + ':' + name;
   send.disabled = true; say('', 'putting it beside the meeting…');
   try {
-    let mirror = await readBlock(block);
-    if (!mirror){
-      const born = { '_': a === '' ? line : 'MIRROR — ' + name + '’s readings of ' + FAMILY + ' (spine:' + FAMILY + '), at the meeting’s own addresses: what they see, what they would change, the minutes they would give a part, and when they can come. Sovereign to them; silence at a part is honest absence. First reading written from /ring.' };
-      const w = await post({ block, new_lock: secret, content: born });
-      if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
-      mirror = born;
-    }
-    let w;
-    if (a === '') w = await post({ block, spindle: '0', content: line, secret });
-    else {
+    const stands = await readBlock(block);
+    /* the mirror is founded under the key with the first reading in it, or the reading is written into it */
+    const write = async secret => {
+      let mirror = await readBlock(block);
+      if (!mirror){
+        const born = { '_': a === '' ? line : 'MIRROR — ' + name + '’s readings of ' + FAMILY + ' (spine:' + FAMILY + '), at the meeting’s own addresses: what they see, what they would change, the minutes they would give a part, and when they can come. Sovereign to them; silence at a part is honest absence. First reading written from /ring.' };
+        const w = await post({ block, new_lock: secret, content: born });
+        if (!w.ok || a === '') return w;
+        mirror = born;
+      }
+      if (a === '') return post({ block, spindle: '0', content: line, secret });
       const [pd, qd] = a.split('.');
       let node = mirror[pd];
       node = node == null ? null : JSON.parse(JSON.stringify(node));
@@ -935,11 +952,12 @@ async function addReading(){
       } else {
         if (node && typeof node === 'object') node['_'] = line; else node = line;
       }
-      w = await post({ block, spindle: pd, content: node, secret });
-    }
+      return post({ block, spindle: pd, content: node, secret });
+    };
+    const w = await keyed(FAMILY, name, block, stands ? '' : 'Your first reading here founds your mirror of this meeting', write);
+    if (!w){ say('', 'Nothing written: the reading waits in the box.'); send.disabled = false; return; }
     if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
     if (window.keepDraft) window.keepDraft(null, draftKey(a))();
-    remember(FAMILY, name, secret);
     await load(); render();
     const h2 = $('f-hint'); if (h2){ h2.className = 'hint ok'; h2.textContent = 'It stands beside the meeting in your name. Writing again here replaces it.'; }
   } catch(e){ say('err', 'couldn’t put that on the beach: ' + e.message); send.disabled = false; }
@@ -974,17 +992,15 @@ async function keepRun(){
   const hint = $('k-hint'), say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
   const name = clean($('k-who').value), who = ($('k-with').value || '').trim().replace(/\s+/g, ' ').slice(0, 200);
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how the run is signed.'); $('k-who').focus(); return; }
-  let secret = $('k-key').value.trim();
-  if (!secret) secret = keyFor(name);
-  if (!secret){ say('err', 'Enter your key: the one your passport uses, or one you invent.'); $('k-key').focus(); return; }
   const block = FAMILY + ':' + beatOf(S.run.start) + ':' + name, content = toObj(runRecord(name, who));
   say('', 'keeping it beside the plan…');
   try {
     const stands = await readBlock(block);
-    const w = stands ? await post({ confirm: true, content, secret }, block) : await post({ block, new_lock: secret, content });
+    const w = await keyed(FAMILY, name, block, stands ? '' : 'Keeping this run founds its record',
+      async secret => (await readBlock(block)) ? post({ confirm: true, content, secret }, block) : post({ block, new_lock: secret, content }));
+    if (!w){ say('', 'Nothing kept: the run stays on this device until you keep it.'); return; }
     if (!w.ok){ say('err', refusal(w)); return; }
     S.run.kept = block; save();
-    remember(FAMILY, name, secret);
     await load(); render();
   } catch(e){ say('err', 'couldn’t keep it: ' + e.message); }
 }
@@ -1035,9 +1051,6 @@ $('mk-form').addEventListener('submit', async ev => {
   if (!slug){ say('err', 'That name gives no link: use some letters or digits.'); $('mk-title').focus(); return; }
   const name = clean($('mk-who').value);
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: the meeting is kept under it.'); $('mk-who').focus(); return; }
-  let secret = $('mk-key').value.trim();
-  if (!secret) secret = keyFor(name);
-  if (!secret){ say('err', 'Enter your key: the one your passport uses, or, with no passport yet, one you invent. It keeps the meeting yours.'); $('mk-key').focus(); return; }
   const what = $('mk-what').value.trim().replace(/\s+/g, ' ').replace(/[\s.;,]+$/, '');
   const kind = (document.querySelector('input[name="mk-kind"]:checked') || {}).value === 'design' ? 'design' : 'meeting';
   const named = kind === 'design' && !/\bdesign\b/i.test(title) ? title + ' (design)' : title;
@@ -1058,15 +1071,17 @@ $('mk-form').addEventListener('submit', async ev => {
   law['9'] = 'PROVENANCE: copied from: ' + src + ' — on ' + date + ', by ' + name + ' with Duplicate at happyseaurchin.com/ring/' + src + ', spine and law, under ' + name +
     "'s own key, " + (kind === 'design' ? 'as a design of its own' : 'as a meeting to hold') + (what ? '; ' + what : '') + '. ' + cap(of) + "'s own provenance stands at function:" + src + ' 9, and what this copy teaches goes back there, as readings in ' + src + "'s mirrors.";
   /* written fresh under the key, or, where a first try already wrote it, again under the same key */
-  const put = async (block, content) => (await readBlock(block)) ? post({ confirm: true, content, secret }, block) : post({ block, new_lock: secret, content });
+  const put = async (block, content, secret) => (await readBlock(block)) ? post({ confirm: true, content, secret }, block) : post({ block, new_lock: secret, content });
   go.disabled = true; say('', 'copying it…');
   try {
-    let w = await put('spine:' + slug, spine);
-    if (w.ok) w = await put('function:' + slug, law);
+    const w = await keyed(slug, name, 'spine:' + slug, 'Duplicating founds your copy, ' + named, async secret => {
+      const s = await put('spine:' + slug, spine, secret);
+      return s.ok ? put('function:' + slug, law, secret) : s;
+    });
+    if (!w){ say('', 'Nothing made: no key was given.'); go.disabled = false; return; }
     if (!w.ok){ say('err', refusal(w)); go.disabled = false; return; }
     await post({ append: true, content: 'COPIED — ' + slug + ' — ' + named + '; from: ' + src + '; by ' + name + '; happyseaurchin.com/ring/' + slug }, 'pool:meeting').catch(() => null);
-    remember(slug, name, secret);
-    $('mk-title').value = ''; $('mk-what').value = ''; $('mk-key').value = '';
+    $('mk-title').value = ''; $('mk-what').value = '';
     if (dlg.close) dlg.close(); else dlg.removeAttribute('open');
     switchTo(slug, true, kind);
   } catch(e){ say('err', 'couldn’t make the copy: ' + e.message); go.disabled = false; }
