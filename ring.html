@@ -45,13 +45,12 @@
   .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
   .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 56px}
 
-  .top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 28px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+  .top{display:flex;flex-direction:column;align-items:stretch;gap:14px;padding-bottom:16px;border-bottom:1px solid var(--line)}
   .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 6px}
   h1{font-family:var(--display);font-weight:800;font-size:clamp(30px,4.4vw,44px);line-height:1.04;margin:0;text-wrap:balance}
-  .lede{margin:8px 0 0;color:var(--vapour);max-width:60ch}
+  .lede{margin:8px 0 0;color:var(--vapour)}
   .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
-  .side{display:flex;flex-direction:column;align-items:flex-end;gap:12px}
-  @media (max-width:880px){.side{align-items:flex-start}}
+  .side{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px 18px}
   .make{font-family:var(--display);font-weight:700;font-size:15px;letter-spacing:0.01em;padding:11px 18px;border-radius:8px;border:1px solid var(--solid);background:var(--solid);color:var(--abyss);cursor:pointer}
   .make:hover{filter:brightness(1.06)}
   dialog#makedlg{width:min(520px,calc(100vw - 32px));border:1px solid var(--line-strong);border-radius:12px;background:var(--deep);color:var(--foam);padding:20px 22px 18px}
@@ -117,7 +116,7 @@
   th{font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim);font-weight:400;white-space:nowrap}
   td.num,th.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
   td.done{color:var(--vapour);font-size:14px;min-width:14em}
-  @media (max-width:560px){.share{display:none}td.done{min-width:9em}}
+  @media (max-width:560px){th.share,td.share{display:none}td.done{min-width:9em}}
   tbody tr{cursor:pointer}
   tbody tr:hover td,tr.rowsel td{background:rgba(var(--wash-rgb),0.045)}
   tbody tr:last-child td{border-bottom:0}
@@ -267,7 +266,8 @@ const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 const RENDER = 'https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=';
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
-const fromPath = (location.pathname.match(/^\/ring\/([^\/?#]+)/) || [])[1] || '';
+const PATH = location.pathname.match(/^\/ring\/([^\/?#]+)(?:\/([^\/?#]+))?/) || [];
+const fromPath = PATH[1] || '';
 const slug = v => String(v || '').trim().toLowerCase().replace(/[^a-z0-9-]/g, '');
 let FAMILY = slug(Q.get('f') || decodeURIComponent(fromPath)) || 'action-cycle';
 
@@ -276,6 +276,9 @@ const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 /* a copy of this page read away from the beach carries a snapshot of the family and never writes */
 const SNAP = window.RING_SNAPSHOT || null;
 const clean = v => window.cleanHandle ? window.cleanHandle(v) : String(v || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+/* /ring/<name>/<handle> reads the meeting as that handle: the name is filled in, the key this device remembers for it is used,
+   and the handle rides along every link followed from here, though never in a link shared */
+const HANDLE = clean(decodeURIComponent(PATH[2] || '') || Q.get('h') || '') || null;
 
 /* ---------- the beach ---------- */
 async function readBlock(name){
@@ -321,7 +324,32 @@ function nodeAt(block, addr){
 }
 const lineAt = (block, addr) => voiceOf(nodeAt(block, addr));
 /* a meeting's own link: /ring/<name> on the site, ?f=<name> anywhere else */
-const ringHref = name => (/^\/ring(\/|$)/.test(location.pathname) || SNAP ? 'https://happyseaurchin.com/ring/' : location.pathname + '?f=') + encodeURIComponent(name);
+const ON_SITE = /^\/ring(\/|$)/.test(location.pathname);
+const ringHref = (name, share) => ON_SITE || SNAP || share
+  ? 'https://happyseaurchin.com/ring/' + encodeURIComponent(name) + (HANDLE && !share && !SNAP ? '/' + encodeURIComponent(HANDLE) : '')
+  : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
+const pathFor = name => ON_SITE ? '/ring/' + encodeURIComponent(name) + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
+/* the key a name writes with, remembered on this device: this meeting's mirror, then the passport's (the name every page
+   keeps it under), then any other meeting's mirror under the same name, so a reader gives it once */
+function keyFor(name){
+  if (!name) return '';
+  try {
+    const own = localStorage.getItem('mirror-latch:' + FAMILY + ':' + name) || localStorage.getItem('passport-latch:' + name);
+    if (own) return own;
+    for (let i = 0; i < localStorage.length; i++){ const k = localStorage.key(i) || ''; if (k.indexOf('mirror-latch:') === 0 && k.slice(k.lastIndexOf(':') + 1) === name) return localStorage.getItem(k) || ''; }
+  } catch(e){}
+  return '';
+}
+/* kept after a write lands; a name with a passport writes its mirrors with the passport's key (the beach binds them),
+   so for that name the key that just worked is the passport's, and every page on this device can use it */
+function remember(fam, name, secret){
+  try {
+    localStorage.setItem('mirror-latch:' + fam + ':' + name, secret); localStorage.setItem('venture:who', name);
+    if (IX && IX.blocks.indexOf('passport:' + name) >= 0) localStorage.setItem('passport-latch:' + name, secret);
+  } catch(e){}
+}
+const draftKey = a => 'ring:' + FAMILY + ':' + (a || 'root');
+const whoHere = () => { if (HANDLE) return HANDLE; try { return localStorage.getItem('venture:who') || localStorage.getItem('render:who') || ''; } catch(e){ return ''; } };
 
 /* a line opens with its minutes: "30 (20-40) — TITLE: words. Done when …" */
 const MINS = /^(\d+(?:\.\d+)?)\s*(?:\((\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\))?\s*[—–-]\s+([\s\S]*)$/;
@@ -787,7 +815,7 @@ function drawPanel(){
   const n = find(S.sel), a = n.addr, k = scale();
   let h = '';
   if (S.mode === 'run') h += runBox();
-  if (S.made && S.made === FAMILY) h += '<div class="made"><p><b>Your meeting is made</b>, a copy kept under your key. Share its link with the people coming: they say when they can come at the pre-meeting, and what they think after at the post-meeting.</p><div class="share"><a href="' + ringHref(FAMILY) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn" style="padding:4px 10px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></div></div>';
+  if (S.made && S.made === FAMILY) h += '<div class="made"><p><b>Your meeting is made</b>, a copy kept under your key. Share its link with the people coming: they say when they can come at the pre-meeting, and what they think after at the post-meeting.</p><div class="share"><a href="' + ringHref(FAMILY, true) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn" style="padding:4px 10px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></div></div>';
   const v = viewed();
   if (v) h += '<div class="viewing"><span>Showing the run kept by <b>' + esc(v.who) + '</b>, ' + esc(runDate(v)) + ': ' + fmt(v.taken) + ' of ' + fmt(v.planned) + '</span><button type="button" class="btn warn" data-view="">Back to the design</button></div>';
   h += crumbs(n);
@@ -806,21 +834,27 @@ function drawPanel(){
   if (n.text) h += '<p class="purpose">' + cited(cap(n.text)) + '</p>';
   if (n.kind === 'phase' && n.done) h += '<div class="done-box"><b>Done when</b>' + esc(cap(n.done)) + '</div>';
   if (n.kind === 'part' && (n.done || n.phase.done)) h += '<div class="done-box"><b>' + (n.done ? 'Done when' : esc(n.phase.title) + ' is done when') + '</b>' + esc(cap(n.done || n.phase.done)) + '</div>';
+  if (S.mode === 'design') h += addBox(n);
+  h += '<h3>Readings</h3>' + readingsHtml(n);
+  h += runsHtml(n);
+  const syn = FOLD ? lineAt(FOLD, a) : null;
+  if (syn) h += '<h3>Synthesis</h3><div class="synth"><p>' + cited(syn) + '</p></div><p class="note">The fold at <a href="' + RENDER + encodeURIComponent(FAMILY) + (a ? '&spindle=' + encodeURIComponent(a) : '') + '" target="_blank" rel="noopener">' + esc(FAMILY) + '</a>: woven from the readings and the runs, and re-woven as they grow.</p>';
+  else if (n.kind === 'part' && FOLD && lineAt(FOLD, n.phase.addr)) h += '<p class="note">The synthesis is kept per phase: open <button type="button" class="btn ghost" style="padding:3px 8px" data-go="' + n.phase.addr + '">' + esc(n.phase.title) + '</button></p>';
   const list = n.kind === 'root' ? M.phases : n.kind === 'phase' ? n.parts : [];
   if (list.length){
     h += '<h3>' + (n.kind === 'root' ? 'Phases' : 'Parts') + '</h3><ul class="list">' + list.map(x =>
       '<li><button type="button" data-go="' + x.addr + '">' + (S.nums ? '<span class="a">' + x.addr + '</span>' : '') + '<span>' + esc(x.title) + '</span><span class="m">' +
       (x.door ? (x.door === 'before' ? 'before' : 'after') : fmt((x.kind === 'part' ? x.plan : x.min) * k)) + '</span></button></li>').join('') + '</ul>';
   }
-  h += '<h3>Readings</h3>' + readingsHtml(n);
-  h += runsHtml(n);
-  const syn = FOLD ? lineAt(FOLD, a) : null;
-  if (syn) h += '<h3>Synthesis</h3><div class="synth"><p>' + cited(syn) + '</p></div><p class="note">The fold at <a href="' + RENDER + encodeURIComponent(FAMILY) + (a ? '&spindle=' + encodeURIComponent(a) : '') + '" target="_blank" rel="noopener">' + esc(FAMILY) + '</a>: woven from the readings and the runs, and re-woven as they grow.</p>';
-  else if (n.kind === 'part' && FOLD && lineAt(FOLD, n.phase.addr)) h += '<p class="note">The synthesis is kept per phase: open <button type="button" class="btn ghost" style="padding:3px 8px" data-go="' + n.phase.addr + '">' + esc(n.phase.title) + '</button></p>';
-  if (S.mode === 'design') h += addBox(n);
   panel.innerHTML = h;
   const who = $('f-who') || $('k-who');
-  if (who){ try { who.value = localStorage.getItem('venture:who') || localStorage.getItem('render:who') || ''; } catch(e){} }
+  if (who) who.value = whoHere();
+  const key = $('f-key') || $('k-key');
+  if (key && keyFor(who && clean(who.value))) key.placeholder = 'key remembered here';
+  /* the box keeps its words through a re-draw, and takes dictation, as every write box on the site does */
+  const ft = $('f-text');
+  if (ft){ if (window.keepDraft) window.keepDraft(ft, draftKey(ft.closest('#addbox').getAttribute('data-at'))); if (window.dictate) window.dictate(ft); }
+  const rn = $('rnote'); if (rn && window.dictate) window.dictate(rn);
 }
 
 function copyLink(btn){
@@ -861,7 +895,7 @@ async function addReading(){
   const name = clean($('f-who').value);
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how your reading is signed.'); $('f-who').focus(); return; }
   let secret = $('f-key').value.trim();
-  if (!secret){ try { secret = localStorage.getItem('mirror-latch:' + FAMILY + ':' + name) || localStorage.getItem('passport-latch:' + name) || ''; } catch(e){} }
+  if (!secret) secret = keyFor(name);
   if (!secret){ say('err', 'Enter your key: the one your passport uses, or, with no passport yet, one you invent. It keeps your reading yours.'); $('f-key').focus(); return; }
   const mEl = $('f-min'), est = mEl && mEl.value ? parseFloat(mEl.value) : 0;
   const line = (est > 0 ? num(est / scale()) + ' — ' : '') + text;
@@ -890,7 +924,8 @@ async function addReading(){
       w = await post({ block, spindle: pd, content: node, secret });
     }
     if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
-    try { localStorage.setItem('mirror-latch:' + FAMILY + ':' + name, secret); localStorage.setItem('venture:who', name); } catch(e){}
+    if (window.keepDraft) window.keepDraft(null, draftKey(a))();
+    remember(FAMILY, name, secret);
     await load(); render();
     const h2 = $('f-hint'); if (h2){ h2.className = 'hint ok'; h2.textContent = 'It stands beside the design in your name. Writing again here replaces it.'; }
   } catch(e){ say('err', 'couldn’t put that on the beach: ' + e.message); send.disabled = false; }
@@ -926,7 +961,7 @@ async function keepRun(){
   const name = clean($('k-who').value), who = ($('k-with').value || '').trim().replace(/\s+/g, ' ').slice(0, 200);
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how the run is signed.'); $('k-who').focus(); return; }
   let secret = $('k-key').value.trim();
-  if (!secret){ try { secret = localStorage.getItem('mirror-latch:' + FAMILY + ':' + name) || localStorage.getItem('passport-latch:' + name) || ''; } catch(e){} }
+  if (!secret) secret = keyFor(name);
   if (!secret){ say('err', 'Enter your key: the one your passport uses, or one you invent.'); $('k-key').focus(); return; }
   const block = FAMILY + ':' + beatOf(S.run.start) + ':' + name, content = toObj(runRecord(name, who));
   say('', 'keeping it beside the design…');
@@ -935,7 +970,7 @@ async function keepRun(){
     const w = stands ? await post({ confirm: true, content, secret }, block) : await post({ block, new_lock: secret, content });
     if (!w.ok){ say('err', refusal(w)); return; }
     S.run.kept = block; save();
-    try { localStorage.setItem('mirror-latch:' + FAMILY + ':' + name, secret); localStorage.setItem('venture:who', name); } catch(e){}
+    remember(FAMILY, name, secret);
     await load(); render();
   } catch(e){ say('err', 'couldn’t keep it: ' + e.message); }
 }
@@ -964,7 +999,8 @@ function openMake(){
   if (!M) return;
   $('mk-lede').textContent = 'A copy of ' + inSentence(M.root.title) + ', made yours: the same phases and timings, a pre-meeting where people say when, who and where, and a post-meeting for what they think after. It gets the name you give it, its own link, and its own readings and record.';
   $('mk-hint').className = 'hint'; $('mk-hint').textContent = 'The copy is yours: it is kept under your key, so only you can change what it says. Anyone with its link can say when they can come, and what they think.';
-  try { $('mk-who').value = $('mk-who').value || localStorage.getItem('venture:who') || ''; } catch(e){}
+  $('mk-who').value = $('mk-who').value || whoHere();
+  $('mk-key').placeholder = keyFor(clean($('mk-who').value)) ? 'key remembered here' : 'your key';
   $('mk-go').disabled = false; showLink();
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
   $('mk-title').focus();
@@ -986,7 +1022,7 @@ $('mk-form').addEventListener('submit', async ev => {
   const name = clean($('mk-who').value);
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: the meeting is kept under it.'); $('mk-who').focus(); return; }
   let secret = $('mk-key').value.trim();
-  if (!secret){ try { secret = localStorage.getItem('passport-latch:' + name) || ''; } catch(e){} }
+  if (!secret) secret = keyFor(name);
   if (!secret){ say('err', 'Enter your key: the one your passport uses, or, with no passport yet, one you invent. It keeps the meeting yours.'); $('mk-key').focus(); return; }
   const what = $('mk-what').value.trim().replace(/\s+/g, ' ').replace(/[\s.;,]+$/, '');
   const src = FAMILY, of = inSentence(M.root.title);
@@ -1011,7 +1047,7 @@ $('mk-form').addEventListener('submit', async ev => {
     if (w.ok) w = await put('function:' + slug, law);
     if (!w.ok){ say('err', refusal(w)); go.disabled = false; return; }
     await post({ append: true, content: 'COPIED — ' + slug + ' — ' + title + '; from: ' + src + '; by ' + name + '; happyseaurchin.com/ring/' + slug }, 'pool:meeting').catch(() => null);
-    try { localStorage.setItem('mirror-latch:' + slug + ':' + name, secret); localStorage.setItem('venture:who', name); } catch(e){}
+    remember(slug, name, secret);
     $('mk-title').value = ''; $('mk-what').value = ''; $('mk-key').value = '';
     if (dlg.close) dlg.close(); else dlg.removeAttribute('open');
     switchTo(slug, true);
@@ -1071,7 +1107,7 @@ $('meet').addEventListener('change', () => switchTo($('meet').value));
 function switchTo(raw, made){
   const name = slug(raw); if (!name || (name === FAMILY && !made)) return;
   FAMILY = name; S.mode = 'design'; S.sel = ''; S.run = null; S.total = null; S.view = ''; S.made = made ? name : ''; restore();
-  try { history.replaceState(null, '', /^\/ring(\/|$)/.test(location.pathname) ? '/ring/' + encodeURIComponent(name) : location.pathname + '?f=' + encodeURIComponent(name)); } catch(e){}
+  try { history.replaceState(null, '', pathFor(name)); } catch(e){}
   tickControl(); panel.innerHTML = '<p class="loading">reading the beach…</p>'; $('formnote').hidden = true;
   load().then(start).catch(e => { panel.innerHTML = '<p class="empty">' + esc('Couldn’t read the beach: ' + e.message) + '</p>'; });
 }
@@ -1102,7 +1138,7 @@ function start(){
   $('copies').hidden = false;
   $('copies').innerHTML = (mine.length ? '<span>Copies of this meeting:</span>' + mine.slice(-12).reverse().map(y => '<a href="' + ringHref(y.name) + '">' + esc(y.title) + ' →</a>').join('') +
       (mine.length > 12 ? '<span>and ' + (mine.length - 12) + ' more in the selector</span>' : '') : '') +
-    '<span class="share">Its link: <a href="' + ringHref(FAMILY) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn ghost" style="padding:3px 8px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></span>';
+    '<span class="share">Its link: <a href="' + ringHref(FAMILY, true) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn ghost" style="padding:3px 8px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></span>';
   $('make').hidden = false;
   $('title').textContent = M.root.title;
   $('lede').innerHTML = M.root.text ? cited(cap(M.root.text.split(/(?<=[.!?])\s+(?=[A-Z])/)[0])) : '';
@@ -1118,11 +1154,11 @@ function start(){
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { widths = {}; drawRing(); });
   if (window.nameLinks) nameLinks(document.body, { blocks: IX.blocks });
 }
+if (ON_SITE && HANDLE && !PATH[2]) try { history.replaceState(null, '', pathFor(FAMILY) + location.hash); } catch(e){}
 restore();
 load().then(start).catch(e => { panel.innerHTML = '<p class="empty">' + esc('Couldn’t read the beach: ' + e.message) + '</p>'; });
 
-const CARRIED = clean(Q.get('h')) || null;
-if (window.siteDoors) siteDoors({ handle: CARRIED, here: 'ring', site: true });
+if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'ring', site: true });
 })();
 </script>
 </body>
