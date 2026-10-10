@@ -95,6 +95,15 @@
   .door .k{font-family:var(--mono);font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim)}
   .door .t{font-family:var(--display);font-weight:700;font-size:14px}
   .door[aria-pressed="true"]{border-style:solid;border-color:var(--foam)}
+  /* the meeting's pool, between the doors: talk runs before, during and after, as they stand outside the hour */
+  a.door.talk{border-style:solid;border-color:rgba(var(--liquid-rgb),0.5);text-decoration:none;border-bottom-width:1px}
+  a.door.talk .t{color:var(--liquid)}
+  a.door.talk:hover{border-color:var(--liquid)}
+  /* mirror links — hidden until 'show mirror links' under options, as on /walk; a link is a place, never a person */
+  .mlink{display:none;font-family:var(--mono);font-size:10px;letter-spacing:0;color:var(--vapour-dim);border:1px solid var(--line);border-radius:5px;padding:2px 7px;text-decoration:none}
+  .mlink:hover{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+  body.mirrorlinks .mlink{display:inline-block}
+  body.mirrorlinks .mlink.live{justify-self:start}
   .ringbox{position:relative;max-width:580px;margin:0 auto}
   svg.ring{display:block;width:100%;height:auto;overflow:visible}
   .seg{cursor:pointer;stroke:var(--abyss);stroke-width:2}
@@ -208,6 +217,9 @@
   <span class="dot"></span>
   <span><b id="bar-name">ring</b> · a meeting drawn as one ring</span>
   <span class="spacer"></span>
+  <button id="btn-pool" hidden title="Open a room for this meeting, to talk in before it, during it and after it, in the magic mirror">create a pool</button>
+  <button id="btn-mirror" title="Show links into the magic mirror, where each part of the meeting is live, with everyone's readings there">show mirror links</button>
+  <button id="btn-nums" title="Show the numbering, which is each part's address">show numbers</button>
   <button id="btn-theme" title="light or dark">◐</button>
 </div>
 <div class="wrap">
@@ -227,7 +239,6 @@
       <button type="button" class="plain" id="m-run" aria-pressed="false" title="Run the meeting: a clock, a mark at each change of part, and the run kept at the end">Run</button>
       <label class="field" for="meet" id="meet-f" hidden>Meeting <select id="meet"></select></label>
       <label class="field" for="dur">Length <select id="dur"></select></label>
-      <button type="button" class="plain" id="nums" aria-pressed="false" title="Show the numbering, which is each part's address">Numbers</button>
       <label class="field" for="runs" id="runs-f" hidden>Runs <select id="runs"></select></label>
     </div>
   </header>
@@ -277,6 +288,13 @@
 "use strict";
 const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 const RENDER = 'https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=';
+/* the magic mirror at a part: its line, the fold and every reading there, live — the link /walk makes for a tree,
+   ?block=spine:<name>&at=<address>, the whole meeting with no address. The pool is not a point, so the mirror opens
+   it as a room, by its name */
+const MIRROR = 'https://mirror.onen.ai/';
+const mirrorUrl = a => MIRROR + '?block=' + encodeURIComponent('spine:' + FAMILY) + (a ? '&at=' + a : '');
+const poolUrl = () => MIRROR + '?pool=' + encodeURIComponent(FAMILY);
+const hasPool = () => !!IX && IX.blocks.indexOf('pool:' + FAMILY) >= 0;
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const PATH = location.pathname.match(/^\/ring\/([^\/?#]+)(?:\/([^\/?#]+))?/) || [];
@@ -720,11 +738,13 @@ svg.addEventListener('keydown', ev => {
 /* the doors: phases with no minutes stand outside the hour */
 function drawDoors(){
   const d = $('doors');
-  if (!M || (!M.before.length && !M.after.length)){ d.innerHTML = ''; d.hidden = true; return; }
+  /* the meeting's pool stands between the doors once someone has made it ('create a pool', under options) */
+  const talk = hasPool() ? '<a class="door talk" href="' + esc(poolUrl()) + '" target="_blank" rel="noopener" title="the meeting’s pool, in the magic mirror: talk before it, during it and after it"><span class="k">talk</span><span class="t">in the pool ↗</span></a>' : '';
+  if (!M || (!M.before.length && !M.after.length && !talk)){ d.innerHTML = ''; d.hidden = true; return; }
   d.hidden = false;
   const btn = (p, k) => '<button type="button" class="door" data-go="' + p.addr + '" aria-pressed="' + (S.sel.split('.')[0] === p.addr) + '"><span class="k">' +
     (k === 'before' ? '← before the meeting' : 'after the meeting →') + '</span><span class="t">' + esc((S.nums ? p.addr + '  ' : '') + p.title) + '</span></button>';
-  d.innerHTML = M.before.map(p => btn(p, 'before')).join('') + M.after.map(p => btn(p, 'after')).join('');
+  d.innerHTML = M.before.map(p => btn(p, 'before')).join('') + talk + M.after.map(p => btn(p, 'after')).join('');
 }
 $('doors').addEventListener('click', e => { const b = e.target.closest('[data-go]'); if (b) select(b.getAttribute('data-go')); });
 
@@ -780,7 +800,7 @@ function readingsHtml(n){
   }
   rs.forEach(r => {
     h += '<div class="reading"><p>' + cited(r.text) + '</p><div class="who"><b>' + esc(r.who) + '</b>' + (r.est != null ? '<span>gives it ' + fmt(r.est * k) + '</span>' : '') +
-         '<a href="' + RENDER + encodeURIComponent(FAMILY + ':' + r.who) + (a ? '&spindle=' + encodeURIComponent(a) : '') + '" target="_blank" rel="noopener">in ' + esc(r.who) + '’s mirror</a></div></div>';
+         '<a class="mlink" href="' + esc(mirrorUrl(a)) + '" target="_blank" rel="noopener" title="this part, live in the magic mirror, with every reading here">mirror ↗</a></div></div>';
   });
   return h || '<p class="empty">No readings here yet. Yours can be the first.</p>';
 }
@@ -801,7 +821,8 @@ function addBox(n){
     (n.kind !== 'root' && !n.door ? '<div class="row"><input class="mins" id="f-min" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Minutes?" aria-label="How many minutes you would give it, at this length"></div>' : '') +
     '<div class="row"><input id="f-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
     '<button type="button" class="btn" id="f-send">Add my reading</button></div>' +
-    '<p class="hint" id="f-hint">It goes into your own mirror of this meeting, in your name, at this part; writing again here replaces it.</p></div>';
+    '<p class="hint" id="f-hint">It goes into your own mirror of this meeting, in your name, at this part; writing again here replaces it.</p>' +
+    '<a class="mlink live" href="' + esc(mirrorUrl(n.addr)) + '" target="_blank" rel="noopener" title="' + esc(label) + ', live, with everyone’s readings here">view live in the magic mirror ↗</a></div>';
 }
 function runBox(){
   const ri = runInfo(), r = S.run;
@@ -1018,7 +1039,7 @@ const dlg = $('makedlg');
 const slugify = t => String(t || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 48).replace(/-+$/, '');
 function freeSlug(base){
   if (!base) return '';
-  const taken = n => IX.blocks.some(b => b === 'function:' + n || b === 'spine:' + n || b === n || b === 'passport:' + n || b.startsWith(n + ':'));
+  const taken = n => IX.blocks.some(b => b === 'function:' + n || b === 'spine:' + n || b === n || b === 'passport:' + n || b === 'pool:' + n || b.startsWith(n + ':'));
   if (!taken(base)) return base;
   for (let i = 2; i < 100; i++){ const c = base.slice(0, 44).replace(/-+$/, '') + '-' + i; if (!taken(c)) return c; }
   return '';
@@ -1109,7 +1130,8 @@ function drawControls(){
   const opts = [M.sum, 2, 10, 20, 30, 40, 60, 90, 120, 180].filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => a - b);
   dur.innerHTML = opts.map(v => '<option value="' + v + '">' + (v === M.sum ? fmt(v) + ' · as planned' : v === 2 ? '2′ · to try a run' : v >= 120 ? (v / 60) + ' hours' : v + ' min') + '</option>').join('');
   dur.value = String(len()); dur.disabled = locked; dur.title = locked ? 'Fixed for this run. Start a new run to change it.' : '';
-  $('nums').setAttribute('aria-pressed', String(S.nums));
+  $('btn-nums').textContent = S.nums ? 'hide numbers' : 'show numbers';
+  $('btn-pool').hidden = !!SNAP || hasPool();
   const rf = $('runs-f'), rs = $('runs');
   rf.hidden = !RUNS.length || S.mode === 'run';
   rs.innerHTML = '<option value="">the plan</option>' + RUNS.map(r => '<option value="' + esc(r.name) + '">' + esc(runDate(r) + ' · ' + r.who) + '</option>').join('');
@@ -1132,7 +1154,33 @@ function select(a, focus){
 }
 $('m-run').addEventListener('click', () => { S.mode = S.mode === 'run' ? 'design' : 'run'; S.view = ''; render(); tickControl(); });
 $('dur').addEventListener('change', () => { S.total = parseFloat($('dur').value) || null; if (S.total === M.sum) S.total = null; save(); render(); });
-$('nums').addEventListener('click', () => { S.nums = !S.nums; save(); render(); });
+/* under options, as on /now and /walk: the numbering, the mirror links, and the meeting's pool */
+$('btn-nums').addEventListener('click', () => { S.nums = !S.nums; save(); render(); });
+$('btn-mirror').addEventListener('click', () => {
+  const on = document.body.classList.toggle('mirrorlinks');
+  $('btn-mirror').textContent = on ? 'hide mirror links' : 'show mirror links';
+});
+/* a pool is made when someone wants one, open to anyone, its opening line saying what it is for; once it stands,
+   'talk' appears between the doors and this act leaves the menu */
+$('btn-pool').addEventListener('click', async () => {
+  const b = $('btn-pool');
+  if (!M || SNAP || hasPool()) return;
+  b.disabled = true; b.textContent = 'creating the pool…';
+  const purpose = 'ROOM — talk about ' + inSentence(M.root.title) + ' (spine:' + FAMILY + '), open to anyone with its link, before the meeting, during it and after it. ' +
+    'Talk, not the record: a reading counts where it is said, at the meeting’s own address in the reader’s own mirror, and whatever is settled here, a time or a place, ' +
+    'counts once it is written there (the meeting’s When at 1.1, its Where at 1.3) and in each person’s own now. The meeting: happyseaurchin.com/ring/' + FAMILY + '; its law: function:' + FAMILY + '.';
+  try {
+    const w = await post({ block: 'pool:' + FAMILY, content: { '_': purpose } });
+    /* refused because someone made it a moment ago is as good as made */
+    if (w.ok || (await readBlock('pool:' + FAMILY).catch(() => null))){
+      IX.blocks.push('pool:' + FAMILY);
+      const dd = document.getElementById('dd-acts'); if (dd) dd.open = false;
+      b.textContent = 'create a pool'; b.disabled = false; render(); return;
+    }
+    b.textContent = 'the pool couldn’t be made — try again';
+  } catch(e){ b.textContent = 'the pool couldn’t be made — try again'; }
+  b.disabled = false;
+});
 $('runs').addEventListener('change', () => { S.view = $('runs').value; render(); });
 /* another meeting, read in place: the address follows, so a link carries a reader straight to it */
 $('meet').addEventListener('change', () => switchTo($('meet').value));
