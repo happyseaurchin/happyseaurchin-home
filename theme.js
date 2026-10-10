@@ -622,6 +622,10 @@
      * engine's own page, which must stand at its own address (David, 2026-09-26) */
     ['notifications','push',     'handle'],
     ['projects',     'walk',     'family'],
+    /* every meeting drawn as one ring, the copies hung under the meeting each came
+     * from — a meeting's address is its own name, never a handle, so the door is
+     * bare (David, 2026-10-10: "Are meetings included in the drop-down go menu") */
+    ['meetings',     'ring',     'bare'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
     ['the ledger',   'ledger',   'handle']
@@ -661,6 +665,7 @@
     ['dashboard',   'the beach, live'],
     ['path',        'part by part', '/path/beach-venture'],
     ['tracks',      'the tracks',   '/tracks/beach-venture'],
+    ['ring',        'meetings'],
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
