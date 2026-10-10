@@ -19,7 +19,10 @@
      digits, each line opening with its minutes and a phase's line ending "Done when …". The ring draws
      the phases as slices sized by those minutes, the parts on the outer ring; a phase with no minutes is
      a door before or after the hour. <name>:<handle> are readings; <name>:<beat>:<handle> are runs (dated
-     mirrors at the same addresses); the bare <name> is the fold. /ring/<name> or /ring?f=<name>. */
+     mirrors at the same addresses); the bare <name> is the fold. A copy is a family of its own, its law's 9
+     opening "PROVENANCE: copied from: <name>": Create your own meeting writes the spine and the law again
+     under the maker's key and lists the copy in the form's room, pool:meeting. No code tells an original
+     from a copy; a meeting says what it is in its own words. /ring/<name> or /ring?f=<name>. */
   :root{
     --p1:#3987e5; --p2:#d95926; --p3:#199e70; --p4:#c98500; --p5:#d55181; --p6:#008300; --p7:#9085e9; --p8:#e66767;
     --over:#d03b3b; --good:#0ca30c;
@@ -73,7 +76,7 @@
   button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,.seg:focus-visible,.hub:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
   .formnote{margin:12px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
   .eyebrow a{color:inherit}
-  .arranged{margin:10px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim);display:flex;flex-wrap:wrap;gap:4px 12px}
+  .copies{margin:10px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim);display:flex;flex-wrap:wrap;gap:4px 12px}
 
   .main{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:28px;margin-top:20px;align-items:start}
   @media (max-width:880px){.main{grid-template-columns:minmax(0,1fr)}.ringcol{display:contents}.doors{order:1}.ringbox{order:2}.panel{order:3}.tablebox{order:4;margin-top:0}}
@@ -204,7 +207,7 @@
       <p class="eyebrow" id="eyebrow">A meeting, drawn as one ring</p>
       <h1 id="title">The ring</h1>
       <p class="lede" id="lede">Each phase of the meeting is a slice of the ring, sized by the minutes it gets, with its parts on the outer ring. Tap any part to see what it is for, when it is done, what people said about it, and the synthesis.</p>
-      <p class="arranged" id="arranged" hidden></p>
+      <p class="copies" id="copies" hidden></p>
     </div>
     <div class="side">
     <button type="button" class="make" id="make" hidden>+ Create your own meeting</button>
@@ -249,9 +252,9 @@
         <input id="mk-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">
         <input id="mk-key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key">
       </div>
-      <p class="hint" id="mk-hint">The meeting is yours: it is kept under your key, so only you can change what it says it is. Anyone with its link can say when they can come, and what they think.</p>
-      <div class="runbtns"><button type="submit" class="btn" id="mk-go">Create the meeting</button><button type="button" class="btn warn" id="mk-cancel">Cancel</button></div>
-      <p class="note mk-type">A new meeting <b>type</b>, with phases and timings of its own, is made with Claude for now: say what you have in mind in the meeting room, <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&amp;block=pool%3Ameeting" target="_blank" rel="noopener">pool:meeting</a>, or ask Claude with the beach connector.</p>
+      <p class="hint" id="mk-hint">The copy is yours: it is kept under your key, so only you can change what it says. Anyone with its link can say when they can come, and what they think.</p>
+      <div class="runbtns"><button type="submit" class="btn" id="mk-go">Make my copy</button><button type="button" class="btn warn" id="mk-cancel">Cancel</button></div>
+      <p class="note mk-type">To change a copy’s phases and timings once it is made, or for a meeting unlike any here, ask Claude with the beach connector, or say what you have in mind in the meeting room, <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&amp;block=pool%3Ameeting" target="_blank" rel="noopener">pool:meeting</a>.</p>
     </form>
   </dialog>
   <nav class="foot" id="foot" aria-label="Where this comes from"></nav>
@@ -343,8 +346,9 @@ function parseLine(s){
 }
 
 /* ---------- the design ---------- */
-let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [], DESIGN = '';
-const designOf = law => { for (const d of digits(law)){ const m = /^\s*design:\s*([a-z0-9-]+)/i.exec(voiceOf(law[d]) || ''); if (m) return m[1].toLowerCase(); } return ''; };
+let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [], COPIES = [];
+/* a copy's law says where it came from, at its 9: "PROVENANCE: copied from: <name>" */
+const copiedFrom = law => { const m = /copied from:\s*([a-z0-9][a-z0-9-]*)/i.exec(voiceOf(law && law['9']) || ''); return m ? m[1].toLowerCase() : ''; };
 function buildModel(spine){
   const root = parseLine(voiceOf(spine) || FAMILY);
   root.addr = ''; root.kind = 'root';
@@ -457,14 +461,22 @@ async function load(){
   const form = has.has('function:meeting') ? await readBlock('function:meeting').catch(() => null) : null;
   const list = form && form['8'] && typeof form['8'] === 'object' ? form['8'] : {};
   const entry = v => { const m = String(v || '').match(/^([a-z0-9-]+)\s*[—–-]\s*([\s\S]*)$/); return m ? { name: m[1], line: m[2] } : null; };
-  MEETINGS = digits(list).map(d => { const e = entry(voiceOf(list[d])); if (e) e.arranged = digits(list[d]).map(x => entry(voiceOf(list[d][x]))).filter(Boolean); return e; }).filter(Boolean);
-  const room = has.has('pool:meeting') ? await readBlock('pool:meeting').catch(() => null) : null, regs = [];
+  MEETINGS = digits(list).map(d => entry(voiceOf(list[d]))).filter(Boolean);
+  /* the form's room lists the copies, oldest first: "COPIED — <name> — <title>; from: <source>; by <handle>" (an
+     ARRANGED line from before reads the same, its design the source); the latest line for a name stands, and a
+     line counts only where the copy's law stands and the name is not one of the meetings the form lists */
+  const room = has.has('pool:meeting') ? await readBlock('pool:meeting').catch(() => null) : null, reg = new Map();
   (function walk(n){
     if (!n || typeof n !== 'object') return;
     if (n['_'] && typeof n['_'] === 'object') walk(n['_']);
-    digits(n).forEach(d => { const v = voiceOf(n[d]) || '', m = v.match(/^ARRANGED\s*[—–-]\s*([a-z0-9-]+)\s*[—–-]\s*([^;]+);\s*design:\s*([a-z0-9-]+)/i); if (m) regs.push({ name: m[1], line: m[2].trim(), design: m[3].toLowerCase() }); walk(n[d]); });
+    digits(n).forEach(d => {
+      const m = (voiceOf(n[d]) || '').match(/^(?:COPIED|ARRANGED)\s*[—–-]\s*([a-z0-9-]+)\s*[—–-]\s*([^;]+);\s*(?:from|design):\s*([a-z0-9-]+)/i);
+      const name = m ? m[1].toLowerCase() : '';
+      if (name && has.has('function:' + name) && !MEETINGS.some(x => x.name === name)){ reg.delete(name); reg.set(name, { name, title: m[2].trim(), from: m[3].toLowerCase() }); }
+      walk(n[d]);
+    });
   })(room);
-  MEETINGS.forEach(x => regs.forEach(r => { if (r.design === x.name && !x.arranged.some(y => y.name === r.name)) x.arranged.push({ name: r.name, line: r.line }); }));
+  COPIES = [...reg.values()];
   const [spine, law, fold, mirrors, kept] = await Promise.all([
     has.has('spine:' + FAMILY) ? readBlock('spine:' + FAMILY) : null,
     has.has('function:' + FAMILY) ? readBlock('function:' + FAMILY) : null,
@@ -472,15 +484,16 @@ async function load(){
     Promise.all(hands.map(h => readBlock(base + h).then(b => ({ h, b })).catch(() => ({ h, b: null })))),
     Promise.all(runs.map(n => readBlock(n).then(b => b ? parseRun(n, b) : null).catch(() => null)))
   ]);
-  DESIGN = '';
-  let sp = spine;
-  if (!sp && law){ DESIGN = designOf(law); if (DESIGN) sp = await readBlock('spine:' + DESIGN).catch(() => null); }
-  SPINE = sp; LAW = law; FOLD = fold; M = null;
+  SPINE = spine; LAW = law; FOLD = fold; M = null;
   MIRRORS = mirrors.filter(m => m.b);
   RUNS = kept.filter(Boolean).sort((a, b) => (b.start || 0) - (a.start || 0));
   if (SPINE){
     M = buildModel(SPINE);
-    if (DESIGN){ M.design = { name: DESIGN, title: M.root.title }; const r = parseLine(voiceOf(LAW) || FAMILY); r.addr = ''; r.kind = 'root'; M.root = r; }
+    const src = copiedFrom(LAW);
+    if (src && src !== FAMILY){
+      const sp = has.has('spine:' + src) ? await readBlock('spine:' + src).catch(() => null) : null;
+      M.source = { name: src, title: sp ? parseLine(voiceOf(sp) || src).title : ((COPIES.find(y => y.name === src) || {}).title || src.replace(/-/g, ' ')) };
+    }
   }
 }
 
@@ -735,7 +748,7 @@ function runBox(){
   if (!r){
     return h + '<div class="runline"><span class="clock">' + clock(len() * 60000) + '</span><span class="runsub">ready, ' + M.ring.length + ' phases, ' + M.steps.length + ' parts</span></div>' +
       '<p class="note">Start when the meeting starts. Mark each change of part as it happens, and the outer ring records how long each one actually took against the plan.</p>' +
-      (M.design ? '' : '<p class="note">This is the meeting type itself. To hold a meeting with its own link, its own people and its own record, <button type="button" class="btn ghost" style="padding:3px 8px" data-make="1">create your own meeting</button> first.</p>') +
+      (M.source ? '' : '<p class="note">A run kept here stands beside this meeting. For a meeting of your own, with its own link, its own people and its own record, <button type="button" class="btn ghost" style="padding:3px 8px" data-make="1">create your own meeting</button> first: it copies this one under your key.</p>') +
       '<div class="runbtns"><button type="button" class="btn" data-run="start">Start the meeting</button></div></section>';
   }
   if (!r.end){
@@ -774,7 +787,7 @@ function drawPanel(){
   const n = find(S.sel), a = n.addr, k = scale();
   let h = '';
   if (S.mode === 'run') h += runBox();
-  if (S.made && S.made === FAMILY) h += '<div class="made"><p><b>Your meeting is made.</b> Share its link with the people coming: they say when they can come at the pre-meeting, and what they think after at the post-meeting.</p><div class="share"><a href="' + ringHref(FAMILY) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn" style="padding:4px 10px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></div></div>';
+  if (S.made && S.made === FAMILY) h += '<div class="made"><p><b>Your meeting is made</b>, a copy kept under your key. Share its link with the people coming: they say when they can come at the pre-meeting, and what they think after at the post-meeting.</p><div class="share"><a href="' + ringHref(FAMILY) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn" style="padding:4px 10px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></div></div>';
   const v = viewed();
   if (v) h += '<div class="viewing"><span>Showing the run kept by <b>' + esc(v.who) + '</b>, ' + esc(runDate(v)) + ': ' + fmt(v.taken) + ' of ' + fmt(v.planned) + '</span><button type="button" class="btn warn" data-view="">Back to the design</button></div>';
   h += crumbs(n);
@@ -857,7 +870,7 @@ async function addReading(){
   try {
     let mirror = await readBlock(block);
     if (!mirror){
-      const born = { '_': a === '' ? line : 'MIRROR — ' + name + '’s readings of ' + FAMILY + (DESIGN ? ', a meeting drawn from spine:' + DESIGN : ' (spine:' + FAMILY + ')') + ', at the design’s own addresses: what they see, what they would change, the minutes they would give a part, and when they can come. Sovereign to them; silence at a part is honest absence. First reading written from /ring.' };
+      const born = { '_': a === '' ? line : 'MIRROR — ' + name + '’s readings of ' + FAMILY + ' (spine:' + FAMILY + '), at the design’s own addresses: what they see, what they would change, the minutes they would give a part, and when they can come. Sovereign to them; silence at a part is honest absence. First reading written from /ring.' };
       const w = await post({ block, new_lock: secret, content: born });
       if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
       mirror = born;
@@ -887,7 +900,7 @@ async function addReading(){
 function runRecord(name, who){
   const r = S.run, ri = runInfo(), k = r.total / M.sum;
   const iso = new Date(r.start).toISOString().replace(/\.\d+Z$/, 'Z');
-  const out = [['_', 'RUN — ' + M.root.title + ' (' + (DESIGN ? FAMILY + ', drawn from spine:' + DESIGN : 'spine:' + FAMILY) + '), kept by ' + name + ': began ' + iso + ' (' + beatOf(r.start) + '); ' + num(r.total) + ' minutes planned, ' +
+  const out = [['_', 'RUN — ' + M.root.title + ' (spine:' + FAMILY + '), kept by ' + name + ': began ' + iso + ' (' + beatOf(r.start) + '); ' + num(r.total) + ' minutes planned, ' +
     num(ri.elapsed) + ' taken' + (who ? '; with ' + who : '') + '. Each line opens with the minutes it took there; a phase line then says whether its done-when held (yes, partly or no) and what happened.']];
   const actAt = i => i < ri.acts.length ? ri.acts[i] : null;
   M.ring.forEach(p => {
@@ -945,12 +958,12 @@ function freeSlug(base){
   for (let i = 2; i < 100; i++){ const c = base.slice(0, 44).replace(/-+$/, '') + '-' + i; if (!taken(c)) return c; }
   return '';
 }
-const typeOf = () => M.design ? { name: M.design.name, title: M.design.title } : { name: FAMILY, title: M.root.title };
+/* "The action cycle" reads as "the action cycle" inside a sentence; a name stays as it is */
+const inSentence = t => /^(The|A|An)\s/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t;
 function openMake(){
   if (!M) return;
-  const t = typeOf();
-  $('mk-lede').textContent = 'A new meeting with the same form as ' + t.title.toLowerCase() + ': the same phases and timings, a pre-meeting where people say when, who and where, and a post-meeting for what they think after. It gets its own name, its own link, and its own readings and record.';
-  $('mk-hint').className = 'hint'; $('mk-hint').textContent = 'The meeting is yours: it is kept under your key, so only you can change what it says it is. Anyone with its link can say when they can come, and what they think.';
+  $('mk-lede').textContent = 'A copy of ' + inSentence(M.root.title) + ', made yours: the same phases and timings, a pre-meeting where people say when, who and where, and a post-meeting for what they think after. It gets the name you give it, its own link, and its own readings and record.';
+  $('mk-hint').className = 'hint'; $('mk-hint').textContent = 'The copy is yours: it is kept under your key, so only you can change what it says. Anyone with its link can say when they can come, and what they think.';
   try { $('mk-who').value = $('mk-who').value || localStorage.getItem('venture:who') || ''; } catch(e){}
   $('mk-go').disabled = false; showLink();
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
@@ -960,10 +973,12 @@ function showLink(){ const s = freeSlug(slugify($('mk-title').value)); $('mk-lin
 $('make').addEventListener('click', openMake);
 $('mk-title').addEventListener('input', showLink);
 $('mk-cancel').addEventListener('click', () => dlg.close ? dlg.close() : dlg.removeAttribute('open'));
+/* a copy is the meeting written again under the maker's key: the spine whole, its root re-voiced with their name
+   for it and where it came from; the law whole, its 9 saying "copied from"; then a line in the form's room */
 $('mk-form').addEventListener('submit', async ev => {
   ev.preventDefault();
   const hint = $('mk-hint'), go = $('mk-go'), say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
-  if (SNAP){ say('err', 'This copy is a snapshot, so it cannot make a meeting: make it on the live page, happyseaurchin.com/ring/' + typeOf().name + '.'); return; }
+  if (SNAP){ say('err', 'This copy of the page is a snapshot, so it cannot make a meeting: make it on the live page, happyseaurchin.com/ring/' + FAMILY + '.'); return; }
   const title = $('mk-title').value.trim().replace(/\s+/g, ' ').replace(/:\s/g, ' — ');
   if (!title){ say('err', 'Give your meeting a name.'); $('mk-title').focus(); return; }
   const slug = freeSlug(slugify(title));
@@ -973,22 +988,34 @@ $('mk-form').addEventListener('submit', async ev => {
   let secret = $('mk-key').value.trim();
   if (!secret){ try { secret = localStorage.getItem('passport-latch:' + name) || ''; } catch(e){} }
   if (!secret){ say('err', 'Enter your key: the one your passport uses, or, with no passport yet, one you invent. It keeps the meeting yours.'); $('mk-key').focus(); return; }
-  const what = $('mk-what').value.trim().replace(/\s+/g, ' ');
-  const t = typeOf(), today = new Date().toISOString().slice(0, 10);
-  const law = { '_': title + ': ' + (what ? what + ' — ' : '') + 'one meeting arranged with ' + t.name + ', drawn from spine:' + t.name + ' by reference under function:meeting. Its readings, its fold and its runs are its own: say when you can come at the pre-meeting, and what you think after it at the post-meeting.',
-    '1': 'mode: meeting', '2': 'design: ' + t.name };
-  if (what) law['3'] = 'WHAT IT IS: ' + what;
-  law['9'] = 'PROVENANCE: arranged ' + today + ' by ' + name + ' at happyseaurchin.com/ring/' + t.name + ', with Create your own meeting.';
-  go.disabled = true; say('', 'making your meeting…');
+  const what = $('mk-what').value.trim().replace(/\s+/g, ' ').replace(/[\s.;,]+$/, '');
+  const src = FAMILY, of = inSentence(M.root.title);
+  const date = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const desc = String(M.root.text || '').split(/(?<=[.!?])\s+(?=[A-Z])/)[0].trim();
+  const spine = JSON.parse(JSON.stringify(SPINE));
+  let top = spine; while (top['_'] && typeof top['_'] === 'object') top = top['_'];
+  top['_'] = title + ': ' + [what ? what + '.' : '', desc ? (what ? cap(desc) : desc) + (/[.!?]$/.test(desc) ? '' : '.') : '',
+    'A copy of ' + of + ' (spine:' + src + '), made ' + date + ' by ' + name + " with Create your own meeting and kept under their own key: its phases and timings were " + of +
+    "'s that day, and only its keeper changes them. Its readings, its fold and its runs are its own."].filter(Boolean).join(' ');
+  const law = JSON.parse(JSON.stringify(LAW || {}));
+  law['_'] = 'Operator for ' + slug + ': ' + title + ', a meeting drawn as one ring, copied with its spine from ' + src + ' on ' + date + ' — the lines here are ' + src +
+    "'s own law as it stood then, and where they name " + src + ', read ' + slug + '; the shared law at function:meeting. Deliver it with function:meeting whole to any LLM that reads, runs or folds it.';
+  if (!/^\s*mode:\s*meeting\b/i.test(voiceOf(law['1']) || '')) law['1'] = 'mode: meeting';
+  law['9'] = 'PROVENANCE: copied from: ' + src + ' — on ' + date + ', by ' + name + ' with Create your own meeting at happyseaurchin.com/ring/' + src + ', spine and law, under ' + name +
+    "'s own key" + (what ? '; ' + what : '') + '. ' + cap(of) + "'s own provenance stands at function:" + src + ' 9, and what this copy teaches goes back there, as readings in ' + src + "'s mirrors.";
+  /* written fresh under the key, or, where a first try already wrote it, again under the same key */
+  const put = async (block, content) => (await readBlock(block)) ? post({ confirm: true, content, secret }, block) : post({ block, new_lock: secret, content });
+  go.disabled = true; say('', 'copying it…');
   try {
-    const w = await post({ block: 'function:' + slug, new_lock: secret, content: law });
+    let w = await put('spine:' + slug, spine);
+    if (w.ok) w = await put('function:' + slug, law);
     if (!w.ok){ say('err', refusal(w)); go.disabled = false; return; }
-    await post({ append: true, content: 'ARRANGED — ' + slug + ' — ' + title + '; design: ' + t.name + '; by ' + name + '; happyseaurchin.com/ring/' + slug }, 'pool:meeting').catch(() => null);
+    await post({ append: true, content: 'COPIED — ' + slug + ' — ' + title + '; from: ' + src + '; by ' + name + '; happyseaurchin.com/ring/' + slug }, 'pool:meeting').catch(() => null);
     try { localStorage.setItem('mirror-latch:' + slug + ':' + name, secret); localStorage.setItem('venture:who', name); } catch(e){}
     $('mk-title').value = ''; $('mk-what').value = ''; $('mk-key').value = '';
     if (dlg.close) dlg.close(); else dlg.removeAttribute('open');
     switchTo(slug, true);
-  } catch(e){ say('err', 'couldn’t make the meeting: ' + e.message); go.disabled = false; }
+  } catch(e){ say('err', 'couldn’t make the copy: ' + e.message); go.disabled = false; }
 });
 
 /* ---------- the page around the ring ---------- */
@@ -996,8 +1023,8 @@ function drawHow(){
   const hands = MIRRORS.map(m => '<a href="' + RENDER + encodeURIComponent(FAMILY + ':' + m.h) + '" target="_blank" rel="noopener">' + esc(m.h) + '</a>').join(', ');
   $('how').innerHTML =
     '<div><h4>The design is a block</h4><p>The meeting at the centre, its phases at 1 to 9 in order, their parts beneath; each line opens with its minutes, and a phase says when it is done. ' +
-      '<a href="' + RENDER + encodeURIComponent('spine:' + (DESIGN || FAMILY)) + '" target="_blank" rel="noopener"><code>spine:' + esc(DESIGN || FAMILY) + '</code></a>' +
-      (DESIGN ? ', shared by every meeting arranged with it; this meeting’s own words are its law, <code>function:' + esc(FAMILY) + '</code>.' : '') + '</p></div>' +
+      '<a href="' + RENDER + encodeURIComponent('spine:' + FAMILY) + '" target="_blank" rel="noopener"><code>spine:' + esc(FAMILY) + '</code></a>' +
+      (M.source ? ', a copy of <code>spine:' + esc(M.source.name) + '</code> at the same addresses, so what is said at a part here can be laid beside the same part there.' : '') + '</p></div>' +
     '<div><h4>Readings are mirrors</h4><p>A reading lands in its writer’s own mirror, <code>' + esc(FAMILY) + ':&lt;name&gt;</code>, at the part it answers, so every voice stands side by side.' + (hands ? ' Here now: ' + hands + '.' : '') + '</p></div>' +
     '<div><h4>The synthesis is the fold</h4><p>Woven from every reading and every run, phase by phase, and re-woven as they grow. ' +
       (FOLD ? '<a href="' + RENDER + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener"><code>' + esc(FAMILY) + '</code></a>' : 'None woven yet.') + '</p></div>' +
@@ -1006,7 +1033,7 @@ function drawHow(){
   $('foot').innerHTML = '<a href="' + RENDER + encodeURIComponent('function:' + FAMILY) + '" target="_blank" rel="noopener">this meeting’s law →</a>' +
     '<a href="' + RENDER + encodeURIComponent('function:meeting') + '" target="_blank" rel="noopener">the meeting form →</a>' +
     '<a href="https://happyseaurchin.com/walk/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">walk the family →</a>' +
-    (DESIGN ? '<a href="' + ringHref(DESIGN) + '">the design it is drawn from →</a>' : '');
+    (M.source ? '<a href="' + ringHref(M.source.name) + '">the meeting it was copied from →</a>' : '');
 }
 function drawControls(){
   const dur = $('dur'), locked = S.mode === 'run' && !!S.run;
@@ -1020,10 +1047,13 @@ function drawControls(){
   rs.value = S.view;
   $('m-design').setAttribute('aria-pressed', String(S.mode === 'design'));
   $('m-run').setAttribute('aria-pressed', String(S.mode === 'run'));
-  const flat = []; MEETINGS.forEach(x => { flat.push({ name: x.name, sub: false }); (x.arranged || []).forEach(y => flat.push({ name: y.name, sub: true })); });
-  if (!flat.some(x => x.name === FAMILY)) flat.push({ name: FAMILY, sub: !!DESIGN });
+  /* the meetings the form lists, each with the copies made from it beneath, and copies of copies beneath those */
+  const flat = [], seen = new Set();
+  const add = (name, title, depth) => { if (seen.has(name)) return; seen.add(name); flat.push({ name, title, depth }); COPIES.filter(y => y.from === name).forEach(y => add(y.name, y.title, depth + 1)); };
+  MEETINGS.forEach(x => add(x.name, '', 0));
+  if (!seen.has(FAMILY)) add(FAMILY, M.root.title, M.source ? 1 : 0);
   $('meet-f').hidden = flat.length < 2;
-  $('meet').innerHTML = flat.map(x => '<option value="' + esc(x.name) + '">' + (x.sub ? '\u00a0\u00a0↳ ' : '') + esc(x.name.replace(/-/g, ' ')) + '</option>').join('');
+  $('meet').innerHTML = flat.map(x => '<option value="' + esc(x.name) + '">' + '\u00a0\u00a0'.repeat(Math.min(x.depth, 3)) + (x.depth ? '↳ ' : '') + esc(x.title || x.name.replace(/-/g, ' ')) + '</option>').join('');
   $('meet').value = FAMILY;
 }
 function render(){ if (!M) return; drawControls(); drawDoors(); drawRing(); drawTable(); drawPanel(); }
@@ -1063,20 +1093,16 @@ function tickControl(){
 function start(){
   if (!SPINE){
     panel.innerHTML = '<p class="empty">No meeting called <b>' + esc(FAMILY) + '</b> stands on the beach yet. <a href="https://happyseaurchin.com/ring/action-cycle">The action cycle</a> is one that does.</p>';
-    $('title').textContent = FAMILY; return;
+    $('title').textContent = FAMILY; $('eyebrow').textContent = 'A meeting, drawn as one ring'; $('copies').hidden = true; $('make').hidden = true; return;
   }
   if (S.run && S.run.marks && S.run.marks.length > M.steps.length) S.run = null;
   document.title = M.root.title + ' — the ring';
-  $('eyebrow').innerHTML = M.design ? 'One meeting of <a href="' + ringHref(M.design.name) + '">' + esc(M.design.title.toLowerCase()) + '</a>, drawn as one ring' : 'A meeting type, drawn as one ring';
-  const mine = (MEETINGS.find(x => x.name === FAMILY) || {}).arranged || [];
-  const label = y => esc(y.line.split(/[,;]/)[0].split(' — ')[0]);
-  if (M.design){
-    $('arranged').hidden = false;
-    $('arranged').innerHTML = '<span class="share">Its link: <a href="' + ringHref(FAMILY) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn ghost" style="padding:3px 8px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></span>';
-  } else {
-    $('arranged').hidden = !mine.length;
-    $('arranged').innerHTML = mine.length ? '<span>Meetings of this type:</span>' + mine.slice(-12).reverse().map(y => '<a href="' + ringHref(y.name) + '">' + label(y) + ' →</a>').join('') + (mine.length > 12 ? '<span>and ' + (mine.length - 12) + ' more in the selector</span>' : '') : '';
-  }
+  $('eyebrow').innerHTML = M.source ? 'A copy of <a href="' + ringHref(M.source.name) + '">' + esc(M.source.title) + '</a>, drawn as one ring' : 'A meeting, drawn as one ring';
+  const mine = COPIES.filter(y => y.from === FAMILY);
+  $('copies').hidden = false;
+  $('copies').innerHTML = (mine.length ? '<span>Copies of this meeting:</span>' + mine.slice(-12).reverse().map(y => '<a href="' + ringHref(y.name) + '">' + esc(y.title) + ' →</a>').join('') +
+      (mine.length > 12 ? '<span>and ' + (mine.length - 12) + ' more in the selector</span>' : '') : '') +
+    '<span class="share">Its link: <a href="' + ringHref(FAMILY) + '">happyseaurchin.com/ring/' + esc(FAMILY) + '</a> <button type="button" class="btn ghost" style="padding:3px 8px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></span>';
   $('make').hidden = false;
   $('title').textContent = M.root.title;
   $('lede').innerHTML = M.root.text ? cited(cap(M.root.text.split(/(?<=[.!?])\s+(?=[A-Z])/)[0])) : '';
