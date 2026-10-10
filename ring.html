@@ -59,6 +59,8 @@
   select:disabled{opacity:0.6}
   button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,.seg:focus-visible,.hub:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
   .formnote{margin:12px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  .eyebrow a{color:inherit}
+  .arranged{margin:10px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim);display:flex;flex-wrap:wrap;gap:4px 12px}
 
   .main{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:28px;margin-top:20px;align-items:start}
   @media (max-width:880px){.main{grid-template-columns:minmax(0,1fr)}.ringcol{display:contents}.doors{order:1}.ringbox{order:2}.panel{order:3}.tablebox{order:4;margin-top:0}}
@@ -186,9 +188,10 @@
 <div class="wrap">
   <header class="top">
     <div>
-      <p class="eyebrow">A meeting, drawn as one ring</p>
+      <p class="eyebrow" id="eyebrow">A meeting, drawn as one ring</p>
       <h1 id="title">The ring</h1>
       <p class="lede" id="lede">Each phase of the meeting is a slice of the ring, sized by the minutes it gets, with its parts on the outer ring. Tap any part to see what it is for, when it is done, what people said about it, and the synthesis.</p>
+      <p class="arranged" id="arranged" hidden></p>
     </div>
     <div class="controls">
       <div class="toggle" role="group" aria-label="Mode">
@@ -279,6 +282,8 @@ function nodeAt(block, addr){
   return n;
 }
 const lineAt = (block, addr) => voiceOf(nodeAt(block, addr));
+/* a meeting's own link: /ring/<name> on the site, ?f=<name> anywhere else */
+const ringHref = name => (/^\/ring(\/|$)/.test(location.pathname) || SNAP ? 'https://happyseaurchin.com/ring/' : location.pathname + '?f=') + encodeURIComponent(name);
 
 /* a line opens with its minutes: "30 (20-40) — TITLE: words. Done when …" */
 const MINS = /^(\d+(?:\.\d+)?)\s*(?:\((\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)\))?\s*[—–-]\s+([\s\S]*)$/;
@@ -303,7 +308,8 @@ function parseLine(s){
 }
 
 /* ---------- the design ---------- */
-let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [];
+let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [], DESIGN = '';
+const designOf = law => { for (const d of digits(law)){ const m = /^\s*design:\s*([a-z0-9-]+)/i.exec(voiceOf(law[d]) || ''); if (m) return m[1].toLowerCase(); } return ''; };
 function buildModel(spine){
   const root = parseLine(voiceOf(spine) || FAMILY);
   root.addr = ''; root.kind = 'root';
@@ -415,7 +421,8 @@ async function load(){
   const runs = IX.blocks.filter(n => { if (!n.startsWith(base)) return false; const r = n.slice(base.length).split(':'); return r.length === 2 && /^\d{10}$/.test(r[0]) && !!r[1]; });
   const form = has.has('function:meeting') ? await readBlock('function:meeting').catch(() => null) : null;
   const list = form && form['8'] && typeof form['8'] === 'object' ? form['8'] : {};
-  MEETINGS = digits(list).map(d => { const v = voiceOf(list[d]) || '', m = v.match(/^([a-z0-9-]+)\s*[—–-]\s*([\s\S]*)$/); return m ? { name: m[1], line: m[2] } : null; }).filter(Boolean);
+  const entry = v => { const m = String(v || '').match(/^([a-z0-9-]+)\s*[—–-]\s*([\s\S]*)$/); return m ? { name: m[1], line: m[2] } : null; };
+  MEETINGS = digits(list).map(d => { const e = entry(voiceOf(list[d])); if (e) e.arranged = digits(list[d]).map(x => entry(voiceOf(list[d][x]))).filter(Boolean); return e; }).filter(Boolean);
   const [spine, law, fold, mirrors, kept] = await Promise.all([
     has.has('spine:' + FAMILY) ? readBlock('spine:' + FAMILY) : null,
     has.has('function:' + FAMILY) ? readBlock('function:' + FAMILY) : null,
@@ -423,10 +430,16 @@ async function load(){
     Promise.all(hands.map(h => readBlock(base + h).then(b => ({ h, b })).catch(() => ({ h, b: null })))),
     Promise.all(runs.map(n => readBlock(n).then(b => b ? parseRun(n, b) : null).catch(() => null)))
   ]);
-  SPINE = spine; LAW = law; FOLD = fold; M = null;
+  DESIGN = '';
+  let sp = spine;
+  if (!sp && law){ DESIGN = designOf(law); if (DESIGN) sp = await readBlock('spine:' + DESIGN).catch(() => null); }
+  SPINE = sp; LAW = law; FOLD = fold; M = null;
   MIRRORS = mirrors.filter(m => m.b);
   RUNS = kept.filter(Boolean).sort((a, b) => (b.start || 0) - (a.start || 0));
-  if (SPINE) M = buildModel(SPINE);
+  if (SPINE){
+    M = buildModel(SPINE);
+    if (DESIGN){ M.design = { name: DESIGN, title: M.root.title }; const r = parseLine(voiceOf(LAW) || FAMILY); r.addr = ''; r.kind = 'root'; M.root = r; }
+  }
 }
 
 /* ---------- the ring ---------- */
@@ -794,7 +807,7 @@ async function addReading(){
   try {
     let mirror = await readBlock(block);
     if (!mirror){
-      const born = { '_': a === '' ? line : 'MIRROR — ' + name + '’s readings of ' + FAMILY + ' (spine:' + FAMILY + '), at the design’s own addresses: what they see, what they would change, the minutes they would give a part. Sovereign to them; silence at a part is honest absence. First reading written from /ring.' };
+      const born = { '_': a === '' ? line : 'MIRROR — ' + name + '’s readings of ' + FAMILY + (DESIGN ? ', a meeting drawn from spine:' + DESIGN : ' (spine:' + FAMILY + ')') + ', at the design’s own addresses: what they see, what they would change, the minutes they would give a part, and when they can come. Sovereign to them; silence at a part is honest absence. First reading written from /ring.' };
       const w = await post({ block, new_lock: secret, content: born });
       if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
       mirror = born;
@@ -824,7 +837,7 @@ async function addReading(){
 function runRecord(name, who){
   const r = S.run, ri = runInfo(), k = r.total / M.sum;
   const iso = new Date(r.start).toISOString().replace(/\.\d+Z$/, 'Z');
-  const out = [['_', 'RUN — ' + M.root.title + ' (spine:' + FAMILY + '), kept by ' + name + ': began ' + iso + ' (' + beatOf(r.start) + '); ' + num(r.total) + ' minutes planned, ' +
+  const out = [['_', 'RUN — ' + M.root.title + ' (' + (DESIGN ? FAMILY + ', drawn from spine:' + DESIGN : 'spine:' + FAMILY) + '), kept by ' + name + ': began ' + iso + ' (' + beatOf(r.start) + '); ' + num(r.total) + ' minutes planned, ' +
     num(ri.elapsed) + ' taken' + (who ? '; with ' + who : '') + '. Each line opens with the minutes it took there; a phase line then says whether its done-when held (yes, partly or no) and what happened.']];
   const actAt = i => i < ri.acts.length ? ri.acts[i] : null;
   M.ring.forEach(p => {
@@ -877,7 +890,8 @@ function drawHow(){
   const hands = MIRRORS.map(m => '<a href="' + RENDER + encodeURIComponent(FAMILY + ':' + m.h) + '" target="_blank" rel="noopener">' + esc(m.h) + '</a>').join(', ');
   $('how').innerHTML =
     '<div><h4>The design is a block</h4><p>The meeting at the centre, its phases at 1 to 9 in order, their parts beneath; each line opens with its minutes, and a phase says when it is done. ' +
-      '<a href="' + RENDER + encodeURIComponent('spine:' + FAMILY) + '" target="_blank" rel="noopener"><code>spine:' + esc(FAMILY) + '</code></a></p></div>' +
+      '<a href="' + RENDER + encodeURIComponent('spine:' + (DESIGN || FAMILY)) + '" target="_blank" rel="noopener"><code>spine:' + esc(DESIGN || FAMILY) + '</code></a>' +
+      (DESIGN ? ', shared by every meeting arranged with it; this meeting’s own words are its law, <code>function:' + esc(FAMILY) + '</code>.' : '') + '</p></div>' +
     '<div><h4>Readings are mirrors</h4><p>A reading lands in its writer’s own mirror, <code>' + esc(FAMILY) + ':&lt;name&gt;</code>, at the part it answers, so every voice stands side by side.' + (hands ? ' Here now: ' + hands + '.' : '') + '</p></div>' +
     '<div><h4>The synthesis is the fold</h4><p>Woven from every reading and every run, phase by phase, and re-woven as they grow. ' +
       (FOLD ? '<a href="' + RENDER + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener"><code>' + esc(FAMILY) + '</code></a>' : 'None woven yet.') + '</p></div>' +
@@ -885,7 +899,8 @@ function drawHow(){
       (RUNS.length ? RUNS.length + ' kept so far.' : 'None kept yet.') + '</p></div>';
   $('foot').innerHTML = '<a href="' + RENDER + encodeURIComponent('function:' + FAMILY) + '" target="_blank" rel="noopener">this meeting’s law →</a>' +
     '<a href="' + RENDER + encodeURIComponent('function:meeting') + '" target="_blank" rel="noopener">the meeting form →</a>' +
-    '<a href="https://happyseaurchin.com/walk/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">walk the family →</a>';
+    '<a href="https://happyseaurchin.com/walk/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">walk the family →</a>' +
+    (DESIGN ? '<a href="' + ringHref(DESIGN) + '">the design it is drawn from →</a>' : '');
 }
 function drawControls(){
   const dur = $('dur'), locked = S.mode === 'run' && !!S.run;
@@ -899,9 +914,10 @@ function drawControls(){
   rs.value = S.view;
   $('m-design').setAttribute('aria-pressed', String(S.mode === 'design'));
   $('m-run').setAttribute('aria-pressed', String(S.mode === 'run'));
-  const ms = MEETINGS.some(x => x.name === FAMILY) ? MEETINGS : MEETINGS.concat([{ name: FAMILY, line: '' }]);
-  $('meet-f').hidden = ms.length < 2;
-  $('meet').innerHTML = ms.map(x => '<option value="' + esc(x.name) + '">' + esc(x.name.replace(/-/g, ' ')) + '</option>').join('');
+  const flat = []; MEETINGS.forEach(x => { flat.push({ name: x.name, sub: false }); (x.arranged || []).forEach(y => flat.push({ name: y.name, sub: true })); });
+  if (!flat.some(x => x.name === FAMILY)) flat.push({ name: FAMILY, sub: !!DESIGN });
+  $('meet-f').hidden = flat.length < 2;
+  $('meet').innerHTML = flat.map(x => '<option value="' + esc(x.name) + '">' + (x.sub ? '\u00a0\u00a0↳ ' : '') + esc(x.name.replace(/-/g, ' ')) + '</option>').join('');
   $('meet').value = FAMILY;
 }
 function render(){ if (!M) return; drawControls(); drawDoors(); drawRing(); drawTable(); drawPanel(); }
@@ -944,6 +960,10 @@ function start(){
   }
   if (S.run && S.run.marks && S.run.marks.length > M.steps.length) S.run = null;
   document.title = M.root.title + ' — the ring';
+  $('eyebrow').innerHTML = M.design ? 'One meeting of <a href="' + ringHref(M.design.name) + '">' + esc(M.design.title.toLowerCase()) + '</a>, drawn as one ring' : 'A meeting, drawn as one ring';
+  const mine = (MEETINGS.find(x => x.name === FAMILY) || {}).arranged || [];
+  $('arranged').hidden = !mine.length;
+  $('arranged').innerHTML = mine.length ? '<span>Arranged with this design:</span>' + mine.map(y => '<a href="' + ringHref(y.name) + '">' + esc(y.line.split(/[,;]/)[0].split(' — ')[0]) + ' →</a>').join('') : '';
   $('title').textContent = M.root.title;
   $('lede').innerHTML = M.root.text ? cited(cap(M.root.text.split(/(?<=[.!?])\s+(?=[A-Z])/)[0])) : '';
   const mode = ((LAW && voiceOf(LAW['1'])) || '').match(/^\s*mode:\s*([a-z][\w-]*)/i);
