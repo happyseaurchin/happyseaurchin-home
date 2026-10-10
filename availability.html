@@ -24,13 +24,13 @@
      through their own AI (pscale_stream_engage, field='availability'). /availability[/<handle>]. */
   :root{
     --p1:#3987e5; --p2:#d95926; --p3:#199e70; --p4:#c98500; --p5:#d55181; --p6:#2f9e2f; --p7:#9085e9; --p8:#e66767;
-    --free:#2bb673;
+    --free:#2bb673; --wkend-bg:rgba(237,161,0,0.08); --wkend-ink:#e3a845;
     --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace;
     --hr:44px;
   }
   :root[data-theme="light"]{
     --p1:#2a78d6; --p2:#eb6834; --p3:#1baf7a; --p4:#d18f00; --p5:#e87ba4; --p6:#1f8a1f; --p7:#4a3aa7; --p8:#e34948;
-    --free:#1a9a5a;
+    --free:#1a9a5a; --wkend-bg:rgba(209,143,0,0.09); --wkend-ink:#a3660a;
   }
   *{box-sizing:border-box}
   [hidden]{display:none!important}
@@ -176,6 +176,23 @@
   .words li{margin:3px 0;font-size:16px;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
   .words .sw{width:9px;height:9px;border-radius:50%;background:var(--pc);flex:none}
   .dlink{background:none;border:0;padding:0;color:var(--liquid);font-family:var(--mono);font-size:12px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;min-width:9.5em;text-align:left}
+  /* NOW, in the bar beside the page's name — inside the title, so the bar's gathering leaves it standing */
+  .bar .title{display:inline-flex;align-items:center;flex-wrap:wrap;gap:0 4px}
+  .bar .nowbtn{margin:0 4px 0 10px;border:1px solid var(--liquid);color:var(--liquid);background:none;border-radius:4px;font-family:var(--mono);font-size:12px;letter-spacing:0.08em;padding:4px 10px;cursor:pointer}
+  .bar .nowbtn:hover{background:var(--liquid);color:var(--abyss)}
+  @media (max-width:560px){.bar .sub{display:none}}
+
+  /* THE WEEKEND — a warm ground and warm figures, never a pattern: hatching already says busy and not known */
+  .lg.wke{background:var(--wkend-bg);border:1px solid var(--wkend-ink)}
+  .day.wkend .lanes{background-color:var(--wkend-bg)}
+  .day.wkend .dh .wd,.day.wkend .dh .dn{color:var(--wkend-ink)}
+  .day .dh.today .dn{color:var(--liquid)}
+  .dc.wkend{background:var(--wkend-bg)}
+  .dc.wkend .dn{color:var(--wkend-ink)}
+  .dc.wkend.today .dn{color:var(--liquid)}
+  .sq.wkend{color:var(--wkend-ink);font-weight:700}
+  .sq.wkend:not(.f0):not(.f1):not(.f2):not(.f3){background-color:var(--wkend-bg)}
+
   .detail{margin-top:14px;background:var(--deep);border:1px solid var(--line);border-radius:10px;padding:14px 18px 16px}
   .detail h2{font-family:var(--display);font-weight:700;font-size:20px;margin:0 0 4px;display:flex;align-items:center;gap:8px}
   .detail h2 .sw{width:12px;height:12px;border-radius:50%;background:var(--pc)}
@@ -203,7 +220,7 @@
 <script>document.documentElement.classList.remove('no-js');</script>
 <div class="bar">
   <span class="dot"></span>
-  <span><b>availability</b> · when people are free</span>
+  <span class="title"><b>availability</b><button type="button" class="nowbtn" id="now" title="Back to today">now</button><span class="sub"> · when people are free</span></span>
   <span class="spacer"></span>
   <button id="btn-theme" title="light or dark">◐</button>
 </div>
@@ -216,7 +233,6 @@
     </div>
     <div class="controls">
       <button type="button" class="plain" id="prev" aria-label="Earlier">‹</button>
-      <button type="button" class="plain" id="home">This week</button>
       <button type="button" class="plain" id="next" aria-label="Later">›</button>
       <span class="range" id="range"></span>
     </div>
@@ -238,6 +254,7 @@
     <span><i class="lg opn"></i>hours kept open</span>
     <span><i class="lg unk"></i>not known</span>
     <span><i class="lg fre"></i>everyone shown is free</span>
+    <span><i class="lg wke"></i>weekend</span>
     <span id="lg-shade" hidden><i class="lg sq-f1"></i><i class="lg sq-f2"></i><i class="lg sq-f3"></i>half an hour, an hour, three hours or more of it; a plain day has nothing said of it yet</span>
   </div>
   <p class="empty msg" id="msg">reading the beach…</p>
@@ -441,6 +458,9 @@ const dayEnd = d => zoned(d[0], d[1], d[2] + 1, 0, 0, ZONE);
 const wdOf = d => WD[new Date(Date.UTC(d[0], d[1], d[2])).getUTCDay()];
 const MO3 = m => MO[m].slice(0, 3);
 function todayHere(){ const n = wall(Date.now(), ZONE); return [n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()]; }
+/* Saturday and Sunday, read off the date itself — the clock's weeks begin on the 1st, so a weekend falls
+   anywhere in a row, and is marked by a warm ground and warm figures in every view */
+const isWeekend = d => { const w = new Date(Date.UTC(d[0], d[1], d[2])).getUTCDay(); return w === 0 || w === 6; };
 const isToday = d => { const t = todayHere(); return t[0] === d[0] && t[1] === d[1] && t[2] === d[2]; };
 const span = () => S.hours === 'work' ? [7, 21] : [0, 24];
 const dur = ms => { const m = Math.round(ms / MIN), h = Math.floor(m / 60); return h ? h + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '') : m + 'm'; };
@@ -547,7 +567,6 @@ function draw(){
   const P = period(), hs = S.people.filter(h => S.shown.has(h));
   $('range').textContent = nameOf(S.rung, P, true);
   $('zone').textContent = 'times in ' + ZONE.replace(/_/g, ' ');
-  $('home').textContent = { year: 'This year', season: 'This season', month: 'This month', week: 'This week', day: 'Today' }[S.rung];
   $('hours').hidden = S.rung === 'season' || S.rung === 'year';
   $('lg-shade').hidden = !(S.rung === 'season' || S.rung === 'year');
   drawLadder();
@@ -591,7 +610,7 @@ function drawTimeGrid(days, hs){
   const perMin = ms => 'calc(' + (ms / HOUR).toFixed(4) + ' * var(--hr))';
   days.forEach(d => {
     const col = document.createElement('div');
-    col.className = 'day';
+    col.className = 'day' + (isWeekend(d) ? ' wkend' : '');
     const from = zoned(d[0], d[1], d[2], h0, 0, ZONE), to = zoned(d[0], d[1], d[2], h1, 0, ZONE);
     const dayFrom = dayStart(d), dayTo = dayEnd(d);
     const head = document.createElement('button');
@@ -672,7 +691,7 @@ function dayCell(d, hs, h0, h1){
   const spans = (list, cls) => list.map(r => { const p = pos(r[0], r[1]); return p ? '<i class="' + cls + '" style="' + p + '"></i>' : ''; }).join('');
   const free = hs.length ? freeOf(hs, ds, de) : [];
   const tot = free.reduce((t, r) => t + r.end - r.start, 0);
-  let h = '<button type="button" class="dc' + (isToday(d) ? ' today' : '') + (de <= Date.now() ? ' past' : '') + '" data-go="day" data-d="' + d.join('-') + '" aria-label="' + esc(wdOf(d) + ' ' + d[2] + ' ' + MO[d[1]] + (tot ? ', ' + dur(tot) + ' when everyone shown is free' : '')) + '">' +
+  let h = '<button type="button" class="dc' + (isWeekend(d) ? ' wkend' : '') + (isToday(d) ? ' today' : '') + (de <= Date.now() ? ' past' : '') + '" data-go="day" data-d="' + d.join('-') + '" aria-label="' + esc(wdOf(d) + ' ' + d[2] + ' ' + MO[d[1]] + (tot ? ', ' + dur(tot) + ' when everyone shown is free' : '')) + '">' +
     '<span class="dn">' + wdOf(d).slice(0, 3) + ' ' + d[2] + '</span>' + (tot >= 30 * MIN ? '<span class="tot">' + dur(tot) + '</span>' : '');
   if (hs.length) h += '<span class="rib fr">' + spans(free.map(r => [r.start, r.end]), 'f') + '</span>';
   for (const p of hs.slice(0, 6)){
@@ -701,7 +720,7 @@ function mini(y, m0, hs){
   for (let x = 1; x <= bandsIn(y, m0) * 7; x++){
     if (x > n){ h += '<span class="sq gap"></span>'; continue; }
     const d = [y, m0, x], sh = shade(d, hs);
-    h += '<button type="button" class="sq ' + sh.cls + (isToday(d) ? ' today' : '') + (dayEnd(d) <= Date.now() ? ' past' : '') + '" data-go="day" data-d="' + d.join('-') + '" title="' + esc(wdOf(d) + ' ' + x + ' ' + MO[m0] + ' — ' + sh.say) + '">' + x + '</button>';
+    h += '<button type="button" class="sq ' + sh.cls + (isWeekend(d) ? ' wkend' : '') + (isToday(d) ? ' today' : '') + (dayEnd(d) <= Date.now() ? ' past' : '') + '" data-go="day" data-d="' + d.join('-') + '" title="' + esc(wdOf(d) + ' ' + x + ' ' + MO[m0] + ' — ' + sh.say) + '">' + x + '</button>';
   }
   return h + '</div></div>';
 }
@@ -778,7 +797,8 @@ function go(rung, d){ S.rung = rung; if (d) S.focus = d; S.sel = null; detail();
 const dateOf = s => { const p = String(s || '').split('-').map(Number); return p.length === 3 && p.every(Number.isFinite) ? p : null; };
 $('prev').onclick = () => { step(-1); S.sel = null; detail(); refresh(); };
 $('next').onclick = () => { step(1); S.sel = null; detail(); refresh(); };
-$('home').onclick = () => go(S.rung, todayHere());
+/* NOW — wherever the drilling has gone, back to today: its week (its day on a phone), at the top */
+$('now').onclick = () => { S.rung = innerWidth < 760 ? 'day' : 'week'; S.focus = todayHere(); S.sel = null; detail(); refresh(); try { window.scrollTo({ top: 0, behavior: 'smooth' }); } catch(e){ window.scrollTo(0, 0); } };
 $('ladder').addEventListener('click', e => { const b = e.target.closest('[data-rung]'); if (b) go(b.getAttribute('data-rung')); });
 document.querySelector('.wrap').addEventListener('click', e => {
   const b = e.target.closest('[data-go]'); if (!b) return;
