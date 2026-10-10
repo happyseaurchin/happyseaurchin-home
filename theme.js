@@ -968,19 +968,50 @@
   var IDX_KEY = 'doors:index';
   var IDX_TTL = 5 * 60 * 1000;
 
+  /* the index's own touched stamps, kept beside its names, so a law is read again only when it has moved */
+  var TOUCHED = {};
   function readIndex(origin){
     var now = Date.now();
     try {
       var c = JSON.parse(sessionStorage.getItem(IDX_KEY) || 'null');
-      if (c && c.origin === origin && (now - c.at) < IDX_TTL) return Promise.resolve(c.blocks);
+      if (c && c.origin === origin && (now - c.at) < IDX_TTL){ TOUCHED = c.touched || {}; return Promise.resolve(c.blocks); }
     } catch(e){}
     return fetch(origin + '/.well-known/pscale-beach', { headers:{Accept:'application/json'}, cache:'no-store' })
       .then(function(r){ return r.json(); })
       .then(function(j){
         var blocks = j.blocks || [];
-        try { sessionStorage.setItem(IDX_KEY, JSON.stringify({origin:origin, at:now, blocks:blocks})); } catch(e){}
+        TOUCHED = j.touched || {};
+        try { sessionStorage.setItem(IDX_KEY, JSON.stringify({origin:origin, at:now, blocks:blocks, touched:TOUCHED})); } catch(e){}
         return blocks;
       });
+  }
+
+  /* THE MODE FROM THE LAW (function:document 1): the word after 'mode:' at a family's law's 1 —
+   * 'document' for a family read top to bottom. Read off each law at its 1 and kept on this
+   * device against the index's touched stamps, so a law is read again only when it has moved;
+   * no registry block. The walk's old documents row kept the same memo under the same name. */
+  var MODES_KEY = 'walk-doc-modes';
+  function modeWord(n){
+    while (n && typeof n === 'object'){ if (!('_' in n)) return ''; n = n._; }
+    var m = /^\s*mode:\s*([a-z][\w-]*)/i.exec(typeof n === 'string' ? n : '');
+    return m ? m[1].toLowerCase() : '';
+  }
+  function readModes(origin, fams){
+    var memo = {};
+    try { memo = JSON.parse(localStorage.getItem(MODES_KEY) || '{}') || {}; } catch(e){}
+    function stamp(f){ return TOUCHED['function:' + f] || ''; }
+    /* a law with no stamp has not moved since the stamps began, and moving gives it one */
+    return Promise.all(fams.filter(function(f){ return !(memo[f] && memo[f].t === stamp(f)); }).map(function(f){
+      return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent('function:' + f) + '&spindle=1',
+                   { headers:{Accept:'application/json'}, cache:'no-store' })
+        .then(function(r){ return r.status === 404 ? null : r.ok ? r.json() : Promise.reject(r.status); })
+        .then(function(n){ memo[f] = { t: stamp(f), m: modeWord(n) }; }, function(){});
+    })).then(function(){
+      var kept = {}, mode = {};
+      fams.forEach(function(f){ if (memo[f]){ kept[f] = memo[f]; mode[f] = memo[f].m; } });
+      try { localStorage.setItem(MODES_KEY, JSON.stringify(kept)); } catch(e){}
+      return mode;
+    });
   }
 
   /* ── the list block: rank is depth ────────────────────────────────────────
@@ -1174,7 +1205,13 @@
     '.projrow__mv{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);' +
       'font-size:11px;line-height:1;padding:2px 5px;cursor:pointer}' +
     '.projrow__mv:disabled{opacity:0.25;cursor:default}' +
-    '.projrow__foot{flex:1 0 100%;padding-top:6px}' +
+    '.projrow__foot{flex:1 0 100%;padding-top:6px;display:flex;flex-wrap:wrap;align-items:center;gap:8px 0}' +
+    '.projrow__open{display:flex;gap:6px;margin-left:auto;min-width:0}' +
+    '.projrow__open input{font-family:var(--mono);font-size:12px;padding:5px 9px;border:1px solid var(--line-strong);border-radius:4px;' +
+      'background:rgba(var(--well-rgb),0.55);color:var(--foam);width:16em;min-width:0}' +
+    '.projrow__open button{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:4px;background:none;' +
+      'color:var(--vapour);padding:5px 10px;cursor:pointer;flex:none}' +
+    '.projrow__open button:hover{color:var(--foam);border-color:var(--line-strong)}' +
     '.projrow__panel input:disabled + *,.projrow__panel input:disabled{opacity:0.45;cursor:default}' +
     '.projrow__note{flex:1 0 100%;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;' +
       'color:var(--solid);padding-top:7px}' +
@@ -1430,20 +1467,37 @@
          * family only visited once. Tick from the stated list where there is one,
          * and from the computed default where there is not — the same law the
          * places menu keeps, where `here` reaches the menu and never the editor. */
-        var inList = {};
-        (stated && stated.length ? stated : visible).forEach(function(f){ inList[f] = 1; });
+        var inList = {}, listed = {};
+        (stated && stated.length ? stated : visible).forEach(function(f){ inList[f] = 1; listed[f] = 1; });
 
         /* SEPARATED BY FORM, as the walk reads it (David, 2026-10-01): a spine whose
          * underscore chain runs ten deep walks as the clock, any other spine as
          * branches, the ground as places, and a family with no law waits beneath
          * them. Read off each spine when the chooser opens — the form is where the
          * data sits, never a word stored beside it. The arrows move a family within
-         * its form; the row keeps the saved order. */
-        var GROUPS = [['clock', 'on the clock'], ['tree', 'in branches'], ['ground', 'on the map'], ['bare', 'no form yet']];
-        var formOf = {};
-        function groupOf(f){ return formOf[f] || 'tree'; }
+         * its form; the row keeps the saved order.
+         * DOCUMENTS ARE A FORM LIKE THE OTHERS (David, 2026-10-10: "add documents to
+         * the drop down and treat them like all the others"): a family whose law says
+         * 'mode: document' at its 1 stands under its own heading, and every document
+         * on the beach is offered there, mirror or none, because a document is often
+         * one somebody else wrote for you to read. Ticked, it joins the row like any
+         * project; there is no second row of documents. */
+        var GROUPS = [['clock', 'on the clock'], ['tree', 'in branches'], ['document', 'documents'], ['ground', 'on the map'], ['bare', 'no form yet']];
+        var formOf = {}, isDoc = {};
+        function groupOf(f){ return isDoc[f] ? 'document' : formOf[f] || 'tree'; }
         function readForms(){
-          return Promise.all(order.map(function(f){
+          var laws = blocks.filter(function(n){ return n.indexOf('spine:') === 0 && have['function:' + n.slice(6)]; })
+            .map(function(n){ return n.slice(6); })
+            .filter(function(f){ return /^[a-z0-9-]+$/i.test(f); })
+            .sort();
+          var docs = readModes(origin, laws).then(function(mode){
+            laws.forEach(function(f){
+              if (mode[f] !== 'document') return;
+              isDoc[f] = 1;
+              if (order.indexOf(f) < 0) order.push(f);
+            });
+          });
+          return Promise.all([docs].concat(order.map(function(f){
             if (f === 'here'){ formOf[f] = 'ground'; return null; }
             if (bare.indexOf(f) >= 0){ formOf[f] = 'bare'; return null; }
             return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent('spine:' + f),
@@ -1451,7 +1505,7 @@
               .then(function(r){ return r.ok ? r.json() : null; })
               .then(function(b){ formOf[f] = floorOf(b) === 10 ? 'clock' : 'tree'; })
               .catch(function(){ formOf[f] = 'tree'; });
-          }));
+          })));
         }
 
         function draw(){
@@ -1501,13 +1555,18 @@
           });
 
           var foot = document.createElement('div'); foot.className = 'projrow__foot';
-          /* Unticking where you stand is honoured on save, but the row will still
-           * carry the family while you are in it — say so at the moment of the
-           * untick, or the reload reads as the save having been ignored. */
+          /* The row carries the family you stand in whether or not it is in your list,
+           * so say which: unticked just now, the save is honoured and the row still
+           * carries it while you are in it, or the reload reads as the save ignored;
+           * never in the list, it is there only because you are standing in it (David,
+           * 2026-10-10, at availability-scope: the old line spoke of an untick he had
+           * never made). */
           if (cfg.family && !inList[cfg.family]){
             var stay = document.createElement('span');
             stay.className = 'projrow__note';
-            stay.textContent = cfg.family + ' will still show while you stand in it \u2014 it leaves the row everywhere else';
+            stay.textContent = listed[cfg.family]
+              ? cfg.family + ' will still show while you stand in it \u2014 it leaves the row everywhere else'
+              : cfg.family + ' isn\u2019t in your list \u2014 tick it to keep it in the row';
             foot.appendChild(stay);
           }
           var save = document.createElement('button');
@@ -1527,6 +1586,29 @@
               });
           });
           foot.appendChild(save);
+          /* ANY FAMILY, BY NAME \u2014 the box the walk's documents row carried, moved here
+           * with the documents: the way to a family you hold no mirror in and nobody
+           * has listed for you. It opens on this same page, as the row's links do. */
+          var open = document.createElement('span'); open.className = 'projrow__open';
+          var fams = blocks.filter(function(n){ return n.indexOf('spine:') === 0 && /^[a-z0-9-]+$/i.test(n.slice(6)); })
+            .map(function(n){ return n.slice(6); }).sort();
+          var dl = document.createElement('datalist'); dl.id = 'projrow-fams';
+          fams.forEach(function(f){ var o = document.createElement('option'); o.value = f; dl.appendChild(o); });
+          var box = document.createElement('input');
+          box.setAttribute('list', 'projrow-fams'); box.placeholder = 'open a family by name';
+          box.setAttribute('aria-label', 'open a family by name');
+          box.setAttribute('autocapitalize', 'none'); box.setAttribute('autocomplete', 'off'); box.spellcheck = false;
+          var go = document.createElement('button'); go.type = 'button'; go.textContent = 'open';
+          function openIt(){
+            var f = box.value.trim().replace(/[^a-z0-9-]/gi, '');
+            if (!f) return;
+            if (fams.indexOf(f) < 0){ box.value = ''; box.placeholder = 'no family named ' + f + ' here'; return; }
+            location.href = '/' + cfg.page + '/' + encodeURIComponent(f) + '/' + encodeURIComponent(cfg.handle);
+          }
+          go.addEventListener('click', function(e){ e.stopPropagation(); openIt(); });
+          box.addEventListener('keydown', function(e){ if (e.key === 'Enter'){ e.preventDefault(); openIt(); } });
+          open.appendChild(box); open.appendChild(go); open.appendChild(dl);
+          foot.appendChild(open);
           panel.appendChild(foot);
         }
         panel.textContent = 'reading the forms\u2026';

@@ -431,21 +431,6 @@
   .dtab .dn{font-family:var(--mono);font-size:10px;letter-spacing:0.04em;color:var(--solid);margin-left:7px;white-space:nowrap}
   .dtab .dline{font-size:0.98rem}
   .droom{padding:0 0 10px}
-  /* THE DOCUMENTS ROW, beneath the projects row: the families whose law says document, then any family by name */
-  .docrow{display:flex;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:8px 18px;border-bottom:1px solid var(--line);
-    background:rgba(var(--well-rgb),0.45);font-family:var(--body);font-size:14.5px}
-  .docrow[hidden]{display:none}
-  .docrow .lead{font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:var(--vapour-dim);padding-right:4px}
-  .docrow a{color:var(--vapour-dim);border-bottom:none;padding:1px 5px;border-radius:4px}
-  .docrow a:hover{color:var(--liquid)}
-  .docrow .here{color:var(--foam);padding:1px 5px;border-bottom:1px solid var(--liquid)}
-  .docrow .sep{color:var(--vapour-dim);opacity:0.45}
-  .docrow .open{display:flex;gap:6px;margin-left:auto;min-width:0}
-  .docrow input{font-family:var(--mono);font-size:12px;padding:5px 9px;border:1px solid var(--line-strong);border-radius:4px;
-    background:rgba(var(--well-rgb),0.55);color:var(--foam);width:16em;min-width:0}
-  .docrow button{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:4px;background:none;
-    color:var(--vapour);padding:5px 10px;cursor:pointer;flex:none}
-  .docrow button:hover{color:var(--foam);border-color:var(--line-strong)}
 </style>
 </head>
 <body>
@@ -501,7 +486,6 @@
 
 <!-- main -->
 <div id="app" class="hidden">
-  <nav class="docrow" id="docrow" aria-label="documents" hidden></nav>
   <div class="masthead">
     <h1 id="mast-title">A family, <span class="cool">walked</span>.</h1>
     <p id="mast-how">Slide sideways through the rows; tap a card to stand there. The counts say who has spoken and what is held; the popup holds the words, the voices, and — with your handle in the URL — your own writing.</p>
@@ -1404,7 +1388,6 @@ async function load(){
   await readMyLine();
   applyDisplay();
   render();
-  renderDocRow(index).catch(() => {});
 }
 
 /* ── THE JOIN DOOR — the third answer at the welcome, on the walk itself (bsp-mcp #447 §6;
@@ -2707,52 +2690,6 @@ function placeViews(){
 document.addEventListener('DOMContentLoaded', placeViews);
 if (NARROW && NARROW.addEventListener) NARROW.addEventListener('change', placeViews);
 if (window.nameLinks) nameLinks($('rack'), { watch: true });
-/* a way to another family on this page, spelt as this page was reached: /walk/<f>/<h> where the
- * site rewrites, the query form where it does not */
-const walkHref = f => (_wm || _pm)
-  ? '/walk/' + encodeURIComponent(f) + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '')
-  : location.pathname + '?f=' + encodeURIComponent(f) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
-/* THE DOCUMENTS ROW (David, 2026-10-08: "an additional row below the horizontal list of projects
- * ... like the mirror design with rows of tabs"): every family whose law says document at its 1,
- * read off the laws themselves at their 1 and kept on this device against the index's own touched
- * stamps, so a law is read again only when it has moved; no registry block. At its end the
- * editor's 'load beach', on the walk: any family, by name. */
-const DOCS_KEY = 'walk-doc-modes';
-async function renderDocRow(index){
-  const el = $('docrow');
-  if (!el || GROUND || el.dataset.drawn) return;
-  el.dataset.drawn = '1';
-  const blocks = (index && index.blocks) || [], touched = (index && index.touched) || {}, have = new Set(blocks);
-  const stamp = f => touched['function:' + f] || '';
-  const fams = blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)).filter(f => /^[a-z0-9-]+$/i.test(f) && have.has('function:' + f));
-  let memo = {};
-  try { memo = JSON.parse(localStorage.getItem(DOCS_KEY) || '{}') || {}; } catch(e){}
-  if (LAW && LAWREF === 'function:' + VENTURE) memo[VENTURE] = { t: stamp(VENTURE), m: LAWMODE };
-  /* a law with no stamp has not moved since the stamps began, and moving gives it one */
-  await Promise.all(fams.filter(f => !(memo[f] && memo[f].t === stamp(f))).map(f =>
-    fetch(BEACH + '?block=' + encodeURIComponent('function:' + f) + '&spindle=1', { headers:{Accept:'application/json'}, cache:'no-store' })
-      .then(r => r.status === 404 ? null : r.ok ? r.json() : Promise.reject(r.status))
-      .then(n => { memo[f] = { t: stamp(f), m: modeWord(n) }; }, () => {})));
-  const kept = {};
-  fams.forEach(f => { if (memo[f]) kept[f] = memo[f]; });
-  try { localStorage.setItem(DOCS_KEY, JSON.stringify(kept)); } catch(e){}
-  const docs = fams.filter(f => kept[f] && kept[f].m === 'document').sort();
-  el.innerHTML = '<span class="lead">documents</span>' +
-    (docs.length ? docs.map(f => f === VENTURE ? '<span class="here" aria-current="page">' + esc(f) + '</span>'
-      : '<a href="' + esc(walkHref(f)) + '">' + esc(f) + '</a>').join('<span class="sep">•</span>') : '<span class="sep">none yet</span>') +
-    '<span class="open"><input id="doc-open" list="doc-fams" placeholder="open a family by name" aria-label="open a family by name" autocapitalize="none" autocomplete="off" spellcheck="false">' +
-    '<button type="button" id="doc-open-go">open</button></span>' +
-    '<datalist id="doc-fams">' + [...FIELDS].filter(f => /^[a-z0-9-]+$/i.test(f)).sort().map(f => '<option value="' + esc(f) + '">').join('') + '</datalist>';
-  el.hidden = false;
-  const go = () => {
-    const f = $('doc-open').value.trim().replace(/[^a-z0-9-]/gi, '');
-    if (!f) return;
-    if (!FIELDS.has(f)){ toast('no family named ' + f + ' on this beach', true); return; }
-    location.href = walkHref(f);
-  };
-  $('doc-open-go').addEventListener('click', go);
-  $('doc-open').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); go(); } });
-}
 
 
 /* ═══════════════════════════════════════════════════════════════════════════
