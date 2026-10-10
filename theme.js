@@ -1394,10 +1394,14 @@
        * written by being offered, and once a family is joined the row is the hand's own
        * and the offer is gone. A passport first, as /welcome says: the beach binds a mirror
        * to its holder's key. */
+      /* A ROW OF ONE KEEPS ITS CHOOSER (David, 2026-10-10). It was hidden as furniture
+       * while 'choose' held only the hand's own families; since the documents and any
+       * family by name stand there too, it is always a choice, so a hand with a list or
+       * a mirror keeps its row however short, and the offer below ends in it as well. */
       var offer = null;
-      if (visible.length < 2 && mine.length < 2 && !bare.length){
-        var holds = mine.some(function(f){ return f !== 'here' && have[f + ':' + cfg.handle]; });
-        if (stated.length || holds || !have['passport:' + cfg.handle]) return;   /* a row of one is furniture, not a choice */
+      if (visible.length < 2 && mine.length < 2 && !bare.length && !stated.length &&
+          !mine.some(function(f){ return f !== 'here' && have[f + ':' + cfg.handle]; })){
+        if (!have['passport:' + cfg.handle]) return;
         /* people in a family, counted as /tree counts them: <f>:<handle> */
         var people = {};
         blocks.forEach(function(n){
@@ -1409,7 +1413,7 @@
           .filter(function(f){ return !OWN_PAGE[f] && !OFF_BY_DEFAULT[f] && !isDiary(f) && have['function:' + f] && have['pool:' + f]; })
           .sort(function(x, y){ return (people[y] || 0) - (people[x] || 0) || x.localeCompare(y); })
           .map(function(f){ return { name: f, people: people[f] || 0 }; });
-        if (!offer.length) return;
+        if (!offer.length) offer = null;
       }
       function shown(f){ return visible.indexOf(f) >= 0; }
 
@@ -1447,7 +1451,7 @@
       var pick = document.createElement('button');
       pick.type = 'button'; pick.className = 'projrow__pick';
       pick.textContent = 'choose';
-      pick.title = 'which of your families count as projects';
+      pick.title = 'your projects, the documents on this beach, and any family by name';
       pick.addEventListener('click', function(e){
         e.stopPropagation();
         if (row.querySelector('.projrow__panel')){ row.querySelector('.projrow__panel').remove(); return; }
@@ -1615,7 +1619,8 @@
         row.appendChild(panel);
         readForms().then(draw);
       });
-      /* the offer stands where the chooser would — there is nothing of the hand's own to choose yet */
+      /* the offer stands before the chooser — nothing of the hand's own yet, but the
+       * documents and any family by name are there to choose all the same */
       if (offer){
         var lead = document.createElement('span');
         lead.className = 'projrow__lead';
@@ -1636,7 +1641,8 @@
           every.textContent = 'every field \u2192';
           row.appendChild(every);
         }
-      } else row.appendChild(pick);
+      }
+      row.appendChild(pick);
       /* how this hand stands to the family it is standing in — its own line; on the
        * walk the masthead carries it, with the door that writes it */
       if (cfg.page !== 'walk' && cfg.family && lineOf[cfg.family]){
