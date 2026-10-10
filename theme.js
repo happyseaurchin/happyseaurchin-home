@@ -628,6 +628,11 @@
      * fills the reader's name and their remembered key (David, 2026-10-10: "Are
      * meetings included in the drop-down go menu"; "can we do a /ring/<name>/<handle>") */
     ['meetings',     'ring',     'carry'],
+    /* when people are free — each person's calendar on the clock, filled by their own
+     * AI, drawn as a week; the handle rides the query and marks their own lane
+     * (David, 2026-10-10, availability.1: "an /availability o-page … a traditional
+     * display with blocked calendar") */
+    ['availability', 'availability', 'carry'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
     ['the ledger',   'ledger',   'handle']
@@ -668,6 +673,7 @@
     ['path',        'part by part', '/path/beach-venture'],
     ['tracks',      'the tracks',   '/tracks/beach-venture'],
     ['ring',        'meetings'],
+    ['availability','availability'],
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
