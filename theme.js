@@ -625,7 +625,7 @@
     /* every meeting drawn as one ring, the copies hung under the meeting each came
      * from — a meeting's address is its own name, never a handle, so the handle is
      * carried in the query and the ring moves it to /ring/<name>/<handle>, where it
-     * fills the reader's name and their remembered key (David, 2026-10-10: "Are
+     * fills the reader's name, so the browser can fill their key (David, 2026-10-10: "Are
      * meetings included in the drop-down go menu"; "can we do a /ring/<name>/<handle>") */
     ['meetings',     'ring',     'carry'],
     ['one at a time','next',     'handle'],
