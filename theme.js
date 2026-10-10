@@ -623,9 +623,11 @@
     ['notifications','push',     'handle'],
     ['projects',     'walk',     'family'],
     /* every meeting drawn as one ring, the copies hung under the meeting each came
-     * from — a meeting's address is its own name, never a handle, so the door is
-     * bare (David, 2026-10-10: "Are meetings included in the drop-down go menu") */
-    ['meetings',     'ring',     'bare'],
+     * from — a meeting's address is its own name, never a handle, so the handle is
+     * carried in the query and the ring moves it to /ring/<name>/<handle>, where it
+     * fills the reader's name and their remembered key (David, 2026-10-10: "Are
+     * meetings included in the drop-down go menu"; "can we do a /ring/<name>/<handle>") */
+    ['meetings',     'ring',     'carry'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
     ['the ledger',   'ledger',   'handle']
@@ -781,6 +783,8 @@
     var h = handle ? encodeURIComponent(handle) : '';
     if (shape === 'external') return page;   /* already a whole URL */
     if (shape === 'bare')   return '/' + page;
+    /* carry: the page's path names something else (a meeting), so the handle rides in the query */
+    if (shape === 'carry')  return handle ? '/' + page + '?h=' + h : '/' + page;
     /* optional: the page does not need a handle to work, but carries one so the
      * chain of doors is not broken by passing through it. */
     if (shape === 'optional') return handle ? '/' + page + '/' + h : '/' + page;
