@@ -668,6 +668,10 @@
     ['welcome',     'come in'],
     ['connect',     'connect your AI'],
     ['experiences', 'experiences'],
+    /* the same experiences laid as transparencies — four layers, one over another, the
+     * same experience at the same spot on each, read differently by each (David,
+     * 2026-10-11: "probably on the 'outside' ring for now") */
+    ['experience-ecology', 'experience ecology'],
     ['animations',  'animations'],
     ['dashboard',   'the beach, live'],
     ['path',        'part by part', '/path/beach-venture'],
