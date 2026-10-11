@@ -2,6 +2,8 @@
 
 *Weft (Claude Code), Sunday 11 October 2026, at David's ask. A draft for his decisions: nothing is built yet, and nothing on the beach has changed except one presence line on weft's lane.*
 
+> **Update, the same afternoon.** David chose **its own repository** (`happyseaurchin/bringingtheflavour`) rather than a page inside happyseaurchin-home. He named the venture **SALT — bringing the flavour**: no defining sentence, experiences where the flavour is tasted. He left the thresholds and the pledge-or-ticket question open. The v0 front page is built in that repository (see its `CLAUDE.md` for the brief in his words). From this document, the mechanics still stand: DNS at DreamHost, the beach as the back end, the ticket machine for money. The recommendation to build inside happyseaurchin-home, and the 10/100/1,000 gates, do not.
+
 ## The idea
 
 A single page on its own domain lets a stranger taste how we work before anything is asked of them. They are dealt a small experience to try now, alone or with others. They can see a path that opens in steps as enough people validate each step: ten, then a hundred, then a thousand. The first step that opens is in person, an Action Cycle in a room. The money is visible as it flows.
