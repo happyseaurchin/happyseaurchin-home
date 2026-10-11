@@ -2,44 +2,62 @@
  * /api/news — the news family's door on the site, and its keeper (function:news
  * at the beach). One file on purpose, as every function here is self-contained.
  *
- *   GET /api/news?rung=now|gathering|day|week|month|season|year[&at=<address>]
- *       what the beach made in that period: the keeper's picks where a fold
- *       stands (function:news 2), and for the day and finer the whole wire —
- *       every item made, newest first (function:news 1) — with each item's
- *       answers counted as people and agents apart (function:news 3).
+ *   GET /api/news?rung=now|gathering|day|week|month|season|year[&at=<address>][&by=<edition>]
+ *       what the beach made in that period: the newest choice that stands for it
+ *       (function:news 2) — the keeper's or any reader's, whoever chose last —
+ *       and for the day and finer the whole wire, every item made, newest first
+ *       (function:news 1), each item's answers counted as people and agents apart
+ *       (function:news 3). `by` (an edition's block name) asks for one hand's
+ *       choice first.
  *   GET /api/news?item=<address>[&s=<source>]
- *       one item: the thing, where it lives, every fold up the ladder that
+ *       one item, read where it lives: the thing, the choices up the ladder that
  *       named it and why, and every answer standing at its address.
+ *   GET /api/news?prepare=1&rung=day|week|month|season|year[&at=<address>]
+ *       what a reader needs to choose a period on their own key: the law, the
+ *       prompt, the schema and the candidates. The page calls the model straight
+ *       from the reader's browser and writes the choice to the reader's own
+ *       edition, tree:news:<handle> — the key never passes through here.
  *   GET /api/news?keep=1
- *       THE KEEPER'S PASS — the hourly cron (vercel.json). Folds today again
- *       when the wire has moved, seals each closed day once, and re-chooses the
- *       week, month, season and year above it from the folds beneath.
+ *       THE KEEPER'S PASS — the hourly cron (vercel.json). Chooses TODAY again
+ *       when the wire has moved since the newest choice anyone made, and never
+ *       more often than every twenty minutes. Every other period is chosen by
+ *       its readers, on their own keys, and the newest choice stands for all.
  *
- * The wire is never stored: it is read from what the beach already stamps (the
- * surface index's born and touched maps, each accumulator entry's own stamp at
- * position 3, each table's latest room), so a crowd arriving from a shared
- * link reads one cached copy here instead of each of them reading the beach.
- * The read paths are GET-only and write nothing. Answers are written by each
- * reader straight to their own mirror on the beach, never through here.
+ * Every pick is read again at its source before it is shown: an edition gives an
+ * address, a rank and a why, and the thing itself — its words, its hand, its
+ * moment, its door — always comes from where it lives, so no edition can put
+ * words into the news that the beach does not hold. The wire is never stored: it
+ * is read from what the beach already stamps (the surface index's born and
+ * touched maps, each accumulator entry's own stamp at position 3, each table's
+ * latest room), so a crowd arriving from a shared link reads one cached copy here
+ * instead of each of them reading the beach. The read paths are GET-only and
+ * write nothing; answers and editions are written by each reader straight to
+ * their own blocks on the beach, never through here.
  *
  * Env (Vercel project settings) — the read paths need none:
  *   NEWS_KEEPER_SECRET   the latch of the house edition, the bare block `news`.
  *                        The keeper founds the block under it on its first pass.
- *   NEWS_ANTHROPIC_KEY   the key that pays for choosing (its own key, so its cost
- *                        can be watched on its own). Absent: no fold is written
- *                        and the page shows the wire unranked.
- *   NEWS_MODEL           optional; default claude-opus-5-5. claude-haiku-5-5
- *                        is the cheap alternative.
+ *   NEWS_ANTHROPIC_KEY   the key that pays for the keeper's choosing (its own key,
+ *                        so its cost can be watched on its own). Absent: the
+ *                        keeper chooses nothing, and today is chosen by readers.
+ *   NEWS_MODEL           optional; default claude-opus-5-5. It is also the model
+ *                        a reader's choice is made with, on the reader's key.
  *   CRON_SECRET          if set, Vercel sends it as a Bearer token on crons and
  *                        the keeper's pass refuses anything else.
+ * Test rig only, never in production: NEWS_HOUSE=probe:<name>, NEWS_TREE=probe:<prefix>,
+ * NEWS_FAKE_MODEL=1.
  */
 
 const BEACH_ORIGIN = 'https://beach.happyseaurchin.com';
 const BEACH = BEACH_ORIGIN + '/.well-known/pscale-beach';
 const SITE = 'https://happyseaurchin.com';
-const HOUSE = process.env.NEWS_HOUSE || 'news';          // a probe: name in tests, never in production
+const HOUSE = process.env.NEWS_HOUSE || 'news';          // the keeper's edition
+const TREE = process.env.NEWS_TREE || 'tree:news:';      // a hand's own edition is TREE + handle
 const MODEL = process.env.NEWS_MODEL || 'claude-opus-5-5';
-const REFOLD_FLOOR_MS = 20 * 60 * 1000;                  // today is never re-chosen more often than this
+const REFOLD_FLOOR_MS = 20 * 60 * 1000;                  // the keeper never re-chooses today more often than this
+const SKEW_MS = 2 * 60 * 1000;                           // a clock this far ahead is still honest
+const CANDIDATES = 150;                                  // the most one choice is asked to read
+
 
 /* ── the sundial — momentToAddress, addressToSpan and voiceAddress are
  * pscale-beach lib/temporal.js, itself the port of bsp-mcp src/temporal.ts:
@@ -133,7 +151,6 @@ const RUNG = {
   year: { keep: 4 }, season: { keep: 5 }, month: { keep: 6 }, week: { keep: 7 },
   day: { keep: 8 }, gathering: { keep: 9 }, now: { keep: 10 },
 };
-const PARENT = { day: 'week', week: 'month', month: 'season', season: 'year' };
 const CHILD = { week: 'day', month: 'week', season: 'month', year: 'season' };
 const periodOf = (rung, when) => momentToAddress(when).slice(0, RUNG[rung].keep).padEnd(10, '0');
 const isPeriod = (a) => /^\d{10}$/.test(a);
@@ -179,6 +196,13 @@ function walkExact(block, addr) {
     n = ch === '0' ? n._ : n[ch];
   }
   return n;
+}
+/* a slot as the beach spells it: left-padded to the block's floor (sundial 1.1),
+ * so an entry that supernested under the zero-group is found where it went */
+function walkSpindle(block, spindle) {
+  const [int, frac = ''] = String(spindle).split('.');
+  const f = floorOf(block);
+  return walkExact(block, (int.length < f ? int.padStart(f, '0') : int) + frac);
 }
 /* a node's own voice: a string, or a string at its underscore (an object there
  * is a zero-child or a floor chain, never this node's words) */
@@ -258,6 +282,7 @@ function bornKind(name, ix) {
 const beachAt = (name, spindle) =>
   `${BEACH}?block=${encodeURIComponent(name)}${spindle ? '&spindle=' + encodeURIComponent(spindle) : ''}`;
 
+
 /* ── agents, until passports say so (function:news 3.2–3.3) ── */
 async function readAgents() {
   const law = await readBlock('function:news');
@@ -267,60 +292,96 @@ async function readAgents() {
 }
 const agentOf = (agents, who) => !!who && agents.has(String(who).toLowerCase());
 
+/* one request's view of the beach: the index, the agents, and each block read once
+ * however many items point into it */
+function reader() {
+  const memo = new Map();
+  return (name, origin = BEACH_ORIGIN) => {
+    const k = origin + ' ' + name;
+    if (!memo.has(k)) {
+      memo.set(k, getJSON(`${origin}/.well-known/pscale-beach?block=${encodeURIComponent(name)}`)
+        .then((block) => (block ? { block } : { gone: true }), (e) => ({ error: String((e && e.message) || e) })));
+    }
+    return memo.get(k);
+  };
+}
+async function context() {
+  const [ix, agents] = await Promise.all([readIndex(), readAgents()]);
+  return { ix, agents, names: new Set(ix.blocks || []), read: reader() };
+}
+
+/* ── an item, as each kind of making yields it — the wire and every pick read again
+ * at its source go through these same hands, so the two always agree ── */
+function finish(it, agents) {
+  it.address = itemAddress(new Date(it.when));
+  it.agent = agentOf(agents, it.who);
+  return it;
+}
+function birthItem(n, iso, k, block) {
+  const said = block ? rootVoice(block) : '';
+  return {
+    when: iso, who: k.who || '', kind: k.kind,
+    line: clip(said ? `${k.lead}: ${said}` : k.lead, 280), text: said ? clip(said, 1200) : '',
+    open: k.open, beach: beachAt(n), source: n,
+  };
+}
+function entryItem(n, slot, entry) {                  // a post in a room, a mark on the board, a picture in a gallery
+  const said = String(entry._ || '').trim();
+  if (!said || !isIso(entry['3'])) return null;
+  const enc = encodeURIComponent, sp = slotSpindle(slot);
+  const who = String(entry['1'] || ''), room = n.slice(n.indexOf(':') + 1);
+  const at = { when: entry['3'], who, line: clip(said, 280), beach: beachAt(n, sp), source: `${n}@${sp}` };
+  if (n === 'marks') return { ...at, kind: 'mark', text: clip(said, 1200), open: who ? `${SITE}/page/${enc(who)}` : beachAt(n, sp) };
+  if (n.startsWith('gallery:')) {
+    return { ...at, kind: 'picture', room, text: clip(said, 1200), image: [entry['4'], entry['5']].find(isImage) || '', open: `${SITE}/gallery/${enc(room)}` };
+  }
+  return { ...at, kind: 'post', room, text: clip(said, 1600), open: `https://mirror.onen.ai/?pool=${enc(room)}` };
+}
+function sceneItem(world, room, slot, entry) {       // a turn at a world's table
+  const said = String(entry._ || '').trim();
+  if (!said || !isIso(entry['3'])) return null;
+  const sp = slotSpindle(slot);
+  return {
+    when: entry['3'], who: String(entry['1'] || ''), kind: 'scene', room: world, line: clip(said, 280), text: clip(said, 1600),
+    open: `https://mirror.onen.ai/?world=${encodeURIComponent(world)}`,
+    beach: `${BEACH_ORIGIN}/w/${world}/.well-known/pscale-beach?block=${encodeURIComponent(room)}&spindle=${encodeURIComponent(sp)}`,
+    source: `w/${world}/${room}@${sp}`,
+  };
+}
+/* the channels era's declarations (function:news 3.1): one standing line per hand
+ * at position 1 of a floor-1 news:<handle>, stamped at 1.91 */
+function declarationItem(n, block) {
+  if (!block || floorOf(block) !== 1) return null;
+  const node = block['1'];
+  const said = voiceOf(node);
+  const iso = node && node['9'] && node['9']['1'];
+  if (!said || !isIso(iso)) return null;
+  const who = n.slice(5);
+  return { when: iso, who, kind: 'declaration', line: clip(said, 280), text: clip(said, 1600),
+    open: `${SITE}/page/${encodeURIComponent(who)}`, beach: beachAt(n, '1'), source: `${n}@1` };
+}
+
 /* ── the wire (function:news 1): every item made in [from, to) ── */
-async function buildWire(fromMs, toMs, ix, agents) {
-  const names = new Set(ix.blocks || []);
+async function buildWire(fromMs, toMs, ctx) {
+  const { ix, agents, names, read } = ctx;
   const born = ix.born || {}, touched = ix.touched || {};
   const items = [];
-  const add = (it) => {
-    if (!it.when) return;
-    it.address = itemAddress(new Date(it.when));
-    it.agent = agentOf(agents, it.who);
-    items.push(it);
-  };
+  const add = (it) => { if (it && it.when) items.push(finish(it, agents)); };
 
   // births — a person, a room, a family, a gallery, a page, a proposal
   const births = Object.entries(born)
     .filter(([n, iso]) => names.has(n) && Date.parse(iso) >= fromMs && Date.parse(iso) < toMs)
     .map(([n, iso]) => ({ n, iso, k: bornKind(n, names) }))
     .filter((b) => b.k);
-  await each(births, 8, async ({ n, iso, k }) => {
-    const block = await readBlock(n);
-    const said = block ? rootVoice(block) : '';
-    add({
-      when: iso, who: k.who || '', kind: k.kind,
-      line: clip(said ? `${k.lead}: ${said}` : k.lead, 280), text: said ? clip(said, 1200) : '',
-      open: k.open, beach: beachAt(n), source: n,
-    });
-  });
+  await each(births, 8, async ({ n, iso, k }) => add(birthItem(n, iso, k, (await read(n)).block)));
 
-  // entries — a post in a room, a picture in a gallery
+  // entries — a post in a room, a picture in a gallery, a mark on the board
   const since = (n) => touched[n] && Date.parse(touched[n]) >= fromMs;
   const accs = [...names].filter((n) => since(n) && !TESTISH.test(n) &&
     ((n.startsWith('pool:') && !n.startsWith('pool:test')) || n.startsWith('gallery:') || n === 'marks'));
   await each(accs, 6, async (n) => {
-    const block = await readBlock(n);
-    if (!block) return;
-    const room = n.slice(n.indexOf(':') + 1);
-    for (const { slot, entry } of entriesIn(block, fromMs, toMs)) {
-      const said = String(entry._ || '').trim();
-      if (!said) continue;
-      const enc = encodeURIComponent;
-      if (n === 'marks') {
-        const who = String(entry['1'] || '');
-        add({ when: entry['3'], who, kind: 'mark', line: clip(said, 280), text: clip(said, 1200),
-          open: who ? `${SITE}/page/${enc(who)}` : beachAt(n, slotSpindle(slot)), beach: beachAt(n, slotSpindle(slot)), source: `${n}@${slotSpindle(slot)}` });
-        continue;
-      }
-      if (n.startsWith('gallery:')) {
-        const img = [entry['4'], entry['5']].find(isImage) || '';
-        add({ when: entry['3'], who: String(entry['1'] || ''), kind: 'picture', room, line: clip(said, 280), text: clip(said, 1200),
-          image: img, open: `${SITE}/gallery/${enc(room)}`, beach: beachAt(n, slotSpindle(slot)), source: `${n}@${slotSpindle(slot)}` });
-      } else {
-        add({ when: entry['3'], who: String(entry['1'] || ''), kind: 'post', room, line: clip(said, 280), text: clip(said, 1600),
-          open: `https://mirror.onen.ai/?pool=${enc(room)}`, beach: beachAt(n, slotSpindle(slot)), source: `${n}@${slotSpindle(slot)}` });
-      }
-    }
+    const { block } = await read(n);
+    if (block) for (const { slot, entry } of entriesIn(block, fromMs, toMs)) add(entryItem(n, slot, entry));
   });
 
   // tables — a turn at a world's room (a scene)
@@ -328,51 +389,65 @@ async function buildWire(fromMs, toMs, ix, agents) {
     const t = await getJSON(BEACH + '?tables');
     const live = ((t && t.tables) || []).filter((w) => w && w.name && w.room && Date.parse(w.touched) >= fromMs && !TESTISH.test(w.name));
     await each(live.slice(0, 12), 4, async (w) => {
-      const origin = `${BEACH_ORIGIN}/w/${w.name}`;
-      const block = await readBlock(w.room, origin);
-      if (!block) return;
-      for (const { slot, entry } of entriesIn(block, fromMs, toMs)) {
-        const said = String(entry._ || '').trim();
-        if (!said) continue;
-        add({ when: entry['3'], who: String(entry['1'] || ''), kind: 'scene', room: w.name, line: clip(said, 280), text: clip(said, 1600),
-          open: `https://mirror.onen.ai/?world=${encodeURIComponent(w.name)}`,
-          beach: `${origin}/.well-known/pscale-beach?block=${encodeURIComponent(w.room)}&spindle=${encodeURIComponent(slotSpindle(slot))}`,
-          source: `w/${w.name}/${w.room}@${slotSpindle(slot)}` });
-      }
+      const { block } = await read(w.room, `${BEACH_ORIGIN}/w/${w.name}`);
+      if (block) for (const { slot, entry } of entriesIn(block, fromMs, toMs)) add(sceneItem(w.name, w.room, slot, entry));
     });
   } catch { /* the wire stands without the tables */ }
 
-  for (const it of await declarations(ix, fromMs, toMs)) add(it);
+  for (const it of await declarations(ctx, fromMs, toMs)) add(it);
 
   items.sort((a, b) => Date.parse(b.when) - Date.parse(a.when));
   return items;
 }
-
-/* the channels era's declarations (function:news 3.1): one standing line per hand
- * at position 1 of a floor-1 news:<handle>, stamped at 1.91 — carried in as items */
-async function declarations(ix, fromMs, toMs) {
+async function declarations(ctx, fromMs, toMs) {
   const out = [];
-  const old = (ix.blocks || []).filter((n) => n.startsWith('news:'));
-  await each(old, 6, async (n) => {
-    const block = await readBlock(n);
-    if (!block || floorOf(block) !== 1) return;
-    const node = block['1'];
-    const said = voiceOf(node);
-    const iso = node && node['9'] && node['9']['1'];
-    if (!said || !isIso(iso) || Date.parse(iso) < fromMs || Date.parse(iso) >= toMs) return;
-    const who = n.slice(5);
-    out.push({ when: iso, who, kind: 'declaration', line: clip(said, 280), text: clip(said, 1600),
-      open: `${SITE}/page/${encodeURIComponent(who)}`, beach: beachAt(n, '1'), source: `${n}@1` });
+  await each([...ctx.names].filter((n) => n.startsWith('news:')), 6, async (n) => {
+    const it = declarationItem(n, (await ctx.read(n)).block);
+    if (it && Date.parse(it.when) >= fromMs && Date.parse(it.when) < toMs) out.push(finish(it, ctx.agents));
   });
   return out;
 }
 
+/* ── a thing, read again where it lives. A source is the block and slot an item was
+ * read from — `pool:<room>@<slot>`, `gallery:<room>@<slot>`, `marks@<slot>`,
+ * `w/<world>/<room>@<slot>`, `news:<handle>@1`, a block's own name for a birth —
+ * and the item is whatever that source yields now, at the moment it says it was made ── */
+async function deriveItem(src, ctx) {
+  src = String(src || '');
+  const at = src.lastIndexOf('@');
+  const name = at > 0 ? src.slice(0, at) : src, slot = at > 0 ? src.slice(at + 1) : '';
+  if (!/^[\w:\- /.]{1,160}$/.test(name) || !/^\d{0,20}$/.test(slot)) return null;
+  let origin = BEACH_ORIGIN, block = name, world = '';
+  if (name.startsWith('w/')) {
+    const [, w, ...room] = name.split('/');
+    if (!w || !room.length || !slot || TESTISH.test(w)) return null;
+    world = w; origin = `${BEACH_ORIGIN}/w/${w}`; block = room.join('/');
+  } else if (TESTISH.test(name) || name.startsWith('pool:test')) return null;
+  const r = await ctx.read(block, origin);
+  if (r.error) return { error: r.error };
+  if (!r.block) return null;
+  let made = null;
+  if (!slot) {                                         // a birth: its moment is the index's own stamp
+    const iso = (ctx.ix.born || {})[name];
+    const k = isIso(iso) ? bornKind(name, ctx.names) : null;
+    made = k ? birthItem(name, iso, k, r.block) : null;
+  } else if (world) {
+    const entry = walkSpindle(r.block, slot);
+    made = entry && typeof entry === 'object' ? sceneItem(world, block, slot, entry) : null;
+  } else if (name.startsWith('news:') && slot === '1') {
+    made = declarationItem(name, r.block);
+  } else if (name === 'marks' || name.startsWith('pool:') || name.startsWith('gallery:')) {
+    const entry = walkSpindle(r.block, slot);
+    made = entry && typeof entry === 'object' ? entryItem(name, slot, entry) : null;
+  }
+  return made ? finish(made, ctx.agents) : null;
+}
+
 /* ── the answers (function:news 3): every news:<handle> mirror on the clock ── */
-async function readAnswers(ix, agents) {
+async function readAnswers(ctx) {
   const by = {};
-  const mirrors = (ix.blocks || []).filter((n) => n.startsWith('news:'));
-  await each(mirrors, 8, async (n) => {
-    const block = await readBlock(n);
+  await each([...ctx.names].filter((n) => n.startsWith('news:')), 8, async (n) => {
+    const { block } = await ctx.read(n);
     if (!block || floorOf(block) !== 10) return;
     const who = n.slice(5);
     (function walk(node, digits) {
@@ -386,7 +461,7 @@ async function readAnswers(ix, agents) {
         const child = node[k];
         if (d.length === 13) {
           const said = voiceOf(child);
-          if (said) (by[d.slice(0, 10) + '.' + d.slice(10)] ||= []).push({ who, text: clip(said, 1200), agent: agentOf(agents, who) });
+          if (said) (by[d.slice(0, 10) + '.' + d.slice(10)] ||= []).push({ who, text: clip(said, 1200), agent: agentOf(ctx.agents, who) });
         } else if (d.length < 13) walk(child, d);
       }
     })(walkExact(block, ''), '');
@@ -398,9 +473,10 @@ const tally = (list) => ({
   agents: (list || []).filter((a) => a.agent).length,
 });
 
-/* ── the house edition (function:news 2.3) ── */
+/* ── the shape of a choice (function:news 2.3): plain words at the period's own
+ * address — the headline, a line per pick, then its status and moment ── */
 const PICK = /^([1-9]) · (\d{10}\.[1-9]{1,3}) · (.+)$/;
-const STATUS = /^\((so far|sealed)[^)]*?(\d{4}-\d\d-\d\dT[\d:.]+Z)\)$/;
+const STATUS = /^\((so far|chosen|sealed)[^)]*?(\d{4}-\d\d-\d\dT[\d:.]+Z)\)$/;
 function parseFold(text) {
   if (!text) return null;
   const head = [], picks = [];
@@ -417,9 +493,11 @@ function parseFold(text) {
   if (!picks.length && !head.length) return null;
   return { headline: head.join(' '), picks, status, asOf };
 }
-function itemFromNode(address, node, agents) {
+const whyOf = (said) => { const dash = said.lastIndexOf(' — '); return dash > 0 ? said.slice(dash + 3) : ''; };
+function itemFromNode(address, node, agents) {        // the keeper's own copy of a pick
   if (!node || typeof node !== 'object') return null;
   const s = (k) => (typeof node[k] === 'string' ? node[k] : '');
+  if (!isIso(s('3'))) return null;
   return {
     address, line: s('_'), text: s('_'), who: s('1'), open: s('2'), when: s('3'), kind: s('4') || 'post',
     image: isImage(s('5')) ? s('5') : '', source: s('6'), agent: agentOf(agents, s('1')),
@@ -435,17 +513,60 @@ function beachAtSource(src) {
   }
   return beachAt(name, spindle);
 }
-function foldAt(house, period, agents) {
-  if (!house) return null;
-  const node = walkExact(house, period.slice(0, period.replace(/0+$/, '').length || 1));
-  const fold = parseFold(voiceOf(node));
-  if (!fold) return null;
-  fold.picks = fold.picks.map((p) => {
-    const item = itemFromNode(p.address, walkExact(house, p.address), agents);
-    const dash = p.said.lastIndexOf(' — ');
-    return { rank: p.rank, address: p.address, why: dash > 0 ? p.said.slice(dash + 3) : '', item: item || { address: p.address, line: dash > 0 ? p.said.slice(0, dash) : p.said } };
+
+/* ── the editions (function:news 2.5): the keeper's, the bare `news`, and each
+ * hand's own at tree:news:<handle> — for each period the newest choice stands ── */
+const HANDLE = /^[A-Za-z0-9_-]+( [A-Za-z0-9_-]+)*$/;          // theme.js cleanHandle's rule: words, one space between
+const isEdition = (n) => n === HOUSE ||
+  (n.startsWith(TREE) && n.length <= TREE.length + 64 && HANDLE.test(n.slice(TREE.length)) && !TESTISH.test(n.slice(TREE.length)));
+async function readEditions(ctx, also) {
+  const names = new Set([HOUSE, ...[...ctx.names].filter((n) => n.startsWith(TREE) && isEdition(n))]);
+  if (also && isEdition(also)) names.add(also);      // just written, perhaps not yet in the index
+  const out = [];
+  await each([...names], 8, async (n) => {
+    const { block } = await ctx.read(n);
+    if (!block || floorOf(block) !== 10) return;
+    const house = n === HOUSE;
+    out.push({ name: n, house, by: house ? 'the keeper' : n.slice(TREE.length), block,
+      touched: house ? 0 : Date.parse((ctx.ix.touched || {})[n] || '') || 0 });
   });
-  return fold;
+  return out;
+}
+/* every edition's choice of a period, newest first; a choice stamped later than
+ * now, or later than its own block was last written, is no choice */
+const nodeOf = (period) => period.replace(/0+$/, '') || period.slice(0, 1);
+function foldsAt(editions, period, nowMs) {
+  const out = [];
+  for (const edition of editions) {
+    const fold = parseFold(voiceOf(walkExact(edition.block, nodeOf(period))));
+    const t = fold && fold.asOf ? Date.parse(fold.asOf) : NaN;
+    if (!isFinite(t) || t > nowMs + SKEW_MS || (edition.touched && t > edition.touched + SKEW_MS)) continue;
+    out.push({ ...fold, t, edition });
+  }
+  return out.sort((a, b) => b.t - a.t);
+}
+/* a choice made real: each pick read again where it lives and kept only if the thing
+ * is there and was made inside the period, the ranks closed up over what fell away.
+ * When the beach cannot be read, or the thing has gone, only the keeper's own copy
+ * stands in for it. */
+async function realise(fold, ctx, span, wireBy) {
+  const { edition } = fold, seen = new Set();
+  const picks = await each(fold.picks, 6, async (p) => {
+    if (seen.has(p.address)) return null;
+    seen.add(p.address);
+    let item = (wireBy && wireBy.get(p.address)) || null;
+    if (!item) {
+      const entry = walkExact(edition.block, p.address);
+      const src = entry && typeof entry === 'object' && typeof entry['6'] === 'string' ? entry['6'] : '';
+      const got = src ? await deriveItem(src, ctx) : null;
+      item = got && !got.error && got.address === p.address ? got : null;
+      if (!item && edition.house) item = itemFromNode(p.address, entry, ctx.agents);
+    }
+    const t = item ? Date.parse(item.when) : NaN;
+    if (!(t >= span.start && t < span.end)) return null;
+    return { address: p.address, why: whyOf(p.said), item };
+  });
+  return picks.filter(Boolean).map((p, i) => ({ rank: i + 1, ...p }));
 }
 
 /* ── a period, as the page reads it ── */
@@ -464,91 +585,157 @@ function periodFor(rung, at, now) {
   if (rung === 'gathering' && running) label = label.replace(/^.*?, /, 'this ');
   return { address, label, start, end, running, prev, next: next && next <= periodOf(rung, now) ? next : null };
 }
+const isoPeriod = (p) => ({ ...p, start: new Date(p.start).toISOString(), end: new Date(p.end).toISOString() });
 
 async function readRung(q) {
   const now = new Date();
   const rung = RUNG[q.rung] ? q.rung : 'day';
   const period = periodFor(rung, String(q.at || ''), now);
-  const [ix, agents, house] = await Promise.all([readIndex(), readAgents(), readBlock(HOUSE)]);
+  const ctx = await context();
   const fine = rung === 'now' || rung === 'gathering' || rung === 'day';
-  const [wire, answers] = await Promise.all([
-    fine ? buildWire(period.start, Math.min(period.end, now.getTime() + 1000), ix, agents) : Promise.resolve([]),
-    readAnswers(ix, agents),
+  const chosen = rung !== 'now' && rung !== 'gathering';
+  const want = String(q.by || '');
+  const [wire, answers, editions] = await Promise.all([
+    fine ? buildWire(period.start, Math.min(period.end, now.getTime() + 1000), ctx) : Promise.resolve([]),
+    readAnswers(ctx),
+    chosen ? readEditions(ctx, want) : Promise.resolve([]),
   ]);
-  const fold = rung === 'now' || rung === 'gathering' ? null : foldAt(house, period.address, agents);
+  let fold = null, choices = [];
+  if (chosen) {
+    const folds = foldsAt(editions, period.address, now.getTime());
+    const order = want ? folds.filter((f) => f.edition.name === want).concat(folds.filter((f) => f.edition.name !== want)) : folds;
+    const wireBy = rung === 'day' ? new Map(wire.map((it) => [it.address, it])) : null;
+    for (const f of order.slice(0, 4)) {
+      const picks = await realise(f, ctx, period, wireBy);
+      if (picks.length || f.edition.house) {           // a hand's choice that chose nothing real is no choice
+        fold = { headline: f.headline, picks, status: f.status, asOf: f.asOf, by: f.edition.by, house: f.edition.house, edition: f.edition.name };
+        break;
+      }
+    }
+    choices = folds.map((f) => ({ edition: f.edition.name, by: f.edition.by, house: f.edition.house, asOf: f.asOf, status: f.status, picks: f.picks.length }));
+  }
   let items = wire;
   let latest = false;
   if (rung === 'now' && !items.length) {           // a quiet beat: the newest few of the day, said as such
     const day = addressToSpan(periodOf('day', now));
-    items = (await buildWire(day.start.getTime() - 86400_000, now.getTime() + 1000, ix, agents)).slice(0, 12);
+    items = (await buildWire(day.start.getTime() - 86400_000, now.getTime() + 1000, ctx)).slice(0, 12);
     latest = true;
   }
   const counted = (it) => ({ ...it, answers: tally(answers[it.address]) });
   return {
     now: { iso: now.toISOString(), address: momentToAddress(now), voicing: voiceAddress(momentToAddress(now)) },
-    rung, period: { ...period, start: new Date(period.start).toISOString(), end: new Date(period.end).toISOString() },
+    rung, period: isoPeriod(period),
     fold: fold ? { ...fold, picks: fold.picks.map((p) => ({ ...p, item: counted(p.item) })) } : null,
-    items: items.map(counted), latest,
-    keeper: { house: HOUSE, folding: !!house },
+    choices, items: items.map(counted), latest,
+    keeper: { house: HOUSE, folding: editions.some((e) => e.house) },
+    choose: chosen ? { model: MODEL, tree: TREE } : null,
   };
 }
 
 async function readItem(q) {
   const address = String(q.item || '');
   if (!isItemAddress(address)) return { error: 'not an item address', status: 400 };
-  const [ix, agents, house] = await Promise.all([readIndex(), readAgents(), readBlock(HOUSE)]);
-  let item = house ? itemFromNode(address, walkExact(house, address), agents) : null;
-  const src = String(q.s || '');
-  if (!item && src) item = await itemFromSource(src, address, agents);
+  const ctx = await context();
+  const [editions, answersBy] = await Promise.all([readEditions(ctx), readAnswers(ctx)]);
+  const now = Date.now();
+  // the thing, read where it lives: the link's own source, else the source any choice recorded for it, else the live wire
+  const entries = editions.map((ed) => ({ ed, entry: walkExact(ed.block, address) }));
+  const sources = [String(q.s || '')].concat(entries.map(({ entry }) =>
+    entry && typeof entry === 'object' && typeof entry['6'] === 'string' ? entry['6'] : ''));
+  let item = null;
+  for (const src of [...new Set(sources.filter(Boolean))].slice(0, 4)) {
+    const got = await deriveItem(src, ctx);
+    if (got && !got.error && got.address === address) { item = got; break; }
+  }
   if (!item) {
-    const { start } = addressToSpan(address.slice(0, 10));
-    const t = start.getTime();
-    if (Date.now() - t < 3 * 86400_000) {
-      const wire = await buildWire(t, t + 9600_000 / 9, ix, agents);
-      item = wire.find((it) => it.address === address) || null;
-    }
+    const t = addressToSpan(address.slice(0, 10)).start.getTime();
+    if (now - t < 3 * 86400_000) item = (await buildWire(t, t + 9600_000 / 9, ctx)).find((it) => it.address === address) || null;
+  }
+  if (!item) {                                     // gone from where it lived: the keeper's own copy, if it kept one
+    const kept = entries.find(({ ed }) => ed.house);
+    item = kept ? itemFromNode(address, kept.entry, ctx.agents) : null;
   }
   const ladder = [];
-  if (house) {
-    for (const rung of ['day', 'week', 'month', 'season', 'year']) {
-      const period = address.slice(0, RUNG[rung].keep).padEnd(10, '0');
-      const fold = foldAt(house, period, agents);
-      const pick = fold && fold.picks.find((p) => p.address === address);
-      if (pick) ladder.push({ rung, period, label: voiceAddress(period), rank: pick.rank, why: pick.why, status: fold.status });
-    }
+  for (const rung of ['day', 'week', 'month', 'season', 'year']) {
+    const period = address.slice(0, RUNG[rung].keep).padEnd(10, '0');
+    const f = foldsAt(editions, period, now).find((x) => x.picks.length);   // the newest choice that chose anything
+    const i = f ? f.picks.findIndex((p) => p.address === address) : -1;
+    if (i >= 0) ladder.push({ rung, period, label: voiceAddress(period), rank: i + 1, why: whyOf(f.picks[i].said),
+      by: f.edition.by, house: f.edition.house, status: f.status, asOf: f.asOf });
   }
-  const answers = (await readAnswers(ix, agents))[address] || [];
+  const answers = answersBy[address] || [];
   return { address, item, ladder, answers, tally: tally(answers), moment: voiceAddress(address.slice(0, 10)) };
 }
-async function itemFromSource(src, address, agents) {
-  const at = src.lastIndexOf('@');
-  const name = at > 0 ? src.slice(0, at) : src, spindle = at > 0 ? src.slice(at + 1) : '';
-  if (!/^[\w:\- /.]{1,120}$/.test(name) || !/^\d{0,12}$/.test(spindle)) return null;
-  let origin = BEACH_ORIGIN, block = name;
-  if (name.startsWith('w/')) { const [, world, ...room] = name.split('/'); origin = `${BEACH_ORIGIN}/w/${world}`; block = room.join('/'); }
-  const whole = await readBlock(block, origin);
-  if (!whole) return null;
-  const node = spindle ? walkExact(whole, spindle) : whole;
-  const entry = node && typeof node === 'object' ? node : null;
-  const said = spindle ? voiceOf(entry) : rootVoice(whole);
-  if (!said) return null;
-  const when = entry && isIso(entry['3']) ? entry['3'] : '';
-  if (when && itemAddress(new Date(when)) !== address) return null;   // the link and the source must agree
-  const room = block.slice(block.indexOf(':') + 1);
-  const picture = block.startsWith('gallery:');
-  const kind = name.startsWith('w/') ? 'scene' : picture ? 'picture' : block.startsWith('pool:') ? 'post' : block.startsWith('news:') ? 'declaration' : block === 'marks' ? 'mark' : 'block';
-  return {
-    address, when, who: String((entry && entry['1']) || ''), agent: agentOf(agents, entry && entry['1']), kind,
-    line: clip(said, 280), text: clip(said, 1600), room,
-    image: picture ? ([entry['4'], entry['5']].find(isImage) || '') : '',
-    open: kind === 'post' ? `https://mirror.onen.ai/?pool=${encodeURIComponent(room)}` : kind === 'scene' ? `https://mirror.onen.ai/?world=${encodeURIComponent(name.split('/')[1])}` : picture ? `${SITE}/gallery/${encodeURIComponent(room)}` : '',
-    beach: beachAtSource(src), source: src,
-  };
+
+/* ── what a choice reads (function:news 2.1). A day reads everything made in it; a
+ * week reads its days' picks, and the whole wire of any day nobody chose; a month
+ * and up read the picks chosen beneath, from the nearest rung down that someone
+ * chose — at most CANDIDATES, the best-ranked kept first. ── */
+const CHILDREN = { week: 'days', month: 'weeks', season: 'months', year: 'seasons' };
+function childrenOf(rung, period, nowMs) {
+  const child = CHILD[rung], span = addressToSpan(period), kids = [];
+  for (let t = span.start.getTime(); t < span.end.getTime() && t <= nowMs; ) {
+    const p = periodOf(child, new Date(t));
+    kids.push(p);
+    t = addressToSpan(p).end.getTime();
+  }
+  return { child, kids };
+}
+async function candidatesFor(rung, period, ctx, editions, nowMs) {
+  if (rung === 'day') {
+    const wire = await buildWire(period.start, Math.min(period.end, nowMs + 1000), ctx);
+    return { list: wire.slice(0, CANDIDATES), what: 'Here is everything made in it, newest first:' };
+  }
+  const unchosen = [];
+  async function under(r, address) {
+    const { child, kids } = childrenOf(r, address, nowMs);
+    const found = await each(kids, 4, async (k) => {
+      const s = addressToSpan(k), span = { start: s.start.getTime(), end: s.end.getTime() };
+      for (const f of foldsAt(editions, k, nowMs).slice(0, 3)) {
+        const picks = await realise(f, ctx, span, null);
+        if (picks.length) return picks.map((p) => ({ ...p.item, why: p.why, rank: p.rank }));
+      }
+      if (child !== 'day') return under(child, k);
+      if (rung === 'week') unchosen.push(span);
+      return [];
+    });
+    return found.flat();
+  }
+  const list = await under(rung, period.address);
+  const picked = list.length;
+  let raw = 0;
+  if (unchosen.length) {
+    const from = Math.min(...unchosen.map((s) => s.start)), to = Math.min(Math.max(...unchosen.map((s) => s.end)), nowMs + 1000);
+    const inside = (it) => { const t = Date.parse(it.when); return unchosen.some((s) => t >= s.start && t < s.end); };
+    const wire = (await buildWire(from, to, ctx)).filter(inside);
+    raw = wire.length;
+    list.push(...wire);
+  }
+  const seen = new Set();
+  const kept = list.filter((c) => !seen.has(c.address) && seen.add(c.address))
+    .sort((a, b) => (a.rank || 10) - (b.rank || 10) || Date.parse(b.when) - Date.parse(a.when))
+    .slice(0, CANDIDATES)
+    .sort((a, b) => Date.parse(b.when) - Date.parse(a.when));
+  const what = rung !== 'week'
+    ? `Here are the picks already chosen beneath it — for its ${CHILDREN[rung]}, or further down where nobody chose those yet — newest first:`
+    : !raw ? 'Here are the picks already chosen for each of its days, newest first:'
+    : !picked ? 'Nobody has chosen its days yet, so here is everything made in it, newest first:'
+    : 'Here are the picks already chosen for its days, and everything made on the days nobody has chosen yet, newest first:';
+  return { list: kept, what };
+}
+function promptFor(rung, label, what, candidates) {
+  const lines = candidates.map((c) => [
+    c.address, c.kind, c.who ? (c.agent ? `${c.who} (agent)` : c.who) : 'someone',
+    c.answers && (c.answers.people || c.answers.agents) ? `answers: ${c.answers.people} people, ${c.answers.agents} agents` : '',
+    c.why ? `chosen below because: ${c.why}` : '',
+    clip(c.line, 260),
+  ].filter(Boolean).join(' | '));
+  return `The period: ${label} (the ${rung}).\n${what}\n\n${lines.join('\n')}`;
 }
 
-/* ── THE KEEPER (function:news 2) ── */
-const KEEPER_LAW = [
-  'You keep the house edition of the news on a public commons — the beach at beach.happyseaurchin.com, where people and AI agents make things together in plain public blocks.',
+/* ── THE LAW OF CHOOSING (function:news 2) — the keeper and every reader choose by it ── */
+const CHOOSING_LAW = [
+  'You choose the news for one period of a public commons — the beach at beach.happyseaurchin.com, where people and AI agents make things together in plain public blocks. Your choice is one edition among many, and it stands for every reader until someone chooses again.',
   'From the candidates, choose at most nine items that best show what this period MADE: things made for other people to meet — a picture, a page, a game or a scene at a table, a room someone opened, a practice or way of working, a new person arriving, a post with real substance.',
   'Prefer making over housekeeping and machine echoes (status lines, automatic reports, "X voiced Y on the Z field"); prefer what a stranger arriving from a shared link would find worth a look; prefer variety of kinds and of hands, and a person over an agent when they are otherwise equal. Answers from people are evidence of interest, never a vote you must obey.',
   'Choose only from the candidates, by their exact address, and rank them best first. Choosing nothing is honest if nothing was made. Never invent anything a candidate does not say.',
@@ -563,25 +750,39 @@ const FOLD_SCHEMA = {
   required: ['headline', 'picks'],
   additionalProperties: false,
 };
+const MAX_TOKENS = 16000;
+const slim = (c) => ({ address: c.address, when: c.when, who: c.who, agent: c.agent, kind: c.kind, line: c.line,
+  open: c.open, beach: c.beach, image: c.image || '', source: c.source, why: c.why || '' });
 
-async function choose(periodLabel, rung, candidates) {
+/* everything a reader's browser needs to make a choice exactly as the keeper would */
+async function prepare(q) {
+  const now = new Date();
+  const rung = RUNG[q.rung] && q.rung !== 'now' && q.rung !== 'gathering' ? q.rung : null;
+  if (!rung) return { code: 400, error: 'a choice is made for a day, a week, a month, a season or a year' };
+  const period = periodFor(rung, String(q.at || ''), now);
+  const ctx = await context();
+  const [answers, editions] = await Promise.all([readAnswers(ctx), readEditions(ctx)]);
+  const { list, what } = await candidatesFor(rung, period, ctx, editions, now.getTime());
+  const candidates = list.map((it) => ({ ...it, answers: tally(answers[it.address]) }));
+  return {
+    rung, period: isoPeriod(period), asOf: now.toISOString(), standing: period.running ? 'so far' : 'chosen',
+    model: MODEL, max_tokens: MAX_TOKENS, system: CHOOSING_LAW, schema: FOLD_SCHEMA,
+    user: promptFor(rung, voiceAddress(period.address), what, candidates),
+    candidates: candidates.map(slim), tree: TREE,
+  };
+}
+
+/* ── THE KEEPER (function:news 2.5) — today, on its own key ── */
+async function choose(system, user, candidates) {
   if (process.env.NEWS_FAKE_MODEL === '1') {     // the test rig's stand-in: never set in production
-    return { headline: `Test fold of ${periodLabel}.`, picks: candidates.slice(0, 9).map((c) => ({ address: c.address, why: 'test pick' })), usage: null };
+    return { headline: 'A test choice of today.', picks: candidates.slice(0, 9).map((c) => ({ address: c.address, why: 'test pick' })), usage: null };
   }
   const key = process.env.NEWS_ANTHROPIC_KEY;
   if (!key) return null;
-  const lines = candidates.map((c) => [
-    c.address, c.kind, c.who ? (c.agent ? `${c.who} (agent)` : c.who) : 'someone',
-    c.answers ? `answers: ${c.answers.people} people, ${c.answers.agents} agents` : '',
-    c.why ? `chosen below because: ${c.why}` : '',
-    clip(c.line, 260),
-  ].filter(Boolean).join(' | '));
   const body = {
-    model: MODEL,
-    max_tokens: 16000,
-    system: KEEPER_LAW,
+    model: MODEL, max_tokens: MAX_TOKENS, system,
     output_config: { effort: 'low', format: { type: 'json_schema', schema: FOLD_SCHEMA } },
-    messages: [{ role: 'user', content: `The period: ${periodLabel} (the ${rung}).\n${rung === 'day' ? 'These are everything made in it, newest first:' : `These are the picks already chosen for each ${CHILD[rung]} inside it:`}\n\n${lines.join('\n')}` }],
+    messages: [{ role: 'user', content: user }],
   };
   const headers = { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' };
   if (/^claude-(opus-5|sonnet-5-5|fable-5-1)/.test(MODEL)) {     // server-side fallback on a refusal, where the model takes it
@@ -601,11 +802,12 @@ async function choose(periodLabel, rung, candidates) {
   const out = JSON.parse(text);
   const known = new Set(candidates.map((c) => c.address));
   const seen = new Set();
-  out.picks = (out.picks || []).filter((p) => known.has(p.address) && !seen.has(p.address) && seen.add(p.address)).slice(0, 9);
+  out.picks = (out.picks || []).filter((p) => p && known.has(p.address) && !seen.has(p.address) && seen.add(p.address)).slice(0, 9);
   out.usage = data.usage;
   return out;
 }
 
+/* the written shape — news.html writes a reader's edition in this same shape */
 function foldText(chosen, byAddress, status, asOf) {
   const one = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const lines = [one(chosen.headline) || 'Nothing was made for others to meet in this period.'];
@@ -622,114 +824,65 @@ function entryOf(it) {
   if (it.source) e[6] = it.source;
   return e;
 }
-async function writeFold(secret, period, chosen, byAddress, status, asOf, log) {
+async function writeFold(secret, block, period, chosen, byAddress, status, asOf, log) {
   for (const p of chosen.picks) {
     const it = byAddress.get(p.address);
     if (!it || !it.when) continue;
-    const w = await postBeach({ block: HOUSE, spindle: p.address, content: entryOf(it), secret });
+    const w = await postBeach({ block, spindle: p.address, content: entryOf(it), secret });
     if (!w.ok) throw new Error(`the beach refused ${p.address}: ${w.status} ${w.data && (w.data.error || w.data.code)}`);
   }
-  const w = await postBeach({ block: HOUSE, spindle: period, content: foldText(chosen, byAddress, status, asOf), secret });
-  if (!w.ok) throw new Error(`the beach refused the fold at ${period}: ${w.status} ${w.data && (w.data.error || w.data.code)}`);
-  log.push(`${status === 'sealed' ? 'sealed' : 'folded'} ${period} (${voiceAddress(period)}): ${chosen.picks.length} picks`);
+  const w = await postBeach({ block, spindle: period, content: foldText(chosen, byAddress, status, asOf), secret });
+  if (!w.ok) throw new Error(`the beach refused the choice at ${period}: ${w.status} ${w.data && (w.data.error || w.data.code)}`);
+  log.push(`chose ${period} (${voiceAddress(period)}): ${chosen.picks.length} picks`);
 }
 
-async function foundHouse(secret, ix, agents, log) {
-  let root = 'HOUSE EDITION — the keeper\'s fold of the news on the canonical clock (spine:news, function:news 2): at each period\'s own address its headline and its best nine with why each rose, sealed when the period closes; at each pick\'s own address the reference to the thing itself. One edition among any number — anyone may keep their own at tree:news:<handle>. Read it at happyseaurchin.com/news.';
+async function foundHouse(secret, ctx, log) {
+  let root = 'HOUSE EDITION — the keeper\'s choice of the news on the canonical clock (spine:news, function:news 2): at today\'s own address, chosen again through the day as the wire moves, its headline and its best nine with why each rose; at each pick\'s own address a reference to the thing itself. The keeper chooses only today. Every other period is chosen by its readers, each in their own edition at tree:news:<handle>, and for every period the newest choice stands, whoever made it. Read it at happyseaurchin.com/news.';
   for (let i = 0; i < 10; i++) root = { _: root };
   const w = await postBeach({ block: HOUSE, content: root, new_lock: secret });
   if (!w.ok) throw new Error(`could not found ${HOUSE}: ${w.status} ${w.data && (w.data.error || w.data.code)}`);
   log.push(`founded ${HOUSE}`);
   // carry the channels era in (function:news 3.1): its declarations, as the record of the summer they were made in
-  const old = (await declarations(ix, Date.UTC(2026, 6, 1), Date.UTC(2026, 9, 1)))
-    .map((it) => ({ ...it, address: itemAddress(new Date(it.when)), agent: agentOf(agents, it.who) }))
-    .sort((a, b) => Date.parse(a.when) - Date.parse(b.when));
+  const old = (await declarations(ctx, Date.UTC(2026, 6, 1), Date.UTC(2026, 9, 1))).sort((a, b) => Date.parse(a.when) - Date.parse(b.when));
   if (old.length) {
     const by = new Map(old.map((it) => [it.address, it]));
     const chosen = { headline: 'Before the clock: the declarations made on the first news page this summer, one standing line each, carried in when the news was re-founded on the clock in October.', picks: old.slice(0, 9).map((it) => ({ address: it.address, why: 'declared on the channels page' })) };
-    await writeFold(secret, '2026300000', chosen, by, 'sealed', new Date().toISOString(), log);
+    await writeFold(secret, HOUSE, '2026300000', chosen, by, 'sealed', new Date().toISOString(), log);
   }
 }
 
 async function keep() {
   const secret = process.env.NEWS_KEEPER_SECRET;
   if (!secret) return { status: 500, body: { error: 'no NEWS_KEEPER_SECRET — the keeper has no latch for the house edition' } };
-  const now = new Date();
-  const asOf = now.toISOString();
-  const log = [], spent = [];
-  const [ix, agents] = await Promise.all([readIndex(), readAgents()]);
-  let house = await readBlock(HOUSE);
-  if (!house) { await foundHouse(secret, ix, agents, log); house = await readBlock(HOUSE); }
+  const now = new Date(), nowMs = now.getTime();
+  const log = [];
+  let ctx = await context();
+  if (!(await ctx.read(HOUSE)).block) {
+    await foundHouse(secret, ctx, log);
+    ctx = { ...ctx, read: reader() };             // the house stands now: read it afresh
+  }
   if (!process.env.NEWS_ANTHROPIC_KEY && process.env.NEWS_FAKE_MODEL !== '1') {
-    return { status: 200, body: { ok: true, log: log.concat('no NEWS_ANTHROPIC_KEY — nothing chosen; the page shows the wire unranked') } };
+    return { status: 200, body: { ok: true, log: log.concat('no NEWS_ANTHROPIC_KEY — the keeper chooses nothing; today is chosen by its readers') } };
   }
-  const answers = await readAnswers(ix, agents);
-  const withAnswers = (it) => ({ ...it, answers: tally(answers[it.address]) });
-
-  async function foldDay(period, status, newerThan = 0) {
-    const span = addressToSpan(period);
-    const wire = (await buildWire(span.start.getTime(), Math.min(span.end.getTime(), now.getTime() + 1000), ix, agents)).map(withAnswers);
-    if (!wire.length) { log.push(`${period}: nothing made`); return false; }
-    if (newerThan && !wire.some((it) => Date.parse(it.when) > newerThan)) { log.push(`${period}: nothing new since ${new Date(newerThan).toISOString()}`); return false; }
-    const chosen = await choose(voiceAddress(period), 'day', wire.slice(0, 180));
-    if (!chosen) return false;
-    if (chosen.refused) { log.push(`${period}: model stopped (${chosen.refused})`); return false; }
-    if (chosen.usage) spent.push(chosen.usage);
-    await writeFold(secret, period, chosen, new Map(wire.map((it) => [it.address, it])), status, asOf, log);
-    return true;
+  const today = periodFor('day', '', now);
+  const [answers, editions] = await Promise.all([readAnswers(ctx), readEditions(ctx)]);
+  const { list, what } = await candidatesFor('day', today, ctx, editions, nowMs);
+  if (!list.length) return { status: 200, body: { ok: true, log: log.concat(`${today.address}: nothing made yet today`) } };
+  // the newest choice of today anyone made that chose something real — the keeper's own always counts
+  const made = new Set(list.map((it) => it.address));
+  const newest = foldsAt(editions, today.address, nowMs).find((f) => f.edition.house || f.picks.some((p) => made.has(p.address)));
+  if (newest) {
+    const who = newest.edition.house ? 'the keeper' : newest.edition.by;
+    if (nowMs - newest.t < REFOLD_FLOOR_MS) return { status: 200, body: { ok: true, log: log.concat(`${today.address}: chosen by ${who} ${Math.round((nowMs - newest.t) / 60000)} min ago — waiting`) } };
+    if (!(Date.parse(list[0].when) > newest.t)) return { status: 200, body: { ok: true, log: log.concat(`${today.address}: nothing made since ${who} chose, ${newest.asOf}`) } };
   }
-  async function foldUp(rung, period, status) {
-    const span = addressToSpan(period);
-    const child = CHILD[rung];
-    const kids = [];
-    for (let t = span.start.getTime(); t < span.end.getTime(); ) {
-      const p = periodOf(child, new Date(t));
-      kids.push(p);
-      t = addressToSpan(p).end.getTime();
-    }
-    const fresh = await readBlock(HOUSE);
-    const cands = [];
-    for (const k of kids) {
-      const f = foldAt(fresh, k, agents);
-      if (f) for (const p of f.picks) if (p.item && p.item.when) cands.push({ ...withAnswers(p.item), why: p.why });
-    }
-    if (!cands.length) { log.push(`${period}: nothing chosen beneath yet`); return false; }
-    const chosen = await choose(voiceAddress(period), rung, cands);
-    if (!chosen) return false;
-    if (chosen.refused) { log.push(`${period}: model stopped (${chosen.refused})`); return false; }
-    if (chosen.usage) spent.push(chosen.usage);
-    await writeFold(secret, period, chosen, new Map(cands.map((it) => [it.address, it])), status, asOf, log);
-    return true;
-  }
-  async function climb(fromRung, when) {
-    let rung = fromRung;
-    while (PARENT[rung]) {
-      rung = PARENT[rung];
-      const period = periodOf(rung, when);
-      const closed = addressToSpan(period).end.getTime() <= now.getTime();
-      const was = parseFold(voiceOf(walkExact(await readBlock(HOUSE), period.replace(/0+$/, ''))));
-      if (was && was.status === 'sealed') break;
-      await foldUp(rung, period, closed ? 'sealed' : 'so far');
-      if (!closed) break;                         // a running period's parent waits for it to close
-    }
-  }
-
-  // 1 — seal each closed day not yet sealed (the last two), then climb from it
-  for (const back of [2, 1]) {
-    const day = periodOf('day', new Date(now.getTime() - back * 86400_000));
-    const was = parseFold(voiceOf(walkExact(house, day.replace(/0+$/, ''))));
-    if (was && was.status === 'sealed') continue;
-    if (await foldDay(day, 'sealed')) await climb('day', addressToSpan(day).start);
-  }
-  // 2 — today, again, when the wire has moved since its last fold
-  const today = periodOf('day', now);
-  const was = parseFold(voiceOf(walkExact(await readBlock(HOUSE), today.replace(/0+$/, ''))));
-  const last = was && was.asOf ? Date.parse(was.asOf) : 0;
-  if (now.getTime() - last >= REFOLD_FLOOR_MS) await foldDay(today, 'so far', last);
-  else log.push(`${today}: folded ${Math.round((now.getTime() - last) / 60000)} min ago — waiting`);
-
-  const tokens = spent.reduce((a, u) => ({ input: a.input + (u.input_tokens || 0), output: a.output + (u.output_tokens || 0) }), { input: 0, output: 0 });
-  return { status: 200, body: { ok: true, model: MODEL, calls: spent.length, tokens, log } };
+  const candidates = list.map((it) => ({ ...it, answers: tally(answers[it.address]) }));
+  const chosen = await choose(CHOOSING_LAW, promptFor('day', voiceAddress(today.address), what, candidates), candidates);
+  if (!chosen) return { status: 200, body: { ok: true, log } };
+  if (chosen.refused) return { status: 200, body: { ok: true, model: MODEL, usage: chosen.usage, log: log.concat(`${today.address}: the model stopped (${chosen.refused})`) } };
+  await writeFold(secret, HOUSE, today.address, chosen, new Map(candidates.map((c) => [c.address, c])), 'so far', now.toISOString(), log);
+  const u = chosen.usage || {};
+  return { status: 200, body: { ok: true, model: MODEL, tokens: { input: u.input_tokens || 0, output: u.output_tokens || 0 }, log } };
 }
 
 /* ── the door ── */
@@ -747,6 +900,12 @@ export default async function handler(req, res) {
       const r = await keep();
       return res.status(r.status).json(r.body);
     }
+    if (q.prepare) {
+      res.setHeader('Cache-Control', 'no-store');
+      const r = await prepare(q);
+      if (r.error) return res.status(r.code || 400).json({ error: r.error });
+      return res.status(200).json(r);
+    }
     if (q.item) {
       const r = await readItem(q);
       if (r.status) return res.status(r.status).json({ error: r.error });
@@ -761,4 +920,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: String(e && e.message ? e.message : e).slice(0, 300) });
   }
 }
-

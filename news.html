@@ -15,6 +15,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/vault.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   body{font-family:var(--body);color:var(--foam);font-size:17px;line-height:1.55;
@@ -205,6 +206,20 @@
   .on-item .lede{display:none}
   .on-item .mast h1{font-size:clamp(1.5rem,5vw,2rem)}
   .on-item #itempage{margin:8px 0 26px}
+  .status b{font-weight:400;color:var(--vapour)}
+  .status .linkish{font-family:var(--mono);font-size:11px}
+  .choose{margin:0 0 16px;border:1px solid rgba(var(--liquid-rgb),.45);border-radius:14px;padding:14px 16px;background:rgba(var(--well-rgb),.45);max-width:760px}
+  .choose h3{font-family:var(--display);font-size:1rem;margin:0 0 6px;font-weight:700}
+  .choose p{margin:0 0 10px;font-size:15px;color:var(--vapour);line-height:1.45}
+  .choose .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px 12px;margin:0 0 8px}
+  .choose label{display:flex;flex-direction:column;gap:4px;font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--vapour-dim)}
+  .choose label.wide{grid-column:1/-1}
+  .choose input[type=text],.choose input[type=password]{background:rgba(var(--well-rgb),.6);border:1px solid var(--line);border-radius:7px;color:var(--foam);font-family:var(--mono);font-size:13px;padding:8px 9px;width:100%;min-width:0}
+  .choose input:focus{outline:none;border-color:var(--liquid)}
+  .choose .tick{flex-direction:row;align-items:center;gap:8px;font-size:11.5px;margin:2px 0 4px;cursor:pointer}
+  .choose .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:8px 0 0}
+  .choose [data-ch-said]{flex:1 1 220px}
+  .choose .err{color:var(--solid)}
   .foot{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:44px 0 0;line-height:1.9;max-width:760px}
   .err{color:var(--solid)}
 </style>
@@ -241,9 +256,20 @@
 
   <section id="itempage"></section>
   <section id="body"><p class="quiet">reading the beach…</p></section>
+  <div class="choose" id="choose" hidden>
+    <h3 data-ch-title>Choose</h3>
+    <p data-ch-what></p>
+    <div class="fields">
+      <label>your handle<input type="text" data-ch-handle placeholder="the name you use here" autocomplete="username" spellcheck="false" autocapitalize="none"></label>
+      <label>your key<input type="password" data-ch-latch placeholder="the one your passport uses" autocomplete="current-password"></label>
+      <label class="wide">Claude key<input type="password" data-ch-claude placeholder="sk-ant-…  or leave empty to use the one in your vault" autocomplete="off" spellcheck="false" autocapitalize="none"></label>
+    </div>
+    <label class="tick"><input type="checkbox" data-ch-keep> keep this Claude key in my vault, sealed under my key, for next time</label>
+    <div class="row"><button class="btn primary" data-ch-go>choose</button><button class="btn" data-ch-close>not now</button><span class="hint" data-ch-said></span></div>
+  </div>
 
   <p class="foot">
-    Nothing here is stored for the page: what is made is read live from the beach, and the picks are the keeper's house edition — one edition among any you could keep (function:news 2.5).
+    Nothing here is stored for the page: what is made is read live from the beach. The picks for each period are the newest choice anyone made — the keeper chooses today, and anyone can choose any period on their own Claude key, in their own edition, tree:news:&lt;handle&gt; (function:news 2.5).
     Answers stand in each person's own mirror, news:&lt;handle&gt;, at the item's own moment.<br>
     The law is <a href="/render?beach=beach.happyseaurchin.com&block=function%3Anews">function:news</a> · the talk is <a href="https://mirror.onen.ai/?pool=news" target="_blank" rel="noopener">pool:news</a> · bring your own assistant: <a href="/connect">connect</a>
   </p>
@@ -344,6 +370,7 @@ let RUNG = RUNGS.some(r => r.key === qs.get('rung')) ? qs.get('rung') : (pathIte
 let AT = /^\d{10}$/.test(qs.get('at') || '') ? qs.get('at') : (pathItem ? pathItem.slice(0, 10) : '');
 let VIEW = ['list','mosaic','cards'].includes(qs.get('view')) ? qs.get('view') : (store.get('news-view') || 'mosaic');
 let KINDF = 'all';
+let BY = /^[\w:. -]{1,120}$/.test(qs.get('by') || '') ? qs.get('by') : '';   /* an edition asked for by name; else the newest choice */
 let HANDLE = window.cleanHandle ? cleanHandle(pathHandle || store.get('news-handle')) : (pathHandle || store.get('news-handle'));
 let DATA = null, SEEN = new Set(), TIMER = null;
 
@@ -353,6 +380,7 @@ function syncUrl(){
   if (RUNG !== 'day') p.set('rung', RUNG);
   if (AT) p.set('at', AT);
   if (VIEW !== 'mosaic') p.set('view', VIEW);
+  if (BY) p.set('by', BY);
   history.replaceState(null, '', '/news' + (p.toString() ? '?' + p : ''));
 }
 
@@ -367,7 +395,7 @@ async function api(params){
 function drawControls(){
   $('rungs').innerHTML = RUNGS.map(r => '<button class="chip" data-rung="' + r.key + '" aria-pressed="' + (r.key === RUNG) + '">' +
     (r.key === 'now' ? '<span class="live"></span>' : '') + esc(r.key === 'gathering' && DATA && DATA.rung === 'gathering' && DATA.period.running ? DATA.period.label : r.label) + '</button>').join('');
-  document.querySelectorAll('[data-rung]').forEach(b => b.onclick = () => { RUNG = b.dataset.rung; AT = ''; KINDF = 'all'; syncUrl(); load(); });
+  document.querySelectorAll('[data-rung]').forEach(b => b.onclick = () => { RUNG = b.dataset.rung; AT = ''; BY = ''; KINDF = 'all'; closeChoose(); syncUrl(); load(); });
   document.querySelectorAll('[data-view]').forEach(b => {
     b.setAttribute('aria-pressed', String(b.dataset.view === VIEW));
     b.onclick = () => { VIEW = b.dataset.view; store.set('news-view', VIEW); syncUrl(); drawControls(); render(); };
@@ -377,8 +405,8 @@ function drawControls(){
   $('prev').disabled = !(p && p.prev); $('next').disabled = !(p && p.next);
   $('prev').style.visibility = $('next').style.visibility = RUNG === 'now' ? 'hidden' : 'visible';
 }
-$('prev').onclick = () => { if (DATA && DATA.period.prev){ AT = DATA.period.prev; syncUrl(); load(); } };
-$('next').onclick = () => { if (DATA && DATA.period.next){ AT = DATA.period.next; syncUrl(); load(); } };
+$('prev').onclick = () => { if (DATA && DATA.period.prev){ AT = DATA.period.prev; BY = ''; closeChoose(); syncUrl(); load(); } };
+$('next').onclick = () => { if (DATA && DATA.period.next){ AT = DATA.period.next; BY = ''; closeChoose(); syncUrl(); load(); } };
 $('reread').onclick = () => load(true);
 
 function drawKinds(items){
@@ -409,7 +437,7 @@ function tile(it, pick){
   const when = RUNG === 'now' ? nearness(it.when) : (VIEW === 'mosaic' ? short(it.when) : ago(it.when));
   const isNew = DATA && DATA._fresh && DATA._fresh.has(it.address);
   const attrs = ' tabindex="0" role="button" data-open="' + esc(it.address) + '"' + (pick ? ' data-pick="' + pick.rank + '"' : '');
-  const rank = pick ? '<span class="rank" title="the keeper\'s pick ' + pick.rank + '">' + pick.rank + '</span>' : '';
+  const rank = pick ? '<span class="rank" title="pick ' + pick.rank + '">' + pick.rank + '</span>' : '';
   const why = pick && pick.why ? '<p class="why">' + esc(pick.why) + '</p>' : '';
   const line = esc(it.line || '');
   if (VIEW === 'list'){
@@ -457,15 +485,16 @@ function render(){
   if (fold){
     out.push('<div class="grp"><h2>The picks<span class="n">' + esc(periodName) + '</span></h2>');
     if (fold.headline) out.push('<p class="headline">' + esc(fold.headline) + '</p>');
-    out.push('<p class="status">' + (fold.status === 'sealed' ? 'chosen and sealed ' : 'chosen so far · ') + esc(fold.asOf ? ago(fold.asOf) : '') + ' · by the keeper, one edition of many</p>');
-    out.push(picks.length ? '<div class="v-' + VIEW + '">' + picks.map(p => tile(p.item, p)).join('') + '</div>' : '<p class="quiet">Nothing of this kind among the picks.</p>');
+    out.push('<p class="status">' + statusLine(fold, d) + '</p><div data-choose-slot></div>');
+    out.push(picks.length ? '<div class="v-' + VIEW + '">' + picks.map(p => tile(p.item, p)).join('') + '</div>'
+      : '<p class="quiet">' + (fold.picks.length ? 'Nothing of this kind among the picks.' : 'Nothing was chosen — nothing made for others to meet.') + '</p>');
     out.push('</div>');
-  } else if (RUNG === 'day' || RUNG === 'gathering'){
-    if (RUNG === 'day') out.push('<p class="quiet">The day\'s picks appear here once the keeper has chosen them; until then, everything made is below, newest first.</p>');
-  } else if (RUNG !== 'now'){
-    const child = { week:'days', month:'weeks', season:'months', year:'seasons' }[RUNG];
-    out.push('<div class="grp"><p class="quiet">' + esc(periodName.charAt(0).toUpperCase() + periodName.slice(1)) + ' has not been chosen yet. The keeper chooses each ' + esc(RUNG) +
-      ' from its ' + esc(child) + '\' picks, as the ' + esc(child) + ' close. <button class="linkish" data-goto="day">See what was made today →</button></p></div>');
+  } else if (RUNG !== 'now' && RUNG !== 'gathering'){
+    const Name = periodName.charAt(0).toUpperCase() + periodName.slice(1);
+    const nobody = RUNG === 'day' ? (d.period.running ? 'Nobody has chosen today yet.' : 'Nobody chose ' + periodName + '.')
+      : Name + (d.period.running ? ' has not been chosen yet.' : ' was never chosen.');
+    out.push('<div class="grp"><p class="quiet">' + esc(nobody) + ' Anyone can choose it on their own Claude key, and the choice stands for everyone until someone chooses again. <button class="linkish" data-choose>choose it →</button>' +
+      (RUNG === 'day' ? ' Everything made is below, newest first.' : ' <button class="linkish" data-goto="day">or see what was made today →</button>') + '</p><div data-choose-slot></div></div>');
   }
 
   if (RUNG === 'now' || RUNG === 'gathering' || RUNG === 'day'){
@@ -483,7 +512,23 @@ function render(){
     el.addEventListener('click', e => { if (!e.target.closest('a')) go(); });
     el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } });
   });
-  $('body').querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { RUNG = b.dataset.goto; AT = ''; syncUrl(); load(); });
+  $('body').querySelectorAll('[data-goto]').forEach(b => b.onclick = () => { RUNG = b.dataset.goto; AT = ''; BY = ''; closeChoose(); syncUrl(); load(); });
+  $('body').querySelectorAll('[data-by]').forEach(b => b.onclick = () => { BY = b.dataset.by; syncUrl(); load(); });
+  $('body').querySelectorAll('[data-choose]').forEach(b => b.onclick = () => openChoose());
+  placeChoose();
+}
+
+/* who chose what is shown, and when; the other choices standing for this period */
+function statusLine(fold, d){
+  const name = c => c.house ? 'the keeper' : c.by;
+  const tail = fold.status === 'sealed' ? ' · sealed' : d.period.running ? ' · so far'
+    : (fold.asOf && Date.parse(fold.asOf) < Date.parse(d.period.end) ? ' · before it closed' : '');
+  const others = (d.choices || []).filter(c => c.edition !== fold.edition).slice(0, 5);
+  const newest = (d.choices || [])[0];
+  return 'chosen by ' + (fold.house ? '<b>the keeper</b>' : '<b data-name="' + esc(fold.by) + '">' + esc(fold.by) + '</b>') + ' · ' + esc(fold.asOf ? ago(fold.asOf) : '') + tail +
+    (BY && newest && newest.edition !== fold.edition ? ' · <button class="linkish" data-by="">show the newest</button>' : '') +
+    (others.length ? ' · also chosen by ' + others.map(c => '<button class="linkish" data-by="' + esc(c.edition) + '">' + esc(name(c)) + '</button> ' + esc(ago(c.asOf))).join(', ') : '') +
+    ' · <button class="linkish" data-choose>choose again</button>';
 }
 
 function findItem(address){
@@ -498,8 +543,8 @@ function itemView(it, extra){
   const k = kindOf(it.kind);
   const ladder = (extra && extra.ladder) || [];
   const RL = { day:'the day', week:'the week', month:'the month', season:'the season', year:'the year' };
-  const ranks = ladder.map(l => '<span class="rk">#' + l.rank + ' of ' + esc(RL[l.rung] || l.rung) + '</span>').join('');
-  const whys = ladder.filter(l => l.why).map(l => '<p><span class="r">' + esc(RL[l.rung]) + '</span>' + esc(l.why) + '</p>').join('');
+  const ranks = ladder.map(l => '<span class="rk" title="chosen by ' + esc(l.by) + '">#' + l.rank + ' of ' + esc(RL[l.rung] || l.rung) + '</span>').join('');
+  const whys = ladder.filter(l => l.why).map(l => '<p><span class="r">' + esc(RL[l.rung]) + ' · ' + esc(l.by) + '</span>' + esc(l.why) + '</p>').join('');
   const moment = (extra && extra.moment) || '';
   const url = shareUrl(it);
   const answers = (extra && extra.answers) || null;
@@ -741,6 +786,209 @@ async function send(root, it){
   } catch(e){ say('the beach did not answer — ' + e.message); }
 }
 
+/* ── choosing: any reader chooses any period, on their own Claude key ──────────
+ * The site prepares what to read (/api/news?prepare), this browser asks Claude
+ * itself — the key goes from here to Anthropic and nowhere else — and the choice
+ * is written to the reader's own edition on the beach, tree:news:<handle>, in the
+ * shape the keeper writes (function:news 2.3), where, being the newest, it stands
+ * for everyone until someone chooses again. Every pick is read again at its
+ * source wherever it is shown, so a choice can rank real things and never invent
+ * one. ── */
+const APEX = 'https://beach.happyseaurchin.com';
+const CHOOSE = $('choose');
+const CH = { open: false };
+const ses = { get(k){ try { return sessionStorage.getItem(k) || ''; } catch(e){ return ''; } },
+              set(k, v){ try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch(e){} } };
+const chf = sel => CHOOSE.querySelector(sel);
+const clean = v => window.cleanHandle ? cleanHandle(v) : String(v || '').trim();
+function chSay(t, bad){ const el = chf('[data-ch-said]'); el.textContent = t; el.classList.toggle('err', !!bad); }
+function openChoose(){
+  if (!DATA || RUNG === 'now' || RUNG === 'gathering') return;
+  CH.open = true; clearTimeout(TIMER);
+  const hb = chf('[data-ch-handle]'), lb = chf('[data-ch-latch]'), cb = chf('[data-ch-claude]');
+  if (!hb.value) hb.value = HANDLE || '';
+  const h = clean(hb.value);
+  if (!lb.value && h) lb.value = store.get('mirror-latch:news:' + h);
+  const label = DATA.period.running ? RUNGS.find(r => r.key === RUNG).label : DATA.period.label;
+  chf('[data-ch-title]').textContent = 'Choose ' + label;
+  chWhat();
+  cb.placeholder = h && ses.get('news-claude:' + h) ? 'ready for this tab — or paste another' : 'sk-ant-…  or leave empty to use the one in your vault';
+  chSay('');
+  placeChoose();
+  CHOOSE.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  (hb.value ? (lb.value ? cb : lb) : hb).focus({ preventScroll:true });
+}
+function chWhat(){
+  const h = clean(chf('[data-ch-handle]').value);
+  chf('[data-ch-what]').textContent = 'Claude reads ' + (RUNG === 'day' ? 'everything made ' + (DATA.period.running ? 'today' : 'that day') : 'the picks already chosen beneath it') +
+    ' and picks the best nine: one call on your own key, made from this browser, so the site never sees the key. Your choice is kept in your own edition on the beach, ' +
+    ((DATA.choose && DATA.choose.tree) || 'tree:news:') + (h || '<handle>') + ', and shows for everyone until someone chooses again.' +
+    (DATA.choose && DATA.choose.model ? ' It chooses with ' + DATA.choose.model + '.' : '');
+}
+function closeChoose(){
+  if (!CH.open) return;
+  CH.open = false; CHOOSE.hidden = true;
+  schedule();
+}
+/* the card is one element, carried into each new body as it is drawn, so what a
+ * reader typed survives every re-render */
+function placeChoose(){
+  const slot = CH.open && $('body').querySelector('[data-choose-slot]');
+  if (!slot){ CH.open = false; CHOOSE.hidden = true; return; }
+  slot.appendChild(CHOOSE);
+  CHOOSE.hidden = false;
+}
+chf('[data-ch-close]').onclick = () => closeChoose();
+chf('[data-ch-go]').onclick = () => chooseNow();
+chf('[data-ch-handle]').addEventListener('input', e => {
+  if (window.cleanHandle){ const c = cleanHandle(e.target.value, true); if (c !== e.target.value) e.target.value = c; }
+  const lb = chf('[data-ch-latch]'), kept = store.get('mirror-latch:news:' + clean(e.target.value));
+  if (kept && !lb.value) lb.value = kept;
+  if (CH.open) chWhat();
+});
+
+async function chooseNow(){
+  const go = chf('[data-ch-go]');
+  const h = clean(chf('[data-ch-handle]').value);
+  const latch = chf('[data-ch-latch]').value.trim();
+  const pasted = chf('[data-ch-claude]').value.trim();
+  if (!h){ chSay('your handle first — the name you use here', true); return; }
+  if (!latch){ chSay('your key — it latches your edition and opens your vault', true); return; }
+  if (pasted && !/^sk-ant-/.test(pasted)){ chSay('that does not look like a Claude key — they begin sk-ant-', true); return; }
+  if (h !== HANDLE){ HANDLE = h; store.set('news-handle', HANDLE); }
+  const rung = RUNG, at = DATA.period.address;
+  go.disabled = true;
+  try {
+    let claude = pasted || ses.get('news-claude:' + h);
+    if (!claude){
+      chSay('opening your vault… a second or two');
+      const found = await claudeFromVault(h, latch);
+      if (found.error){ chSay(found.error, true); return; }
+      claude = found.key;
+    }
+    chSay('reading what there is to choose from…');
+    const prep = await api({ prepare: 1, rung, at, _: Date.now() });
+    if (!prep.candidates.length){
+      chSay(rung === 'day' ? 'nothing has been made yet to choose from' : 'nothing has been chosen beneath it yet — choose its ' + ({ week:'days', month:'weeks', season:'months', year:'seasons' }[rung]) + ' first', true);
+      return;
+    }
+    chSay('Claude is reading ' + prep.candidates.length + (prep.candidates.length === 1 ? ' thing' : ' things') + ' and choosing…');
+    const chosen = await askClaude(claude, prep);
+    if (!chosen.picks.length){ chSay('Claude chose nothing this time — nothing was written'); return; }
+    chSay('writing your choice to the beach…');
+    await writeEdition(h, latch, prep, chosen);
+    store.set('mirror-latch:news:' + h, latch);
+    ses.set('news-claude:' + h, claude);
+    let kept = '';
+    if (pasted && chf('[data-ch-keep]').checked){
+      chSay('sealing the Claude key in your vault…');
+      kept = await keepClaude(h, latch, pasted).then(() => ', and the Claude key is sealed in your vault', e => ' — but your vault did not keep the key: ' + e.message);
+    }
+    chf('[data-ch-claude]').value = '';
+    chSay('chosen' + kept + '. It stands for everyone now.');
+    BY = prep.tree + h;
+    syncUrl();
+    setTimeout(() => { closeChoose(); load(true); }, kept.indexOf('did not') >= 0 ? 5000 : 1500);
+  } catch(e){ chSay(e.message, true); }
+  finally { go.disabled = false; }
+}
+
+/* the reader's own Claude key, from their vault (ways:vault): an entry a page kept
+ * ('anthropic key — …') or one the router sealed whole, its key read out of the text */
+async function claudeFromVault(h, latch){
+  if (!window.vault) return { error: 'the vault could not load here — paste a Claude key instead' };
+  let v;
+  try { v = await vault.read(APEX, h, latch); } catch(e){ return { error: 'your vault could not be read — ' + e.message }; }
+  if (!v.exists) return { error: 'no vault under ' + h + ' yet — paste a Claude key, and tick “keep” to found one' };
+  const open = v.entries.filter(e => e.opened && e.text);
+  if (!open.length && v.entries.some(e => e.envelope)) return { error: 'that key does not open vault:' + h };
+  const KEY = /sk-ant-[A-Za-z0-9_-]{16,}/;
+  const named = open.filter(e => /anthropic|claude/i.test(e.label || ''));
+  for (const e of named.concat(open)){ const m = String(e.text).match(KEY); if (m) return { key: m[0] }; }
+  return { error: 'no Claude key in vault:' + h + ' — paste one, and tick “keep” to find it there next time' };
+}
+function today(){ return new Date().toISOString().slice(0, 10); }
+function vaultLaw(h){
+  return 'vault:' + h + ' — ' + h + '’s vault, founded ' + today() + ' from happyseaurchin.com/news to the recipe at ways:vault. THE LAW. This root is plain on purpose: a keyless reader learns how the vault works and never a key. Each entry beneath is one KEY-GROUP the handle holds — its label plain at the entry (what the key is, for whom, since when: a Claude key and where it was kept; an image key and its service; a character at a table and the table’s address; a picture place), and the key itself sealed at the entry’s 1 — so the list reads without the key and no key reads without the sovereign. Write-latch and cipher answer to ONE sovereign: the handle’s own passport key, typed by its holder into the page that needs it and kept in no block, this one included. Sealed as bsp-mcp seals (Argon2id with the salt ' + APEX + ', the beach’s URL form; nacl secretbox), so the router opens what a page sealed and a page opens what the router sealed. The canary at 9 proves the key. Rotating the sovereign re-seals nothing: every entry is rewritten under the new key in the same pass.';
+}
+async function keepClaude(h, latch, key){
+  const v = await vault.read(APEX, h, latch);
+  if (!v.exists) await vault.found(APEX, h, latch, vaultLaw(h));
+  const prev = v.exists ? v.entries.find(e => !e.whole && e.opened && /^anthropic key/i.test(e.label || '')) : null;
+  await vault.keep(APEX, h, latch, 'anthropic key — Claude, kept ' + today() + ' from happyseaurchin.com/news', key, prev ? prev.slot : undefined);
+}
+
+/* one call, straight from this browser, under the same law the keeper chooses by */
+async function askClaude(key, prep){
+  let r;
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'content-type':'application/json', 'x-api-key': key, 'anthropic-version':'2023-06-01', 'anthropic-dangerous-direct-browser-access':'true' },
+      body: JSON.stringify({ model: prep.model, max_tokens: prep.max_tokens, system: prep.system,
+        output_config:{ effort:'low', format:{ type:'json_schema', schema: prep.schema } },
+        messages:[{ role:'user', content: prep.user }] }),
+    });
+  } catch(e){ throw new Error('Claude could not be reached from this browser — ' + e.message); }
+  const d = await r.json().catch(() => null);
+  if (!r.ok){
+    const m = d && d.error && d.error.message;
+    throw new Error(r.status === 401 ? 'Claude did not accept that key' : r.status === 429 || r.status === 529 ? 'Claude is busy, or the key is out of credit — ' + (m || 'try again shortly') : 'Claude answered ' + r.status + (m ? ' — ' + m : ''));
+  }
+  if (d.stop_reason === 'refusal') throw new Error('Claude declined to choose this time — nothing was written');
+  if (d.stop_reason === 'max_tokens') throw new Error('Claude ran out of room before it finished — nothing was written');
+  let out;
+  try { out = JSON.parse((d.content || []).filter(b => b.type === 'text').map(b => b.text).join('')); }
+  catch(e){ throw new Error('Claude’s answer could not be read — nothing was written'); }
+  const known = new Set(prep.candidates.map(c => c.address)), seen = new Set();
+  out.picks = (Array.isArray(out.picks) ? out.picks : []).filter(p => p && known.has(p.address) && !seen.has(p.address) && seen.add(p.address)).slice(0, 9);
+  return out;
+}
+
+/* the written shape — api/news.js foldText and entryOf, the same lines */
+function clipTo(s, n){
+  s = String(s || '').replace(/\s+/g, ' ').trim();
+  if (s.length <= n) return s;
+  const cut = s.slice(0, n), at = cut.lastIndexOf(' ');
+  return (at > n * 0.6 ? cut.slice(0, at) : cut).replace(/[\s,;:—-]+$/, '') + '…';
+}
+function entryOf(it){
+  const e = { '_': clipTo(it.line, 400), '1': it.who || 'someone', '2': it.open || it.beach || '', '3': it.when, '4': it.kind };
+  if (it.image) e['5'] = it.image;
+  if (it.source) e['6'] = it.source;
+  return e;
+}
+function foldText(chosen, by, standing, asOf){
+  const one = s => String(s || '').replace(/\s+/g, ' ').trim();
+  const lines = [one(chosen.headline) || 'Nothing was made for others to meet in this period.'];
+  chosen.picks.forEach((p, i) => { const it = by.get(p.address); lines.push((i + 1) + ' · ' + p.address + ' · ' + one(clipTo(it ? it.line : '', 200)) + ' — ' + one(p.why).replace(/ — /g, ', ')); });
+  lines.push('(' + standing + ', as of ' + asOf + ')');
+  return lines.join('\n');
+}
+function editionRoot(h){
+  let root = 'EDITION — ' + h + "'s choice of the news on the canonical clock (spine:news, function:news 2.5): at each period's own address its headline and its best nine with why each rose, chosen by " + h +
+    " on their own key; at each pick's own address a reference to the thing itself, read again where it lives by anyone who shows it. One edition among any number: for every period the newest choice stands, whoever made it. Read it at happyseaurchin.com/news.";
+  for (let i = 0; i < 10; i++) root = { '_': root };
+  return root;
+}
+/* the picks first, each at its own moment; then the choice at the period's own
+ * address — one write at a time, as the beach takes them */
+async function writeEdition(h, latch, prep, chosen){
+  const name = prep.tree + h;
+  const existing = await readBlock(name);
+  if (!existing){
+    const w = await writeBlock({ block:name, content: editionRoot(h), new_lock: latch });
+    if (!w.ok) throw new Error(w.data && w.data.code === 'handle_bound' ? 'the beach binds ' + name + ' to your passport — use the key your passport uses' : 'your edition could not be made — ' + refused(w));
+  } else if (floorOf(existing) !== 10) throw new Error(name + ' stands in another shape — nothing was written over it');
+  const by = new Map(prep.candidates.map(c => [c.address, c]));
+  for (const p of chosen.picks){
+    const w = await writeBlock({ block:name, spindle: p.address, content: entryOf(by.get(p.address)), secret: latch });
+    if (!w.ok) throw new Error(w.data && w.data.code === 'lock_required' ? 'that key does not open ' + name : 'the beach refused a pick — ' + refused(w));
+  }
+  const w = await writeBlock({ block:name, spindle: prep.period.address, content: foldText(chosen, by, prep.standing, prep.asOf), secret: latch });
+  if (!w.ok) throw new Error('the beach refused the choice — ' + refused(w));
+}
+
 /* ── reading ── */
 async function load(force){
   clearTimeout(TIMER);
@@ -748,6 +996,7 @@ async function load(force){
   try {
     const params = { rung: RUNG };
     if (AT && RUNG !== 'now') params.at = AT;
+    if (BY && RUNG !== 'now' && RUNG !== 'gathering') params.by = BY;
     if (force) params._ = Date.now();
     const d = await api(params);
     const before = SEEN;
@@ -765,8 +1014,13 @@ async function load(force){
     $('body').innerHTML = '<p class="quiet err">The news did not answer — ' + esc(e.message) + '. <button class="linkish" id="again">try again</button></p>';
     const a = $('again'); if (a) a.onclick = () => load(true);
   }
+  schedule();
+}
+function schedule(){
+  clearTimeout(TIMER);
+  if (CH.open) return;                         /* a reader mid-choice is never re-drawn under */
   const live = RUNG === 'now' ? 15000 : (DATA && DATA.period.running && (RUNG === 'gathering' || RUNG === 'day')) ? 60000 : 0;
-  if (live) TIMER = setTimeout(function tick(){ if (document.visibilityState === 'visible') load(); else TIMER = setTimeout(tick, live); }, live);
+  if (live) TIMER = setTimeout(function tick(){ if (CH.open) return; if (document.visibilityState === 'visible') load(); else TIMER = setTimeout(tick, live); }, live);
 }
 
 /* an item's own page — the link someone shared: the thing first, the beach behind it */
