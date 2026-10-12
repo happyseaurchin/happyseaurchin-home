@@ -958,9 +958,16 @@
      * below its longest word (a handle), so the bar's gaps and side padding
      * tighten a little there and the word stacks under its ＋ — else the bar
      * outgrows the screen and the page scrolls sideways (measured at 375px on
-     * /walk/<family>/<handle>) */
+     * /walk/<family>/<handle>).
+     * AND IT CARRIES ITS WHOLE LOOK, never a page's: a bar whose page styles no
+     * buttons (/walk, /recency) left it the browser's own white button (David,
+     * 2026-10-12: 'it should just be gold, not white background') — so the gold
+     * outline of the bar's other controls, on the bar's own ground, in both
+     * registers. */
     var st = document.createElement('style');
-    st.textContent = '.bar #btn-mint{color:var(--solid);border-color:rgba(var(--solid-rgb),0.55);white-space:nowrap}' +
+    st.textContent = '.bar #btn-mint{-webkit-appearance:none;appearance:none;background:none;' +
+        'border:1px solid rgba(var(--solid-rgb),0.55);border-radius:4px;color:var(--solid);' +
+        'font-family:var(--mono);font-size:12px;line-height:inherit;padding:6px 10px;cursor:pointer;white-space:nowrap}' +
       '.bar #btn-mint:hover{color:var(--foam);border-color:var(--solid)}' +
       '@media (max-width:420px){html .bar{gap:6px;padding-left:12px;padding-right:12px}' +
         '.bar #btn-mint{white-space:normal;width:min-content;font-size:10.5px;line-height:1.05;padding:3px 6px;letter-spacing:0}}';
