@@ -281,10 +281,10 @@
  *
  * David's ruling (2026-09-07): add dictation. Browser-native — the Web Speech
  * API, SpeechRecognition or its webkit twin — so there is nothing to load and
- * nothing to pay. Chrome and Edge stream the audio to Google for the words;
- * Safari finds most of them on the device; Firefox has no API at all, so shows
- * no glyph. The tooltip says which, because a person should know where their
- * voice goes before they press.
+ * nothing to pay. Chrome finds the words on the device or streams the audio to
+ * Google, by its own choice; Safari finds most of them on the device; Firefox
+ * has no API at all, so shows no glyph. The tooltip says which, because a
+ * person should know where their voice goes before they press.
  *
  *     window.dictate(textarea)   → the glyph, or null where there is no API
  *
@@ -297,8 +297,9 @@
  * the box loses focus or the engine gives up for good.
  *
  * The words: what the engine has LOCKED is appended after whatever the box
- * held, a space between; the one phrase it is still revising rides at the end
- * with an ellipsis after it, and is replaced as it firms. Every change is an
+ * held, a space between, each phrase that came bare made a sentence (below);
+ * the one phrase it is still revising rides at the end with an ellipsis after
+ * it, and is replaced as it firms. Every change is an
  * input event on the box, so keepDraft keeps it and the page's own handlers
  * see it. Never a submit: Enter belongs to the page (recency and now say on
  * Enter — the marker is taken off the instant Enter is pressed, so what the
@@ -318,7 +319,7 @@
   'use strict';
   var MARK = '…';                      /* after the phrase still being revised */
   var SIZE = 22, INSET = 5;                 /* the glyph, and its distance from the corner */
-  var TITLE = 'dictate — Chrome sends audio to Google for transcription; Safari transcribes mostly on device';
+  var TITLE = 'dictate — Chrome transcribes on this device or sends audio to Google; Safari transcribes mostly on device';
   var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
     '<path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4z"/>' +
     '<path d="M18 10a1 1 0 0 1 1 1 7 7 0 0 1-6 6.93V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 0 1 1-1z"/></svg>';
@@ -361,13 +362,33 @@
     return runs;
   }
 
+  /* A SENTENCE PER LOCKED PHRASE (David, 2026-10-12: 'it used to create
+   * sentences … now it is just one long blurb'). Punctuation was always the
+   * engine's, and an engine recognising on the device hands back bare words —
+   * Chrome now picks the device for itself. So a phrase that arrives BARE (no
+   * punctuation at all) gets a capital where a sentence starts and a full stop
+   * where it ended, each locked phrase having ended at a pause; in English a
+   * lone 'i' stands up. A phrase the engine punctuated is left as it came. The
+   * phrase still being revised gets its capital only; its stop waits for the
+   * lock. The mirror's use-speech-recognition shapes the same (shapeSpoken). */
+  var PUNCTUATED = /[.,!?;:…]/;
+  function sentence(before, t, open, lang){
+    if (PUNCTUATED.test(t)) return t;
+    if (/^en\b/i.test(lang || '')) t = t.replace(/\bi\b/g, 'I');
+    if (!before || /[.!?…]["'”’)\]]*\s*$/.test(before) || /\n\s*$/.test(before)) t = t.charAt(0).toUpperCase() + t.slice(1);
+    return open ? t : t + '.';
+  }
+
   /* the spoken words after what the box already held: a space between, unless
-   * the box ended on a line break the writer put there */
-  function glue(base, runs){
-    var rest = runs.join(' ');
-    if (!base) return rest;
-    if (!rest) return base;
-    return /\s$/.test(base) ? base + rest : base + ' ' + rest;
+   * the box ended on a line break the writer put there; the last phrase stays
+   * open while the engine is still revising it */
+  function glue(base, runs, open, lang){
+    var out = base;
+    for (var i = 0; i < runs.length; i++){
+      var s = sentence(out, runs[i], open && i === runs.length - 1, lang);
+      out = !out ? s : /\s$/.test(out) ? out + s : out + ' ' + s;
+    }
+    return out;
   }
 
   function inputEvent(){
@@ -461,6 +482,9 @@
       r.continuous = true;
       r.interimResults = true;
       r.maxAlternatives = 1;
+      /* the engine's own punctuation where the browser offers it (Chrome's
+       * unspokenPunctuation, 2026); elsewhere the sentences above stand in */
+      if ('unspokenPunctuation' in r) r.unspokenPunctuation = true;
       base = box.value.replace(/[ \t]+$/, '');
       prior = []; finals = []; written = null; heard = false;
       r.onresult = function(e){
@@ -471,7 +495,8 @@
         var got = readResults(e.results);
         finals = got.finals;
         var runs = collapse(prior.concat(finals, [got.interim]));
-        write(glue(base, runs) + (got.interim.trim() ? MARK : ''));
+        var open = !!got.interim.trim();
+        write(glue(base, runs, open, r.lang) + (open ? MARK : ''));
       };
       r.onerror = function(e){
         if (rec === r && TERMINAL[e.error]){
