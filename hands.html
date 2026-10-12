@@ -120,6 +120,23 @@
   .dcard .rung{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--vapour-dim);text-transform:none;letter-spacing:0.04em}
   .dcard.deal{border-style:dashed}
   .rowhead .sub{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);width:100%;margin:2px 0 0}
+  /* the piles, counted — the one count no row shows */
+  .piles{max-width:720px;margin:0 auto;padding:10px 18px 0;font-family:var(--mono);font-size:11px;line-height:1.7;color:var(--vapour)}
+  .piles .full{color:var(--solid)}
+  .piles .law{color:var(--vapour-dim)}
+  /* ⇄ — the card's other pile and other project, chosen in place */
+  .mv{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:9px}
+  .dcard.fam .mv{border-color:hsl(var(--fam-h) var(--fam-s) var(--fam-line-l))}
+  .mv__lab{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;color:var(--vapour-dim)}
+  .dcard.fam .mv__lab{color:hsl(var(--fam-h) var(--fam-s) var(--fam-ink-l))}
+  .mv__opts{display:flex;flex-wrap:wrap;gap:6px}
+  .mv button{font-family:var(--mono);background:none;border:1px solid var(--line-strong);border-radius:7px;color:var(--vapour);
+    font-size:10.5px;letter-spacing:0.02em;padding:6px 8px;cursor:pointer}
+  .mv button:hover{color:var(--foam);border-color:var(--foam)}
+  .mv button.here{color:var(--liquid);border-color:var(--liquid);cursor:default}
+  .mv button:disabled{opacity:0.4;cursor:not-allowed}
+  .mv button .n{color:var(--vapour-dim);margin-left:3px}
+  .mv .mv__x{align-self:flex-end}
 </style>
 </head>
 <body>
@@ -186,6 +203,8 @@ const pileLabel = d => (PILES.find(x => x.d === String(d)) || {}).label || '';
 const pileForPscale = p => String(Math.min(7, Math.max(1, p)));
 
 let HANDLE = null, CARDS = [], ALLCARDS = [], DECKS = [], FIELDS = [], ASKS = [];
+/* the hand as the beach holds it — the piles' slots, which the counts are read from */
+let MINE = null;
 /* WHAT THIS HAND HAS ALREADY CONFIRMED IN THIS SITTING. The beach is read again
  * the moment a confirmation lands, and that read can still be answered from
  * before the write — so without this the card stays on screen and the obvious
@@ -330,6 +349,7 @@ const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim
 /* ── load ── */
 async function load(){
   const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
+  MINE = mine;
   ALLCARDS = readHand(mine);
   CARDS = ALLCARDS.filter(inPlay);
 
@@ -433,33 +453,58 @@ async function addCard(pile, entry){
   if (!node) return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': entry } });
   if (typeof node === 'string')
     return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '_': node, '1': entry } });
-  /* THE PILE LAW (function:ahead 1, ratified 2026-09-01): a pile is BOUNDED and
-   * WRITTEN AT ITS SLOTS, NEVER APPENDED — a free digit first, then the lowest
-   * RETIRED slot (an empty or legacy DONE/DROP string, or state done/drop at
-   * −1); nine live cards refuses plainly, because a hand that cannot say
-   * enough is a feed. */
-  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
-  let slot = null;
-  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))){ slot = String(d); break; }
-  if (!slot){
-    /* a fresh completion is not real estate — only yesterday's retirements
-     * (and legacy strings) are reusable; today's stand until the sweep */
-    const today = new Date().toISOString().slice(0, 10);
-    const retired = digs.filter(d =>
-      (typeof node[d] === 'string' && (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim())))
-      /* an emptied slot is free: every put-down writes {_: ''}, which this
-       * rule never knew, so emptied slots filled piles with nothing (see
-       * next.html pileSlotFor; David, 2026-10-05) */
-      || (isEntryNode(node[d]) && !node[d]._.trim())
-      || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop')
-          && String(node[d]['3'] || '').slice(0, 10) !== today)).sort();
-    slot = retired[0] || null;
-  }
+  const slot = slotsFree(node)[0] || null;
   if (!slot) return { full: true, pile };
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile + slot, content: entry });
 }
+/* THE PILE LAW (function:ahead 1, ratified 2026-09-01): a pile is BOUNDED and
+ * WRITTEN AT ITS SLOTS, NEVER APPENDED — a free digit first, then the lowest
+ * RETIRED slot (an empty or legacy DONE/DROP string, or state done/drop at
+ * −1); nine live cards refuses plainly, because a hand that cannot say
+ * enough is a feed. Every slot another card may take, in the order a landing
+ * takes them — so the count a person is shown and the landing read one rule. */
+function slotsFree(node){
+  if (!node || typeof node !== 'object') return ['1','2','3','4','5','6','7','8','9'];
+  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
+  const free = [];
+  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))) free.push(String(d));
+  /* a fresh completion is not real estate — only yesterday's retirements
+   * (and legacy strings) are reusable; today's stand until the sweep */
+  const today = new Date().toISOString().slice(0, 10);
+  const retired = digs.filter(d =>
+    (typeof node[d] === 'string' && (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim())))
+    /* an emptied slot is free: every put-down writes {_: ''}, which this
+     * rule never knew, so emptied slots filled piles with nothing (see
+     * next.html pileSlotFor; David, 2026-10-05) */
+    || (isEntryNode(node[d]) && !node[d]._.trim())
+    || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop')
+        && String(node[d]['3'] || '').slice(0, 10) !== today)).sort();
+  return free.concat(retired);
+}
+/* how many of a pile's nine slots stand taken, every project's cards together */
+const pileTaken = p => 9 - slotsFree(MINE && MINE[p]).length;
 async function editCard(c, text){
   return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: entryOf(c, { text }) });
+}
+/* ⇄ ANOTHER PILE — the holder rewriting their own block (function:ahead 1:
+ * 'moving an intent between piles is the holder rewriting their own block, one
+ * act, no ceremony'). The card lands whole at the other pile's slot, its
+ * conditions intact and its stamp fresh, and only THEN is the old slot emptied —
+ * the order /next's ↑ keeps, so a refused landing leaves the card where it was
+ * and never nowhere. An emptied slot is free at once, which is why a move is
+ * the way through a full pile on the day a card is finished. */
+async function movePile(c, to){
+  if (String(c.pile) === String(to)) return { ok: true, same: true };
+  const w = await addCard(to, entryOf(c, { ts: stamp() }));
+  if (!w.ok) return w;
+  const w2 = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: { '_': '' } });
+  return w2.ok ? w : { ok: true, twice: true };
+}
+/* ⇄ ANOTHER PROJECT — field 2 rewritten where the card stands; the pile and the
+ * words untouched. No project is the card that is yours alone. */
+async function reAim(c, toward){
+  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
+    content: entryOf(c, { toward: toward || null, ts: stamp() }) });
 }
 
 /* the latch key follows the BLOCK and is named exactly as /next names it, so a
@@ -712,8 +757,48 @@ function cardEl(c, opts){
     + '<div class="txt">' + esc(c.text) + '</div>'
     + '<div class="acts">'
     + (held ? '<button data-act="release">− hand</button>' : '<button data-act="hold">＋ hand</button>')
+    + '<button data-act="move" title="another pile, or another project">⇄</button>'
     + '<button data-act="edit">✎</button>'
     + '<button class="x" data-act="drop">✕</button></div></div>';
+}
+/* ⇄ OPENS IN PLACE, where the card's acts were: how far out it is held, each
+ * pile with its count of nine — every project's cards together, which is the
+ * count the limit keeps — and what it is toward, the decks this hand has and
+ * none. The card's own pile and project stand marked; a full pile cannot be
+ * chosen and says why. */
+function openMove(el, c){
+  if (el.querySelector('.mv')) return;
+  const piles = PILES.map(p => {
+    const here = p.d === String(c.pile), n = pileTaken(p.d), full = !here && n >= 9;
+    /* the card's own place carries no act — choosing it is staying */
+    return '<button ' + (here ? 'class="here" aria-pressed="true"' : 'data-act="pile" data-to="' + p.d + '"')
+      + (full ? ' disabled title="nine already — move or let one go there first"' : '') + '>'
+      + esc(p.label) + '<span class="n">' + n + '/9</span></button>';
+  }).join('');
+  const aims = DECKS.concat(['']).map(d => {
+    const here = (c.toward || '') === d;
+    return '<button ' + (here ? 'class="here" aria-pressed="true"' : 'data-act="aim" data-to="' + esc(d) + '"') + '>'
+      + esc(d ? deckName(d) : 'mine, no project') + '</button>';
+  }).join('');
+  const panel = document.createElement('div');
+  panel.className = 'mv';
+  panel.innerHTML = '<div class="mv__lab">how far out — nine to a pile, every project together</div>'
+    + '<div class="mv__opts">' + piles + '</div>'
+    + '<div class="mv__lab">toward</div><div class="mv__opts">' + aims + '</div>'
+    + '<button class="mv__x" data-act="move-close">close</button>';
+  el.querySelector('.acts').replaceWith(panel);
+}
+/* THE PILES, COUNTED — the one count no row shows. Every row here counts by
+ * project, and the limit counts by pile: nine to a pile, every project's cards
+ * together (function:ahead 1). So a pile could refuse a card at nine while no
+ * row anywhere said nine (David, 2026-10-12: 'somewhere the arithmetic is not
+ * matching'). Said once, above the rows, in the piles' own words. */
+function pilesLine(){
+  const held = PILES.map(p => ({ p, n: pileTaken(p.d) })).filter(x => x.n);
+  if (!held.length) return '';
+  return '<p class="piles">' + held.map(x => '<span' + (x.n >= 9 ? ' class="full"' : '') + '>'
+      + esc(x.p.label) + ' ' + x.n + '/9' + (x.n >= 9 ? ', full' : '') + '</span>').join(' · ')
+    + ' <span class="law">— nine to a pile, every project together; ⇄ on a card moves it</span></p>';
 }
 /* THE BLANK CARD — mint one of your own. A card you write is yours from the first
  * keystroke and carries no mark, which is the whole difference between writing an
@@ -760,6 +845,7 @@ function render(){
   $('foot-now').href = '/now/' + encodeURIComponent(HANDLE);
   const out = [];
   const flick = q => '<a href="/next/' + encodeURIComponent(HANDLE) + (q || '') + '">flick →</a>';
+  out.push(pilesLine());
 
   /* ── THE TOP HAND — compiled, never computed. Cards from any deck, chosen one
    * by one, which is the act that makes this a hand rather than a list of
@@ -889,6 +975,25 @@ document.addEventListener('click', async e => {
     } else if (act === 'edit'){
       const c = find(); if (!c) return;
       openEdit(card, c); b.disabled = false; return;
+    } else if (act === 'move'){
+      const c = find(); if (!c) return;
+      openMove(card, c); return;
+    } else if (act === 'move-close'){
+      render(); return;
+    } else if (act === 'pile'){
+      const c = find(); if (!c) return;
+      const to = b.dataset.to;
+      const w = await movePile(c, to);
+      if (w.full) toast(pileLabel(to) + ' holds nine already — move or let one go there first', true);
+      else if (w.twice){ toast('landed ' + pileLabel(to) + ', but the old slot would not clear — it stands twice until you tidy', true); await reload(); }
+      else if (w.ok){ toast('⇄ ' + pileLabel(to)); await reload(); }
+      else if (!w.quiet) toast('the move did not land — the card stays where it was', true);
+    } else if (act === 'aim'){
+      const c = find(); if (!c) return;
+      const to = b.dataset.to;
+      const w = await reAim(c, to);
+      if (w.ok){ toast('⇄ ' + (to ? 'toward ' + deckName(to) : 'yours, no project')); await reload(); }
+      else if (!w.quiet) toast('it did not land', true);
     } else if (act === 'drop'){
       const c = find(); if (!c) return;
       const w = await letGo(c);
@@ -984,6 +1089,8 @@ if (!HANDLE){
 } else {
   $('app').classList.remove('hidden');
   $('btn-refresh').addEventListener('click', () => reload());
+  /* a card minted from the bar's ＋ (mint.js) into this hand shows at once */
+  document.addEventListener('mint:landed', e => { if (e.detail && e.detail.handle === HANDLE) reload(); });
   reload().catch(e => showState('The beach is out of reach.', esc(String(e.message || e))));
 }
 })();
