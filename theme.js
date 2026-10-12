@@ -692,6 +692,8 @@
     ['entrance',    'the entrance'],
     ['welcome',     'come in'],
     ['connect',     'connect your AI'],
+    /* what a passphrase keeps, what stays open, and storm cover (security.1, 2026-10-12) */
+    ['beach-security', 'beach security'],
     ['experiences', 'experiences'],
     /* the same experiences laid as transparencies — four layers, one over another, the
      * same experience at the same spot on each, read differently by each (David,
