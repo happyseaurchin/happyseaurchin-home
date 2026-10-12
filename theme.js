@@ -731,23 +731,34 @@
        * through the panel on a dark ground. */
       'background:rgb(var(--well-rgb));border:1px solid var(--line-strong);border-radius:8px;' +
       'padding:8px;display:flex;flex-direction:column;gap:2px;' +
+      /* never past the screen's foot: a long list scrolls inside (the go menu
+       * measures its own room when it opens; this is the floor for any menu) */
+      'max-height:calc(100vh - 80px);max-height:calc(100dvh - 80px);overflow-y:auto;overscroll-behavior:contain;' +
       'box-shadow:0 8px 28px rgba(0,0,0,0.28)}' +
     /* places read as words, because a place is a word you read */
     '.dd__menu a,.dd__menu .here{font-family:var(--body);font-size:15px;line-height:1.4;' +
       'padding:5px 8px;border-radius:5px;text-decoration:none;border-bottom:none;color:var(--vapour)}' +
     '.dd__menu a:hover{background:rgba(var(--wash-rgb),0.07);color:var(--liquid)}' +
     '.dd__menu .here{color:var(--foam)}' +
-    '.dd__who{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--solid);padding:4px 8px 7px;border-bottom:1px solid var(--line);margin-bottom:4px}' +
+    '.dd__who{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--solid);padding:4px 8px}' +
     '.dd__rule{height:1px;background:var(--line);margin:7px 4px}' +
-    /* the first line as the switch: the name, tapped for another; the way back beneath it */
-    '.dd__head{border-bottom:1px solid var(--line);margin-bottom:4px;padding-bottom:3px}' +
-    '.dd__menu button.dd__who{display:flex;width:100%;text-align:left;background:none;border:none;border-radius:4px;' +
-      'margin:0;padding:4px 8px 5px;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:0.12em;color:var(--solid)}' +
-    '.dd__menu button.dd__who::after{content:"⇄";margin-left:auto;padding-left:12px;letter-spacing:0;color:var(--vapour-dim);opacity:0.6}' +
-    '.dd__menu button.dd__who:hover,.dd__menu button.dd__who:hover::after{color:var(--liquid);opacity:1}' +
+    /* the lists as tabs along the top, the one showing in the sea's colour; they
+     * stay in sight while a long list scrolls beneath them */
+    '.dd__tabs{display:flex;gap:2px;position:sticky;top:0;z-index:1;margin:-8px -8px 4px;padding:6px 8px 0;' +
+      'background:rgb(var(--well-rgb));border-bottom:1px solid var(--line);border-radius:8px 8px 0 0}' +
+    '.dd__menu button.dd__tab{width:auto;flex:none;max-width:12em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' +
+      'background:none;border:none;border-bottom:2px solid transparent;border-radius:0;margin:0 0 -1px;padding:5px 8px 6px;' +
+      'cursor:pointer;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:var(--vapour-dim)}' +
+    '.dd__menu button.dd__tab:hover{color:var(--foam)}' +
+    '.dd__menu button.dd__tab[aria-selected="true"]{color:var(--liquid);border-bottom-color:var(--liquid)}' +
+    /* first in a hand's list: another name, and the way back to your own */
+    '.dd__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;margin:2px 0}' +
+    '.dd__menu button.dd__switch{width:auto;background:none;border:none;border-radius:4px;margin:0;padding:3px 8px 4px;' +
+      'cursor:pointer;font-family:var(--mono);font-size:12px;letter-spacing:0.06em;color:var(--vapour-dim)}' +
+    '.dd__menu button.dd__switch:hover{color:var(--liquid)}' +
     '.dd__menu a.dd__back{font-family:var(--mono);font-size:12px;letter-spacing:0.06em;color:var(--vapour-dim);padding:3px 8px 4px}' +
     '.dd__menu a.dd__back:hover{color:var(--liquid)}' +
-    '.dd__ask{display:flex;gap:6px;padding:2px 4px 4px}' +
+    '.dd__ask{display:flex;gap:6px;padding:2px 4px 4px;flex:1}' +
     '.dd__ask input{flex:1 1 0;width:0;min-width:0;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);' +
       'border-radius:4px;padding:5px 8px;color:var(--foam);font-family:var(--mono);font-size:12px}' +
     '.dd__menu .dd__ask button{width:auto}' +
@@ -758,12 +769,26 @@
       'margin-top:6px;padding:8px 4px 2px;color:var(--vapour-dim);font-family:var(--mono);font-size:11px;'+
       'letter-spacing:0.06em;cursor:pointer}' +
     '.dd__edit:hover{color:var(--liquid)}' +
-    '.dd__row{display:flex;align-items:center;gap:7px;padding:3px 4px}' +
-    '.dd__name{flex:1;font-family:var(--body);font-size:14px;color:var(--vapour);white-space:nowrap}' +
-    '.dd__mv{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);' +
-      'font-size:11px;line-height:1;padding:3px 6px;cursor:pointer}' +
-    '.dd__mv:disabled{opacity:0.25;cursor:default}' +
-    '.dd__foot{display:flex;gap:8px;white-space:nowrap}' +
+    /* the chooser: two columns, shown | not shown, stacked on a phone; the ⠿ is the
+     * handle a finger drags, so it alone refuses to scroll the menu */
+    '.dd__menu.dd__menu--wide{width:min(500px,calc(100vw - 24px))}' +
+    '.dd__cols{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;align-items:start}' +
+    '@media (max-width:540px){.dd__cols{grid-template-columns:1fr}}' +
+    '.dd__list{display:flex;flex-direction:column;gap:1px}' +
+    '.dd__item{display:flex;align-items:center;border-radius:5px}' +
+    '.dd__item--drag{background:rgba(var(--wash-rgb),0.12);box-shadow:0 3px 12px rgba(0,0,0,0.3)}' +
+    '.dd__menu button.dd__grip{width:auto;flex:none;background:none;border:none;border-radius:4px;padding:5px 4px 5px 6px;' +
+      'cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none;color:var(--vapour-dim);font-size:14px;line-height:1}' +
+    '.dd__menu button.dd__grip:hover,.dd__item--drag button.dd__grip{color:var(--liquid)}' +
+    '.dd__menu button.dd__pick{flex:1;min-width:0;display:flex;align-items:center;gap:10px;background:none;border:none;' +
+      'border-radius:5px;padding:5px 8px;cursor:pointer;font-family:var(--body);font-size:14.5px;line-height:1.35;color:var(--vapour)}' +
+    '.dd__menu .dd__col--off button.dd__pick{color:var(--vapour-dim)}' +
+    '.dd__menu button.dd__pick:hover{background:rgba(var(--wash-rgb),0.07);color:var(--liquid)}' +
+    '.dd__act{margin-left:auto;font-family:var(--mono);font-size:13px;color:var(--vapour-dim)}' +
+    '.dd__empty{font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour-dim);padding:6px 8px}' +
+    /* save and cancel stay at the foot however long the columns run */
+    '.dd__foot{display:flex;gap:8px;white-space:nowrap;position:sticky;bottom:0;z-index:1;margin:4px -8px -8px;padding:0 8px 8px;' +
+      'background:rgb(var(--well-rgb));border-radius:0 0 8px 8px}' +
     '.dd__foot .dd__edit{flex:1}' +
     /* the share-forward card — the page's own ground, and the code on white so any camera reads it */
     '.sf{border:1px solid var(--line-strong);border-radius:12px;background:rgb(var(--well-rgb));color:var(--foam);' +
@@ -1170,7 +1195,7 @@
     return readItems(origin, handle, digit).then(function(items){ return items ? items.map(function(x){ return x.name; }) : null; });
   }
   var ROOT_SAYS = "The ordered lists this hand keeps for its own use — one branch per list, and the block is named for the lists rather than for any one of them, because the projects were only the first. Each list is nested so that RANK IS DEPTH: the first item stands at the first rung and the tenth at the tenth, so reading to a depth is reading a top-N and no list is capped at nine. Branch 1 holds the projects; branches 2 onward stand free for whatever else this hand wants ordered.";
-  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's places menu, which shows exactly this and, beneath it, only the one way across to the site's own pages. Naming a place here is choosing it, and a place left out simply does not appear: the menu is the choice, not the choice laid over a catalogue. Nothing is lost by leaving one out, because the catalogue every page offers stands whole behind 'choose what shows', which is where a list is changed.";
+  var DOORS_SAYS = "The places this hand wants in its own go menu, in the order it wants them — read by every page's go menu, which shows exactly this under the hand's own tab, with the site's pages and the tables in the tabs beside it. Naming a place here is choosing it, and a place left out simply does not appear: the menu is the choice, not the choice laid over a catalogue. Nothing is lost by leaving one out, because the catalogue every page offers stands whole behind 'choose what shows', which is where a list is changed.";
   var BRANCH_SAYS = "The families this hand counts as its own projects, most-standing first — read by the project row on the walk and recency pages, and by anything else that wants to know what is being worked on. Membership and order are one thing here: the row is this list, read straight down. Beneath each family's rung, at its 2, this hand's own line on how it stands to the family — 'as coordinator, for Community Recovery' — plural across families and changed at will; there is no roster anywhere (the beach's conventions 2.131).";
 
   function latchFor(handle){ return 'lists-latch:' + handle; }
@@ -1785,20 +1810,61 @@
     var menu = document.createElement('div');
     menu.className = 'dd__menu';
 
-    /* ONE WAY ACROSS, at the foot of every list. The go menus are kinds of bar — a
-     * hand's places, the site's own pages, the tables and a character's — and a reader
-     * standing in one must reach the others without knowing an address. So each list
-     * carries the one door that crosses: a hand's places, the tables and a character
-     * cross to /welcome, and the site's pages cross to the hand's own now (David,
-     * 2026-10-02: "I need one item to shift from one go-list to another … /now and
-     * /welcome seem to be the ones that need to be in each other's go-list"). Under a
-     * rule, after the list and never inside it, so a list a reader has chosen cannot
-     * hide the way out of it. */
-    function across(label, url){
-      var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
+    /* THE LISTS AS TABS (tidying.22; David, 2026-10-12: "I need to work on it so that
+     * it is more obvious"). The go menus are kinds of list — a hand's places, the site's
+     * own pages, the tables or a character's table — and a reader standing in one must
+     * reach the others without knowing an address. Until today each list carried one
+     * door across at its foot ('welcome' one way, '<name>'s now' the other; David,
+     * 2026-10-02), which named neither list and moved the reader before showing them
+     * anything. Now each list is a tab along the menu's top, in the same order on every
+     * page, and the menu opens on the tab of the page it stands on: a hand's places on a
+     * hand's page, the site's on the site's, the tables at a table. A tap shows another
+     * list in place. The hand's tab is the page's own name, or else the name this
+     * device signs with, and is left out where neither is known, as the crossing was.
+     * A hand's list is kept at the apex whichever beach the page reads. */
+    var APEX = 'https://beach.happyseaurchin.com';
+    var HOME = cfg.world ? 'table' : cfg.rpg ? 'tables' : cfg.site ? 'site' : 'hand';
+    var HAND = HOME === 'hand' ? (cfg.handle || null) : (HOME === 'site' && cfg.handle) || knownName();
+    var TABS = [].concat(HOME === 'hand' || HAND ? ['hand'] : [], ['site'], cfg.rpg ? ['tables'] : [], cfg.world ? ['table'] : []);
+    var TAB = HOME;
+    var LABEL = { hand: HAND || 'places', site: 'the site', tables: 'the tables', table: 'this table' };
+    var TIP = { hand: HAND ? HAND + '’s places' : 'a person’s places — say whose',
+                site: 'happyseaurchin.com — the ways in, and the places to look around',
+                tables: 'the open tables, and how the game plays', table: 'this table, and who is at it' };
+
+    function tabRow(){
+      var row = document.createElement('div');
+      row.className = 'dd__tabs'; row.setAttribute('role', 'tablist');
+      TABS.forEach(function(t){
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'dd__tab'; b.setAttribute('role', 'tab');
+        b.setAttribute('data-keep-open', '');
+        b.setAttribute('aria-selected', t === TAB ? 'true' : 'false');
+        b.textContent = LABEL[t]; b.title = TIP[t];
+        b.addEventListener('click', function(e){
+          e.stopPropagation();
+          if (t === TAB) return;
+          TAB = t;
+          if (t === 'hand') readStated();
+          paint();
+        });
+        row.appendChild(b);
+      });
+      menu.appendChild(row);
+    }
+
+    /* a place in a list: a link, or the one stood on, marked as here */
+    function door(label, url, here){
+      if (here){
+        var cur = document.createElement('span');
+        cur.className = 'here'; cur.textContent = label; cur.setAttribute('aria-current', 'page');
+        menu.appendChild(cur);
+        return;
+      }
       var a = document.createElement('a'); a.href = url; a.textContent = label;
       menu.appendChild(a);
     }
+    function rule(){ var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r); }
 
     /* A CHARACTER IN A WORLD keeps none of a person's places — no now, no here, no
      * hands, no list of its own — so a world page's menu is the world's: this
@@ -1817,106 +1883,54 @@
         /* the ring at a table: the character's page and their pictures are offered from each other;
            the passport is written to its holder and shows only as the place stood on */
         if (own[0] === 'passport' && own[0] !== cfg.here) return;
-        if (own[0] === cfg.here){
-          var cur = document.createElement('span');
-          cur.className = 'here'; cur.textContent = cfg.handle + own[1]; cur.setAttribute('aria-current', 'page');
-          menu.appendChild(cur);
-          return;
-        }
-        var go = document.createElement('a');
-        go.href = own[2] + encodeURIComponent(cfg.handle) + '?world=' + encodeURIComponent(cfg.world);
-        go.textContent = cfg.handle + own[1];
-        menu.appendChild(go);
+        door(cfg.handle + own[1], own[2] + encodeURIComponent(cfg.handle) + '?world=' + encodeURIComponent(cfg.world), own[0] === cfg.here);
       });
       var others = (CAST || []).filter(function(n){ return !cfg.handle || n.toLowerCase() !== String(cfg.handle).toLowerCase(); });
       if (others.length){
         var lab = document.createElement('span');
         lab.className = 'dd__lab'; lab.textContent = 'at this table';
         menu.appendChild(lab);
-        others.forEach(function(n){
-          var a = document.createElement('a');
-          a.href = '/page/' + encodeURIComponent(n) + '?world=' + encodeURIComponent(cfg.world);
-          a.textContent = n;
-          menu.appendChild(a);
-        });
+        others.forEach(function(n){ door(n, '/page/' + encodeURIComponent(n) + '?world=' + encodeURIComponent(cfg.world)); });
       }
-      var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
-      var m = document.createElement('a');
-      m.href = 'https://mirror.onen.ai/?world=' + encodeURIComponent(cfg.world);
-      m.textContent = 'the table in the mirror ↗';
-      menu.appendChild(m);
-      var t = document.createElement('a');
-      t.href = '/rpg'; t.textContent = 'the open tables';
-      menu.appendChild(t);
-      var c = document.createElement('a');
-      c.href = '/costs'; c.textContent = 'what play costs';
-      menu.appendChild(c);
-      across('welcome', '/welcome');
+      rule();
+      door('the table in the mirror ↗', 'https://mirror.onen.ai/?world=' + encodeURIComponent(cfg.world));
+      door('the open tables', '/rpg');
+      door('what play costs', '/costs');
     }
 
     /* THE TABLES' OWN PAGES, standing in no one world (/rpg): the open tables, the
      * mirror where the tables are played, and the page that says how the game goes.
      * A character is reached from its table's line on the page itself. */
     function paintRpg(){
-      var who = document.createElement('span');
-      who.className = 'dd__who'; who.textContent = 'the tables';
-      menu.appendChild(who);
       [['rpg', 'the open tables', '/rpg'], ['mirror', 'the mirror ↗', 'https://mirror.onen.ai/'], ['play', 'how the game plays', '/play'], ['costs', 'what play costs', '/costs'], ['gallery', 'the tables, in stills', '/gallery' + (cfg.world ? '?world=' + encodeURIComponent(cfg.world) : '')]].forEach(function(p){
-        if (p[0] === cfg.here){
-          var cur = document.createElement('span');
-          cur.className = 'here'; cur.textContent = p[1]; cur.setAttribute('aria-current', 'page');
-          menu.appendChild(cur);
-          return;
-        }
-        var a = document.createElement('a');
-        a.href = p[2]; a.textContent = p[1];
-        menu.appendChild(a);
+        door(p[1], p[2], p[0] === cfg.here);
       });
-      across('welcome', '/welcome');
     }
 
     /* THE SITE'S OWN PAGES (SITE, above): each other, the one stood on marked as
-     * here; across a rule the mirror and the tables; and a walker who arrived
-     * carrying a handle keeps the way back to their own now, so the chain of
-     * doors is not broken by passing through — and a page that carries none
-     * offers the now of the name this device signs with, which is the way across
-     * to a hand's own places. The now alone: the hand's pictures went at David's
-     * word (2026-10-02, "just happyseaurchin's now"); a character's pictures stay
-     * in its table's own menu. Nothing to choose, so no editor. */
-    function paintSite(){
-      var who = document.createElement('span');
-      who.className = 'dd__who'; who.textContent = 'happyseaurchin.com';
-      menu.appendChild(who);
-      function door(p){
-        if (p[0] === cfg.here){
-          var cur = document.createElement('span');
-          cur.className = 'here'; cur.textContent = p[1]; cur.setAttribute('aria-current', 'page');
-          menu.appendChild(cur);
-          return;
-        }
-        var a = document.createElement('a');
-        a.href = p[2] || '/' + p[0]; a.textContent = p[1];
-        menu.appendChild(a);
-      }
-      function rule(){ var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r); }
-      SITE.forEach(door);
-      rule();
-      door(['mirror', 'the mirror ↗', 'https://mirror.onen.ai/']);
-      door(['rpg', 'the tables', '/rpg']);
-      var h = cfg.handle || knownName();
-      if (h){ rule(); door(['now', h + '’s now', '/now/' + encodeURIComponent(h)]); }
-      /* and a walker who arrived carrying someone else's name keeps the way to their own */
+     * here; across a rule the mirror and the tables. A reader passing through from
+     * someone else's places carries that name in the query, which the site's pages
+     * take, so the hand's tab there still offers the way back — the chain of doors is
+     * not broken by passing through. */
+    function carry(url){
       var me = knownName();
-      if (me && h && me.toLowerCase() !== h.toLowerCase()) door(['now', '↩ ' + me + '’s now', '/now/' + encodeURIComponent(me)]);
+      if (!HAND || (me && me.toLowerCase() === HAND.toLowerCase())) return url;
+      return url + (url.indexOf('?') < 0 ? '?' : '&') + 'h=' + encodeURIComponent(HAND);
+    }
+    function paintSite(){
+      SITE.forEach(function(p){ door(p[1], carry(p[2] || '/' + p[0]), p[0] === cfg.here); });
+      rule();
+      door('the mirror ↗', 'https://mirror.onen.ai/');
+      door('the tables', '/rpg');
     }
 
-    /* THE SWITCH — the first line of a hand's menu (tidying.19, 2026-10-05). A name on
-     * any page opens that person's page (#319), and from there every door carries their
-     * name, so a reader who followed one had no way back but the address bar. The first
-     * line still says whose pages these are; tapped, it takes any other name, the same
-     * place theirs. And while the page stands in a name that is not the one this device
-     * signs with, that name stands beneath it: one tap back to the same place as
-     * yourself. Never a sign-in — a key still decides what can be written. */
+    /* THE SWITCH — first in a hand's list (tidying.19, 2026-10-05). A name on any page
+     * opens that person's page (#319), and from there every door carries their name, so
+     * a reader who followed one had no way back but the address bar. The tab says whose
+     * places these are; '⇄ another name' takes any other name, the same place theirs.
+     * And while the list stands in a name that is not the one this device signs with,
+     * that name stands beside it: one tap back to the same place as yourself. Never a
+     * sign-in — a key still decides what can be written. */
     function sameFor(h){
       var p = null;
       [].concat.apply([], GROUPS).forEach(function(x){ if (x[1] === cfg.here) p = x; });
@@ -1926,16 +1940,16 @@
       if (typeof cfg.take === 'function'){ d.removeAttribute('open'); cfg.take(h); return; }
       location.href = sameFor(h);
     }
-    function whoLine(){
+    function switchRow(){
       var me = knownName();
       var head = document.createElement('div'); head.className = 'dd__head';
       var who = document.createElement('button');
-      who.type = 'button'; who.className = 'dd__who'; who.setAttribute('data-keep-open', '');
-      who.textContent = cfg.handle || 'whose pages?';
+      who.type = 'button'; who.className = 'dd__switch'; who.setAttribute('data-keep-open', '');
+      who.textContent = HAND ? '⇄ another name' : '⇄ whose pages?';
       who.title = 'another name — the same place, theirs';
       who.addEventListener('click', function(e){ e.stopPropagation(); askName(head, who); });
       head.appendChild(who);
-      if (me && (!cfg.handle || me.toLowerCase() !== String(cfg.handle).toLowerCase())){
+      if (me && (!HAND || me.toLowerCase() !== HAND.toLowerCase())){
         var back = document.createElement('a');
         back.className = 'dd__back'; back.href = sameFor(me);
         back.textContent = '↩ ' + me;
@@ -1948,7 +1962,7 @@
       }
       menu.appendChild(head);
     }
-    /* the line flips into a box where it stands, as 'choose what shows' flips the list */
+    /* the switch flips into a box where it stands, as 'choose what shows' flips the list */
     function askName(head, who){
       var row = document.createElement('div'); row.className = 'dd__ask';
       var input = document.createElement('input');
@@ -1967,110 +1981,154 @@
       input.focus();
     }
 
-    function paint(){
-      menu.innerHTML = '';
-      if (cfg.world){ paintWorld(); return; }
-      if (cfg.rpg){ paintRpg(); return; }
-      if (cfg.site){ paintSite(); return; }
+    function paintHand(){
+      switchRow();
       var a = arrange(cfg.here), lastGroup = null;
-      /* whose pages these are — the first line, so "now" reads as this handle's now;
-       * it is also the switch between names (whoLine, above) */
-      whoLine();
-
-      function place(p){
-        var u = href(p[1], p[2], cfg.handle, cfg.family);
-        if (!u) return;                       /* nowhere to go yet — say so by omission */
-        if (p[1] === cfg.here){
-          var cur = document.createElement('span');
-          cur.className = 'here'; cur.textContent = p[0];
-          cur.setAttribute('aria-current', 'page');
-          menu.appendChild(cur);
-          return;
-        }
-        var link = document.createElement('a');
-        link.href = u; link.textContent = p[0];
-        menu.appendChild(link);
-      }
-
       a.list.forEach(function(p){
         /* the group rule is the AUTHORED arrangement speaking; once a reader has
          * stated their own order it would be drawing a distinction they did not make */
         var g = groupOf(p);
-        if (!a.custom && lastGroup !== null && g !== lastGroup){
-          var r = document.createElement('div'); r.className = 'dd__rule'; menu.appendChild(r);
-        }
+        if (!a.custom && lastGroup !== null && g !== lastGroup) rule();
         lastGroup = g;
-        place(p);
+        var u = href(p[1], p[2], HAND, cfg.family);
+        if (u) door(p[0], u, p[1] === cfg.here);   /* nowhere to go yet — say so by omission */
       });
-
-      /* the handle rides along, so /welcome's own menu offers the way back here */
-      across('welcome', '/welcome' + (cfg.handle ? '?h=' + encodeURIComponent(cfg.handle) : ''));
-
       var edit = document.createElement('button');
       edit.className = 'dd__edit'; edit.type = 'button'; edit.setAttribute('data-keep-open',''); edit.textContent = 'choose what shows';
       edit.addEventListener('click', function(e){
         e.stopPropagation();
-        edit.textContent = 'reading your list\u2026';
+        edit.textContent = 'reading your list…';
         doorsRead.then(editor);
       });
       menu.appendChild(edit);
     }
 
-    /* The editor is the same panel — a menu that flips over rather than a second
-     * surface to find your way back out of. Edits are held in hand until saved,
-     * because each save is one write to the beach rather than a scribble on this
-     * device: the list is a fact about how you work and it should follow you. */
-    function editor(){
+    function paint(){
       menu.innerHTML = '';
-      var a = arrange();
-      var order = a.list.map(function(p){ return p[1]; });
-      var inList = {}; order.forEach(function(n){ inList[n] = 1; });
-      /* anything in the catalogue but not in your list sits beneath, unticked */
-      a.all.forEach(function(p){ if (order.indexOf(p[1]) < 0) order.push(p[1]); });
-      var by = {}; a.all.forEach(function(p){ by[p[1]] = p; });
+      menu.classList.remove('dd__menu--wide');
+      tabRow();
+      if (TAB === 'hand') paintHand();
+      else if (TAB === 'site') paintSite();
+      else if (TAB === 'tables') paintRpg();
+      else paintWorld();
+    }
 
-      function draw(){
-        menu.innerHTML = '';
-        order.forEach(function(n, i){
+    /* THE CHOOSER — the same panel flipped over, in two columns (tidying.22; David,
+     * 2026-10-12): on the left what shows, in its order, which is the menu exactly as
+     * it will read; on the right the rest of the catalogue. A tap on a place moves it
+     * across; the ⠿ beside a shown place drags it into its order, and the arrow keys
+     * move it from there. On a phone the columns stack. Edits are held in hand until
+     * saved, because each save is one write to the beach rather than a scribble on
+     * this device: the list is a fact about how you work and it should follow you. */
+    function editor(){
+      var a = arrange();
+      var by = {}; a.all.forEach(function(p){ by[p[1]] = p; });
+      var shown = a.list.map(function(p){ return p[1]; });
+      function swallow(e){ e.stopPropagation(); e.preventDefault(); }
+
+      function grip(item, list, n, label){
+        var g = document.createElement('button');
+        g.type = 'button'; g.className = 'dd__grip'; g.setAttribute('data-keep-open', '');
+        g.textContent = '⠿';
+        g.setAttribute('aria-label', 'move ' + label + ' — drag it, or use the arrow keys');
+        g.addEventListener('pointerdown', function(e){
+          if (e.button) return;
+          e.preventDefault();
+          item.classList.add('dd__item--drag');
+          /* the row goes before the first other row whose middle is below the pointer —
+           * followed at the document, because moving the row in the page lets go of any
+           * capture the grip held, and the drag would stall halfway */
+          function move(ev){
+            var before = null;
+            [].some.call(list.children, function(c){
+              if (c === item) return false;
+              var r = c.getBoundingClientRect();
+              if (ev.clientY < r.top + r.height / 2){ before = c; return true; }
+              return false;
+            });
+            if (before !== item.nextSibling) list.insertBefore(item, before);
+          }
+          function up(){
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', up);
+            document.removeEventListener('pointercancel', up);
+            item.classList.remove('dd__item--drag');
+            shown = [].map.call(list.children, function(c){ return c.getAttribute('data-n'); }).filter(Boolean);
+            /* the click a drag ends in is not a tap on whatever lay under the pointer —
+             * outside the menu it would close it */
+            window.addEventListener('click', swallow, true);
+            setTimeout(function(){ window.removeEventListener('click', swallow, true); }, 0);
+          }
+          document.addEventListener('pointermove', move);
+          document.addEventListener('pointerup', up);
+          document.addEventListener('pointercancel', up);
+        });
+        g.addEventListener('keydown', function(e){
+          var step = e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0;
+          var i = shown.indexOf(n), j = i + step;
+          if (!step || j < 0 || j >= shown.length) return;
+          e.preventDefault();
+          shown.splice(j, 0, shown.splice(i, 1)[0]);
+          draw(n);
+        });
+        return g;
+      }
+
+      function column(title, names, on){
+        var col = document.createElement('div'); col.className = 'dd__col' + (on ? '' : ' dd__col--off');
+        var lab = document.createElement('div'); lab.className = 'dd__lab'; lab.textContent = title;
+        var list = document.createElement('div'); list.className = 'dd__list';
+        col.appendChild(lab); col.appendChild(list);
+        names.forEach(function(n){
           var p = by[n]; if (!p) return;
-          var row = document.createElement('div'); row.className = 'dd__row';
-          var cb = document.createElement('input'); cb.type = 'checkbox';
-          cb.checked = !!inList[n];
-          cb.addEventListener('change', function(){
-            if (cb.checked) inList[n] = 1; else delete inList[n];
+          var item = document.createElement('div'); item.className = 'dd__item'; item.setAttribute('data-n', n);
+          if (on) item.appendChild(grip(item, list, n, p[0]));
+          var pick = document.createElement('button');
+          pick.type = 'button'; pick.className = 'dd__pick'; pick.setAttribute('data-keep-open', '');
+          pick.title = (on ? 'hide ' : 'show ') + p[0];
+          var nm = document.createElement('span'); nm.textContent = p[0];
+          var act = document.createElement('span'); act.className = 'dd__act'; act.textContent = on ? '−' : '+';
+          pick.appendChild(nm); pick.appendChild(act);
+          pick.addEventListener('click', function(e){
+            e.stopPropagation();
+            if (on) shown.splice(shown.indexOf(n), 1); else shown.push(n);
             draw();
           });
-          var name = document.createElement('span'); name.className = 'dd__name'; name.textContent = p[0];
-          if (!inList[n]) name.style.opacity = '0.45';
-          row.appendChild(cb); row.appendChild(name);
-          [['↑', -1], ['↓', 1]].forEach(function(mv){
-            var b = document.createElement('button'); b.type = 'button'; b.className = 'dd__mv';
-            b.setAttribute('data-keep-open','');
-            b.textContent = mv[0];
-            b.disabled = (i + mv[1] < 0 || i + mv[1] >= order.length);
-            b.addEventListener('click', function(e){
-              e.stopPropagation();
-              var j = i + mv[1], t = order[i]; order[i] = order[j]; order[j] = t;
-              draw();
-            });
-            row.appendChild(b);
-          });
-          menu.appendChild(row);
+          item.appendChild(pick);
+          list.appendChild(item);
         });
+        if (!list.children.length){
+          var none = document.createElement('div'); none.className = 'dd__empty';
+          none.textContent = on ? 'nothing yet — tap a place to show it' : 'every place shows';
+          list.appendChild(none);
+        }
+        return col;
+      }
+
+      function draw(focus){
+        menu.innerHTML = '';
+        menu.classList.add('dd__menu--wide');
+        var hint = document.createElement('div'); hint.className = 'dd__lab';
+        hint.textContent = (HAND ? HAND + '’s go menu' : 'the go menu') + ' — tap a place to move it across, drag ⠿ to order';
+        menu.appendChild(hint);
+        var cols = document.createElement('div'); cols.className = 'dd__cols';
+        cols.appendChild(column('shown', shown, true));
+        cols.appendChild(column('not shown', a.all.map(function(p){ return p[1]; })
+          .filter(function(n){ return shown.indexOf(n) < 0; }), false));
+        menu.appendChild(cols);
 
         var foot = document.createElement('div'); foot.className = 'dd__foot';
         var save = document.createElement('button'); save.type = 'button'; save.className = 'dd__edit';
         save.setAttribute('data-keep-open','');
         /* there is no sign-in on this site: a handle is carried in the page's path,
          * so a page without one has nowhere to keep the list yet */
-        save.textContent = cfg.handle ? 'save to the beach' : 'needs your handle to save';
-        save.disabled = !cfg.handle;
-        save.title = cfg.handle ? 'writes branch 2 of lists:' + cfg.handle : 'a list needs a handle to belong to';
+        save.textContent = HAND ? 'save to the beach' : 'needs your handle to save';
+        save.disabled = !HAND;
+        save.title = HAND ? 'writes branch 2 of lists:' + HAND : 'a list needs a handle to belong to';
         save.addEventListener('click', function(e){
           e.stopPropagation();
           save.disabled = true; save.textContent = 'saving…';
-          saveBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2, DOORS_SAYS,
-                     order.filter(function(n){ return inList[n]; }))
+          saveBranch(APEX, HAND, 2, DOORS_SAYS, shown)
             .then(function(w){
               if (w && w.ok){ location.reload(); return; }
               save.disabled = false;
@@ -2083,39 +2141,62 @@
         done.addEventListener('click', function(e){ e.stopPropagation(); paint(); });
         foot.appendChild(save); foot.appendChild(done);
         menu.appendChild(foot);
+
+        if (focus){
+          var it = [].filter.call(menu.querySelectorAll('.dd__item'), function(c){ return c.getAttribute('data-n') === focus; })[0];
+          if (it) it.querySelector('.dd__grip').focus();
+        }
       }
       draw();
     }
 
-    paint();
-    /* The menu opens on the default immediately and settles onto the stated list
-     * when it arrives: a door a reader might tap in the first half-second matters
-     * more than the order being right on the first frame. */
+    /* A hand's stated list is read when its tab is first shown — at once on the hand's
+     * own pages, elsewhere only if the reader opens that tab. The menu opens on the
+     * default immediately and settles onto the stated list when it arrives: a door a
+     * reader might tap in the first half-second matters more than the order being right
+     * on the first frame. */
     /* THE EDITOR MUST WAIT, though the menu need not. Drawn before the read lands
      * the editor shows every place TICKED — no stated list means the default, and
      * the default is everything — and saving from there writes all fourteen as the
      * reader's own list, silently replacing the four they chose. Reading is safe to
      * do optimistically; writing is not, and on a phone that gap is real. */
+    var statedRead = false;
+    function readStated(){
+      if (statedRead || !HAND) return;
+      statedRead = true;
+      doorsRead = readBranch(APEX, HAND, 2).then(function(list){
+        if (list && list.length){
+          STATED_DOORS = list;
+          /* not while it is being edited, nor while a name is being typed at the top */
+          if (TAB === 'hand' && !menu.querySelector('.dd__item') && !menu.querySelector('.dd__ask')) paint();
+        }
+      });
+    }
+
+    paint();
+    if (HOME === 'hand') readStated();
     if (cfg.world && cfg.beach){
       readIndex(cfg.beach).then(function(blocks){
         CAST = blocks.filter(function(b){ return b.indexOf('passport:') === 0; })
           .map(function(b){ return b.slice(9); })
           .filter(function(n){ return n && n === window.cleanHandle(n); })
           .sort(function(x, y){ return x.localeCompare(y); });
-        paint();
+        if (TAB === 'table' && !menu.querySelector('.dd__ask')) paint();
       }).catch(function(){});
     }
-    doorsRead = (cfg.handle && !cfg.world && !cfg.rpg && !cfg.site)
-      ? readBranch(cfg.beach || 'https://beach.happyseaurchin.com', cfg.handle, 2).then(function(list){
-          if (list && list.length){
-            STATED_DOORS = list;
-            /* not while it is being edited, nor while a name is being typed at the top */
-            if (!menu.querySelector('.dd__row') && !menu.querySelector('.dd__ask')) paint();
-          }
-        })
-      : Promise.resolve();
     d.appendChild(menu);
-    d.addEventListener('toggle', function(){ if (!d.open && menu.querySelector('.dd__ask')) paint(); });
+    /* Opening measures the room below the bar, so the menu ends above the screen's
+     * foot and scrolls inside — nothing in a long list, nor the chooser's save, is out
+     * of reach on a phone. Closing puts the menu back on its own list, but never in
+     * the middle of choosing, where a stray tap outside would throw away an unsaved
+     * order. */
+    function fit(){ menu.style.maxHeight = Math.max(180, window.innerHeight - menu.getBoundingClientRect().top - 12) + 'px'; }
+    window.addEventListener('resize', function(){ if (d.open) fit(); });
+    d.addEventListener('toggle', function(){
+      if (d.open){ fit(); return; }
+      if (menu.querySelector('.dd__item')) return;
+      if (TAB !== HOME || menu.querySelector('.dd__ask')){ TAB = HOME; paint(); }
+    });
     /* GO IS ALWAYS THE TOP RIGHT, on every page and whatever else the bar carries,
      * because a fixed corner is what makes a control findable without looking for
      * it. Acts sit to its left; gatherActs places itself before this one. */
