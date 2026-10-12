@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/hand.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   body{
@@ -666,7 +667,7 @@ const ownPath = () => MODE === 'tree' && !PATH_OF;
 /* the cards taken from one part: they serve the project, and name the part at 5 */
 function partCards(addr){
   const ref = partRef(addr), proj = PATH_OF || VENTURE, out = [];
-  DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
+  DECKS.forEach(([who, deck, bn]) => openCardsOf(deck, bn).forEach(c => {
     if (c.toward === proj && c.from === ref) out.push({ who, ...c, elapsed: c.held || '' });
   }));
   return out;
@@ -963,21 +964,16 @@ function isEntryNode(n){
   for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
   return true;
 }
-function openCardsOf(deck){
-  const out = [];
-  planeCards(deck).forEach(c => {
-    const n = c.node, obj = typeof n === 'object';
-    const text = obj ? String(n._ || '').trim() : String(n).trim();
-    if (!text) return;
-    const state = obj ? (n['4'] || null) : null;
-    if (state === 'done' || state === 'drop') return;
-    out.push({ addr: c.addr, pile: c.pile, text,
-               held: state === 'doing' ? 'doing now' : (state === 'held' ? 'in hand' : ''),
-               toward: obj ? (n['2'] || null) : null,
-               /* 5, where it was dealt from (function:ahead 2): a part of a path, or a door */
-               from: obj ? (n['5'] || null) : null });
-  });
-  return out;
+function openCardsOf(deck, blockName){
+  /* a hand's open cards, read through hand.js: the project is the hand's name
+   * (or 2 in the hand that stood before), and each card carries itself so an
+   * edit writes back to the hand it stands in */
+  return window.hand.cardsIn(blockName, deck).filter(window.hand.isOpen).map(c => ({
+    addr: c.addr, pile: c.pile, text: c.text,
+    held: c.state === 'doing' ? 'doing now' : (c.state === 'held' ? 'in hand' : ''),
+    toward: c.project,
+    /* 5, where it was dealt from (function:ahead 2): a part of a path, or a door */
+    from: c.from, card: c }));
 }
 function doneCount(deck, sinceMs){
   let n = 0;
@@ -1037,7 +1033,7 @@ function voicesAt(addr){
 /* a card names the stretch it serves in its own words; today holds the rest */
 function cardHomes(){
   const out = [];
-  DECKS.forEach(([who, deck]) => openCardsOf(deck).forEach(c => {
+  DECKS.forEach(([who, deck, bn]) => openCardsOf(deck, bn).forEach(c => {
     /* A CARD STANDS ON THE WALK OF THE FAMILY ITS FIELD 2 NAMES — read from the
      * position, never parsed from its words (function:ahead:2). A card naming
      * no family is unattached and stands on no family's walk — it lives at
@@ -1191,62 +1187,15 @@ async function writeSpine(addr, content){
   return w;
 }
 async function appendCard(entry, pile){
-  /* A CAPTURED CARD LANDS IN THE HAND — ahead:<handle>, the piles /next flicks
-   * and /hands sorts. The entry arrives whole: _ the sentence, conditions at
-   * the positions beneath (function:ahead:2), nothing riding in the words.
-   * A bare sentence is wrapped {_: sentence}: a string MERGES into an occupied
-   * node's underscore on the wire, inheriting the old conditions. */
+  /* A CAPTURED CARD LANDS IN THE HAND FOR ITS PROJECT — ahead:<project>:<handle>
+   * (hand.js), the hands /next flicks and /hands sorts. The callers name the
+   * project at 2, the way every door has; it becomes the hand's name and the
+   * card carries no 2 (bsp-mcp proposals/2026-10-12-a-hand-per-project). The
+   * landing founds the hand latched where it is not yet, and keeps the pile
+   * law: a free or retired slot, nine in that project at that rung refusing. */
   if (typeof entry === 'string') entry = { '_': entry };
-  const name = 'ahead:' + HANDLE;
-  const existing = await readBlock(name).catch(() => null);
-  if (!existing){
-    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future: intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
-    /* BORN LATCHED, as the now mirror already is. An open block is anyone's to
-     * rewrite — cards spammed in, a person's own intents changed under them — so
-     * the founding asks for a key once and locks in the same write (rule R1:
-     * creating with new_lock needs no prior secret). Declining declines the
-     * founding: an unprotected one is not the fallback. */
-    let latch = localStorage.getItem('next-latch:' + name);
-    if (!latch){
-      const v = prompt('This founds your hand — the cards you hold, locked to you.\nInvent a key that is yours alone (kept on this device — check the first letter: phones capitalise it):');
-      if (v === null || !v.trim()) return { ok: false };
-      latch = v.trim();
-    }
-    const born = await writeBlock({ block: name, content: { '_': root }, new_lock: latch });
-    if (!born.ok) return { ok: false };
-    localStorage.setItem('next-latch:' + name, latch);
-  }
-  const cur = await readBlock(name).catch(() => null);
-  const p = pile || '1';
-  const node = cur && cur[p];
-  if (!node) return writeWithLatch({ block: name, spindle: p, content: { '1': entry } }, name);
-  if (typeof node === 'string')
-    return writeWithLatch({ block: name, spindle: p, content: { '_': node, '1': entry } }, name);
-  /* THE PILE LAW (function:ahead 1, ratified 2026-09-01): a pile is BOUNDED and
-   * WRITTEN AT ITS SLOTS, NEVER APPENDED — a free digit first, then the lowest
-   * RETIRED slot (empty or legacy DONE/DROP string, or state done/drop at −1);
-   * nine live cards refuses plainly — never overwrite a pile wholesale. */
-  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
-  let slot = null;
-  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))){ slot = String(d); break; }
-  if (!slot){
-    /* a fresh completion is not real estate — only yesterday's retirements
-     * (and legacy strings) are reusable; today's stand until the sweep */
-    const today = new Date().toISOString().slice(0, 10);
-    const retired = digs.filter(d =>
-      (typeof node[d] === 'string' && (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim())))
-      /* an emptied slot is free: every put-down writes {_: ''}, which this
-       * rule never knew, so emptied slots filled piles with nothing (see
-       * next.html pileSlotFor; David, 2026-10-05) */
-      || (isEntryNode(node[d]) && !node[d]._.trim())
-      || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop')
-          && String(node[d]['3'] || '').slice(0, 10) !== today)).sort();
-    slot = retired[0] || null;
-  }
-  if (!slot) return { full: true, pile: p };
-  return writeWithLatch({ block: name, spindle: p + slot, content: entry }, name);
+  return window.hand.land(HANDLE, entry['2'] || VENTURE, pile, entry);
 }
-
 /* families and their colours — one steady hue per family, its name always written beside it */
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
@@ -1326,14 +1275,15 @@ async function load(){
   const blocks = (index && index.blocks) || [];
   const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
   const mNames = blocks.filter(b => b.startsWith(VENTURE + ':') && nameOk(b.slice(VENTURE.length + 1)));
-  /* CARDS LIVE IN HANDS — ahead:<holder> — and only there. The retired
-   * today-beach-deck mirrors stand as history but no longer place cards on the
-   * rack: a card put down in the hand must not haunt the walk (the keeper's
-   * cleanup, 2026-08-24). */
-  const dNames = blocks.filter(b => b.startsWith('ahead:') && nameOk(b.slice(b.indexOf(':') + 1)));
+  /* CARDS LIVE IN HANDS — a hand per project, ahead:<project>:<holder>
+   * (hand.js) — and only there: this walk reads every holder's hand for its
+   * project (a path's, the project it belongs to), with the hands that stood
+   * before read beside them until they move. The retired today-beach-deck
+   * mirrors place no cards (the keeper's cleanup, 2026-08-24). */
+  const dNames = window.hand.handsFor(index, PATH_OF || VENTURE);
   const got = await Promise.all(mNames.concat(dNames).map(n => readBlock(n).catch(() => null)));
   MIRRORS = mNames.map((n, i) => [n.slice(VENTURE.length + 1), got[i]]).filter(x => x[1]);
-  DECKS = dNames.map((n, i) => [n.slice(n.indexOf(':') + 1), got[mNames.length + i]]).filter(x => x[1]);
+  DECKS = dNames.map((n, i) => [window.hand.parse(n).handle, got[mNames.length + i], n]).filter(x => x[1]);
 
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
@@ -1370,8 +1320,8 @@ async function load(){
   /* the marker: your own last act — the newest stamp in your mirror or your deck.
    * The day voicing you set below is what tomorrow measures "since" from. */
   const mineM = HANDLE ? (MIRRORS.find(x => x[0] === HANDLE) || [])[1] : null;
-  const mineD = HANDLE ? (DECKS.find(x => x[0] === HANDLE) || [])[1] : null;
-  const own = stampsUnder(mineM).concat(stampsUnder(mineD)).sort().pop() || 0;
+  const mineDs = HANDLE ? DECKS.filter(x => x[0] === HANDLE).map(x => x[1]) : [];
+  const own = mineDs.reduce((all, d) => all.concat(stampsUnder(d)), stampsUnder(mineM)).sort().pop() || 0;
   SINCE = Math.max(own, Date.now() - 48 * 3600 * 1000);
   if (!own) SINCE = Date.now() - 24 * 3600 * 1000;
 
@@ -1581,18 +1531,13 @@ function rcard(label, addr, isSel, isNow, data, extra){
  * year of the decade — so nothing vanishes as you click. A click highlights in
  * place and re-renders only the rows BENEATH; a row never scrolls itself. ── */
 const LEVELS = ['ce', 'de', 'y', 's', 'm', 'w', 'd', 'g'];
-/* THE PILES, verbatim from /hands and /next — one vocabulary for one block.
- * This page COMPUTED a pile on every mint and had no word for one, which is
- * why a card could land somewhere the page could not name. Note the two
- * vocabularies are different axes and stay apart: 'this week' is the RUNG you
- * are standing at; 'a week out' is HOW FAR AHEAD you hold the card. */
-const PILES = [
-  { d: '1', label: 'within hours' }, { d: '2', label: 'tomorrow' },
-  { d: '3', label: 'a week out' },   { d: '4', label: 'a month out' },
-  { d: '5', label: 'a season out' }, { d: '6', label: 'a year out' },
-  { d: '7', label: 'a decade out' },
-];
-const pileLabel = d => (PILES.find(x => x.d === String(d)) || {}).label || '';
+/* THE RUNGS, one vocabulary for every card page (hand.js): within hours, today,
+ * this week … This page COMPUTED a pile on every mint and had no word for one,
+ * which is why a card could land somewhere the page could not name. Since
+ * 2026-10-12 a card's rung is called by the rung's own name, so the row you
+ * stand on and the rung a card is held at say the same word. */
+const PILES = window.hand.RUNGS;
+const pileLabel = window.hand.rungLabel;
 /* WHICH ROWS CARRY A GOLDEN CARD. The pile ladder and this rack are the same
  * ladder read two ways — seven piles, seven rungs, one to one — so a row's pile
  * is its own pscale. The century is the one exception and carries none: it
@@ -1618,7 +1563,7 @@ function gcard(lv){
   const p = GOLD_OF_LEVEL[lv];
   if (!p) return '';
   const n = cardsAtPile(p).length;
-  const said = pileLabel(p) + ' \u2014 ' + (n ? n + (n === 1 ? ' card' : ' cards') : 'nothing held this far out');
+  const said = pileLabel(p) + ' \u2014 ' + (n ? n + (n === 1 ? ' card' : ' cards') : 'nothing held at this rung');
   return '<div class="rcard gold' + (n ? '' : ' none') + '" role="button" tabindex="0" data-lv="pile" data-pile="' + p + '"' +
     ' title="' + esc(said) + '" aria-label="' + esc(said) + '"><span class="n">' + n + '</span></div>';
 }
@@ -1793,8 +1738,8 @@ function renderRack(){
    * the holder's own words — so the one line above the walk was spent saying
    * something twice. A card is the thing on this page nobody arrives knowing
    * (David, 2026-09-15), so the line says that instead. */
-  $('toward').innerHTML = '<b>cards</b> · something you mean to do, held at a rung of the '
-    + 'adjacent future — within hours, tomorrow, a week out, a year out. Each rung’s golden slot '
+  $('toward').innerHTML = '<b>cards</b> · something you mean to do, held at a rung '
+    + '— within hours, today, this week, this year. Each rung’s golden slot '
     + 'counts what is waiting there — tap it to see them (turn them on under <b>options</b>); you take one up and finish it '
     + 'at <a href="/hands' + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') + '">your hands</a>, '
     + 'and once done it stands here in the timeline, at the rung it was held at.';
@@ -2014,16 +1959,15 @@ function openSheet(pane){
   SHEET = { pane }; paintSheet(); $('sheet-veil').classList.remove('hidden');
 }
 /* THE PILE DIGIT IS THE PSCALE OF THE RUNG — the ladder said as a map rather
- * than as arithmetic. Future-adjacency is SELF-SIMILAR at every rung (David,
- * 2026-09-14): this-hour to next-hour, today to tomorrow, this-month to
- * next-month. Standing at rung R, the card is the next R.
+ * than as arithmetic: a card minted at the day row is held at the day's rung,
+ * 2. Since 2026-10-12 that rung is called by its own name, 'today' (from
+ * 2026-09-14 it was 'tomorrow', read as the next day), so the row you stand on
+ * and the rung a card is held at say the same word.
  *
  * The chain this replaces sent BOTH the day rung and the season rung through
  * its final else to '1', so standing at any day — today or a Wednesday three
- * weeks out — sized a card 'within hours', and a season sized one the same. It
- * also left pile 2, 'tomorrow', reachable from no rung on this page at all,
- * which is why 'permanently tomorrow, the pile that never arrives' had no door
- * to arrive through. Seven piles, seven rungs, one map.
+ * weeks out — sized a card 'within hours', and a season sized one the same.
+ * Seven rungs, seven rows, one map.
  *
  * ce is clamped to 7 because the ladder stops there, and a tree family keeps
  * the 7 it already had: a branch is not a horizon, and giving it a truer pile
@@ -2077,20 +2021,9 @@ function cardEnv(c, i){
  * back are the ones that are actually there, rather than the ones this page
  * happens to have compiled. */
 async function saveCardText(card, text){
-  const name = 'ahead:' + HANDLE;
-  const blk = await readBlock(name).catch(() => null);
-  if (!blk) return { ok: false, data: { error: 'your hand is not on the beach' } };
-  let node = blk;
-  for (const ch of String(card.addr)){
-    node = (ch === '0') ? (node && node['_']) : (node && node[ch]);
-    if (node === undefined) return { ok: false, data: { error: 'that card is no longer at ' + card.addr } };
-  }
-  /* a bare string in a pile is legal (function:ahead:2) — it becomes a node
-   * the moment it is stamped, and nothing is lost because it held nothing */
-  const next = (node && typeof node === 'object') ? Object.assign({}, node) : {};
-  next['_'] = text;
-  next['3'] = new Date().toISOString().slice(0, 16) + 'Z';
-  return writeWithLatch({ block: name, spindle: card.addr, content: next }, name);
+  /* the card knows the hand it stands in (hand.js), and the write goes there */
+  if (!card.card) return { ok: false, data: { error: 'that card is no longer where it was' } };
+  return window.hand.set(card.card, { text, ts: new Date().toISOString().slice(0, 16) + 'Z' });
 }
 /* the sheet's boxes, wired after the innerHTML that built them. Both carry a
  * kept draft and dictation, because every write box on this site does (CLAUDE.md
@@ -2217,12 +2150,12 @@ function paintSheet(){
     tabs.classList.add('hidden');
     $('sh-mirror').classList.add('hidden');
     const p = SHEET.pile, cs = cardsAtPile(p);
-    $('sh-where').textContent = pileLabel(p) + ' — what is held this far out';
+    $('sh-where').textContent = pileLabel(p) + ' — what is held at this rung';
     $('sh-body').innerHTML =
-      '<span class="silent">A pile is how far ahead a thing is held, never a date — these carry no day of their own, and they stand here until they are done or let go. Toward <b>' + esc(VENTURE) + '</b>.</span>' +
+      '<span class="silent">A rung, never a date — these cards carry no day of their own, and they stand here until they are done or let go. Aligned to <b>' + esc(VENTURE) + '</b>; nine to a rung in each person\u2019s hand.</span>' +
       (cs.length
         ? cs.map((c, i) => cardEnv(c, i)).join('')
-        : '<span class="silent">nobody holds anything ' + esc(pileLabel(p)) + ' toward ' + esc(VENTURE) + ' yet</span>') +
+        : '<span class="silent">nobody holds anything ' + esc(pileLabel(p)) + ' aligned to ' + esc(VENTURE) + ' yet</span>') +
       (HANDLE
         ? '<div class="addwrap"><div class="mintbox">' +
             '<div class="sub">hold something ' + esc(pileLabel(p)) + ' — one doable thing</div>' +
@@ -2230,8 +2163,8 @@ function paintSheet(){
             '<div class="row"><button id="pile-go">mint card</button></div>' +
             /* NOTHING IS COMPUTED HERE and the note says so, because everywhere
              * else on this page it is: the rung you stand on picks the pile. */
-            '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(p)) + '</b> — the pile you are looking at, no date and nothing translated.</p>' +
-            '<div class="mnote">re-piled, let go and finished in the hand · ' +
+            '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(p)) + '</b> — the rung you are looking at, no date and nothing translated.</p>' +
+            '<div class="mnote">moved, let go and finished in the hand · ' +
             '<a class="hlink" href="/hands/' + encodeURIComponent(HANDLE) + '">your hands →</a> · ' +
             /* the flick carries the FIELD, so it opens this venture's cards
              * rather than the whole hand — the shape /found and /view already
@@ -2357,7 +2290,7 @@ function paintSheet(){
          * David met on 2026-09-14, minting at a Wednesday and finding the card
          * at today. Naming the pile changes no rule; it makes the rule VISIBLE,
          * which is what any ruling on it needs first. */
-        '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(aimAndPile().pile)) + '</b> — how far out you hold it, not a date. A card carries no day, so it stands on this walk at today until it is done.</p>' +
+        '<p class="mnote">lands in your hand at <b>' + esc(pileLabel(aimAndPile().pile)) + '</b> — a rung, not a date. A card carries no day, so it stands on this walk at today until it is done.</p>' +
         /* the deal sits beside the mint on EVERY point: it PREFILLS the box
          * with this cell's standing line — or, at a silent point, the nearest
          * voiced rung above (the week's asking is what a day of it serves) —
@@ -2393,8 +2326,8 @@ function paintSheet(){
     const candSplit = t => String(t || '').split(/[;\n]+|(?<=[.!?])\s+(?=[A-Z“"])/)
       .map(s => s.trim().replace(/^[-–—·*]\s*/, '')).filter(s => s.length >= 12);
     const normTxt = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    const ownDeck = (DECKS.find(d => d[0] === HANDLE) || [])[1];
-    const known = new Set(ownDeck ? openCardsOf(ownDeck).map(c => normTxt(c.text)) : []);
+    const known = new Set(DECKS.filter(d => d[0] === HANDLE)
+      .reduce((all, d) => all.concat(openCardsOf(d[1], d[2])), []).map(c => normTxt(c.text)));
     let cands = null, ci = 0;
     $('addto-deal').addEventListener('click', () => {
       if (!cands){

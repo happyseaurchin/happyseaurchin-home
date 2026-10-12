@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/hand.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   body{
@@ -120,11 +121,10 @@
   .dcard .rung{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--vapour-dim);text-transform:none;letter-spacing:0.04em}
   .dcard.deal{border-style:dashed}
   .rowhead .sub{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);width:100%;margin:2px 0 0}
-  /* the piles, counted — the one count no row shows */
-  .piles{max-width:720px;margin:0 auto;padding:10px 18px 0;font-family:var(--mono);font-size:11px;line-height:1.7;color:var(--vapour)}
-  .piles .full{color:var(--solid)}
-  .piles .law{color:var(--vapour-dim)}
-  /* ⇄ — the card's other pile and other project, chosen in place */
+  /* a project's rungs, counted in its own row — nine to a rung in each project */
+  .rowhead .rungs{font-family:var(--mono);font-size:11px;color:var(--vapour)}
+  .rowhead .rungs .full{color:var(--solid)}
+  /* ⇄ — the card's other rung and other project, chosen in place */
   .mv{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:9px}
   .dcard.fam .mv{border-color:hsl(var(--fam-h) var(--fam-s) var(--fam-line-l))}
   .mv__lab{font-family:var(--mono);font-size:10px;letter-spacing:0.06em;color:var(--vapour-dim)}
@@ -162,12 +162,12 @@
 <div id="app" class="hidden">
   <div class="masthead">
     <h1>What you're holding, <span class="cool">and what's being dealt</span>.</h1>
-    <p>A deck is somewhere cards come from — a project, your now, anywhere on the beach you are looking. Deal one when you want one, write your own, and take up the ones you mean to do: those compile into the hand at the top, which is the hand you flick.</p>
+    <p>Your cards, a row for each project — your now first. Write your own or deal one from a project, and take up the ones you mean to do: those gather in the hand at the top, which is the hand you flick. A project holds up to nine cards for each rung: today, this week, and so on.</p>
   </div>
   <div id="rows"></div>
   <div class="foot">
-    A card is yours the moment it is dealt or written — the deck is never written to, and nothing is assigned to anybody. Where a done card lands is read off the words it carries: a card from a project lands in your reading of that project, and one aimed at nothing lands in your now.
-    <br>Dealing is always an act you perform, never a feed that runs, and it deals ONE card from ONE named deck so there is never a pile to sort through.
+    A card is yours the moment it is dealt or written, and only you can move or finish it — nothing is assigned to anybody. Anyone can see the cards aligned to a project on that project's walk. When a card is done it lands in your own reading of its project, my now's in your now.
+    <br>Dealing is always an act you perform, never a feed that runs, and it deals ONE card from ONE project so there is never a pile to sort through.
     <br><a id="foot-flick" href="/next">flick your hand →</a> · <a id="foot-now" href="/now">your now →</a>
   </div>
 </div>
@@ -177,34 +177,21 @@
 'use strict';
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 
-/* THE PILES, verbatim from /ahead and /next — one vocabulary for one block. */
-const PILES = [
-  { d: '1', label: 'within hours' }, { d: '2', label: 'tomorrow' },
-  { d: '3', label: 'a week out' },   { d: '4', label: 'a month out' },
-  { d: '5', label: 'a season out' }, { d: '6', label: 'a year out' },
-  { d: '7', label: 'a decade out' },
-];
-const pileLabel = d => (PILES.find(x => x.d === String(d)) || {}).label || '';
+/* THE RUNGS, one vocabulary for every card page (hand.js): within hours, today,
+ * this week … — the rung a person sees is the rung the card is in (2026-10-12). */
+const H_ = window.hand;
+const PILES = H_.RUNGS;
+const pileLabel = H_.rungLabel;
 
-/* WHICH PILE A DEALT CARD LANDS IN — THE PILE DIGIT IS THE PSCALE OF THE RUNG.
- * The rung it was asked at is the rung it is held at, so the pile follows the
- * pscale exactly and the holder is never asked.
- *
- * This used to read (p <= 2 ? '1' : …), sending today's rung to the gathering
- * pile, on the stated reasoning that 'a card taken up from today's asking is for
- * now'. That was a deliberate ruling and it is superseded, not corrected —
- * David, 2026-09-14: future-adjacency is SELF-SIMILAR at every rung, this-hour
- * to next-hour, today to tomorrow, this-month to next-month. Standing at rung R
- * the card is the next R, and pile 2 is exactly 'the next day'. The old reason
- * still has its answer: a thing that is for NOW is taken up at the GATHERING
- * rung, which is what pile 1 is, and is one rung down rather than a special
- * case. The collapse also made pile 2 unreachable from every door — 'permanently
- * tomorrow, the pile that never arrives' had no way to be arrived at. */
-const pileForPscale = p => String(Math.min(7, Math.max(1, p)));
+/* WHICH RUNG A DEALT CARD LANDS AT — THE DIGIT IS THE PSCALE OF THE RUNG it was
+ * asked at, so the holder is never asked: a card dealt from a project's day is
+ * a card for today (2026-10-12; the 2026-09-14 reading of the same digit as
+ * 'the next day' is superseded by the rungs' own names). */
+const pileForPscale = H_.rungOfPscale;
 
 let HANDLE = null, CARDS = [], ALLCARDS = [], DECKS = [], FIELDS = [], ASKS = [];
-/* the hand as the beach holds it — the piles' slots, which the counts are read from */
-let MINE = null;
+/* the hands as the beach holds them, by block — a rung's count is read from these */
+let BLOCKS = {};
 /* WHAT THIS HAND HAS ALREADY CONFIRMED IN THIS SITTING. The beach is read again
  * the moment a confirmation lands, and that read can still be answered from
  * before the write — so without this the card stays on screen and the obvious
@@ -267,63 +254,17 @@ function ladder(block, addr){
   return out;
 }
 
-/* ── THE HAND — the leaves under the piles of ahead:<handle>, exactly as /next
- * reads them, so the two surfaces cannot disagree about what a card is. ── */
-/* A STORED ENTRY IS A SENTENCE WITH ITS CONDITIONS BENEATH (function:ahead:2):
- * a bare string is a standing personal card; an object carries _ the sentence,
- * 2 what it is toward, 3 the stamp, 4 the state (standing when absent; held /
- * doing / done / drop), 5 where it was dealt from. NOTHING PARSES THE SENTENCE
- * — the prose aim-grammar and the verb prefixes retired 2026-08-26 with the
- * collision class they carried; a renderer that wants a condition reads the
- * position. Kept identical to /next's reading, because the two surfaces share
- * one block and must agree about what a card is. */
+/* ── THE HAND — a hand per project, read through hand.js exactly as /next reads
+ * it, so the surfaces cannot disagree about what a card is: each card knows the
+ * block it stands in (c.block), its place there (c.addr), its project and its
+ * rung (c.pile). A card's key, block and place together, is the one identity on
+ * this page — two projects' hands hold the same places. ── */
+/* A STORED ENTRY IS A SENTENCE WITH ITS CONDITIONS BENEATH (function:ahead:2) —
+ * read here only by the witness, in the mirrors where done cards land */
 function isEntryNode(n){
   if (!n || typeof n !== 'object' || typeof n._ !== 'string') return false;
   for (const d of Object.keys(n)) if (d !== '_' && typeof n[d] === 'object') return false;
   return true;
-}
-function readHand(mine){
-  const out = [];
-  if (!mine) return out;
-  for (const pile of childDigits(mine)){
-    (function leaves(node, digits){
-      if (typeof node === 'string'){
-        if (digits.slice(1).every(d => d === '0')) return;
-        const raw = node.trim(); if (!raw) return;
-        out.push({ addr: digits.join(''), text: raw, toward: null, ts: null, state: null, from: null, pile: pile });
-        return;
-      }
-      if (!node || typeof node !== 'object') return;
-      if (isEntryNode(node)){
-        const text = String(node._ || '').trim(); if (!text) return;
-        out.push({ addr: digits.join(''), text,
-          toward: node['2'] || null, ts: node['3'] || null,
-          state: node['4'] || null, from: node['5'] || null, pile: pile });
-        return;
-      }
-      if (node['_'] !== undefined) leaves(node['_'], digits.concat('0'));
-      for (const d of childDigits(node)) leaves(node[d], digits.concat(d));
-    })(mine[pile], [pile]);
-  }
-  out.sort((a, b) => Number(a.pile) - Number(b.pile) || Number(a.addr) - Number(b.addr));
-  return out;
-}
-/* the whole entry a card's slot should hold after a change — object when any
- * condition stands, the bare sentence when none does */
-function entryOf(card, patch){
-  patch = patch || {};
-  const text   = 'text'   in patch ? patch.text   : card.text;
-  const toward = 'toward' in patch ? patch.toward : card.toward;
-  const ts     = 'ts'     in patch ? patch.ts     : card.ts;
-  const state  = 'state'  in patch ? patch.state  : card.state;
-  const from   = 'from'   in patch ? patch.from   : card.from;
-  if (!toward && !ts && !state && !from) return text;
-  const e = { '_': text };
-  if (toward) e['2'] = toward;
-  if (ts) e['3'] = ts;
-  if (state) e['4'] = state;
-  if (from) e['5'] = from;
-  return e;
 }
 const inPlay = c => c.state !== 'done' && c.state !== 'drop';
 /* the hand is what you took up AND what you are on — a claim must not eject
@@ -348,9 +289,10 @@ const norm = t => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim
 
 /* ── load ── */
 async function load(){
-  const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
-  MINE = mine;
-  ALLCARDS = readHand(mine);
+  const idx = await readIndex().catch(() => ({}));
+  const got = await H_.load(HANDLE, idx);
+  BLOCKS = got.blocks;
+  ALLCARDS = got.cards.sort((a, b) => Number(a.pile) - Number(b.pile) || Number(a.addr) - Number(b.addr));
   CARDS = ALLCARDS.filter(inPlay);
 
   /* ONE SOURCE FOR THE CHOSEN PROJECTS: lists:<handle> branch 1 (rank is depth),
@@ -372,19 +314,17 @@ async function load(){
   }
   FIELDS = FIELDS.filter(f => !f.includes(':')).filter(f => !OWN[f.toLowerCase()]);
 
-  /* THE DECKS A PERSON HAS: the projects they chose, their own now, and any
-   * source a card already in their hand names. That last one matters — a card
-   * dealt from somewhere unusual BRINGS ITS DECK WITH IT, so nothing has to be
-   * added to a list before it can be dealt from. */
+  /* THE PROJECTS A PERSON HAS: their own now first, the projects they chose, and
+   * any project a card already in their hand stands in. That last one matters —
+   * a card dealt from somewhere unusual BRINGS ITS PROJECT WITH IT, so nothing
+   * has to be added to a list before it can be dealt from. */
   const named = [];
-  /* the now leads the decks — grounded in the subject's own intention, with the
-   * spine-defined projects beside it; the unattached "mine" pile renders last */
   for (const f of ['now'].concat(FIELDS)) if (named.indexOf(f) < 0) named.push(f);
-  for (const c of CARDS){ if (c.toward && named.indexOf(c.toward) < 0) named.push(c.toward); }
+  for (const c of CARDS){ if (named.indexOf(c.project) < 0) named.push(c.project); }
   DECKS = named;
 
   const addr = dayRung();
-  ASKS = (FIELDS.length ? await gatherAsks(await readIndex().catch(() => ({})), addr).catch(() => []) : [])
+  ASKS = (FIELDS.length ? await gatherAsks(idx, addr).catch(() => []) : [])
     .filter(a => !ACTED.has(askKey(a)));
 }
 
@@ -401,8 +341,7 @@ async function load(){
  * fine rungs, takes the nearest thing it has not already given you, and stops. ── */
 async function deal(deck){
   const addr = dayRung();
-  const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
-  const known = new Set(readHand(mine).map(c => norm(c.text)));
+  const known = new Set(ALLCARDS.map(c => norm(c.text)));
   const personal = deck === 'now';
   const [sp, mi] = await Promise.all([
     personal ? Promise.resolve(null) : readBlock('spine:' + deck).catch(() => null),
@@ -421,94 +360,29 @@ async function deal(deck){
   found.sort((a, b) => a.pscale - b.pscale);
   const pick = found.find(f => { const k = norm(f.text); return k && !known.has(k); });
   if (!pick) return { none: true };
-  /* EVERY dealt card carries its deck at field 2 — the now included, so a card
-   * dealt from your now stands in the my-now row; the door stamps 2, 3 and 5
-   * as the card lands (function:ahead:4), and the sentence stays clean words. */
-  const w = await addCard(pileForPscale(pick.pscale),
-    { '_': pick.text, '2': deck, '3': stamp(), '5': '/hands' });
-  return w.ok ? { ok: true, pile: pileForPscale(pick.pscale) } : w;
+  /* the card lands in the hand of the project it was dealt from — your now
+   * included — at the rung it was asked at; the door stamps 3 and 5 as it
+   * lands (function:ahead:4), and the sentence stays clean words */
+  const pile = pileForPscale(pick.pscale);
+  const w = await H_.land(HANDLE, deck, pile, { '_': pick.text, '3': stamp(), '5': '/hands' });
+  return w.ok ? { ok: true, pile } : w;
 }
 
-/* ── writes ── */
-const stamp = () => new Date().toISOString().slice(0,16) + 'Z';
+/* ── writes — through hand.js, which knows which hand each card stands in ── */
+const stamp = H_.stamp;
+/* how many of one project's nine stand taken at a rung — the count the landing
+ * keeps, read from the hand as the beach holds it */
+const rungTaken = (project, rung) => H_.takenIn(BLOCKS, HANDLE, project, rung);
+const editCard = (c, text) => H_.set(c, { text });
+/* ⇄ — a card to another rung or another project: it lands whole at its new place
+ * first and only then is the old slot emptied (hand.js move), so a refused
+ * landing leaves it where it was, and an emptied slot is free at once */
+const moveCard = (c, to) => H_.move(c, to);
 
-/* A CARD LANDS IN A PILE, whether it was dealt or written. The pile is where it
- * lives and how far out it is; it is NOT how the page is cut, and no row is drawn
- * from it — that was the arrangement this design replaced. A card written by hand
- * lands in the nearest pile, because a thing you sit down and write is for now. */
-async function addCard(pile, entry){
-  /* A BARE SENTENCE IS WRAPPED AS {_: sentence} BEFORE ANY SLOT WRITE — a
-   * string MERGES into an occupied node's underscore on the wire, inheriting
-   * the old conditions, so a mint reusing a retired slot was born already-done
-   * and invisible. An object replaces wholesale; {_: text} is born clean. */
-  if (typeof entry === 'string') entry = { '_': entry };
-  const mine = await readBlock('ahead:' + HANDLE).catch(() => null);
-  if (!mine){
-    const w0 = await foundLatched('ahead:' + HANDLE, { '_':
-      'AHEAD — ' + HANDLE + "'s piles of the indexical future: intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence." });
-    if (!w0.ok) return w0;
-  }
-  const now = await readBlock('ahead:' + HANDLE).catch(() => null);
-  const node = now && now[pile];
-  if (!node) return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '1': entry } });
-  if (typeof node === 'string')
-    return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile, content: { '_': node, '1': entry } });
-  const slot = slotsFree(node)[0] || null;
-  if (!slot) return { full: true, pile };
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: pile + slot, content: entry });
-}
-/* THE PILE LAW (function:ahead 1, ratified 2026-09-01): a pile is BOUNDED and
- * WRITTEN AT ITS SLOTS, NEVER APPENDED — a free digit first, then the lowest
- * RETIRED slot (an empty or legacy DONE/DROP string, or state done/drop at
- * −1); nine live cards refuses plainly, because a hand that cannot say
- * enough is a feed. Every slot another card may take, in the order a landing
- * takes them — so the count a person is shown and the landing read one rule. */
-function slotsFree(node){
-  if (!node || typeof node !== 'object') return ['1','2','3','4','5','6','7','8','9'];
-  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
-  const free = [];
-  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))) free.push(String(d));
-  /* a fresh completion is not real estate — only yesterday's retirements
-   * (and legacy strings) are reusable; today's stand until the sweep */
-  const today = new Date().toISOString().slice(0, 10);
-  const retired = digs.filter(d =>
-    (typeof node[d] === 'string' && (!node[d].trim() || /^(DONE|DROP)\b/.test(node[d].trim())))
-    /* an emptied slot is free: every put-down writes {_: ''}, which this
-     * rule never knew, so emptied slots filled piles with nothing (see
-     * next.html pileSlotFor; David, 2026-10-05) */
-    || (isEntryNode(node[d]) && !node[d]._.trim())
-    || (isEntryNode(node[d]) && (node[d]['4'] === 'done' || node[d]['4'] === 'drop')
-        && String(node[d]['3'] || '').slice(0, 10) !== today)).sort();
-  return free.concat(retired);
-}
-/* how many of a pile's nine slots stand taken, every project's cards together */
-const pileTaken = p => 9 - slotsFree(MINE && MINE[p]).length;
-async function editCard(c, text){
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: entryOf(c, { text }) });
-}
-/* ⇄ ANOTHER PILE — the holder rewriting their own block (function:ahead 1:
- * 'moving an intent between piles is the holder rewriting their own block, one
- * act, no ceremony'). The card lands whole at the other pile's slot, its
- * conditions intact and its stamp fresh, and only THEN is the old slot emptied —
- * the order /next's ↑ keeps, so a refused landing leaves the card where it was
- * and never nowhere. An emptied slot is free at once, which is why a move is
- * the way through a full pile on the day a card is finished. */
-async function movePile(c, to){
-  if (String(c.pile) === String(to)) return { ok: true, same: true };
-  const w = await addCard(to, entryOf(c, { ts: stamp() }));
-  if (!w.ok) return w;
-  const w2 = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr, content: { '_': '' } });
-  return w2.ok ? w : { ok: true, twice: true };
-}
-/* ⇄ ANOTHER PROJECT — field 2 rewritten where the card stands; the pile and the
- * words untouched. No project is the card that is yours alone. */
-async function reAim(c, toward){
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
-    content: entryOf(c, { toward: toward || null, ts: stamp() }) });
-}
-
-/* the latch key follows the BLOCK and is named exactly as /next names it, so a
- * key set on one surface is a key set on the other — one hand, one key per block */
+/* THE WITNESS'S WRITES — a confirmation lands in the confirmer's own mirror of
+ * the project, founded latched where it is not yet; the cards themselves are
+ * written through hand.js. The latch key follows the BLOCK and is named exactly
+ * as /next names it, so a key set on one surface is a key set on the other. */
 const latchKey = block => 'next-latch:' + block;
 /* the passport's own key, kept on this device by /welcome and /here — the one the beach
  * binds every block named for the handle to (handle_bound, pscale-beach #77) */
@@ -587,11 +461,8 @@ async function withLatch(block, body){
   return w;
 }
 /* LETTING GO is a mark, never a deletion — the words stay under the holder's own
- * hand, retired by their leading word exactly as /next retires them. */
-async function letGo(card){
-  return withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: card.addr,
-    content: entryOf(card, { state: 'drop', ts: stamp() }) });
-}
+ * hand, state drop at 4, exactly as /next retires them. */
+const letGo = card => H_.set(card, { state: 'drop', ts: stamp() });
 
 /* ── THE WITNESS.
  *
@@ -744,80 +615,66 @@ function toast(msg, err){
  * row are one card at one address, shown twice because both facts are true. */
 function cardEl(c, opts){
   const held = inHand(c);
-  const deck = c.toward;
-  /* TWO CHIPS, TWO MEANINGS: the pile is how far out YOU hold it; the aim —
-   * field 2 beneath the card, never parsed from its words — is where it
-   * POINTS. The sentence renders whole, because it is only a sentence. */
+  /* THE CARD SAYS ITS RUNG, and in the hand at the top, gathered from every
+   * project, also the project it is aligned to — read off the hand it stands
+   * in, never parsed from its words. The sentence renders whole. */
   return '<div class="dcard' + (held ? ' fam' : '') + '"'
-    + (deck ? ' style="--fam-h:' + famHue(deck) + '"' : '') + ' data-addr="' + esc(c.addr) + '">'
-    + '<span class="aim">' + (opts && opts.showDeck && deck
-        ? esc(deckLabel(deck))
-        : '<span class="pile">' + esc(pileLabel(c.pile)) + '</span>')
+    + ' style="--fam-h:' + famHue(c.project) + '" data-key="' + esc(c.key) + '">'
+    + '<span class="aim"><span class="pile">' + esc(pileLabel(c.pile)) + '</span>'
+    + (opts && opts.showDeck ? '<span>aligned to ' + esc(deckName(c.project)) + '</span>' : '')
     + (held ? '<span class="rung">in hand</span>' : '') + '</span>'
     + '<div class="txt">' + esc(c.text) + '</div>'
     + '<div class="acts">'
     + (held ? '<button data-act="release">− hand</button>' : '<button data-act="hold">＋ hand</button>')
-    + '<button data-act="move" title="another pile, or another project">⇄</button>'
+    + '<button data-act="move" title="another rung, or another project">⇄</button>'
     + '<button data-act="edit">✎</button>'
     + '<button class="x" data-act="drop">✕</button></div></div>';
 }
-/* ⇄ OPENS IN PLACE, where the card's acts were: how far out it is held, each
- * pile with its count of nine — every project's cards together, which is the
- * count the limit keeps — and what it is toward, the decks this hand has and
- * none. The card's own pile and project stand marked; a full pile cannot be
- * chosen and says why. */
+/* ⇄ OPENS IN PLACE, where the card's acts were. The rungs need no heading —
+ * 'today' and 'this week' say themselves — and each carries its count of nine
+ * in this card's own project, the count a full rung keeps. Then the projects
+ * this hand has, headed 'aligned to' (David, 2026-10-12). The card's own rung
+ * and project stand marked; a full rung cannot be chosen and says why. */
 function openMove(el, c){
   if (el.querySelector('.mv')) return;
-  const piles = PILES.map(p => {
-    const here = p.d === String(c.pile), n = pileTaken(p.d), full = !here && n >= 9;
+  const rungs = PILES.map(p => {
+    const here = p.d === String(c.pile), n = rungTaken(c.project, p.d), full = !here && n >= 9;
     /* the card's own place carries no act — choosing it is staying */
     return '<button ' + (here ? 'class="here" aria-pressed="true"' : 'data-act="pile" data-to="' + p.d + '"')
       + (full ? ' disabled title="nine already — move or let one go there first"' : '') + '>'
       + esc(p.label) + '<span class="n">' + n + '/9</span></button>';
   }).join('');
-  const aims = DECKS.concat(['']).map(d => {
-    const here = (c.toward || '') === d;
+  const aims = DECKS.map(d => {
+    const here = c.project === d;
     return '<button ' + (here ? 'class="here" aria-pressed="true"' : 'data-act="aim" data-to="' + esc(d) + '"') + '>'
-      + esc(d ? deckName(d) : 'mine, no project') + '</button>';
+      + esc(deckName(d)) + '</button>';
   }).join('');
   const panel = document.createElement('div');
   panel.className = 'mv';
-  panel.innerHTML = '<div class="mv__lab">how far out — nine to a pile, every project together</div>'
-    + '<div class="mv__opts">' + piles + '</div>'
-    + '<div class="mv__lab">toward</div><div class="mv__opts">' + aims + '</div>'
+  panel.innerHTML = '<div class="mv__opts">' + rungs + '</div>'
+    + '<div class="mv__lab">aligned to</div><div class="mv__opts">' + aims + '</div>'
     + '<button class="mv__x" data-act="move-close">close</button>';
   el.querySelector('.acts').replaceWith(panel);
 }
-/* THE PILES, COUNTED — the one count no row shows. Every row here counts by
- * project, and the limit counts by pile: nine to a pile, every project's cards
- * together (function:ahead 1). So a pile could refuse a card at nine while no
- * row anywhere said nine (David, 2026-10-12: 'somewhere the arithmetic is not
- * matching'). Said once, above the rows, in the piles' own words. */
-function pilesLine(){
-  const held = PILES.map(p => ({ p, n: pileTaken(p.d) })).filter(x => x.n);
-  if (!held.length) return '';
-  return '<p class="piles">' + held.map(x => '<span' + (x.n >= 9 ? ' class="full"' : '') + '>'
-      + esc(x.p.label) + ' ' + x.n + '/9' + (x.n >= 9 ? ', full' : '') + '</span>').join(' · ')
-    + ' <span class="law">— nine to a pile, every project together; ⇄ on a card moves it</span></p>';
+/* A PROJECT'S RUNGS, COUNTED IN ITS OWN ROW — nine to a rung in each project,
+ * so the number beside 'today' is one a person can check against the cards in
+ * the row (David, 2026-10-12: 'If they see a bunch of cards with numbers, they
+ * can do arithmetic'). Only the rungs that hold anything are said. */
+function rungsSaid(project){
+  return PILES.map(p => ({ p, n: rungTaken(project, p.d) })).filter(x => x.n)
+    .map(x => '<span' + (x.n >= 9 ? ' class="full"' : '') + '>' + esc(x.p.label) + ' ' + x.n + '/9</span>').join(' · ');
 }
-/* THE BLANK CARD — mint one of your own. A card you write is yours from the first
- * keystroke and carries no mark, which is the whole difference between writing an
- * intent and being dealt one. It lands in the nearest pile, because a thing you
- * sit down and write is a thing for now. */
-function blankCardEl(){
-  return '<div class="dcard blank" data-pile="1">'
-    + '<span class="aim"><span class="pile">mint</span></span>'
+/* THE BLANK CARD — write one of your own, in this row's project, for today. A
+ * card you write carries no 5, which is the whole difference between writing
+ * an intent and being dealt one. */
+function blankCardEl(project){
+  return '<div class="dcard blank" data-project="' + esc(project) + '" data-pile="2">'
+    + '<span class="aim"><span class="pile">' + esc(pileLabel('2')) + '</span></span>'
     + '<div class="txt add">＋ write one of your own</div></div>';
 }
-/* the deck's own bare name, for a sentence — 'dealt from beach-venture' */
-function deckName(d){ return d === 'now' ? 'my now' : d; }
-/* the ROW's heading. A deck row is a SOURCE: its cards came FROM somewhere and
- * nobody in this hand wrote them. The preposition is what carries that, and it
- * is what tells these rows apart from 'my cards' above, which the holder did
- * write. David, 2026-09-14. */
-function deckLabel(d){ return 'from ' + deckName(d); }
-/* where a deck's own page is — the walk for a project family, /now for the now.
- * A row that names a source must be able to go there, or the source is a label. */
+/* a project as a person reads it — 'my now', or its own name */
+const deckName = H_.projectSaid;
+/* where a project's own page is — the walk for a project family, /now for the now */
 function deckHref(d){
   return d === 'now' ? '/now/' + encodeURIComponent(HANDLE)
                      : '/walk/' + encodeURIComponent(d) + '/' + encodeURIComponent(HANDLE);
@@ -829,6 +686,7 @@ function rowHead(name, count, opts){
     + (opts.hue !== undefined ? ' style="--fam-h:' + opts.hue + '"' : '') + '></span>'
     + '<span class="name">' + esc(name) + '</span>'
     + '<span class="n">' + esc(count) + '</span>'
+    + (opts.rungs ? '<span class="rungs">' + opts.rungs + '</span>' : '')
     + '<div class="links">' + (opts.links || '') + '</div>'
     + (opts.sub ? '<p class="sub">' + opts.sub + '</p>' : '')
     + '</div>';
@@ -845,43 +703,31 @@ function render(){
   $('foot-now').href = '/now/' + encodeURIComponent(HANDLE);
   const out = [];
   const flick = q => '<a href="/next/' + encodeURIComponent(HANDLE) + (q || '') + '">flick →</a>';
-  out.push(pilesLine());
 
-  /* ── THE TOP HAND — compiled, never computed. Cards from any deck, chosen one
-   * by one, which is the act that makes this a hand rather than a list of
-   * everything you happen to be holding. ── */
+  /* ── THE TOP HAND — compiled, never computed. Cards from any project, taken up
+   * one by one, which is the act that makes this a hand rather than a list of
+   * everything you happen to be holding. It has no limit (David, 2026-10-12: 'I
+   * am NOT trying to cap it'). ── */
   const held = CARDS.filter(inHand);
   out.push(rowHead('my hand', held.length + (held.length === 1 ? ' card' : ' cards'), {
     links: held.length ? flick() : '',
-    sub: 'The cards you have compiled from the decks below — take one up with ＋ and it joins this hand, wherever it came from. This is the hand /next flicks.' }));
+    sub: 'The cards you have taken up from your projects below — ＋ hand on any card puts it here, from whichever project. This is the hand /next flicks.' }));
   out.push(held.length
     ? '<div class="carousel">' + held.map(c => cardEl(c, { showDeck: true })).join('') + '</div>'
-    : '<div class="empty-row">nothing compiled yet — ＋ on any card below puts it here</div>');
+    : '<div class="empty-row">nothing taken up yet — ＋ hand on any card below puts it here</div>');
 
-  /* ── MY CARDS — written, not dealt, and SECOND on purpose (David, 2026-09-14).
-   * This pile used to render last, below every deck and the confirm row, on the
-   * reasoning that what is held lightly belongs out of the way. But it is the
-   * pile a person WRITES INTO, and the only blank card on the page lives in it —
-   * so the one act of putting down your own intent sat furthest from where a
-   * hand reaches. Under the hand it is, and the decks follow. ── */
-  const mine = CARDS.filter(c => !c.toward);
-  out.push(rowHead('my cards', mine.length ? mine.length + (mine.length === 1 ? ' card' : ' cards') : 'none yet', {
-    links: mine.length ? flick('?aim=mine') : '',
-    sub: 'Written by hand, on no clock and toward no spine — yours alone, answering to nobody’s deck. Click the blank card and type; Enter lands it, Escape leaves.' }));
-  out.push('<div class="carousel">' + mine.map(c => cardEl(c, {})).join('') + blankCardEl() + '</div>');
-
-  /* ── ONE ROW PER DECK — your now first, then the projects: the grounded work
-   * (the subject's own intention; the spine-defined objectives). ── */
+  /* ── ONE ROW PER PROJECT — your now first, then the projects you chose: each
+   * row is your hand in that project, ahead:<project>:<handle>, with its rungs
+   * counted beside its name and a blank card to write straight into it. ── */
   for (const d of DECKS){
-    const cards = CARDS.filter(c => c.toward === d);
-    out.push(rowHead(deckLabel(d), cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty', {
+    const cards = CARDS.filter(c => c.project === d);
+    out.push(rowHead(deckName(d), cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty', {
       hue: famHue(d),
-      links: '<a href="' + deckHref(d) + '">the deck →</a>'
+      rungs: rungsSaid(d),
+      links: '<a href="' + deckHref(d) + '">' + (d === 'now' ? 'your now' : 'the walk') + ' →</a>'
         + (cards.length ? ' ' + flick('?aim=' + encodeURIComponent(d)) : '')
         + ' <button data-deal="' + esc(d) + '">deal one →</button>' }));
-    out.push(cards.length
-      ? '<div class="carousel">' + cards.map(c => cardEl(c, {})).join('') + '</div>'
-      : '<div class="empty-row">nothing dealt from here yet</div>');
+    out.push('<div class="carousel">' + cards.map(c => cardEl(c, {})).join('') + blankCardEl(d) + '</div>');
   }
 
   if (ASKS.length){
@@ -907,8 +753,8 @@ function render(){
     out.push(rowHead('done today', doneToday.length + (doneToday.length === 1 ? ' card' : ' cards'), {
       sub: 'Put down since midnight, or finished and unable to land — these still hold slots, and the sweep frees them tomorrow. A card that closed cleanly is not here: it is standing in its family’s timeline at the beat it closed in, where it can be confirmed.' }));
     out.push('<div class="carousel">' + doneToday.map(c =>
-      '<div class="dcard" style="opacity:0.55" data-addr="' + esc(c.addr) + '"><span class="aim"><span class="pile">' + (c.state === 'done' ? 'done' : 'put down') + '</span>'
-      + (c.toward ? '<span class="st">' + esc(deckLabel(c.toward)) + '</span>' : '') + '</span>'
+      '<div class="dcard" style="opacity:0.55" data-key="' + esc(c.key) + '"><span class="aim"><span class="pile">' + (c.state === 'done' ? 'done' : 'put down') + '</span>'
+      + '<span class="st">aligned to ' + esc(deckName(c.project)) + '</span></span>'
       + '<div class="txt">' + esc(c.text) + '</div>'
       /* the undo the day deserves — done by mistake (or by the old merge bug)
        * walks back to standing with its words intact */
@@ -931,7 +777,7 @@ function render(){
         const r = await deal(d);
         if (r.ok) toast('✓ dealt from ' + deckName(d));
         else if (r.none) toast(deckName(d) + ' is asking nothing new at today or this week');
-        else if (r.full) toast('that pile holds nine live cards — finish or let go before dealing more', true);
+        else if (r.full) toast(pileLabel(r.rung) + ' already has nine ' + deckName(d) + ' cards — finish one, or move one, before dealing more', true);
         else if (!r.quiet) toast('the deal did not land', true);
         await reload();
       } catch(e){ toast(String(e.message || e), true); b.disabled = false; b.textContent = 'deal one →'; }
@@ -943,7 +789,7 @@ function render(){
 document.addEventListener('click', async e => {
   const b = e.target.closest('button[data-act]'); if (!b) return;
   const card = b.closest('.dcard'); if (!card) return;
-  const find = () => CARDS.find(x => x.addr === card.dataset.addr);
+  const find = () => CARDS.find(x => x.key === card.dataset.key);
   b.disabled = true;
   try {
     const act = b.dataset.act;
@@ -955,21 +801,19 @@ document.addEventListener('click', async e => {
       else if (!w.quiet) toast('the confirmation did not land', true);
     } else if (act === 'revive'){
       /* back to standing — the words stay, the state clears, a fresh stamp */
-      const c = ALLCARDS.find(x => x.addr === card.dataset.addr); if (!c) return;
-      const w = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
-        content: entryOf(c, { state: null, ts: stamp() }) });
+      const c = ALLCARDS.find(x => x.key === card.dataset.key); if (!c) return;
+      const w = await H_.set(c, { state: null, ts: stamp() });
       if (w.ok){ toast('↩ standing again'); await reload(); }
       else if (!w.quiet) toast('it did not land', true);
     } else if (act === 'hold' || act === 'release'){
       /* COMPILING IS A SELECTION, NEVER A MOVE. The card stays at its own address,
-       * in the pile it was written to, under the deck it came from; all that
-       * changes is its state at field 4 — held in, standing out. */
+       * at the rung it was written to, in its project's hand; all that changes is
+       * its state at field 4 — held in, standing out. */
       const c = find(); if (!c) return;
       /* a doing claim outranks a hold — ＋hand on a card being done is already
        * true and must not downgrade the claim */
       if (act === 'hold' && c.state === 'doing'){ toast('already in your hand — being done right now'); return; }
-      const w = await withLatch('ahead:' + HANDLE, { block: 'ahead:' + HANDLE, spindle: c.addr,
-        content: entryOf(c, act === 'hold' ? { state: 'held', ts: stamp() } : { state: null, ts: stamp() }) });
+      const w = await H_.set(c, act === 'hold' ? { state: 'held', ts: stamp() } : { state: null, ts: stamp() });
       if (w.ok){ toast(act === 'hold' ? '✓ in your hand' : '✓ set down'); await reload(); }
       else if (!w.quiet) toast('it did not land', true);
     } else if (act === 'edit'){
@@ -980,20 +824,15 @@ document.addEventListener('click', async e => {
       openMove(card, c); return;
     } else if (act === 'move-close'){
       render(); return;
-    } else if (act === 'pile'){
+    } else if (act === 'pile' || act === 'aim'){
       const c = find(); if (!c) return;
       const to = b.dataset.to;
-      const w = await movePile(c, to);
-      if (w.full) toast(pileLabel(to) + ' holds nine already — move or let one go there first', true);
-      else if (w.twice){ toast('landed ' + pileLabel(to) + ', but the old slot would not clear — it stands twice until you tidy', true); await reload(); }
-      else if (w.ok){ toast('⇄ ' + pileLabel(to)); await reload(); }
+      const w = await moveCard(c, act === 'pile' ? { rung: to } : { project: to });
+      const said = act === 'pile' ? pileLabel(to) : 'aligned to ' + deckName(to);
+      if (w.full) toast(pileLabel(w.rung) + ' already has nine ' + deckName(w.project) + ' cards — move or let one go there first', true);
+      else if (w.twice){ toast('landed ' + said + ', but the old slot would not clear — it stands twice until you tidy', true); await reload(); }
+      else if (w.ok){ toast('⇄ ' + said); await reload(); }
       else if (!w.quiet) toast('the move did not land — the card stays where it was', true);
-    } else if (act === 'aim'){
-      const c = find(); if (!c) return;
-      const to = b.dataset.to;
-      const w = await reAim(c, to);
-      if (w.ok){ toast('⇄ ' + (to ? 'toward ' + deckName(to) : 'yours, no project')); await reload(); }
-      else if (!w.quiet) toast('it did not land', true);
     } else if (act === 'drop'){
       const c = find(); if (!c) return;
       const w = await letGo(c);
@@ -1014,10 +853,10 @@ document.addEventListener('click', e => {
   openBlank(blank);
 });
 function openBlank(el){
-  const pile = el.dataset.pile || '1';
+  const pile = el.dataset.pile || '2', project = el.dataset.project || 'now';
   const box = el.querySelector('.txt');
   const ta = document.createElement('textarea');
-  ta.placeholder = 'one thing you are holding toward';
+  ta.placeholder = 'one thing you mean to do';
   ta.style.cssText = 'width:100%;min-height:90px;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);'
     + 'border-radius:6px;color:var(--foam);font:inherit;padding:8px;resize:vertical';
   box.replaceWith(ta); ta.focus();
@@ -1027,9 +866,10 @@ function openBlank(el){
     const v = ta.value.trim();
     if (!commit || !v){ done = true; await reload(); return; }
     busy = true;
-    const w = await addCard(pile, v);
+    const w = await H_.land(HANDLE, project, pile, { '_': v, '3': stamp() });
     busy = false;
-    if (w.ok){ toast('✓ minted'); done = true; await reload(); }
+    if (w.ok){ toast('✓ ' + pileLabel(pile) + ', aligned to ' + deckName(project)); done = true; await reload(); }
+    else if (w.full){ toast(pileLabel(pile) + ' already has nine ' + deckName(project) + ' cards — finish one, or move one to another rung', true); }
     else if (!w.quiet) toast('it did not land', true);
   };
   ta.addEventListener('keydown', ev => {
@@ -1089,9 +929,18 @@ if (!HANDLE){
 } else {
   $('app').classList.remove('hidden');
   $('btn-refresh').addEventListener('click', () => reload());
-  /* a card minted from the bar's ＋ (mint.js) into this hand shows at once */
+  /* a card minted from the bar's ＋card (mint.js) into this hand shows at once */
   document.addEventListener('mint:landed', e => { if (e.detail && e.detail.handle === HANDLE) reload(); });
-  reload().catch(e => showState('The beach is out of reach.', esc(String(e.message || e))));
+  /* THE HAND THAT STOOD BEFORE MOVES ITSELF, on its holder's own visit with the
+   * key this device keeps: its open cards land in a hand per project, each at the
+   * rung it stood at (hand.js split). Nothing is asked, and on anyone else's
+   * device nothing moves — the page reads the old hand's cards beside the new. */
+  (async () => {
+    await reload();
+    if (!H_.keyOf(HANDLE) || !ALLCARDS.some(c => c.legacy && inPlay(c))) return;
+    const r = await H_.split(HANDLE);
+    if (r.moved){ toast('✓ your cards now stand in a hand for each project'); await reload(); }
+  })().catch(e => showState('The beach is out of reach.', esc(String(e.message || e))));
 }
 })();
 </script>
