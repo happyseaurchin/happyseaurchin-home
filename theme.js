@@ -945,31 +945,48 @@
    * is, at the top of the bar to the left of 'options'. Light by construction
    * ('it could load up too much on the o-page'): the bar carries one button and
    * the page asks the beach nothing for it. The card behind it is /mint.js,
-   * fetched on the first tap as the share card's code is, and it reads the hand
-   * only then. Laid in AFTER the gathering, so it stands in the bar and never
-   * under 'options'.
+   * fetched on the first tap with /hand.js (where a page has not loaded it) as
+   * the share card's code is, and it reads the hand only then. Laid in AFTER the
+   * gathering, so it stands in the bar and never under 'options'. Named
+   * '＋card' and in the cards' own gold (David, 2026-10-12: '＋ by itself is
+   * too enigmatic').
    * ────────────────────────────────────────────────────────────────────────── */
   function mintAct(){
     var mount = document.querySelector('.bar');
     if (!mount || document.getElementById('btn-mint')) return;
+    /* ON A PHONE THE BAR HAS NO ROOM TO SPARE: the longest title cannot wrap
+     * below its longest word (a handle), so the bar's gaps and side padding
+     * tighten a little there and the word stacks under its ＋ — else the bar
+     * outgrows the screen and the page scrolls sideways (measured at 375px on
+     * /walk/<family>/<handle>) */
+    var st = document.createElement('style');
+    st.textContent = '.bar #btn-mint{color:var(--solid);border-color:rgba(var(--solid-rgb),0.55);white-space:nowrap}' +
+      '.bar #btn-mint:hover{color:var(--foam);border-color:var(--solid)}' +
+      '@media (max-width:420px){html .bar{gap:6px;padding-left:12px;padding-right:12px}' +
+        '.bar #btn-mint{white-space:normal;width:min-content;font-size:10.5px;line-height:1.05;padding:3px 6px;letter-spacing:0}}';
+    document.head.appendChild(st);
     var b = document.createElement('button');
     b.type = 'button'; b.id = 'btn-mint';
-    b.textContent = '＋';
-    b.title = 'a card in your hand, from here';
-    b.setAttribute('aria-label', 'mint a card into your hand');
+    b.textContent = '＋card';
+    b.title = 'a card for today, in your hand';
+    b.setAttribute('aria-label', 'add a card to your hand');
     b.addEventListener('click', openMint);
     var acts = document.getElementById('dd-acts');
     var doors = mount.querySelector('details.dd[data-doors]');
     mount.insertBefore(b, acts || doors || null);
   }
+  function script(src){
+    return new Promise(function(ok, no){
+      var s = document.createElement('script');
+      s.src = src; s.onload = ok; s.onerror = no;
+      document.head.appendChild(s);
+    });
+  }
   var minting = null;
   function openMint(){
     if (window.mintCard) return window.mintCard();
-    if (!minting) minting = new Promise(function(ok, no){
-      var s = document.createElement('script');
-      s.src = '/mint.js'; s.onload = ok; s.onerror = no;
-      document.head.appendChild(s);
-    });
+    if (!minting) minting = (window.hand ? Promise.resolve() : script('/hand.js'))
+      .then(function(){ return script('/mint.js'); });
     minting.then(function(){ if (window.mintCard) window.mintCard(); },
                  function(){ minting = null; });
   }
@@ -991,8 +1008,8 @@
    * projects in the sense this row means: your now, your ahead, your deck.
    * ────────────────────────────────────────────────────────────────────────── */
   /* a family whose own page is better than its walk. 'ahead' was here until its
-   * page folded into /hands — the FAMILY is untouched and its blocks are still
-   * ahead:<handle>; only the surface went, so it walks like any other now. */
+   * page folded into /hands — the FAMILY is untouched and its blocks are a hand
+   * per project, ahead:<project>:<handle> (hand.js); only the surface went. */
   var OWN_PAGE = { 'now':'now', 'today-beach-deck':'today-beach-deck', 'ahead':'ahead' };
   /* the depth of a block's underscore chain — /walk's floorOf, held to exactly: ten is the clock */
   function floorOf(block){ var n = 0, node = block; while (node && typeof node === 'object' && ('_' in node)){ node = node._; n++; } return n; }

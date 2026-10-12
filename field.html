@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/hand.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   body{
@@ -168,7 +169,7 @@
 <div class="foot hidden" id="foot">
   computed witnessing — shared words, shared cells; no mind speaks here<br>
   synthesis lives with minds: <a id="foot-mirror" href="https://mirror.onen.ai/?block=spine%3Anow&amp;at=today" target="_blank" rel="noopener">the mirror ↗</a> · talk with no rung on it: <a href="https://mirror.onen.ai/?pool=now" target="_blank" rel="noopener">the now pool ↗</a>
-  <span class="work"><br>family: spine:now · now:&lt;hand&gt; · ahead:&lt;hand&gt; · bare now (the record) · reads live, writes nothing</span>
+  <span class="work"><br>family: spine:now · now:&lt;hand&gt; · ahead:&lt;project&gt;:&lt;hand&gt; · bare now (the record) · reads live, writes nothing</span>
 </div>
 
 <div id="pop-back" class="pop-back hidden"></div>
@@ -762,7 +763,7 @@ function whoLine(e){
   const name = meta.record ? esc(meta.name) : '<span data-name="' + esc(meta.name).replace(/"/g, '&quot;') + '">' + esc(meta.name) + '</span>';
   return '<span class="who" style="color:' + meta.css + '">' + name + ' — ' + esc(when) +
     (e.ahead ? ' · ahead, sized about ' + esc(RUNG_NAME[9 - (e.pile - 1)] || 'the season') : '') +
-    '</span><span class="work">' + (e.crown ? 'the root chain' : e.ahead ? 'ahead:' + esc(meta.name) + ' pile ' + e.pile : 'now:' + esc(meta.name) + ' · ' + pad10(e.p)) + '</span>';
+    '</span><span class="work">' + (e.crown ? 'the root chain' : e.ahead ? 'ahead:' + esc((e._a && e._a.project) || e.project || 'now') + ':' + esc(meta.name) + ' rung ' + e.pile : 'now:' + esc(meta.name) + ' · ' + pad10(e.p)) + '</span>';
 }
 if (window.nameLinks) nameLinks(document.getElementById('pane-body'), { watch: true });
 function renderPane(read, pinned){
@@ -907,7 +908,9 @@ if (window.siteDoors) siteDoors({ handle: HANDS[0], here: 'field' });
   try {
     reads = await Promise.all([
       ...HANDS.map(h => readBlock('now:' + h).catch(() => null)),
-      ...HANDS.map(h => readBlock('ahead:' + h).catch(() => null)),
+      /* each hand's cards, a hand per project (hand.js) — one index read for them all */
+      ...(await (async () => { const idx = await window.hand.index().catch(() => ({}));
+        return HANDS.map(h => window.hand.load(h, idx).then(g => g.cards.filter(window.hand.isOpen)).catch(() => null)); })()),
       readBlock('now').catch(() => null),
     ]);
   } catch(e){
@@ -926,27 +929,9 @@ if (window.siteDoors) siteDoors({ handle: HANDS[0], here: 'field' });
     collectEntries(m, HANDS[i]).forEach(e => { e.handIdx = i; ENTRIES.push(e); });
   });
   AHEADS = [];
-  aheads.forEach((a, i) => {
-    if (!a) return;
-    Object.keys(a).forEach(k => {
-      if (!/^[1-9]$/.test(k)) return;
-      const pile = a[k];
-      const items = [];
-      if (typeof pile === 'string'){ if (pile.trim()) items.push(pile.trim()); }
-      else if (pile && typeof pile === 'object'){
-        Object.keys(pile).forEach(kk => {
-          const v = pile[kk];
-          if (/^[1-9]$/.test(kk)){
-            if (typeof v === 'string' && v.trim()) items.push(v.trim());
-            /* the one-card shape (function:ahead 2): the sentence lives at the
-             * entry's underscore, conditions beneath — read the sentence only */
-            else if (v && typeof v === 'object' && typeof v._ === 'string' && v._.trim()) items.push(v._.trim());
-          }
-          else if (kk === '_' && typeof v === 'string' && v.trim()) items.push(v.trim());
-        });
-      }
-      items.forEach(text => AHEADS.push({ hand: HANDS[i], handIdx: i, pile: +k, text, ahead: true }));
-    });
+  aheads.forEach((cards, i) => {
+    /* the one-card shape (function:ahead 2): the sentence only, at its rung */
+    (cards || []).forEach(c => AHEADS.push({ hand: HANDS[i], handIdx: i, pile: +c.pile, text: c.text, ahead: true, project: c.project }));
   });
   /* the record — the bare now block's standing fold, in the solid's own colour */
   if (fold){

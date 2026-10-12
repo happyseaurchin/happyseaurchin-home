@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Young+Serif&display=swap">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/hand.js"></script>
 <style>
   /* TRACKS — a path (function:path) drawn as parallel tracks. Each first part of spine:<V>-path is a
      lane: its name on the left, its parts as parallelograms along a rail in digit order, a part's
@@ -447,11 +448,13 @@ function refsIn(raw){
   String(raw || '').replace(/\[([^\[\]]+)\]/g, (m, inner) => { inner.split(';').forEach(t => { t = t.trim(); if (t && out.indexOf(t) < 0) out.push(t); }); return m; });
   return out;
 }
-/* WHOM A PART WAITS ON is read off the fold line's pointer to that person's hand — [ahead:<handle>],
- * or the card itself, [ahead:<handle> <address>] — never off its words (function:path 2.3) */
+/* WHOM A PART WAITS ON is read off the fold line's pointer to that person's hand —
+ * [ahead:<project>:<handle>], or the card itself, [ahead:<project>:<handle> <address>]; the hand
+ * that stood before, [ahead:<handle>], reads the same — never off its words (function:path 2.3).
+ * A handle holds no colon, so the holder is the name's last segment. */
 function handsIn(raw){
   const out = [];
-  refsIn(raw).forEach(t => { const m = t.match(/^ahead:(.+?)(?:\s+\d[\d.,\s]*)?$/); const w = m && clean(m[1]); if (w && out.indexOf(w) < 0) out.push(w); });
+  refsIn(raw).forEach(t => { const m = t.match(/^ahead:(.+?)(?:\s+\d[\d.,\s]*)?$/); const w = m && clean(m[1].split(':').pop()); if (w && out.indexOf(w) < 0) out.push(w); });
   return out;
 }
 function refHtml(t){
@@ -488,17 +491,12 @@ function planeCards(deck){
   })(deck, []);
   return found;
 }
-function openCardsOf(deck){
-  const out = [];
-  planeCards(deck).forEach(c => {
-    const n = c.node, obj = typeof n === 'object';
-    const text = obj ? String(n._ || '').trim() : String(n).trim();
-    if (!text) return;
-    const state = obj ? (n['4'] || null) : null;
-    if (state === 'done' || state === 'drop') return;
-    out.push({ addr: c.addr, text, held: state === 'doing' ? 'doing now' : 'in hand', toward: obj ? (n['2'] || null) : null, from: obj ? (n['5'] || null) : null });
-  });
-  return out;
+function openCardsOf(deck, blockName){
+  /* a hand's open cards, read through hand.js: the project is the hand's name
+   * (or 2 in the hand that stood before), and each card knows its block */
+  return window.hand.cardsIn(blockName, deck).filter(window.hand.isOpen).map(c => ({
+    addr: c.addr, block: c.block, text: c.text, held: c.state === 'doing' ? 'doing now' : 'in hand',
+    toward: c.project, from: c.from }));
 }
 /* the spine's 9 is the family's operator stem, never a part (walk.html nineIsOperator) */
 function nineIsOperator(spine, law){
@@ -525,13 +523,15 @@ async function load(){
   else { FAMILY = ''; return; }
   const nameOk = s => /^[A-Za-z][A-Za-z0-9 _-]*$/.test(s);
   const mNames = blocks.filter(b => b.indexOf(FAMILY + ':') === 0 && nameOk(b.slice(FAMILY.length + 1)));
-  const hNames = blocks.filter(b => b.indexOf('ahead:') === 0 && nameOk(b.slice(6)));
+  /* a hand per project (hand.js): every holder's hand for this project, with the
+   * hands that stood before read beside them until they move */
+  const hNames = window.hand.handsFor(IX, PROJECT);
   const [spine, fold, law, mirrors, hands] = await Promise.all([
     readBlock('spine:' + FAMILY),
     HAS.has(FAMILY) ? readBlock(FAMILY).catch(() => null) : null,
     HAS.has('function:' + FAMILY) ? readBlock('function:' + FAMILY).catch(() => null) : null,
     Promise.all(mNames.map(n => readBlock(n).then(b => ({ who: n.slice(FAMILY.length + 1), b })).catch(() => null))),
-    Promise.all(hNames.map(n => readBlock(n).then(b => ({ who: n.slice(6), cards: openCardsOf(b) })).catch(() => null)))
+    Promise.all(hNames.map(n => readBlock(n).then(b => ({ who: window.hand.parse(n).handle, cards: openCardsOf(b, n) })).catch(() => null)))
   ]);
   SPINE = spine; FOLD = fold; LAW = law;
   MIRRORS = mirrors.filter(m => m && m.b && typeof m.b === 'object');
@@ -928,7 +928,7 @@ function openPart(addr, btn){
 }
 function openCard(c, btn){
   SHEET_AT = { kind: 'card', c };
-  $('sheet-addr').replaceChildren(chip('held', 'a card'), h('span', { class: 'addr-ref' }, 'ahead:' + c.who + ' ' + c.addr));
+  $('sheet-addr').replaceChildren(chip('held', 'a card'), h('span', { class: 'addr-ref' }, (c.block || 'ahead:' + c.who) + ' ' + c.addr));
   $('sheet-nav').textContent = '';
   const B = $('sheet-body'), part = partOf(c.at);
   const pb = h('button', { type: 'button', class: 'linkish' }, part.title);
@@ -1061,8 +1061,8 @@ function drawWhere(){
     ['The parts', code('spine:' + FAMILY) + ', written by the project’s designers: each part says what it is and when it is done, and never where it stands. Anyone else proposes a part in their own ' + codeT('spine:' + FAMILY + ':‹handle›') + ', and the designers adopt it or not.'],
     ['Where each part stands', (HAS.has(FAMILY) ? code(FAMILY) : codeT(FAMILY)) + ', folded once a day from what was done: one line per part, opening DONE, DOING, BLOCKED or NEXT, with its pointer; its first line says when it was last folded, and by whom.' + (touched(FAMILY) ? ' Last written ' + esc(when(touched(FAMILY))) + '.' : ' Not folded yet.')],
     ['Each person’s word', 'Their own mirror, ' + codeT(FAMILY + ':‹handle›') + ', at the part’s address, opening DONE, DOING, BLOCKED or OFFER' + (MAKE ? ' (or WANT, on a thing made together)' : '') + '. The box under every part writes it, signed with your key; the fold reads it.' + (hands ? ' Mirrors here now: ' + hands + '.' : '')],
-    ['What each person holds', 'Their hand, ' + codeT('ahead:‹handle›') + ', shown on <a href="/next">/next</a>. A card taken from a part names that part, and lands on the clock when it is done.'],
-    ['Waits on', 'A part whose fold line is BLOCKED and points at someone’s hand, ' + codeT('[ahead:‹handle›]') + ', or with a card taken from it still open in that hand. The switch above dots them.']
+    ['What each person holds', 'Their hand for this project, ' + codeT('ahead:‹project›:‹handle›') + ', shown on <a href="/next">/next</a>. A card taken from a part names that part, and lands on the clock when it is done.'],
+    ['Waits on', 'A part whose fold line is BLOCKED and points at someone’s hand, ' + codeT('[ahead:‹project›:‹handle›]') + ', or with a card taken from it still open in that hand. The switch above dots them.']
   ];
   if (!OWN && HAS.has('spine:' + PROJECT)) rowsW.push(['When things happen', 'The clock, ' + code('spine:' + PROJECT) + ', walked at <a href="/walk/' + encodeURIComponent(PROJECT) + '">/walk/' + esc(PROJECT) + '</a>.']);
   rowsW.push(['The law', (LAW ? code('function:' + FAMILY) : codeT('function:' + FAMILY)) + ', on the form ' + code(MAKE ? 'function:make' : 'function:path') + ': how the parts are written and how each day’s work is folded onto them.']);

@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/hand.js"></script>
 <script src="/vendor/d3.v7.min.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
@@ -757,7 +758,7 @@ function drawPanel(){
     pd.disabled = true; pd.textContent = 'dealing…';
     const r = await dealToHand(word, addr);
     pd.textContent = r === true ? '✓ in your hand — flick it at /next'
-      : r === 'full' ? 'that pile holds nine — finish or let go first'
+      : r === 'full' ? 'nine at that rung already — finish one, or move one at /hands'
       : 'the deal did not land';
   });
   const t = $('say-t');
@@ -775,70 +776,21 @@ function drawPanel(){
 }
 
 /* THE DEAL, FROM THE FOCUSED PART — its words become one card in the holder's
- * hand (ahead:<handle>), aimed at this family, the pile following the part's
- * rung. A digit position holds nine and does not grow: room appends; a full
- * pile reuses its lowest RETIRED slot (empty or DONE/DROP strings only); nine
- * live cards refuses. The page is the mechanical dealer — a mind deals better. */
+ * hand for this project, ahead:<family>:<handle> (hand.js), at the rung the part
+ * was asked at — the rung's pscale, a day being today. The landing founds the
+ * hand latched where it is not yet and keeps the pile law: a free or retired
+ * slot, nine in this project at that rung refusing. The page is the mechanical
+ * dealer — a mind deals better. */
 async function dealToHand(text, addr){
   if (!HANDLE || !text) return false;
-  const name = 'ahead:' + HANDLE;
-  const home = 'next-latch:' + name;
-  let latch = localStorage.getItem(home);
   const fl = MODE === 'clock' ? 10 : (floorOf(SPINE) || 1);
-  const p = fl - String(addr || '').length;
-  const pile = p <= 2 ? '1' : p === 3 ? '3' : p === 4 ? '4' : p === 5 ? '5' : p === 6 ? '6' : '7';
+  const pile = window.hand.rungOfPscale(fl - String(addr || '').length);
   /* THE ONE CARD (function:ahead 2): the sentence at 0, the conditions stamped
-   * at −1 by this door — 2 toward, 3 the stamp, 5 the dealer. No prose glue,
-   * nothing parsed back out of the words, ever. */
-  const aimed = { '_': text, '2': FAMILY, '3': new Date().toISOString().slice(0, 16) + 'Z', '5': '/recency' };
-  async function put(body){
-    if (latch) body.secret = latch;
-    let w = await writeBlock(body);
-    if (lockRequired(w)){
-      const v = prompt(name + ' is latched — its key (kept on this device; check the first letter — phones capitalise it):');
-      if (v === null || !v.trim()) return { ok: false };
-      latch = v.trim(); body.secret = latch;
-      w = await writeBlock(body);
-      if (w.ok) localStorage.setItem(home, latch);
-    }
-    return w;
-  }
-  const cur = await readBlock(name).catch(() => null);
-  if (!cur){
-    const root = 'AHEAD — ' + HANDLE + "'s piles of the indexical future (function:ahead): intents at the grain they are sized for, unordered within their pile, never arriving unless pulled into now and landed in the mirror as record. Sovereign; a pile is appetite, not sequence.";
-    const body = { block: name, content: { '_': root, [pile]: { '1': aimed } } };
-    if (latch) body.new_lock = latch;
-    return (await writeBlock(body)).ok === true;
-  }
-  const node = cur[pile];
-  if (!node) return (await put({ block: name, spindle: pile, content: { '1': aimed } })).ok === true;
-  if (typeof node === 'string')
-    return (await put({ block: name, spindle: pile, content: { '_': node, '1': aimed } })).ok === true;
-  /* THE PILE LAW (function:ahead 1, ratified 2026-09-01): bounded, written AT
-   * ITS SLOTS, never appended — a free digit first, then the lowest retired
-   * slot (empty or legacy DONE/DROP string, or state done/drop at −1). */
-  const digs = Object.keys(node).filter(k => /^[1-9]$/.test(k));
-  let slot = null;
-  for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))){ slot = String(d); break; }
-  if (!slot){
-    /* a fresh completion is not real estate — only yesterday's retirements
-     * (and legacy strings) are reusable; today's stand until the sweep */
-    const today = new Date().toISOString().slice(0, 10);
-    const retired = digs.filter(d => {
-      const v = node[d];
-      if (typeof v === 'string') return !v.trim() || /^(DONE|DROP)\b/.test(v.trim());
-      /* an emptied slot is free: every put-down writes {_: ''}, which this
-       * rule never knew, so emptied slots filled piles with nothing (see
-       * next.html pileSlotFor; David, 2026-10-05) */
-      if (v && typeof v === 'object' && typeof v._ === 'string' && !v._.trim()
-          && Object.keys(v).every(k => k === '_' || typeof v[k] !== 'object')) return true;
-      return v && typeof v === 'object' && (v['4'] === 'done' || v['4'] === 'drop')
-        && String(v['3'] || '').slice(0, 10) !== today;
-    }).sort();
-    slot = retired[0] || null;
-  }
-  if (!slot) return 'full';
-  return (await put({ block: name, spindle: pile + slot, content: aimed })).ok === true;
+   * at −1 by this door — 3 the stamp, 5 the dealer; the project is the hand's
+   * name. No prose glue, nothing parsed back out of the words, ever. */
+  const w = await window.hand.land(HANDLE, FAMILY, pile,
+    { '_': text, '3': new Date().toISOString().slice(0, 16) + 'Z', '5': '/recency' });
+  return w.full ? 'full' : w.ok === true;
 }
 
 /* ── the say — the one write this page can make: your own line, your own

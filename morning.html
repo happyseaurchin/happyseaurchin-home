@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/hand.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   body{
@@ -645,6 +646,15 @@ async function writeMirrorAt(addr, content){
 /* families and their colours — one steady hue per family, its name always written beside it */
 const HUES = [265, 210, 160, 330, 95, 15, 190, 45];
 const famHue = f => HUES[[...String(f)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7) % HUES.length];
+/* YOUR OWN CARDS, every project's hand (hand.js), in the two shapes this page
+ * reads them in: YOUR HAND — the cards taken up, held or being done, which is
+ * what /hands calls 'my hand' and /next flicks — and the holdings view, every
+ * open card */
+let MY_CARDS = [];
+const myOpen = () => MY_CARDS.filter(c => c.state === 'held' || c.state === 'doing').map(c => ({ addr: c.key, text: c.text,
+  held: c.state === 'doing' ? 'doing now' : (c.state === 'held' ? 'in hand' : ''), toward: c.project }));
+const myHoldings = () => MY_CARDS.map(c => ({ addr: c.key,
+  state: c.state === 'doing' ? 'doing' : (c.state === 'held' ? 'held' : 'today'), until: '', text: c.text, toward: c.project }));
 /* every card still in hand — the holdings view, read from positions alone */
 function holdingsOf(deck){
   const out = [];
@@ -700,6 +710,10 @@ async function load(){
   const got = await Promise.all(mNames.concat(dNames).map(n => readBlock(n).catch(() => null)));
   MIRRORS = mNames.map((n, i) => [n.slice(VENTURE.length + 1), got[i]]).filter(x => x[1]);
   DECKS = dNames.map((n, i) => [n.slice(FIELD.length + 1), got[mNames.length + i]]).filter(x => x[1]);
+  /* YOUR CARDS ARE A HAND PER PROJECT (hand.js) — this page read the retired
+   * today-beach-deck mirrors for them, which stopped holding cards on
+   * 2026-08-26, so 'in your hand' had been reading nothing */
+  MY_CARDS = HANDLE ? (await window.hand.load(HANDLE, index).catch(() => ({ cards: [] }))).cards.filter(window.hand.isOpen) : [];
 
   /* the news field — everyone's outward declarations, read for the morning at the
    * two day rungs a morning actually spans. Failure here is quiet on purpose: the
@@ -780,7 +794,7 @@ async function load(){
   const unVoices = POOL_VOICES.filter(v => !v.at);
   /* the deck and doing families were retired into the hand (today-beach-deck
    * piles) \u2014 the one card block this page already reads; no dead spines named */
-  const myCards = openCardsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
+  const myCards = myOpen();
 
   EXTRA.areas = [
     { name: 'beach-venture', fam: 'beach-venture', events: vMoved.length + locVoices.length,
@@ -839,7 +853,7 @@ function locVoicesAt(addr){
  * commitment to a date is a mirror voicing, never a card (function:ahead:3) */
 function myAimedAt(addr){
   if (addr !== TODAY_ADDR) return [];
-  return holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
+  return myHoldings();
 }
 /* generic slot collector — pools, marks: attributed, stamped, any depth */
 function collectSlots(block){
@@ -871,7 +885,7 @@ function renderStats(){
     ['hands moved · 24h', MIRRORS.filter(([w, b]) => stampsUnder(b).some(t => Date.now() - t < H24)).length, ''],
   ];
   const mine = [
-    ['in your hand', openCardsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).length, 'mine'],
+    ['in your hand', myOpen().length, 'mine'],
     ['moved near you', MIRRORS.filter(([w, b]) => w !== HANDLE && stampsUnder(b).some(t => t > SINCE)).length, 'mine'],
   ];
   beach.concat(mine).forEach(([label, n, cls]) =>
@@ -962,7 +976,7 @@ function renderCollage(){
 function renderProjects(){
   let fams = EXTRA.dashboard;
   if (!fams || !fams.length){
-    fams = [...new Set(holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]).map(c => c.toward).filter(Boolean))];
+    fams = [...new Set(myHoldings().map(c => c.toward).filter(Boolean))];
     if (!fams.includes(VENTURE)) fams.unshift(VENTURE);
   }
   $('pstrip').innerHTML = fams.map(f => {
@@ -1006,7 +1020,7 @@ function paintSheet(){
   }
   if (SHEET.deck){
     $('sh-where').textContent = 'your hand — the venture';
-    const all = holdingsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
+    const all = myHoldings();
     $('sh-body').innerHTML = (all.map(c => {
       const fam = c.toward;
       return '<div class="chip' + (fam ? ' fam' : '') + '"' + (fam ? ' style="--fam-h:' + famHue(fam) + '"' : '') + '>' +
@@ -1045,7 +1059,7 @@ function renderIntend(){
   const toward = weekObj ? 'the week — ' + short(weekObj, 150)
     : myWeek ? 'your week — ' + short(myWeek, 150)
     : monthObj ? 'the month — ' + short(monthObj, 150) : 'what stands above';
-  const mine = openCardsOf((DECKS.find(x => x[0] === HANDLE) || [])[1]);
+  const mine = myOpen();
   if (!$('draft').value.trim()){
     $('draft').value = 'Today is toward ' + toward + '\n\n' +
       'I will ' + (mine.length ? mine.map(c => short(c.text, 90)).join('; and ') : '…') + '.';
