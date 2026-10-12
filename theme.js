@@ -940,6 +940,42 @@
     else window.open(SHARE_FORWARD, '_blank', 'noopener');
   }
 
+  /* ── a card, from any page ─────────────────────────────────────────────────
+   * David, 2026-10-12: a card minted into the hand from wherever the reading
+   * is, at the top of the bar to the left of 'options'. Light by construction
+   * ('it could load up too much on the o-page'): the bar carries one button and
+   * the page asks the beach nothing for it. The card behind it is /mint.js,
+   * fetched on the first tap as the share card's code is, and it reads the hand
+   * only then. Laid in AFTER the gathering, so it stands in the bar and never
+   * under 'options'.
+   * ────────────────────────────────────────────────────────────────────────── */
+  function mintAct(){
+    var mount = document.querySelector('.bar');
+    if (!mount || document.getElementById('btn-mint')) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'btn-mint';
+    b.textContent = '＋';
+    b.title = 'a card in your hand, from here';
+    b.setAttribute('aria-label', 'mint a card into your hand');
+    b.addEventListener('click', openMint);
+    var acts = document.getElementById('dd-acts');
+    var doors = mount.querySelector('details.dd[data-doors]');
+    mount.insertBefore(b, acts || doors || null);
+  }
+  var minting = null;
+  function openMint(){
+    if (window.mintCard) return window.mintCard();
+    if (!minting) minting = new Promise(function(ok, no){
+      var s = document.createElement('script');
+      s.src = '/mint.js'; s.onload = ok; s.onerror = no;
+      document.head.appendChild(s);
+    });
+    minting.then(function(){ if (window.mintCard) window.mintCard(); },
+                 function(){ minting = null; });
+  }
+  /* registered after gatherActs, so it runs after it */
+  document.addEventListener('DOMContentLoaded', mintAct);
+
   /* ── the projects you are in ───────────────────────────────────────────────
    * There is no directory page and none is needed: YOUR PROJECTS ARE THE FAMILIES
    * YOU HOLD A MIRROR IN, which the beach index already knows. A family exists iff
