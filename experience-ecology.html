@@ -14,16 +14,19 @@
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
 <style>
-  /* THE FOUR LAYERS KEEP THEIR OWN COLOURS, each set here in both registers (theme.css:
-     no colour that works in only one); the beach's is the site's own liquid. Every other
-     colour is the site's. A sheet's tint is thinner on paper than on the dark ground. */
+  /* THE LAYERS KEEP THEIR OWN COLOURS — a layer's by its digit in the block — each set
+     here in both registers (theme.css: no colour that works in only one); the fourth,
+     the beach's, is the site's own liquid. Every other colour is the site's. A sheet's
+     tint is thinner on paper than on the dark ground. */
   :root{
-    --salt:#ff8a62; --open:#a3cc58; --silo:#9298ff; --beach:var(--liquid);
+    --layer-1:#ff8a62; --layer-2:#a3cc58; --layer-3:#9298ff; --layer-4:var(--liquid);
+    --layer-5:#f2c14e; --layer-6:#f28fc2; --layer-7:#6fd3a8; --layer-8:#c792ea; --layer-9:#a9b8c4;
     --plane:.11; --lift:rgba(0,0,0,.55);
     --panel:var(--card);
   }
   :root[data-theme="light"]{
-    --salt:#c94e2b; --open:#587a1b; --silo:#3a3fa6;
+    --layer-1:#c94e2b; --layer-2:#587a1b; --layer-3:#3a3fa6;
+    --layer-5:#9a6700; --layer-6:#b0397a; --layer-7:#1f7a55; --layer-8:#7a3db8; --layer-9:#4f6170;
     --plane:.075; --lift:rgba(var(--wash-rgb),.18);
   }
   @supports (color: color-mix(in srgb, red, blue)){
@@ -71,14 +74,18 @@
   .chip .sw{width:14px;height:10px;border-radius:2px;background:var(--c);transform:skewX(-18deg);box-shadow:0 0 0 1.5px var(--c)}
   .chip[aria-pressed="false"]{background:transparent;color:var(--vapour-dim)}
   .chip[aria-pressed="false"] .sw{background:transparent}
+  .views{display:flex;flex-wrap:wrap;gap:8px}
   .lift{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;letter-spacing:.04em;color:var(--vapour);
     background:transparent;border:1px dashed var(--vapour-dim);border-radius:999px;padding:7px 14px 7px 11px}
-  .lift svg{width:20px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round}
+  .lift svg{width:20px;height:16px;fill:none;stroke:currentColor;stroke-width:1.5;stroke-linejoin:round;stroke-linecap:round}
+  .lift[aria-pressed="true"]#paths{border-style:solid;color:var(--foam);background:rgba(var(--wash-rgb),.05)}
   .lift:disabled{opacity:.4;cursor:default}
   .chip:hover,.lift:not(:disabled):hover{border-color:var(--foam)}
 
   .stage{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:24px;margin-top:16px;align-items:start}
-  .map-wrap{min-width:0;display:flex;justify-content:center}
+  .map-wrap{min-width:0;display:flex;flex-direction:column;align-items:center}
+  .note{margin:40px 0;color:var(--vapour-dim);font-style:italic;text-align:center}
+  .note button{margin-left:6px;background:none;border:1px solid var(--line-strong);border-radius:999px;color:var(--vapour);font-size:12px;padding:4px 11px}
   #map{display:block;touch-action:manipulation;-webkit-tap-highlight-color:transparent;max-width:100%}
   /* sticky beneath the bar, which is sticky too */
   .panel{background:var(--panel);border:1px solid var(--line-strong);border-radius:14px;padding:18px 18px 20px;
@@ -97,11 +104,12 @@
   #map .plane{stroke-opacity:.55;stroke-linejoin:round}
   #map .tab{stroke:none}
   #map .tabtext{fill:var(--abyss);font-family:var(--mono);font-weight:700;letter-spacing:.04em}
+  #map .mainway{fill:none;stroke-linecap:round}
   #map .road{fill:none;stroke-linecap:round;opacity:.62}
-  #map .road.dim{opacity:.14}
+  #map .rtip{opacity:.62}
+  #map .road.dim,#map .rtip.dim{opacity:.14}
   #map .thread{fill:none;stroke:var(--vapour-dim);stroke-linecap:round}
   #map .thread.on{stroke:var(--foam)}
-  #map .blade{fill:var(--silo)}
   #map .sroad{fill:none;stroke:var(--foam);stroke-linecap:round}
   #map .arrow{fill:var(--foam)}
   #map .node{cursor:pointer;outline:none}
@@ -109,6 +117,7 @@
   #map .node:focus-visible .hit{stroke:var(--foam);stroke-dasharray:3 3}
   #map .selring,#map .twinring{fill:none;stroke:var(--foam)}
   #map .lbl{fill:var(--vapour);font-weight:500;paint-order:stroke;stroke:var(--deep);stroke-linejoin:round;cursor:pointer}
+  #map .lbl.prime{fill:var(--foam);font-weight:600}
   #map .lbl.sel{fill:var(--foam);font-weight:600}
   #map .empty{fill:var(--vapour-dim);font-style:italic}
   #map .dim{opacity:.24}
@@ -122,12 +131,28 @@
   .lt{font-family:var(--display);font-weight:700;font-size:15px;color:var(--foam)}
   .ltag{font-family:var(--body);font-weight:400;font-style:italic;color:var(--vapour-dim);font-size:16px}
   .ll p{margin:2px 0 0;font-size:15px;color:var(--vapour)}
-  .fine{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line);font-size:14px;color:var(--vapour-dim)}
+  /* the key — what each mark on the map says */
+  .key{list-style:none;padding:14px 0 0;margin:18px 0 0;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:9px}
+  .key li{display:flex;gap:11px;align-items:center;font-size:14.5px;line-height:1.35;color:var(--vapour)}
+  .key li.op{display:block;padding-top:2px}
+  .key li.op .ks{display:inline-flex;align-items:center;gap:5px;margin-right:10px;white-space:nowrap}
+  .key svg{width:30px;height:12px;flex:none;overflow:visible;color:var(--foam)}
+  .key .k-prime{stroke:var(--vapour);stroke-width:5;stroke-linecap:round;fill:none}
+  .key .k-big,.key .k-small{fill:var(--vapour)}
+  .key .k-road{stroke:var(--vapour-dim);stroke-width:1.4;fill:none}
+  .key .k-tip{fill:var(--vapour-dim)}
+  .key .k-dots{stroke:var(--vapour-dim);stroke-width:1.6;stroke-dasharray:1.5 3.5;stroke-linecap:round;fill:none}
+  .key .k-out,.key .k-in{stroke:currentColor;stroke-width:1.8;fill:none}
+  .key .k-in{stroke-dasharray:4 3}
+  .key .k-head{fill:currentColor}
+  .fine{margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line);font-size:14px;color:var(--vapour-dim)}
 
   /* the card */
   .card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .card-id{display:inline-flex;align-items:center;gap:9px;min-width:0}
   .cardtab{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
     color:var(--abyss);background:var(--c);border-radius:6px 6px 2px 2px;padding:4px 10px}
+  .addr{font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:var(--vapour-dim)}
   .close{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--line-strong);background:transparent;color:var(--vapour);display:grid;place-items:center}
   .close:hover{color:var(--foam);border-color:var(--foam)}
   .close svg{width:15px;height:15px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round}
@@ -137,7 +162,11 @@
   .glyph svg{width:29px;height:29px}
   .glyph svg,.wglyph svg{fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
   .card h2{font-family:var(--display);font-weight:700;font-size:1.55rem;line-height:1.08;margin:0;text-wrap:balance;min-width:0}
-  .status{display:inline-block;margin-top:10px;font-family:var(--mono);font-size:11px;color:var(--vapour);border:1px dashed var(--vapour-dim);border-radius:999px;padding:1px 9px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .tags:empty{display:none}
+  .status,.kind{display:inline-block;font-family:var(--mono);font-size:11px;color:var(--vapour);border:1px dashed var(--vapour-dim);border-radius:999px;padding:1px 9px}
+  .kind{border-style:solid}
+  .kind.prime{color:var(--abyss);background:var(--c);border-color:var(--c)}
   .card p.line{margin:12px 0 10px;font-size:17px;max-width:60ch}
   .go{display:inline;font-family:var(--mono);font-size:12.5px;overflow-wrap:anywhere}
   .nolink{font-size:15px;color:var(--vapour-dim);font-style:italic}
@@ -147,8 +176,8 @@
   .way{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 10px;align-items:center}
   .wname{display:inline-flex;align-items:center;gap:9px;font-family:var(--body);font-size:16px;color:var(--foam);background:none;border:0;padding:0;text-align:left}
   .wname:hover{color:var(--liquid)}
-  .wglyph{flex:none;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--beach);
-    background:rgba(var(--wash-rgb),.06);background:color-mix(in srgb,var(--beach) 14%,var(--panel))}
+  .wglyph{flex:none;width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--c);
+    background:rgba(var(--wash-rgb),.06);background:color-mix(in srgb,var(--c) 14%,var(--panel))}
   .wglyph svg{width:18px;height:18px}
   .wlink{font-family:var(--mono);font-size:12px}
   .prompt{grid-column:1 / -1;display:flex;flex-direction:column;gap:7px;margin-left:37px}
@@ -191,158 +220,39 @@
   <p class="sub">Four layers of experience, laid one over another like transparencies. Show one to focus; show them all to see the whole ecology.</p>
   <div class="controls">
     <div class="layers" id="layers" role="group" aria-label="Layers"></div>
-    <button class="lift" id="lift" type="button" aria-pressed="true">
-      <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M4 2h14l-2 4H2z"/><path d="M4 10h14l-2 4H2z"/></svg>
-      <span>Lay flat</span>
-    </button>
+    <div class="views">
+      <button class="lift" id="lift" type="button" aria-pressed="true" disabled>
+        <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M4 2h14l-2 4H2z"/><path d="M4 10h14l-2 4H2z"/></svg>
+        <span>Lay flat</span>
+      </button>
+      <button class="lift" id="paths" type="button" aria-pressed="false" disabled title="where every experience leads, drawn at once">
+        <svg viewBox="0 0 20 16" aria-hidden="true"><path d="M3 13C7 13 8.5 4 14 4"/><path d="M11.4 1.6 14.3 4 11.7 6.8"/></svg>
+        <span>Show paths</span>
+      </button>
+    </div>
   </div>
   <main class="stage">
-    <div class="map-wrap" id="wrap"><svg id="map" role="group" aria-label="Layers of experience"></svg></div>
-    <aside class="panel" id="panel" aria-live="polite"></aside>
+    <div class="map-wrap" id="wrap">
+      <p class="note" id="note">Reading the ecology from the beach…</p>
+      <svg id="map" role="group" aria-label="Layers of experience"></svg>
+    </div>
+    <aside class="panel" id="panel" aria-live="polite" hidden></aside>
   </main>
   <noscript><p class="sub">The layers are drawn by script, so with it off there is nothing here to see.</p></noscript>
 </div>
 
 <!--
-  THE CONTENT — the dots and their descriptions, and the one place to change them: the
-  drawing below reads this and needs no change when it does. (David, 2026-10-11, handing
-  over the draft: "I will be modifying the actual dots and descriptions. It is just the
-  principle of it that matters.")
-
-  One entry per layer, top of the stack first, up to nine experiences each.
-  An experience names its spot. Experiences in different layers that name the same spot
-  are the same experience understood differently, and sit directly under one another.
-  "to" lists where an experience leads, "from" where people come from (by spot).
-  Silo Buster's "edge" draws its steps as one straight blade.
-
-  An experience carries a name ("short" is the name on the map when the full one is long),
-  a line, and a link — or a "status" such as "to be made" where there is no page yet.
-  "ways" gives the three portals' own ways in (pages, mirror, connect), each a link or a
-  prompt to copy. "bend" bows the line to a spot ({"<spot>": 0.2}) when it would cross a dot.
-  "spots" places each spot on a 1000 × 1000 sheet, with its icon (a name from ICONS below;
-  a name it does not know draws a plain dot).
+  THE CONTENT LIVES ON THE BEACH, in the block experience-ecology at beach.happyseaurchin.com,
+  locked to David's key: change it there, from any portal, and this page draws it as it stands
+  on its next load (David, 2026-10-12: "I want to be able to edit things from multiple portals").
+  The block's root underscore says how it is written, so any reader can change it. What is fixed
+  here is only the drawing: a lead between two primary experiences of one layer is the thick main
+  way; every other lead is a thin path, drawn all at once with Show paths, or one experience's at
+  a time by opening it — solid where it leads, dashed where it is reached from, one line with two
+  heads where it goes both ways.
 -->
-<script type="application/json" id="layer-data">
-{
- "sheet": [1000, 1000],
- "layers": [
-  {
-   "id": "salt",
-   "name": "SALT",
-   "tag": "bringing the flavour",
-   "line": "A mix, and fun.",
-   "items": [
-    {"spot": "alone", "name": "Alone", "line": "Read one page, slowly.", "link": "https://happyseaurchin.com/what-this-is", "to": ["connect"]},
-    {"spot": "connect", "name": "You & your AI", "line": "Connect your AI.", "link": "https://happyseaurchin.com/connect", "to": ["mirror"]},
-    {"spot": "mirror", "name": "With someone", "line": "A shared reading.", "link": "https://mirror.onen.ai/?pool=welcome", "to": ["action-cycle"]},
-    {"spot": "action-cycle", "name": "A small group", "line": "The action cycle.", "link": "https://happyseaurchin.com/ring/action-cycle", "to": ["open-meeting"]},
-    {"spot": "open-meeting", "name": "In the open", "line": "Open meetings, where cycles meet.", "link": "https://happyseaurchin.com/ring", "to": ["real"]},
-    {"spot": "deal", "name": "Deal me a taste", "short": "A taste", "line": "A starting point, dealt at random.", "link": "https://www.bringingtheflavour.com/", "to": ["alone"]},
-    {"spot": "knots", "name": "Old knots", "line": "Six perennial challenges: who jumps first, who keeps things moving, person to person, push to pull, our condition, proof by people.", "link": "https://www.bringingtheflavour.com/", "to": ["the-hour"]},
-    {"spot": "beach-today", "name": "The beach, today", "short": "Today", "line": "Live traces from the beach.", "link": "https://www.bringingtheflavour.com/", "to": ["your-day"]},
-    {"spot": "real", "name": "When it becomes real", "short": "Becomes real", "line": "A ticket for an action cycle, a fee for consultancy piece by piece, or an investment.", "link": "https://happyseaurchin.com/services", "to": ["the-hour", "invest"]}
-   ]
-  },
-  {
-   "id": "open",
-   "name": "Open Business",
-   "tag": "practices",
-   "line": "Eight practices that cover the whole range.",
-   "items": [
-    {"spot": "action-cycle", "name": "Action Cycle", "line": "In an hour, people commit to a goal for the week just beyond realistic, then complete it. Three cards, five rules.", "link": "https://openbusinesspractices.com/", "to": ["open-meeting", "full-stack"]},
-    {"spot": "open-meeting", "name": "Open Meeting", "line": "A gathering by invitation, for deciding together. Its test: a newcomer gets real help within a day.", "link": "https://openbusinesspractices.com/", "to": ["action-cycle"]},
-    {"spot": "invitational", "name": "Invitational Protocol", "short": "Invitation", "line": "Open a share instead of closing a sale. The most important person is the one invited most recently.", "link": "https://openbusinesspractices.com/", "to": ["open-meeting"]},
-    {"spot": "content-trifecta", "name": "Content Trifecta", "short": "Trifecta", "line": "Content in three parts, opened in turn by accepting, rating and sharing it. The third becomes a space without judgement.", "link": "https://openbusinesspractices.com/", "to": ["here-now"]},
-    {"spot": "here-now", "name": "Here & Now", "line": "The inner practice of shared presence while reading.", "link": "https://openbusinesspractices.com/"},
-    {"spot": "full-stack", "name": "Full Stack Open Business", "short": "Full stack", "line": "The overall frame: the traditional business stack set beside the open one.", "link": "https://openbusinesspractices.com/"},
-    {"spot": "social-media", "name": "Social Media Campaign", "short": "Social media", "line": "Participation instead of advertising.", "link": "https://openbusinesspractices.com/", "to": ["invitational"]},
-    {"spot": "serious-pitch", "name": "Serious Pitch", "line": "The answer to the hard sell: open, don't close.", "link": "https://openbusinesspractices.com/", "to": ["invitational"]}
-   ]
-  },
-  {
-   "id": "silo",
-   "name": "Silo Buster",
-   "tag": "the edge",
-   "line": "The AI–human interface: at every step, each person's own AI reflects the beach back to them. One edge — an hour today, results tomorrow.",
-   "edge": ["the-hour", "team", "questionnaire", "reflection", "invest"],
-   "items": [
-    {"spot": "one-to-one", "name": "One to one", "line": "Someone who already trusts us brings us in.", "to": ["the-hour"]},
-    {"spot": "cold-contact", "name": "Cold contact", "line": "A first approach, made as an invitation rather than a sale.", "to": ["the-hour"]},
-    {"spot": "open-meeting", "name": "Open meeting", "line": "An organisation sees it working first, among others.", "to": ["the-hour"]},
-    {"spot": "connect", "name": "Your own AI", "line": "Each person's own AI, connected to the beach. It sits in the hour, asks the questions, and brings the reflection back.", "link": "https://happyseaurchin.com/connect/happyseaurchin", "to": ["the-hour", "questionnaire"]},
-    {"spot": "the-hour", "name": "The hour", "line": "Three to eight people for one hour, each with their own AI in the room. Results by tomorrow."},
-    {"spot": "team", "name": "Team experiment", "short": "Team", "line": "A handful of their team for a few days. Each person's AI reflects where the others are."},
-    {"spot": "questionnaire", "name": "Network questionnaire", "short": "Questionnaire", "line": "A prompt each person puts into their own AI. It asks, listens, and lands the answers on the beach as their own voices.", "status": "to be made"},
-    {"spot": "reflection", "name": "Next-day reflection", "short": "Next day", "line": "The next morning, each person's AI reflects what the whole network said, naming the system, not the people.", "to": ["connect"]},
-    {"spot": "invest", "name": "Invest forward", "line": "The deal is made in the room. A verified response triggers a witnessed payment; each pledge rides on the next person's response.", "link": "https://happyseaurchin.com/ring/invest-forward/happyseaurchin", "to": ["open-meeting"]}
-   ]
-  },
-  {
-   "id": "beach",
-   "name": "The beach",
-   "tag": "magic mirror",
-   "line": "Online engagements through three portals: pages, the mirror, your own assistant.",
-   "items": [
-    {"spot": "pages", "name": "Pages", "line": "Just a browser.", "link": "https://happyseaurchin.com/welcome", "to": ["your-day", "game", "memory", "hermitcrab"]},
-    {"spot": "mirror", "name": "The mirror", "line": "Live, with whoever is here.", "link": "https://mirror.onen.ai/?pool=welcome", "to": ["your-day", "game", "memory", "hermitcrab"]},
-    {"spot": "connect", "name": "Your own assistant", "short": "Your AI", "line": "Bring your LLM-app: add the beach as a connector, then ask in your own words.", "link": "https://happyseaurchin.com/connect/happyseaurchin", "to": ["your-day", "game", "memory", "hermitcrab"]},
-    {"spot": "your-day", "name": "Your day", "line": "Say what you are doing today. It stands beside everyone else's line.", "ways": {
-      "pages": {"link": "https://happyseaurchin.com/welcome"},
-      "mirror": {"link": "https://mirror.onen.ai/?block=spine:now"},
-      "connect": {"prompt": "Write one line at my now for today, saying what I am doing — on the shared clock, where everyone else's day sits too."}
-    }},
-    {"spot": "game", "name": "A game", "line": "The worlds that stand, and how a table works: join one, or set one up.", "ways": {
-      "pages": {"link": "https://happyseaurchin.com/rpg"},
-      "mirror": {"link": "https://mirror.onen.ai/?pool=rpg"},
-      "connect": {"prompt": "Tell me which worlds have a table standing, and open one for me in whichever I choose."}
-    }},
-    {"spot": "memory", "name": "Memory", "line": "A thought kept here and found again in a new session, or by a different model.", "ways": {
-      "pages": {"link": "https://happyseaurchin.com/tree/experiences?node=16"},
-      "mirror": {"link": "https://mirror.onen.ai/?pool=keel"},
-      "connect": {"prompt": "Mint me a passport with a passphrase, and stash one thought under it that I can ask for later."}
-    }},
-    {"spot": "hermitcrab", "name": "Hermitcrab", "line": "egg-one is an agent that wakes on a clock. Leave it a line; the answer arrives on its next wake.", "ways": {
-      "pages": {"link": "https://happyseaurchin.com/page/egg-one#parlour"},
-      "mirror": {"link": "https://mirror.onen.ai/?pool=egg-one"},
-      "connect": {"prompt": "Leave a line for egg-one, the agent that wakes on a clock, and tell me where you left it."}
-    }}
-   ]
-  }
- ],
- "spots": {
-  "alone": {"x": 880, "y": 520, "icon": "person"},
-  "connect": {"x": 520, "y": 680, "icon": "plug"},
-  "mirror": {"x": 360, "y": 280, "icon": "mirror"},
-  "action-cycle": {"x": 167, "y": 362, "icon": "cycle"},
-  "open-meeting": {"x": 167, "y": 638, "icon": "circle"},
-  "deal": {"x": 920, "y": 240, "icon": "cards"},
-  "knots": {"x": 760, "y": 920, "icon": "knot"},
-  "beach-today": {"x": 120, "y": 120, "icon": "waves"},
-  "real": {"x": 930, "y": 80, "icon": "ticket"},
-  "invitational": {"x": 362, "y": 833, "icon": "envelope"},
-  "content-trifecta": {"x": 638, "y": 167, "icon": "trifecta"},
-  "here-now": {"x": 833, "y": 362, "icon": "presence"},
-  "full-stack": {"x": 362, "y": 167, "icon": "stack"},
-  "social-media": {"x": 638, "y": 833, "icon": "broadcast"},
-  "serious-pitch": {"x": 833, "y": 638, "icon": "door"},
-  "one-to-one": {"x": 50, "y": 780, "icon": "pair"},
-  "cold-contact": {"x": 300, "y": 930, "icon": "plane"},
-  "the-hour": {"x": 200, "y": 800, "icon": "hourglass"},
-  "team": {"x": 350, "y": 650, "icon": "team"},
-  "questionnaire": {"x": 500, "y": 500, "icon": "list"},
-  "reflection": {"x": 650, "y": 350, "icon": "sunrise"},
-  "invest": {"x": 800, "y": 200, "icon": "forward"},
-  "pages": {"x": 500, "y": 920, "icon": "pages"},
-  "your-day": {"x": 340, "y": 440, "icon": "sun"},
-  "game": {"x": 80, "y": 480, "icon": "die"},
-  "memory": {"x": 740, "y": 480, "icon": "ribbon"},
-  "hermitcrab": {"x": 940, "y": 820, "icon": "shell"}
- }
-}
-</script>
-
 <script>
-(function () {
+(async function () {
   'use strict';
 
   const ICONS = {
@@ -379,35 +289,98 @@
   const icon = n => '<svg viewBox="0 0 24 24" aria-hidden="true">' + (ICONS[n] || ICONS.dot) + '</svg>';
   const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const f1 = v => Math.round(v * 10) / 10;
+  const col = id => 'var(--layer-' + id + ')';
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  // ---------- content ----------
-  const D = JSON.parse(document.getElementById('layer-data').textContent);
-  const W = D.sheet[0], H = D.sheet[1];
-  const LAYERS = D.layers, SPOTS = D.spots;
-  const LID = {}, ITEM = {}, HAS = {};
+  // the go menu needs nothing from the beach — the site's own pages, this one marked as here;
+  // a walker who arrived carrying a handle keeps it
+  const CARRIED = window.cleanHandle ? cleanHandle(new URLSearchParams(location.search).get('h')) || null : null;
+  if (window.siteDoors) siteDoors({ handle: CARRIED, here: 'experience-ecology', site: true });
+
+  // ---------- the content: the block experience-ecology, read as it stands ----------
+  const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach', BLOCK = 'experience-ecology';
+  const MIRROR = 'https://mirror.onen.ai/?block=' + encodeURIComponent(BLOCK);
+  const DIGITS = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
+  const words = n => { while (n && typeof n === 'object') n = n._; return typeof n === 'string' ? n.trim() : ''; };
+  const field = (node, d) => node && typeof node === 'object' ? words(node[d]) : '';
+  const cut = (s, sep) => { const i = s.indexOf(sep); return i < 0 ? [s.trim(), ''] : [s.slice(0, i).trim(), s.slice(i + sep.length).trim()]; };
+  // the block's own law, at its root: a layer per digit, an experience per digit within it; beneath
+  // an experience 1 where it leads, 2 its kind, 3 its page, 4 its place, 5 its short name, 6 its
+  // status, 7 its ways in
+  function fromBlock(B) {
+    const layers = [], spots = {}, at = {};
+    DIGITS.forEach(ld => {
+      const L = B && B[ld]; if (!L || typeof L !== 'object') return;
+      const [name, rest] = cut(words(L), ' — '), [tag, line] = cut(rest, '. ');
+      const layer = { id: ld, name, tag: line ? tag : '', line: line || tag, items: [] };
+      DIGITS.forEach(ed => {
+        const E = L[ed]; if (!E) return;
+        const addr = ld + '.' + ed, [name, line] = cut(words(E), ' — ');
+        const place = field(E, '4').split(/\s+/), x = parseFloat(place[0]), y = parseFloat(place[1]);
+        if (!isFinite(x) || !isFinite(y)) { console.warn(addr + ' has no place on the sheet, so it is not drawn.'); return; }
+        const spot = Math.round(x) + ',' + Math.round(y), kind = field(E, '2');
+        if (!spots[spot]) spots[spot] = { x, y };
+        const it = { addr, spot, name, line, kind, primary: kind.toLowerCase() === 'primary', icon: place[2] || 'dot',
+          link: field(E, '3'), short: field(E, '5'), status: field(E, '6'),
+          leads: field(E, '1').split(/[\s,]+/).filter(a => /^[1-9]\.[1-9]$/.test(a)), W: E['7'] };
+        layer.items.push(it); at[addr] = it;
+      });
+      layers.push(layer);
+    });
+    // ways in: each digit the way from that experience of the same layer — a link, or a prompt to copy
+    layers.forEach(l => l.items.forEach(it => {
+      if (!it.W || typeof it.W !== 'object') return;
+      DIGITS.forEach(d => {
+        const v = words(it.W[d]), from = at[l.id + '.' + d]; if (!v || !from) return;
+        (it.ways = it.ways || {})[from.spot] = /^https?:\/\//.test(v) ? { link: v } : { prompt: v };
+      });
+    }));
+    return { layers, spots, at };
+  }
+  const note = document.getElementById('note');
+  async function readBlock() {
+    const r = await fetch(ORIGIN + '?block=' + encodeURIComponent(BLOCK), { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (!r.ok) throw new Error('the beach answered ' + r.status);
+    return r.json();
+  }
+  let D;
+  try { D = fromBlock(await readBlock()); }
+  catch (e) {
+    note.innerHTML = 'The ecology could not be read from the beach just now. <button type="button" id="again">try again</button>';
+    document.getElementById('again').addEventListener('click', () => location.reload());
+    return;
+  }
+  if (!D.layers.length) { note.innerHTML = 'The block <a href="' + esc(MIRROR) + '">' + esc(BLOCK) + '</a> holds no layers yet.'; return; }
+  note.hidden = true;
+
+  const W = 1000, H = 1000;
+  const LAYERS = D.layers, SPOTS = D.spots, AT = D.at;
+  const key = (l, s) => l + '|' + s;
+  const LID = {}, ITEM = {}, HAS = {}, PRIME = new Set();
   LAYERS.forEach(l => {
     LID[l.id] = l;
-    if (l.items.length > 9) console.warn(l.name + ' holds more than nine experiences.');
-    l.items.forEach(it => {
-      ITEM[l.id + '|' + it.spot] = it;
+    l.items = l.items.filter(it => {
+      if (ITEM[key(l.id, it.spot)]) { console.warn(it.addr + ' stands at the same place as another experience of its layer, so it is not drawn.'); return false; }
+      it.layer = l.id; ITEM[key(l.id, it.spot)] = it;
       (HAS[it.spot] = HAS[it.spot] || []).push(l.id);
-      if (!SPOTS[it.spot]) console.warn('No place given for', it.spot);
+      if (it.primary) PRIME.add(key(l.id, it.spot));
+      return true;
     });
   });
+  // every lead as the block says it — an address in this block, perhaps in another layer; a lead
+  // between two primaries of one layer is the main way
   const ROADS = [];
-  LAYERS.forEach(l => {
-    const own = new Set(l.items.map(i => i.spot));
-    l.items.forEach(it => {
-      const b = it.bend || {};
-      (it.to || []).forEach(t => ROADS.push({ from: it.spot, to: t, layer: l.id, cross: !own.has(t), bend: b[t] || 0 }));
-      (it.from || []).forEach(f => ROADS.push({ from: f, to: it.spot, layer: l.id, cross: !own.has(f), bend: b[f] || 0 }));
-    });
-    if (l.edge) for (let i = 0; i < l.edge.length - 1; i++) ROADS.push({ from: l.edge[i], to: l.edge[i + 1], layer: l.id, cross: false, bend: 0, edge: true });
-  });
+  LAYERS.forEach(l => l.items.forEach(it => it.leads.forEach(a => {
+    const t = AT[a];
+    if (!t || !t.layer || ITEM[key(t.layer, t.spot)] !== t) { console.warn(it.addr + ' leads to ' + a + ', where nothing is drawn.'); return; }
+    if (t === it) return;
+    ROADS.push({ from: it.spot, to: t.spot, layer: l.id, toLayer: t.layer, cross: t.layer !== l.id, primary: t.layer === l.id && it.primary && t.primary, bend: 0 });
+  })));
 
   // ---------- state ----------
-  const state = { on: new Set(LAYERS.map(l => l.id)), sel: null, lifted: true };
+  const PATHS = 'view:experience-paths';
+  const state = { on: new Set(LAYERS.map(l => l.id)), sel: null, lifted: true,
+    paths: (() => { try { return localStorage.getItem(PATHS) === 'on'; } catch (e) { return false; } })() };
   // animated values: s (0 flat .. 1 lifted), each layer's place in the stack and its presence
   const cur = { s: 1, slot: {}, alpha: {} }, tgt = { s: 1, slot: {}, alpha: {} };
   function setTargets() {
@@ -425,14 +398,14 @@
   setTargets();
   Object.assign(cur.slot, tgt.slot); Object.assign(cur.alpha, tgt.alpha);
 
-  const key = (l, s) => l + '|' + s;
   const visible = () => LAYERS.filter(l => state.on.has(l.id));
   const firstVisibleHaving = spot => { for (const l of visible()) if (ITEM[key(l.id, spot)]) return l.id; return null; };
+  // where a lead runs now: from its own experience to the one it names, or, while that layer is
+  // hidden, to the same experience in the first layer that shows it
   function ends(r) {
     if (!state.on.has(r.layer)) return null;
-    const a = ITEM[key(r.layer, r.from)] ? r.layer : firstVisibleHaving(r.from);
-    const b = ITEM[key(r.layer, r.to)] ? r.layer : firstVisibleHaving(r.to);
-    return a && b ? [a, b] : null;
+    const b = state.on.has(r.toLayer) ? r.toLayer : firstVisibleHaving(r.to);
+    return b ? [r.layer, b] : null;
   }
   const nameIn = (lid, spot) => { const it = ITEM[key(lid, spot)]; return it ? it.name : spot; };
 
@@ -440,6 +413,7 @@
   const svg = document.getElementById('map');
   const wrap = document.getElementById('wrap');
   const R0 = 6.5;
+  const rad = kk => PRIME.has(kk) ? R0 * 1.45 : R0;
   // names are measured to place them, in the site's own faces (theme.css --body, --mono)
   const rootCS = getComputedStyle(document.documentElement);
   const FACE = {
@@ -493,10 +467,12 @@
     };
   }
 
-  function arrow(px, py, ux, uy, R, k) {
+  // an arrowhead whose point stands R short of (px, py), along (ux, uy); sz scales it, fill colours it
+  function arrow(px, py, ux, uy, R, k, cls, sz, fill) {
+    sz = sz || 1;
     const tx = px - ux * (R + 2.5 * k), ty = py - uy * (R + 2.5 * k);
-    const bx = tx - ux * 8 * k, by = ty - uy * 8 * k, nx = -uy * 3.8 * k, ny = ux * 3.8 * k;
-    return '<path class="arrow" d="M' + f1(tx) + ' ' + f1(ty) + 'L' + f1(bx + nx) + ' ' + f1(by + ny) + 'L' + f1(bx - nx) + ' ' + f1(by - ny) + 'Z"/>';
+    const bx = tx - ux * 8 * k * sz, by = ty - uy * 8 * k * sz, nx = -uy * 3.8 * k * sz, ny = ux * 3.8 * k * sz;
+    return '<path class="' + (cls || 'arrow') + '" d="M' + f1(tx) + ' ' + f1(ty) + 'L' + f1(bx + nx) + ' ' + f1(by + ny) + 'L' + f1(bx - nx) + ' ' + f1(by - ny) + 'Z"' + (fill ? ' style="fill:' + fill + '"' : '') + '/>';
   }
   // a line between two screen points, optionally bowed; returns path and end directions
   function line(a, b, bend, so, eo) {
@@ -512,6 +488,10 @@
                    : 'M' + f1(x0) + ' ' + f1(y0) + 'L' + f1(x1) + ' ' + f1(y1);
     return { d, ex, ey, sx, sy };
   }
+
+  // the main way's own ends: where it starts (no primary lead comes in) and where it ends (none goes on)
+  const primeOut = new Set(), primeIn = new Set();
+  ROADS.forEach(r => { if (r.primary) { primeOut.add(key(r.layer, r.from)); primeIn.add(key(r.layer, r.to)); } });
 
   function render() {
     const F = frame(), { P, s, k } = F;
@@ -553,38 +533,54 @@
       const sl = cur.slot[l.id];
       const pts = [[0, 0], [W, 0], [W, H], [0, H]].map(([x, y]) => proj(x, y, sl, s, P));
       out += '<g style="opacity:' + f1(op(l)) + '">';
-      out += '<polygon class="plane" points="' + pts.map(p => f1(p[0]) + ',' + f1(p[1])).join(' ') + '" style="fill:var(--' + l.id + ');fill-opacity:' + tint.toFixed(3) + ';stroke:var(--' + l.id + ');stroke-width:' + f1(1.2 * k) + 'px"/>';
+      out += '<polygon class="plane" points="' + pts.map(p => f1(p[0]) + ',' + f1(p[1])).join(' ') + '" style="fill:' + col(l.id) + ';fill-opacity:' + tint.toFixed(3) + ';stroke:' + col(l.id) + ';stroke-width:' + f1(1.2 * k) + 'px"/>';
       const tw = (textW(l.name, 11, 700, 'mono') + 18) * k, squash = 1 - (1 - P.c) * s, th = 19 * k / squash;
       // laid flat the tabs fan out along the top; lifted, each sits at its sheet's far corner
       const tx = (1 - s) * (14 * k + fanAt[l.id] * k) + s * (W - tw - 14 * k);
       const tp = [[tx, -th], [tx + tw, -th], [tx + tw, 0], [tx, 0]].map(([x, y]) => proj(x, y, sl, s, P));
-      out += '<polygon class="tab" points="' + tp.map(p => f1(p[0]) + ',' + f1(p[1])).join(' ') + '" style="fill:var(--' + l.id + ')"/>';
+      out += '<polygon class="tab" points="' + tp.map(p => f1(p[0]) + ',' + f1(p[1])).join(' ') + '" style="fill:' + col(l.id) + '"/>';
       const c = proj(tx + tw / 2, -th / 2, sl, s, P);
       out += '<text class="tabtext" text-anchor="middle" x="' + f1(c[0]) + '" y="' + f1(c[1] + 3.9 * k) + '" style="font-size:' + f1(11 * k) + 'px">' + esc(l.name) + '</text>';
       out += '</g>';
     });
 
-    // each sheet's own lines, and the edge
+    // each sheet's own leads: the main way always, thick, with its point where it ends;
+    // the rest only with Show paths — an opened experience's own are drawn bold below
     shown.forEach(l => {
-      const a = op(l);
+      const a = op(l), c = col(l.id);
       ROADS.forEach(r => {
-        if (r.layer !== l.id || r.cross || r.edge) return;
-        const fk = key(l.id, r.from), tk = key(l.id, r.to);
-        if (!pos[fk] || !pos[tk]) return;
-        if (sel && (fk === selK || tk === selK) && state.on.has(l.id)) return;
-        const g = line(pos[fk], pos[tk], r.bend, 0, 0);
-        out += '<path class="road' + (sel ? ' dim' : '') + '" d="' + g.d + '" style="stroke:var(--' + l.id + ');stroke-width:' + f1(1.3 * k) + 'px' + (a < 1 ? ';opacity:' + f1(a * 0.62) : '') + '"/>';
-      });
-      if (l.edge && l.edge.length > 1) {
-        const A = pos[key(l.id, l.edge[0])], B = pos[key(l.id, l.edge[l.edge.length - 1])];
-        if (A && B) {
-          const len = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1, ux = (B[0] - A[0]) / len, uy = (B[1] - A[1]) / len, nx = -uy, ny = ux, w = 2.9 * k;
-          const hx = A[0] - ux * 26 * k, hy = A[1] - uy * 26 * k, sx = B[0] + ux * 9 * k, sy = B[1] + uy * 9 * k, px = B[0] + ux * 36 * k, py = B[1] + uy * 36 * k;
-          const bp = [[hx + nx * w, hy + ny * w], [sx + nx * w, sy + ny * w], [px, py], [sx - nx * w, sy - ny * w], [hx - nx * w, hy - ny * w]];
-          const off = sel && !(sel.l === l.id && l.edge.indexOf(sel.s) >= 0);
-          out += '<polygon class="blade" points="' + bp.map(p => f1(p[0]) + ',' + f1(p[1])).join(' ') + '" style="opacity:' + f1(a * (off ? 0.3 : 1)) + '"/>';
+        if (r.layer !== l.id || r.cross) return;
+        const fk = key(l.id, r.from), tk = key(l.id, r.to), A = pos[fk], B = pos[tk];
+        if (!A || !B) return;
+        if (r.primary) {
+          const off = sel && !(sel.l === l.id && PRIME.has(selK));
+          const len = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1, ux = (B[0] - A[0]) / len, uy = (B[1] - A[1]) / len, w = 2.9 * k;
+          const tail = primeIn.has(fk) ? 0 : 16 * k;
+          out += '<path class="mainway" d="M' + f1(A[0] - ux * tail) + ' ' + f1(A[1] - uy * tail) + 'L' + f1(B[0]) + ' ' + f1(B[1]) + '" style="stroke:' + c + ';stroke-width:' + f1(2 * w) + 'px;opacity:' + f1(a * (off ? 0.3 : 1)) + '"/>';
+          if (!primeOut.has(tk)) {
+            const sx = B[0] + ux * 9 * k, sy = B[1] + uy * 9 * k, px = B[0] + ux * 36 * k, py = B[1] + uy * 36 * k, nx = -uy * w, ny = ux * w;
+            const bp = [[B[0] + nx, B[1] + ny], [sx + nx, sy + ny], [px, py], [sx - nx, sy - ny], [B[0] - nx, B[1] - ny]];
+            out += '<polygon points="' + bp.map(p => f1(p[0]) + ',' + f1(p[1])).join(' ') + '" style="fill:' + c + ';opacity:' + f1(a * (off ? 0.3 : 1)) + '"/>';
+          }
+          return;
         }
-      }
+        if (sel && (fk === selK || tk === selK) && state.on.has(l.id)) return;
+        if (!state.paths) return;
+        const g = line(A, B, r.bend, 0, 0), fade = a < 1 ? ';opacity:' + f1(a * 0.62) : '';
+        out += '<path class="road' + (sel ? ' dim' : '') + '" d="' + g.d + '" style="stroke:' + c + ';stroke-width:' + f1(1.3 * k) + 'px' + fade + '"/>';
+        out += arrow(B[0], B[1], g.ex, g.ey, rad(tk) * k, k, 'rtip' + (sel ? ' dim' : ''), 0.75, c + fade);
+      });
+    });
+
+    // leads that cross into another layer, with Show paths
+    if (state.paths) ROADS.forEach(r => {
+      if (!r.cross) return;
+      const e = ends(r); if (!e) return;
+      const fk = key(e[0], r.from), tk = key(e[1], r.to), A = pos[fk], B = pos[tk];
+      if (!A || !B || (sel && (fk === selK || tk === selK))) return;
+      const g = line(A, B, 0, 0, 0), c = col(r.layer);
+      out += '<path class="road' + (sel ? ' dim' : '') + '" d="' + g.d + '" style="stroke:' + c + ';stroke-width:' + f1(1.1 * k) + 'px"/>';
+      out += arrow(B[0], B[1], g.ex, g.ey, rad(tk) * k, k, 'rtip' + (sel ? ' dim' : ''), 0.75, c);
     });
 
     // threads: the same experience on different sheets
@@ -600,7 +596,8 @@
       });
     }
 
-    // the open experience's lines in and out
+    // the open experience's leads, in and out: solid where it leads, dashed where it is reached
+    // from, one line with two heads where it goes both ways
     if (sel) {
       const both = new Set();
       selRoads.forEach(x => { const other = x.fk === selK ? x.tk : x.fk; if (selRoads.some(y => y !== x && (y.fk === other && y.tk === selK) && x.fk === selK)) both.add(other); });
@@ -608,48 +605,50 @@
         const other = x.fk === selK ? x.tk : x.fk;
         if (both.has(other) && x.tk === selK) return;
         const A = pos[x.fk], B = pos[x.tk]; if (!A || !B) return;
-        const two = both.has(other), isIn = x.tk === selK && !two, rr = R0 * k;
-        const g = line(A, B, x.r.bend && !x.r.cross ? x.r.bend : 0, two ? rr + 8 * k : 0, rr + 8 * k);
+        const two = both.has(other), isIn = x.tk === selK && !two, ra = rad(x.fk) * k, rb = rad(x.tk) * k;
+        const g = line(A, B, x.r.bend && !x.r.cross ? x.r.bend : 0, two ? ra + 8 * k : 0, rb + 8 * k);
         out += '<path class="sroad" d="' + g.d + '" style="stroke-width:' + f1(2 * k) + 'px' + (isIn ? ';stroke-dasharray:' + f1(5 * k) + ' ' + f1(4 * k) : '') + '"/>';
-        out += arrow(B[0], B[1], g.ex, g.ey, rr, k);
-        if (two) out += arrow(A[0], A[1], -g.sx, -g.sy, rr, k);
+        out += arrow(B[0], B[1], g.ex, g.ey, rb, k);
+        if (two) out += arrow(A[0], A[1], -g.sx, -g.sy, ra, k);
       });
     }
 
-    // experiences
+    // experiences — a primary one drawn larger
     const labels = [];
     shown.forEach(l => {
       const a = op(l), live = state.on.has(l.id);
       l.items.forEach(it => {
         const kk = key(l.id, it.spot), p = pos[kk]; if (!p) return;
         const isSel = kk === selK, dim = sel && !isSel && !linked.has(kk);
-        const R = R0 * k;
+        const R = rad(kk) * k;
         let g = '';
         if (isSel) g += '<circle class="selring" cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="' + f1(R + 5.5 * k) + '" style="stroke-width:' + f1(1.8 * k) + 'px"/>';
         if (twins.has(kk)) g += '<circle class="twinring" cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="' + f1(R + 5 * k) + '" style="stroke-width:' + f1(1.3 * k) + 'px;stroke-dasharray:' + f1(2 * k) + ' ' + f1(2.2 * k) + '"/>';
-        g += '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="' + f1(R) + '" style="fill:var(--' + l.id + ');stroke:var(--deep);stroke-width:' + f1(1.6 * k) + 'px"/>';
+        g += '<circle cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="' + f1(R) + '" style="fill:' + col(l.id) + ';stroke:var(--deep);stroke-width:' + f1(1.6 * k) + 'px"/>';
         if (live) g += '<circle class="hit" cx="' + f1(p[0]) + '" cy="' + f1(p[1]) + '" r="' + f1(19 * k) + '"/>';
-        out += '<g class="node' + (dim ? ' dim' : '') + '"' + (live ? ' data-key="' + kk + '" tabindex="0" role="button" aria-label="' + esc(it.name + ', ' + l.name) + '"' : '') + ' style="' + (a < 1 ? 'opacity:' + f1(a) + ';' : '') + (live ? '' : 'pointer-events:none') + '">' + g + '</g>';
+        out += '<g class="node' + (dim ? ' dim' : '') + '"' + (live ? ' data-key="' + kk + '" tabindex="0" role="button" aria-label="' + esc(it.name + ', ' + l.name + (it.primary ? ', primary' : '')) + '"' : '') + ' style="' + (a < 1 ? 'opacity:' + f1(a) + ';' : '') + (live ? '' : 'pointer-events:none') + '">' + g + '</g>';
         if (!live || a < 0.6) return;
         // laid flat, only the top experience of a stack carries a name
         const top = firstVisibleHaving(it.spot) === l.id;
         if (s < 0.5 && !top && !isSel) return;
-        labels.push({ kk, p, text: it.short || it.name, pri: isSel ? 100 : linked.has(kk) ? 50 : 20 - cur.slot[l.id], dim });
+        labels.push({ kk, p, R, text: it.short || it.name, prime: it.primary, pri: isSel ? 100 : linked.has(kk) ? 50 : it.primary ? 40 : 20 - cur.slot[l.id], dim });
       });
     });
     out += placeLabels(labels, Object.keys(pos).filter(x => state.on.has(x.split('|')[0])).map(x => pos[x]), F, fs, k);
     svg.innerHTML = out;
   }
 
-  // names go where they fit; a name that fits nowhere waits until its experience is opened
+  // names go where they fit; a name that fits nowhere waits until its experience is opened —
+  // a primary one's always finds a place
   function placeLabels(list, dots, F, fs, k) {
-    const [vx, vy, vw, vh] = F.vb, boxes = [], gap = 5 * k, R = R0 * k + 2 * k, px = fs / k;
+    const [vx, vy, vw, vh] = F.vb, boxes = [], gap = 5 * k, Rd = R0 * k + 2 * k, px = fs / k;
     const clear = b => b[0] >= vx && b[2] <= vx + vw && b[1] >= vy && b[3] <= vy + vh
       && !boxes.some(o => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
-    const freeOfDots = (b, own) => !dots.some(d => d !== own && d[0] + R > b[0] && d[0] - R < b[2] && d[1] + R > b[1] && d[1] - R < b[3]);
+    const freeOfDots = (b, own) => !dots.some(d => d !== own && d[0] + Rd > b[0] && d[0] - Rd < b[2] && d[1] + Rd > b[1] && d[1] - Rd < b[3]);
     let svgOut = '';
     list.sort((a, b) => b.pri - a.pri).forEach(n => {
-      const w = textW(n.text, px, n.pri >= 100 ? 600 : 500, 'body') * k, h = fs, [x, y] = n.p;
+      const bold = n.pri >= 100 || n.prime;
+      const w = textW(n.text, px, bold ? 600 : 500, 'body') * k, h = fs, [x, y] = n.p, R = n.R + 2 * k;
       const cands = [
         { b: [x + R + gap, y - h * 0.62, x + R + gap + w, y + h * 0.42], tx: x + R + gap, ty: y + h * 0.35, a: 'start' },
         { b: [x - R - gap - w, y - h * 0.62, x - R - gap, y + h * 0.42], tx: x - R - gap, ty: y + h * 0.35, a: 'end' },
@@ -657,10 +656,10 @@
         { b: [x - w / 2, y - R - gap * 0.6 - h, x + w / 2, y - R - gap * 0.6], tx: x, ty: y - R - gap * 0.6 - h * 0.2, a: 'middle' }
       ];
       let pick = cands.find(c => clear(c.b) && freeOfDots(c.b, n.p));
-      if (!pick && n.pri >= 50) pick = cands.find(c => clear(c.b)) || cands[0];
+      if (!pick && n.pri >= 40) pick = cands.find(c => clear(c.b)) || cands[0];
       if (!pick) return;
       boxes.push(pick.b);
-      svgOut += '<text class="lbl' + (n.pri >= 100 ? ' sel' : '') + (n.dim ? ' dim' : '') + '" data-key="' + n.kk + '" text-anchor="' + pick.a + '" x="' + f1(pick.tx) + '" y="' + f1(pick.ty) + '" style="font-size:' + f1(fs) + 'px;stroke-width:' + f1(3.2 * k) + 'px">' + esc(n.text) + '</text>';
+      svgOut += '<text class="lbl' + (n.pri >= 100 ? ' sel' : n.prime ? ' prime' : '') + (n.dim ? ' dim' : '') + '" data-key="' + n.kk + '" text-anchor="' + pick.a + '" x="' + f1(pick.tx) + '" y="' + f1(pick.ty) + '" style="font-size:' + f1(fs) + 'px;stroke-width:' + f1(3.2 * k) + 'px">' + esc(n.text) + '</text>';
     });
     return svgOut;
   }
@@ -688,36 +687,51 @@
 
   // ---------- the card ----------
   const panel = document.getElementById('panel');
+  panel.hidden = false;
   const narrowMQ = window.matchMedia('(max-width: 860px)');
+  const COUNT = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
   function pretty(u) {
     try { const x = new URL(u); return x.host.replace(/^www\./, '') + x.pathname.replace(/\/$/, '') + x.search + x.hash; }
     catch (e) { return u; }
   }
+  const KEY = '<ul class="key" aria-label="Reading the map">' +
+    '<li><svg viewBox="0 0 30 12" aria-hidden="true"><path class="k-prime" d="M4 6h22"/></svg>The main way: a lead between two primary experiences.</li>' +
+    '<li><svg viewBox="0 0 30 12" aria-hidden="true"><circle class="k-big" cx="8" cy="6" r="4.6"/><circle class="k-small" cx="22" cy="6" r="3"/></svg>A primary experience, and any other.</li>' +
+    '<li><svg viewBox="0 0 30 12" aria-hidden="true"><path class="k-road" d="M2 6h21"/><path class="k-tip" d="M29 6l-6.5-3.2v6.4z"/></svg>Where one leads: all at once with Show paths, or one at a time by opening it.</li>' +
+    '<li><svg viewBox="0 0 30 12" aria-hidden="true"><path class="k-dots" d="M2 6h26"/></svg>The same experience, in another layer.</li>' +
+    '<li class="op">Opened, its own leads: ' +
+      '<span class="ks"><svg viewBox="0 0 30 12" aria-hidden="true"><path class="k-out" d="M2 6h21"/><path class="k-head" d="M29 6l-6.5-3.2v6.4z"/></svg>leads to</span>' +
+      '<span class="ks"><svg viewBox="0 0 30 12" aria-hidden="true"><path class="k-in" d="M2 6h21"/><path class="k-head" d="M29 6l-6.5-3.2v6.4z"/></svg>comes from</span>' +
+      '<span class="ks"><svg viewBox="0 0 30 12" aria-hidden="true"><path class="k-head" d="M1 6l6.5-3.2v6.4z"/><path class="k-out" d="M7 6h16"/><path class="k-head" d="M29 6l-6.5-3.2v6.4z"/></svg>both ways</span></li>' +
+    '</ul>';
   function legendHTML() {
     const rows = LAYERS.map(l =>
-      '<li class="' + (state.on.has(l.id) ? '' : 'off') + '" style="--c:var(--' + l.id + ')"><span class="lsw"></span><div>' +
+      '<li class="' + (state.on.has(l.id) ? '' : 'off') + '" style="--c:' + col(l.id) + '"><span class="lsw"></span><div>' +
       '<div class="lt">' + esc(l.name) + (l.tag ? ' <span class="ltag">' + esc(l.tag) + '</span>' : '') + '</div>' +
       '<p>' + esc(l.line) + '</p></div></li>').join('');
     return '<div class="legend"><p class="hint">Each layer holds up to nine experiences. Where layers share an experience it sits directly under itself, read differently by each; dotted threads join it through the stack.</p>' +
-      '<ul class="ll">' + rows + '</ul>' +
-      '<p class="fine">Open an experience for its card and its links. A hidden layer shows nothing. Names, places and links are provisional.</p></div>';
+      '<ul class="ll">' + rows + '</ul>' + KEY +
+      '<p class="fine">Open an experience for its card and its links. A hidden layer shows nothing. Names, places and links are provisional: they are the block <a href="' + esc(MIRROR) + '" target="_blank" rel="noopener">' + esc(BLOCK) + '</a> on the beach, which anyone may read and its keyholder changes from any portal.</p></div>';
   }
-  function chip(k2) {
+  function chip(k2, here) {
     const [lid, spot] = k2.split('|');
-    return '<button class="rchip" data-go="' + k2 + '" style="--c:var(--' + lid + ')"><span class="cdot"></span>' + esc(nameIn(lid, spot)) + '</button>';
+    return '<button class="rchip" data-go="' + k2 + '" style="--c:' + col(lid) + '"><span class="cdot"></span>' + esc(nameIn(lid, spot)) + (lid !== here ? ' <span class="cl">' + esc(LID[lid].name) + '</span>' : '') + '</button>';
   }
   function cardHTML(sel) {
-    const l = LID[sel.l], it = ITEM[key(sel.l, sel.s)], spot = SPOTS[sel.s] || {};
-    let h = '<article class="card"><div class="card-top"><span class="cardtab" style="--c:var(--' + l.id + ')">' + esc(l.name) + '</span>' +
+    const l = LID[sel.l], it = ITEM[key(sel.l, sel.s)];
+    let h = '<article class="card" style="--c:' + col(l.id) + '"><div class="card-top"><span class="card-id"><span class="cardtab">' + esc(l.name) + '</span>' +
+      '<span class="addr" title="where it stands in the block ' + esc(BLOCK) + '">' + esc(it.addr) + '</span></span>' +
       '<button class="close" data-close aria-label="Close">' + CLOSE + '</button></div>';
-    h += '<div class="card-head"><div class="glyph" style="--c:var(--' + l.id + ')">' + icon(spot.icon) + '</div><h2>' + esc(it.name) + '</h2></div>';
-    if (it.status) h += '<span class="status">' + esc(it.status) + '</span>';
+    h += '<div class="card-head"><div class="glyph">' + icon(it.icon) + '</div><h2>' + esc(it.name) + '</h2></div>';
+    h += '<div class="tags">' + (it.kind ? '<span class="kind' + (it.primary ? ' prime' : '') + '">' + esc(it.primary ? 'primary' : it.kind) + '</span>' : '') +
+      (it.status ? '<span class="status">' + esc(it.status) + '</span>' : '') + '</div>';
     if (it.line) h += '<p class="line">' + esc(it.line) + '</p>';
     if (it.ways) {
-      h += '<div class="ways"><div class="sect-h">Three ways in</div>';
+      const n = Object.keys(it.ways).length;
+      h += '<div class="ways"><div class="sect-h">' + (COUNT[n] || n) + (n === 1 ? ' way in' : ' ways in') + '</div>';
       Object.keys(it.ways).forEach(portal => {
         const w = it.ways[portal], pl = ITEM[key(l.id, portal)] ? l.id : (HAS[portal] || [])[0];
-        h += '<div class="way"><button class="wname" data-go="' + key(pl, portal) + '"><span class="wglyph">' + icon(SPOTS[portal] && SPOTS[portal].icon) + '</span>' + esc(nameIn(pl, portal)) + '</button>';
+        h += '<div class="way"><button class="wname" data-go="' + key(pl, portal) + '"><span class="wglyph">' + icon(ITEM[key(pl, portal)] && ITEM[key(pl, portal)].icon) + '</span>' + esc(nameIn(pl, portal)) + '</button>';
         h += w.link ? '<a class="wlink" href="' + esc(w.link) + '" target="_blank" rel="noopener">open ↗</a>' : '<span></span>';
         if (w.prompt) h += '<div class="prompt"><q>' + esc(w.prompt) + '</q><button class="copy" data-copy="' + esc(w.prompt) + '">Copy prompt</button></div>';
         h += '</div>';
@@ -744,20 +758,16 @@
       if (state.on.has(x.id)) return;
       if (ITEM[key(x.id, sel.s)]) hidden.add(x.id);
       ROADS.forEach(r => {
-        if (r.layer === x.id && r.cross && (r.from === sel.s || r.to === sel.s) && !ITEM[key(x.id, sel.s)]) hidden.add(x.id);
-        if (r.layer === sel.l && (r.from === sel.s || r.to === sel.s)) {
-          const other = r.from === sel.s ? r.to : r.from;
-          if (!ITEM[key(sel.l, other)] && ITEM[key(x.id, other)] && !firstVisibleHaving(other)) hidden.add(x.id);
-        }
+        if ((r.layer === x.id && r.to === sel.s && r.toLayer === sel.l) || (r.toLayer === x.id && r.layer === sel.l && r.from === sel.s)) hidden.add(x.id);
       });
     });
     let sec = '';
     if (twins.length) sec += '<div><div class="sect-h"><svg class="rkey" viewBox="0 0 28 8" aria-hidden="true"><path class="k-thread" d="M2 4h24"/></svg>The same experience in</div><div class="rchips">' +
-      twins.map(t => { const lid = t.split('|')[0]; return '<button class="rchip" data-go="' + t + '" style="--c:var(--' + lid + ')"><span class="cdot"></span>' + esc(nameIn(lid, sel.s)) + ' <span class="cl">' + esc(LID[lid].name) + '</span></button>'; }).join('') + '</div></div>';
-    if (outs.length) sec += '<div><div class="sect-h"><svg class="rkey" viewBox="0 0 28 8" aria-hidden="true"><path d="M1 4h20"/><path class="k-head" d="M20 1l7 3-7 3z"/></svg>Leads to</div><div class="rchips">' + outs.map(chip).join('') + '</div></div>';
-    if (ins.length) sec += '<div><div class="sect-h"><svg class="rkey" viewBox="0 0 28 8" aria-hidden="true"><path class="k-in" d="M1 4h26"/></svg>Comes from</div><div class="rchips">' + ins.map(chip).join('') + '</div></div>';
+      twins.map(t => { const lid = t.split('|')[0]; return '<button class="rchip" data-go="' + t + '" style="--c:' + col(lid) + '"><span class="cdot"></span>' + esc(nameIn(lid, sel.s)) + ' <span class="cl">' + esc(LID[lid].name) + '</span></button>'; }).join('') + '</div></div>';
+    if (outs.length) sec += '<div><div class="sect-h"><svg class="rkey" viewBox="0 0 28 8" aria-hidden="true"><path d="M1 4h20"/><path class="k-head" d="M20 1l7 3-7 3z"/></svg>Leads to</div><div class="rchips">' + outs.map(x => chip(x, sel.l)).join('') + '</div></div>';
+    if (ins.length) sec += '<div><div class="sect-h"><svg class="rkey" viewBox="0 0 28 8" aria-hidden="true"><path class="k-in" d="M1 4h26"/></svg>Comes from</div><div class="rchips">' + ins.map(x => chip(x, sel.l)).join('') + '</div></div>';
     if (hidden.size) sec += '<div><div class="sect-h">More in hidden layers</div><div class="rchips">' + Array.from(hidden).map(x =>
-      '<button class="showlayer" data-show="' + x + '" style="--c:var(--' + x + ')"><span class="sw"></span>Show ' + esc(LID[x].name) + '</button>').join('') + '</div></div>';
+      '<button class="showlayer" data-show="' + x + '" style="--c:' + col(x) + '"><span class="sw"></span>Show ' + esc(LID[x].name) + '</button>').join('') + '</div></div>';
     if (sec) h += '<div class="sections">' + sec + '</div>';
     return h + '</article>';
   }
@@ -788,7 +798,7 @@
   // ---------- controls ----------
   const bar = document.getElementById('layers');
   bar.innerHTML = LAYERS.map(l =>
-    '<button class="chip" type="button" data-layer="' + l.id + '" aria-pressed="true" style="--c:var(--' + l.id + ')"><span class="sw"></span>' + esc(l.name) + '</button>').join('');
+    '<button class="chip" type="button" data-layer="' + l.id + '" aria-pressed="true" style="--c:' + col(l.id) + '"><span class="sw"></span>' + esc(l.name) + '</button>').join('');
   function setLayer(id, on) {
     if (on) state.on.add(id); else state.on.delete(id);
     const b = bar.querySelector('[data-layer="' + id + '"]');
@@ -802,11 +812,21 @@
     if (b) setLayer(b.dataset.layer, !state.on.has(b.dataset.layer));
   });
   const liftBtn = document.getElementById('lift');
+  liftBtn.disabled = state.on.size < 2;
   liftBtn.addEventListener('click', () => {
     state.lifted = !state.lifted;
     liftBtn.setAttribute('aria-pressed', state.lifted ? 'true' : 'false');
     liftBtn.querySelector('span').textContent = state.lifted ? 'Lay flat' : 'Lift apart';
     setTargets(); animate();
+  });
+  // every lead at once, or none but the main way — kept on this device, as the site's other views are
+  const pathsBtn = document.getElementById('paths');
+  const sayPaths = () => { pathsBtn.setAttribute('aria-pressed', state.paths ? 'true' : 'false'); pathsBtn.querySelector('span').textContent = state.paths ? 'Hide paths' : 'Show paths'; };
+  pathsBtn.disabled = false; sayPaths();
+  pathsBtn.addEventListener('click', () => {
+    state.paths = !state.paths;
+    try { localStorage.setItem(PATHS, state.paths ? 'on' : 'off'); } catch (e) { /* kept for this visit only */ }
+    sayPaths(); render();
   });
 
   function select(k2, quiet) {
@@ -814,8 +834,9 @@
     if (k2) { const [l, s] = k2.split('|'); next = { l, s }; }
     if (next && state.sel && next.l === state.sel.l && next.s === state.sel.s) next = null;
     state.sel = next;
+    // an opened experience is linked by its address in the block: #3.5
     try {
-      if (state.sel) history.replaceState(null, '', '#' + state.sel.l + '.' + state.sel.s);
+      if (state.sel) history.replaceState(null, '', '#' + ITEM[key(state.sel.l, state.sel.s)].addr);
       else history.replaceState(null, '', location.pathname + location.search);
     } catch (e) { /* the frame may refuse; the page works without it */ }
     if (quiet) return;
@@ -852,8 +873,8 @@
   // ---------- start ----------
   function fromHash() {
     try {
-      const h = decodeURIComponent((location.hash || '').slice(1)), dot = h.indexOf('.');
-      if (dot > 0 && ITEM[key(h.slice(0, dot), h.slice(dot + 1))]) return { l: h.slice(0, dot), s: h.slice(dot + 1) };
+      const it = AT[decodeURIComponent((location.hash || '').slice(1))];
+      if (it && ITEM[key(it.layer, it.spot)] === it) return { l: it.layer, s: it.spot };
     } catch (e) { /* no deep link */ }
     return null;
   }
@@ -873,10 +894,6 @@
   if (narrowMQ.addEventListener) narrowMQ.addEventListener('change', onMQ); else if (narrowMQ.addListener) narrowMQ.addListener(onMQ);
   // the light and the dark can change under the page (◐, or the system at dusk), and a sheet's tint is read from it
   new MutationObserver(() => render()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-
-  // the go menu — the site's own pages, this one marked as here; a walker who arrived carrying a handle keeps it
-  const CARRIED = window.cleanHandle ? cleanHandle(new URLSearchParams(location.search).get('h')) || null : null;
-  if (window.siteDoors) siteDoors({ handle: CARRIED, here: 'experience-ecology', site: true });
 })();
 </script>
 </body>
