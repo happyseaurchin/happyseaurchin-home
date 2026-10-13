@@ -842,7 +842,13 @@ if (window.siteDoors) siteDoors({ handle: HANDLE, family: VENTURE, here: 'mornin
 }
 /* ── helpers the dashboard reads with ── */
 const H24 = 24 * 3600 * 1000, H48 = 48 * 3600 * 1000;
-function locVoicesAt(addr){
+/* the group this device reads through (voices, under options — theme.js voicesLens) keeps its
+ * people's voices on this page; each list says how many it set aside */
+const VL = () => window.voicesLens || null;
+const lensKeeps = who => !VL() || VL().keep(who || '');
+const lensNote = n => VL() && VL().name() ? VL().note(n) : '';
+function locVoicesAt(addr){ return locVoicesAll(addr).filter(v => lensKeeps(v.who)); }
+function locVoicesAll(addr){
   const out = [];
   MIRRORS.forEach(([who, blk]) => { const t = textAt(blk, addr); if (t) out.push({ who, t, ts: '' }); });
   /* located room talk answers ONLY at its exact address, never for the rungs above */
@@ -912,13 +918,16 @@ function renderNews(){
     : ['1'];
   const mine = NEWS.find(m => m[0] === HANDLE);
   const out = [];
+  let newsAside = 0;
 
   for (const pos of chans){
     const since = (mine && metaOf(mine[1], pos, '2')) || new Date(Date.now() - H24).toISOString();
-    const voices = NEWS
+    const said = NEWS
       .map(([who, blk]) => ({ who, t: declOf(blk, pos), when: metaOf(blk, pos, '1') }))
       .filter(v => v.t && (!v.when || Date.parse(v.when) > Date.parse(since)))
       .sort((a, b) => (Date.parse(b.when || 0) || 0) - (Date.parse(a.when || 0) || 0));
+    const voices = said.filter(v => lensKeeps(v.who));
+    newsAside += said.length - voices.length;
     if (!voices.length) continue;
     const what = NEWS_SPINE && typeof NEWS_SPINE[pos] === 'string' ? NEWS_SPINE[pos].split('—')[0].trim() : 'channel ' + pos;
     out.push('<p class="newsrung">' + esc(what) + '<span class="addr work">' + esc(pos) + '</span></p>');
@@ -927,9 +936,9 @@ function renderNews(){
         (v.when ? ' · ' + esc(ago(v.when) || '') : '') + '</span><p>' + esc(short(v.t, 420)) + '</p></div>');
   }
 
-  $('news-body').innerHTML = out.length
+  $('news-body').innerHTML = (out.length
     ? out.join('') + '<p class="newsmore"><a href="/news">every channel, and add your own →</a></p>'
-    : '<p class="newsquiet">Nothing new since you last read. <a href="/news">Say yours →</a></p>';
+    : '<p class="newsquiet">Nothing new since you last read. <a href="/news">Say yours →</a></p>') + lensNote(newsAside);
 }
 
 function renderTemporal(){
@@ -994,13 +1003,14 @@ function paintSheet(){
   if (SHEET.rung){
     const r = SHEET.rung;
     const obj = textAt(SPINE, r.addr);
-    const vs = locVoicesAt(r.addr), cs = myAimedAt(r.addr);
+    const vs = locVoicesAt(r.addr), cs = myAimedAt(r.addr), vAside = locVoicesAll(r.addr).length - vs.length;
     $('sh-where').textContent = r.label;
     const b = [];
     b.push('<div class="fulltext">' + esc(obj || 'nothing written here yet — this line belongs to the venture\u2019s keeper') + '</div>');
     b.push('<div class="sub">voices here</div>');
     b.push(vs.length ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + esc(whoName(v.who)) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + esc(ago(v.ts)) + '</span>' : '') + '</div>').join('')
-      : '<span class="silent">silent — honest absence</span>');
+      : '<span class="silent">' + (vAside ? 'nobody in the group here' : 'silent — honest absence') + '</span>');
+    b.push(lensNote(vAside));
     b.push('<div class="sub">your cards aiming here</div>');
     b.push(cs.length ? cs.map(c => '<div class="vrow"><span class="who you">you</span><span class="said">' + esc(short(c.text, 180)) + '</span></div>').join('')
       : '<span class="silent">none aimed at this stretch</span>');
@@ -1009,11 +1019,11 @@ function paintSheet(){
     return;
   }
   if (SHEET.area){
-    const a = SHEET.area;
+    const a = SHEET.area, items = (a.items || []).filter(it => !it.who || lensKeeps(it.who)), iAside = (a.items || []).length - items.length;
     $('sh-where').textContent = a.name;
-    $('sh-body').innerHTML =
-      (a.items && a.items.length
-        ? a.items.slice(0, 8).map(it => '<div class="vrow">' + (it.who ? '<span class="who' + (it.who === HANDLE ? ' you' : '') + '">' + esc(whoName(it.who)) + '</span>' : '') + '<span class="said">' + esc(short(it.t, 260)) + '</span>' + (it.ts ? '<span class="ago">' + esc(ago(it.ts)) + '</span>' : '') + '</div>').join('')
+    $('sh-body').innerHTML = lensNote(iAside) +
+      (items.length
+        ? items.slice(0, 8).map(it => '<div class="vrow">' + (it.who ? '<span class="who' + (it.who === HANDLE ? ' you' : '') + '">' + esc(whoName(it.who)) + '</span>' : '') + '<span class="said">' + esc(short(it.t, 260)) + '</span>' + (it.ts ? '<span class="ago">' + esc(ago(it.ts)) + '</span>' : '') + '</div>').join('')
         : '<span class="silent">quiet here</span>') +
       '<span class="silent">' + a.links.map(l => '<a href="' + l.href + '">' + esc(l.label) + ' \u2192</a>').join(' \u00b7 ') + '</span>';
     return;
@@ -1115,6 +1125,7 @@ document.getElementById('btn-refresh').addEventListener('click', () => load().th
 
 /* ── boot ── */
 HANDLE = handleFromUrl();
+if (window.voicesLens && HANDLE) voicesLens.watch(() => { if (!SPINE) return; renderNews(); renderTemporal(); if (SHEET) paintSheet(); }, { owner: HANDLE });
 if (!HANDLE){
   $('ask').classList.remove('hidden');
   const go = () => { const h = cleanHandle($('ask-handle').value);

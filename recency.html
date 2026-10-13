@@ -260,6 +260,7 @@ const FAMILY = (((_m && decodeURIComponent(_m[1])) || _q.get('f') || 'now').repl
 const HANDLE = cleanHandle((_m && _m[2] && decodeURIComponent(_m[2])) || _q.get('h')) || null;
 /* the page hands over what only it knows; the catalogue is shared in theme.js */
 if (window.siteDoors) siteDoors({ handle: HANDLE, family: FAMILY, here: 'recency' });
+if (window.voicesLens) voicesLens.watch(() => { if (!SPINE) return; OCC = occOf(); restyleD3(); drawPanel(); }, { owner: HANDLE });
 if (window.siteProjects) siteProjects({ handle: HANDLE, family: FAMILY, page: 'recency' });
 if (window.clockTimes) clockTimes(document.body, { watch: true });
 
@@ -700,7 +701,9 @@ function drawPanel(){
    * someone writing in his name (David, 2026-09-28; forms proposal §3.1). A top line
    * the holder wrote themselves still shows, as what it is. */
   const isBorn = t => /^MIRROR \u2014 /.test(t);
-  const exact = MIRRORS.map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text && (addr || !isBorn(x.text)));
+  const exact = seenMirrors().map(([who, blk]) => ({ who, text: textAt(blk, addr) })).filter(x => x.text && (addr || !isBorn(x.text)));
+  const VL = window.voicesLens, under = blk => (textAt(blk, addr) && (addr || !isBorn(textAt(blk, addr)))) || collectVoicings('', blk).some(o => o.addr !== addr && o.addr.startsWith(addr || ''));
+  const asideHere = VL && VL.active() ? MIRRORS.filter(([who, blk]) => !VL.keep(who) && under(blk)).length : 0;
   /* the rest of the count, one row per hand — a count is people, so the panel
    * names every person it counted: the exact lines above, and each remaining
    * hand with where it stands, the parts clickable. (Restored 2026-09-02;
@@ -734,6 +737,7 @@ function drawPanel(){
           esc(short(textAt(mBlk.get(who), addrs[addrs.length - 1]) || '', 150)) + '</p></div>';
       }).join(''));
   }
+  if (VL && VL.name()) rows.push(VL.note(asideHere));
   if (HANDLE && addr && strip0(addr) !== addr){
     rows.push('<p class="sayhint">this rung shares its wire address with the rung above (the zero-digit cost, sundial 3.4) — a say here would land there instead. Voice this stretch at <a href="/now/' + esc(HANDLE) + '">/now</a>, which holds the coarse rungs the safe way.</p>');
   } else if (HANDLE){
@@ -886,7 +890,7 @@ async function sayAt(addr, text){
   if (nb){
     const i = MIRRORS.findIndex(m => m[0] === HANDLE);
     if (i >= 0) MIRRORS[i] = [HANDLE, nb]; else MIRRORS.push([HANDLE, nb]);
-    OCC = MIRRORS.flatMap(([who, b]) => collectVoicings(who, b));
+    OCC = occOf();
     restyleD3();
   }
 }
@@ -907,6 +911,11 @@ function drawEve(){
 }
 
 /* ── data sweeps (identical to /where) ── */
+/* the hands the group this device reads through keeps (voices, under options —
+ * theme.js voicesLens); the dial and the panel count only these, and the panel
+ * says how many it set aside */
+const seenMirrors = () => window.voicesLens ? MIRRORS.filter(([who]) => voicesLens.keep(who)) : MIRRORS;
+const occOf = () => seenMirrors().flatMap(([who, blk]) => collectVoicings(who, blk));
 function collectVoicings(who, block){
   const out = [];
   const seen = new Set();
@@ -965,7 +974,7 @@ async function sweepSlow(){
   const mNames = blocks.filter(b => b.startsWith(FAMILY + ':') && nameOk(b.slice(FAMILY.length + 1)));
   const got = await Promise.all(mNames.map(n => readBlock(n).catch(() => null)));
   MIRRORS = mNames.map((n, i) => [n.slice(FAMILY.length + 1), got[i]]).filter(x => x[1]);
-  OCC = MIRRORS.flatMap(([who, blk]) => collectVoicings(who, blk));
+  OCC = occOf();
   ACTS = [];
   if (blocks.includes('marks')){
     const marks = await readBlock('marks').catch(() => null);

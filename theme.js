@@ -164,6 +164,212 @@
   };
 })();
 
+/* ── THE VOICES LENS — whose readings a list shows (David, 2026-10-13: "add it as an
+ * option drop down so that the computer remembers the user's preference — for now and
+ * projects and most other pages where there is a list of voices … the user chooses
+ * no-filter or chooses a sed to filter"; the why, the same day: too much of what fills
+ * those lists is written by an LLM).
+ *
+ * A standing group is a sed:<group> on the beach, each seat taken under its holder's
+ * own key, naming its holder by opening with their name on the beach, 'happyhedgehog
+ * — …', or by a shell:<handle> within it. Chosen under options, the group becomes a
+ * lens over every page that lists voices, on this device and for every page at once:
+ * a voice whose hand holds no seat is set aside, and the page SAYS SO AND HOW MANY —
+ * a lens that hides its own edge is a lie rather than a view (sed:beach-venture-cast).
+ * Nothing is hidden on the beach and nothing is gated; every voice stands where it
+ * stood, and everyone is one tap away. Never set aside: the page's own hand (a
+ * /now/<handle> is that hand's) and the name this device signs with — a lens is over
+ * the others. A group that names nobody sets nobody aside: empty means everyone. Off
+ * until chosen, and offered only on a page that lists voices.
+ *
+ * A page opts in once with voicesLens.watch(redraw, { owner }), asks
+ * voicesLens.keep(handle) of each voice as it draws (or voicesLens.sift(list, handleOf)
+ * for the kept and the count set aside), and lays voicesLens.note(aside) beside the
+ * list. redraw runs again whenever the lens changes, here or in another tab, and once
+ * the group's seats have been read. A page that reads the beach as it draws waits on
+ * voicesLens.ready() before its first draw, and draws again only when known() holds. ── */
+(function(){
+  'use strict';
+  var KEY = 'view:voices', ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+  var seats = null, readFor = null, readyP = Promise.resolve(), watchers = [], owners = [], styled = false, card = null, groups = null;
+  function low(s){ return String(s == null ? '' : s).toLowerCase(); }
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function chosen(){ try { return low(localStorage.getItem(KEY)).replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, ''); } catch(e){ return ''; } }
+  /* the name this device signs with (knownName below reads the same) */
+  function me(){ try { return low(localStorage.getItem('render:who') || localStorage.getItem('venture:who')); } catch(e){ return ''; } }
+  function voiceOf(n){ while (n && typeof n === 'object'){ if (!('_' in n)) return null; n = n._; } return typeof n === 'string' ? n : null; }
+  /* the hands a group seats, lower-cased */
+  function seatsOf(sed){
+    var out = [];
+    (function walk(n, depth){
+      if (!n || typeof n !== 'object') return;
+      for (var d = 1; d <= 9; d++){
+        var c = n[d]; if (c == null) continue;
+        if (depth >= 1){
+          var t = voiceOf(c) || '', m = /^\s*([A-Za-z0-9_-]+)\s+[—–-]\s/.exec(t) || /^\s*shell:([A-Za-z0-9_-]+)/.exec(t);
+          if (m && out.indexOf(low(m[1])) < 0) out.push(low(m[1]));
+        }
+        walk(c, depth + 1);
+      }
+    })(sed, 0);
+    return out;
+  }
+  function read(name){
+    return fetch(ORIGIN + (name ? '?block=' + encodeURIComponent(name) : ''), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; });
+  }
+  function load(){
+    var g = chosen();
+    if (readFor === g) return;
+    readFor = g; seats = g ? null : [];
+    readyP = g ? read('sed:' + g).then(function(b){ if (readFor === g){ seats = b ? seatsOf(b) : []; redraw(); } }) : Promise.resolve();
+  }
+  function redraw(){ label(); watchers.forEach(function(f){ try { f(); } catch(e){} }); }
+  /* narrowing right now: a group is chosen, read, and names somebody */
+  function active(){ return !!chosen() && !!seats && seats.length > 0; }
+  function keep(h){
+    if (!active()) return true;
+    h = low(h);
+    return seats.indexOf(h) >= 0 || owners.indexOf(h) >= 0 || (!!h && h === me());
+  }
+  function sift(list, handleOf){
+    var kept = [], aside = 0;
+    (list || []).forEach(function(x){ if (keep(handleOf ? handleOf(x) : x)) kept.push(x); else aside++; });
+    return { kept: kept, aside: aside };
+  }
+  /* the line that says what the lens set aside — empty when no group is chosen */
+  function note(aside){
+    var g = chosen(); if (!g) return '';
+    var ch = ' · <button type="button" data-voices-lens>change</button>';
+    if (!seats) return '<p class="vl-note">through sed:' + esc(g) + ' — reading its seats…' + ch + '</p>';
+    if (!seats.length) return '<p class="vl-note">sed:' + esc(g) + ' names nobody yet, so nobody is set aside' + ch + '</p>';
+    return '<p class="vl-note">through sed:' + esc(g) + ' — ' + (aside ? aside + (aside === 1 ? ' voice' : ' voices') + ' set aside' : 'nobody set aside here') + ch + '</p>';
+  }
+
+  var CSS = '.vl-note{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);margin:6px 0}' +
+    '.vl-note button{background:none;border:0;padding:0;font:inherit;letter-spacing:inherit;color:var(--liquid);cursor:pointer;text-decoration:underline;text-underline-offset:3px}' +
+    '.vl{border:1px solid var(--line-strong);border-radius:12px;background:rgb(var(--well-rgb));color:var(--foam);padding:0;' +
+      'width:min(420px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 12px 40px rgba(0,0,0,0.4)}' +
+    '.vl::backdrop{background:rgba(0,0,0,0.5)}' +
+    '.vl__in{padding:22px 20px 18px;display:grid;gap:12px}' +
+    '.vl__x{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--vapour-dim);font-size:14px;line-height:1;padding:6px;cursor:pointer}' +
+    '.vl__x:hover{color:var(--foam)}' +
+    '.vl__h{font-family:var(--display);font-weight:700;font-size:19px;line-height:1.2;margin:0}' +
+    '.vl__p{font-family:var(--body);font-size:15px;line-height:1.45;color:var(--vapour);margin:0}' +
+    '.vl__list{display:grid;gap:6px;max-height:46vh;overflow:auto}' +
+    '.vl__g{display:grid;gap:2px;text-align:left;background:none;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;color:var(--foam)}' +
+    '.vl__g:hover{border-color:var(--liquid)}' +
+    '.vl__g[aria-pressed="true"]{border-color:var(--liquid);background:rgba(var(--wash-rgb),0.07)}' +
+    '.vl__g b{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:0.02em}' +
+    '.vl__g span{font-family:var(--body);font-size:14px;line-height:1.35;color:var(--vapour-dim)}' +
+    '.vl__any{display:flex;gap:8px}' +
+    '.vl__any input{flex:1;min-width:0;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px;color:var(--foam);font-family:var(--mono);font-size:13px}' +
+    '.vl__any button{background:none;border:1px solid var(--liquid);border-radius:6px;color:var(--liquid);font-family:var(--mono);font-size:12.5px;padding:7px 12px;cursor:pointer}' +
+    '.vl__wait{font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}';
+  function style(){
+    if (styled) return; styled = true;
+    var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
+  }
+
+  /* the act under options, saying what it is set to */
+  function label(){
+    var b = document.getElementById('btn-voices'); if (!b) return;
+    var g = chosen();
+    b.textContent = g ? 'voices: ' + g : 'voices: everyone';
+  }
+  function offer(){
+    if (document.getElementById('btn-voices')) return;
+    var menu = document.querySelector('#dd-acts .dd__menu'), bar = document.querySelector('.bar');
+    if (!menu && !bar) return;
+    var b = document.createElement('button');
+    b.type = 'button'; b.id = 'btn-voices';
+    b.title = 'whose voices the lists show — everyone, or the people of one group';
+    b.addEventListener('click', choose);
+    if (menu) menu.appendChild(b);
+    else { var doors = bar.querySelector('details.dd[data-doors]'); bar.insertBefore(b, doors || null); }
+    label();
+  }
+
+  /* the chooser: everyone, or a group with somebody named in it — the groups this
+   * device's name sits in first — or any group by its name */
+  function set(g){
+    try { if (g) localStorage.setItem(KEY, g); else localStorage.removeItem(KEY); } catch(e){}
+    load(); redraw(); if (card && card.open) card.close();
+  }
+  function listGroups(){
+    if (groups) return Promise.resolve(groups);
+    return read('').then(function(ix){
+      var names = ((ix && ix.blocks) || []).map(function(b){ return typeof b === 'string' ? b : (b && b.name) || ''; })
+        .filter(function(n, i, all){ return /^sed:[\w-]+$/.test(n) && all.indexOf(n) === i; }).map(function(n){ return n.slice(4); }).slice(0, 60);
+      return Promise.all(names.map(function(n){ return read('sed:' + n).then(function(b){ return { name: n, seats: b ? seatsOf(b) : [] }; }); }));
+    }).then(function(all){
+      var mine = me();
+      groups = all.filter(function(x){ return x.seats.length; }).sort(function(a, b){
+        return (b.seats.indexOf(mine) >= 0) - (a.seats.indexOf(mine) >= 0) || b.seats.length - a.seats.length || (a.name < b.name ? -1 : 1);
+      });
+      return groups;
+    });
+  }
+  function fill(){
+    var g = chosen(), list = card.querySelector('.vl__list');
+    var row = function(name, line){ return '<button type="button" class="vl__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'everyone') + '</b><span>' + line + '</span></button>'; };
+    list.innerHTML = row('', 'no lens: every voice, as the beach has it') + '<p class="vl__wait">reading the groups on the beach…</p>';
+    listGroups().then(function(gs){
+      var mine = me();
+      list.innerHTML = row('', 'no lens: every voice, as the beach has it') + gs.map(function(x){
+        var names = x.seats.slice(0, 5).join(', ') + (x.seats.length > 5 ? ' and ' + (x.seats.length - 5) + ' more' : '');
+        return row(x.name, x.seats.length + ' seated' + (mine && x.seats.indexOf(mine) >= 0 ? ', you among them' : '') + ': ' + esc(names));
+      }).join('') + (gs.some(function(x){ return x.name === g; }) || !g ? '' : row(g, 'chosen on this device; it names nobody yet'));
+    });
+  }
+  function choose(){
+    style();
+    if (!card){
+      card = document.createElement('dialog');
+      card.className = 'vl';
+      card.setAttribute('aria-label', 'whose voices to show');
+      card.innerHTML = '<div class="vl__in">' +
+        '<button type="button" class="vl__x" aria-label="close">✕</button>' +
+        '<p class="vl__h">Whose voices to show</p>' +
+        '<p class="vl__p">On every page that lists voices, on this device. A group hides nothing on the beach: it sets the others aside here, and each list says how many.</p>' +
+        '<div class="vl__list"></div>' +
+        '<form class="vl__any"><input type="text" spellcheck="false" autocapitalize="off" placeholder="or a group by name, sed:…" aria-label="a group by name"><button type="submit">use</button></form>' +
+        '</div>';
+      card.querySelector('.vl__x').addEventListener('click', function(){ card.close(); });
+      card.addEventListener('click', function(e){
+        if (e.target === card) return card.close();
+        var b = e.target.closest('[data-g]'); if (b) set(b.getAttribute('data-g'));
+      });
+      card.querySelector('.vl__any').addEventListener('submit', function(e){
+        e.preventDefault();
+        var v = low(card.querySelector('.vl__any input').value).trim().replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, '');
+        if (v){ card.querySelector('.vl__any input').value = ''; set(v); }
+      });
+      document.body.appendChild(card);
+    }
+    fill();
+    if (card.showModal) card.showModal(); else card.setAttribute('open', '');
+  }
+  document.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('[data-voices-lens]')) choose(); });
+  window.addEventListener('storage', function(e){ if (e.key === KEY){ load(); redraw(); } });
+
+  window.voicesLens = {
+    /* a page that lists voices: redraw runs on every change; owner is never set aside */
+    watch: function(fn, opts){
+      opts = opts || {};
+      [].concat(opts.owner || []).forEach(function(h){ if (h && owners.indexOf(low(h)) < 0) owners.push(low(h)); });
+      if (fn && watchers.indexOf(fn) < 0) watchers.push(fn);
+      style(); offer(); load();
+    },
+    keep: keep, sift: sift, note: note, active: active,
+    name: chosen, choose: choose,
+    /* for a page that reads as it draws: whether the lens is settled (no group, or its seats
+     * read), and a promise of that — draw once it holds, and again only when it changes */
+    known: function(){ return !chosen() || !!seats; },
+    ready: function(){ load(); return readyP; }
+  };
+})();
+
 /* every page ends the same way: one of your own, and everyone else's.
  *
  * THIS FOOTER IS THE ONLY UNCONDITIONAL SURFACE ON THE SITE, which is why the

@@ -369,6 +369,12 @@ function srcLine(e, extra){
 }
 
 /* ---------- the modes — the renderer owns this vocabulary; specs only combine it ---------- */
+/* the group this device reads through (voices, under options — theme.js voicesLens):
+ * a section that lists attributed voices keeps its people's, and says how many it set aside */
+function lensOf(list, whoOf){
+  const VL = window.voicesLens, lens = VL ? VL.sift(list, whoOf) : { kept: list, aside: 0 };
+  return { kept: lens.kept, note: VL && VL.name() ? VL.note(lens.aside) : '' };
+}
 const MODES = {
   async value(e){
     const b = await readBlock(e.host, e.target);
@@ -410,12 +416,12 @@ const MODES = {
      * attribution overflowing its box on the live board (caught by the keeper,
      * 2026-08-12). The strict pair is the same isVoice test /venture has always run:
      * field 1 a name, field 3 a real time; structure is never shown as speech. */
-    const slots = slotsOf(node).filter(s =>
-      s.who && s.who.length <= 40 && s.ts && isFinite(Date.parse(s.ts)));
+    const lv = lensOf(slotsOf(node).filter(s =>
+      s.who && s.who.length <= 40 && s.ts && isFinite(Date.parse(s.ts))), s => s.who), slots = lv.kept;
     slots.sort((a, x) => (x.ts || '').localeCompare(a.ts || ''));
     const rows = slots.slice(0, 8).map(s =>
       '<div class="vrow"><span class="vwho">' + esc(s.who || '—') + '</span><span class="vtext">' + linkify(short(s.text, 220)) + '</span>' + (s.ts ? '<span class="vago">' + esc(ago(s.ts)) + '</span>' : '') + '</div>');
-    return (rows.join('') || '<p class="vnone">no voices here yet — silence is honest absence</p>') +
+    return (rows.join('') || '<p class="vnone">no voices here yet — silence is honest absence</p>') + lv.note +
       srcLine(e, slots.length > 8 ? [esc(String(slots.length)) + ' in all — newest 8 shown'] : []);
   },
   /* marks — the board through a time window: what landed in the last N days,
@@ -451,12 +457,12 @@ const MODES = {
       }
       if (node['_'] && typeof node['_'] === 'object') dig(node['_']);
     })(b);
-    const slots = found.filter(s =>
-      s.who.length <= 40 && isFinite(Date.parse(s.ts)) && Date.parse(s.ts) >= cutoff);
+    const lv = lensOf(found.filter(s =>
+      s.who.length <= 40 && isFinite(Date.parse(s.ts)) && Date.parse(s.ts) >= cutoff), s => s.who), slots = lv.kept;
     slots.sort((a, x) => (x.ts || '').localeCompare(a.ts || ''));
     const rows = slots.map(s =>
       '<div class="vrow"><span class="vwho">' + esc(s.who) + '</span><span class="vtext">' + linkify(short(s.text, 220)) + '</span><span class="vago">' + esc(ago(s.ts)) + '</span></div>');
-    return (rows.join('') || '<p class="vnone">nothing landed here in the last ' + days + ' day' + (days === 1 ? '' : 's') + ' — a quiet board is honest</p>') +
+    return (rows.join('') || '<p class="vnone">nothing landed here in the last ' + days + ' day' + (days === 1 ? '' : 's') + ' — a quiet board is honest</p>') + lv.note +
       srcLine({ ...e, target, addr: '' }, ['<b>' + slots.length + '</b> in the last ' + days + 'd']);
   },
   async readings(e){
@@ -466,8 +472,9 @@ const MODES = {
      * rung for the address this is 'what every hand says today', live forever. */
     const family = e.target;
     const index = await readIndex(e.host);
-    const names = (index.blocks || []).filter(x => x.startsWith(family + ':') && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(x.slice(family.length + 1)));
-    if (!names.length) return '<p class="vnone">' + esc(family) + ' has no mirrors at ' + esc(e.host) + '</p>';
+    const every = (index.blocks || []).filter(x => x.startsWith(family + ':') && /^[A-Za-z][A-Za-z0-9 _-]*$/.test(x.slice(family.length + 1)));
+    if (!every.length) return '<p class="vnone">' + esc(family) + ' has no mirrors at ' + esc(e.host) + '</p>';
+    const lv = lensOf(every, x => x.slice(family.length + 1)), names = lv.kept;
     const got = await Promise.all(names.map(n => readBlock(e.host, n).catch(() => null)));
     const rows = [], silent = [];
     names.forEach((n, i) => {
@@ -478,7 +485,7 @@ const MODES = {
     });
     const tail = silent.length ? ['silent here: ' + esc(silent.join(', '))] : [];
     return (rows.join('') || '<p class="vnone">every mirror is silent at this address — honest absence, not a gap to be filled</p>')
-      + srcLine(e, tail);
+      + lv.note + srcLine(e, tail);
   },
   async decks(e){
     /* what each holder of a personal deck is holding NOW. Cards live in the
@@ -1003,7 +1010,13 @@ if (window.siteDoors) siteDoors({
   handle: cleanHandle(new URLSearchParams(location.search).get('h')) || null
 });
 $('btn-refresh').addEventListener('click', () => location.reload());
-if (SPEC) load(); else loadCatalogue();
+/* the sections read as they draw: the first draw waits for the lens to settle, and a change of
+ * lens draws them again once the group's seats are read */
+if (SPEC && window.voicesLens){
+  let drawn = false;
+  voicesLens.watch(() => { if (drawn && voicesLens.known()) load(); });
+  voicesLens.ready().then(() => { drawn = true; load(); });
+} else if (SPEC) load(); else loadCatalogue();
 })();
 </script>
 </body>
