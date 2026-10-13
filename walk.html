@@ -836,7 +836,7 @@ let SINCE = 0;                     /* the marker: your last act, else 24h */
 let TODAY = null, TODAY_ADDR = '', NOW_ADDR = '';
 const SEL = {};
 let FIELDS = new Set();              /* families present at the beach, for naming and colour */
-let CAST = null;                     /* sed:<family>-cast — member handles, or null while nobody has settled */
+let CAST = null;                     /* the family's own group, sed:<family> (else an older sed:<family>-cast) — member handles, or null while nobody has settled */
 let CASTLENS = 'all';                /* 'all' — every voice stands; 'formal' — members stand, the rest are named aside. Distinct from LENS below, which chooses whose WORDS the rack shows; this chooses whose voices COUNT at a point. */
 let MODE = 'clock';                  /* 'clock' — a floor-10 sundial spine walks as time; 'tree' — any other spine walks as branches; 'ground' — the earth-map walks as places */
 const wireAddr = a => MODE === 'clock' ? pad10(a) : MODE === 'ground' ? gFull(String(a)) : String(a);   /* full width is the clock's and the map's convention; a tree writes its digits bare */
@@ -975,27 +975,34 @@ function doneCount(deck, sinceMs){
   return n;
 }
 
-/* ── the cast register — sed:<family>-cast, the members whose voices stand at the
- * formal setting. Every settled position names a handle, by its pointer
- * (shell:<handle>@<beach>) or failing that by the first word of its own line.
+/* ── the cast register — the family's own group, sed:<family> (else an older
+ * sed:<family>-cast), the members whose voices stand at the formal setting. Every
+ * settled position names a handle, by its pointer (shell:<handle>@<beach>) or
+ * failing that by the first word of its own line, when that word is a handle.
  * AN EMPTY REGISTER MEANS EVERYONE: a lens with nobody in it would silently
  * empty the room, which is the one thing a lens must never do. ── */
 function castMembers(block){
   if (!block) return null;
   const out = new Set();
-  (function reg(node){
+  /* a seat names its hand by its first word, when that word is a handle: 'happyseaurchin — …' */
+  const take = t => { const m = /^\s*([A-Za-z0-9_-]+)(?=\s|$)/.exec(String(t || '')); if (m) out.add(m[1]); };
+  (function reg(node, depth){
     if (!node || typeof node !== 'object') return;
     for (const d of childDigits(node)){
       const p = node[d];
-      if (!p || typeof p !== 'object') continue;
-      const ptr = typeof p['1'] === 'string' ? p['1'] : '';
-      const m = ptr.match(/^[a-z-]+:([^@\s]+)/i);
-      if (m) out.add(m[1]);
-      else { const w = (voice(p) || '').split(/[\s—–-]/)[0]; if (w) out.add(w); }
-      reg(p);
+      /* positions 11 onward are seats; a depth-one node is their container, voiced by a summary */
+      if (depth >= 1){
+        if (typeof p === 'string') take(p);                /* settled as its line alone (pscale_settle) */
+        else if (p && typeof p === 'object'){
+          const ptr = typeof p['1'] === 'string' ? p['1'] : '';
+          const m = ptr.match(/^[a-z-]+:([^@\s]+)/i);
+          if (m) out.add(m[1]); else take(voice(p));
+        }
+      }
+      if (p && typeof p === 'object') reg(p, depth + 1);
     }
-    if (node['_'] && typeof node['_'] === 'object') reg(node['_']);
-  })(block);
+    if (node['_'] && typeof node['_'] === 'object') reg(node['_'], depth);
+  })(block, 0);
   return out.size ? out : null;
 }
 /* THE LENS IS A VIEW, NEVER A GATE. Every block here is publicly readable, so
@@ -1281,7 +1288,12 @@ async function load(){
 
   FIELDS = new Set(blocks.filter(b => b.startsWith('spine:')).map(b => b.slice(6)));
 
-  CAST = castMembers(await readBlock('sed:' + VENTURE + '-cast').catch(() => null));
+  /* THE CAST IS THE FAMILY'S OWN GROUP — sed:<family>, the scope a reader may also choose on every
+   * page (theme.js siteScope); the beach-venture's cast register folded into sed:beach-venture on
+   * 2026-10-13 at David's word, so a venture keeps one group of people. An older sed:<family>-cast
+   * is read where no group of the family's own name stands. */
+  const castName = blocks.includes('sed:' + VENTURE) ? 'sed:' + VENTURE : blocks.includes('sed:' + VENTURE + '-cast') ? 'sed:' + VENTURE + '-cast' : '';
+  CAST = castName ? castMembers(await readBlock(castName).catch(() => null)) : null;
 
   const pool = await readBlock('pool:' + VENTURE).catch(() => null);
   POOL_STANDS = !!pool;
