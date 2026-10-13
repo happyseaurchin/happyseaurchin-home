@@ -797,7 +797,9 @@ function readingsAt(a){
   }).filter(Boolean);
 }
 function readingsHtml(n){
-  const a = n.addr, rs = readingsAt(a), k = scale();
+  /* the group this device reads through (voices, under options) sets the others aside, and says how many */
+  const VL = window.voicesLens, all = readingsAt(n.addr), lens = VL ? VL.sift(all, r => r.who) : { kept: all, aside: 0 };
+  const a = n.addr, rs = lens.kept, k = scale();
   const plan = n.kind === 'root' ? M.sum : n.kind === 'part' ? n.plan : n.min;
   let h = '';
   const ests = rs.filter(r => r.est != null).map(r => r.est);
@@ -810,7 +812,8 @@ function readingsHtml(n){
     h += '<div class="reading"><p>' + cited(r.text) + '</p><div class="who"><b>' + esc(r.who) + '</b>' + (r.est != null ? '<span>gives it ' + fmt(r.est * k) + '</span>' : '') +
          '<a class="mlink" href="' + esc(mirrorUrl(a)) + '" target="_blank" rel="noopener" title="this part, live in the magic mirror, with every reading here">mirror ↗</a></div></div>';
   });
-  return h || '<p class="empty">No readings here yet. Yours can be the first.</p>';
+  const seen = VL && VL.name() ? VL.note(lens.aside) : '';
+  return (h || '<p class="empty">' + (lens.aside ? 'No readings here from the group yet.' : 'No readings here yet. Yours can be the first.') + '</p>') + seen;
 }
 function runsHtml(n){
   if (!RUNS.length || n.door) return '';
@@ -1288,6 +1291,7 @@ restore();
 load().then(start).catch(e => { panel.innerHTML = '<p class="empty">' + esc('Couldn’t read the beach: ' + e.message) + '</p>'; });
 
 if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'ring', site: true });
+if (window.voicesLens) voicesLens.watch(() => { if (M) drawPanel(); }, { owner: HANDLE });
 })();
 </script>
 </body>
