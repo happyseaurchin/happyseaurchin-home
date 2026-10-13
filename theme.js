@@ -164,37 +164,39 @@
   };
 })();
 
-/* ── THE VOICES LENS — whose readings a list shows (David, 2026-10-13: "add it as an
- * option drop down so that the computer remembers the user's preference — for now and
- * projects and most other pages where there is a list of voices … the user chooses
- * no-filter or chooses a sed to filter"; the why, the same day: too much of what fills
- * those lists is written by an LLM).
+/* ── THE SCOPE — whose walks a page shows (David, 2026-10-13: "add it as an option drop
+ * down so that the computer remembers the user's preference — for now and projects and
+ * most other pages where there is a list of voices"; and that evening: "It is not a
+ * filter, it acts more like a scope — so that there is only a bunch of walks that are
+ * actually walked … Default to 'no scope' ie no sed").
  *
- * A standing group is a sed:<group> on the beach, each seat taken under its holder's
- * own key, naming its holder by opening with their name on the beach, 'happyhedgehog
- * — …', or by a shell:<handle> within it. Chosen under options, the group becomes a
- * lens over every page that lists voices, on this device and for every page at once:
- * a voice whose hand holds no seat is set aside, and the page SAYS SO AND HOW MANY —
- * a lens that hides its own edge is a lie rather than a view (sed:beach-venture-cast).
- * Nothing is hidden on the beach and nothing is gated; every voice stands where it
- * stood, and everyone is one tap away. Never set aside: the page's own hand (a
- * /now/<handle> is that hand's) and the name this device signs with — a lens is over
- * the others. A group that names nobody sets nobody aside: empty means everyone. Off
- * until chosen, and offered only on a page that lists voices.
+ * A scope is a standing group, a sed:<group> on the beach, each seat taken under its
+ * holder's own key and naming its holder by opening with their name on the beach,
+ * 'happyhedgehog — …', or by a shell:<handle> within it: presence, never a door passed
+ * (open-commons 3.4). Chosen under options, the scope holds every page that lists voices
+ * to the walks its people actually walk, on this device and for every page at once: a
+ * voice whose hand holds no seat is out of scope, and the page SAYS SO AND HOW MANY — a
+ * view that hides its own edge is a lie rather than a view (sed:beach-venture-cast).
+ * Nothing is hidden on the beach and nothing is gated; every voice stands where it stood.
+ * Never out of scope: the page's own hand (a /now/<handle> is that hand's) and the name
+ * this device signs with. A group that seats nobody holds everyone. No scope until one is
+ * chosen, and offered only on a page that lists voices; once a person's organic web can
+ * be read (open-commons 3.1), that is the default to come.
  *
- * A page opts in once with voicesLens.watch(redraw, { owner }), asks
- * voicesLens.keep(handle) of each voice as it draws (or voicesLens.sift(list, handleOf)
- * for the kept and the count set aside), and lays voicesLens.note(aside) beside the
- * list. redraw runs again whenever the lens changes, here or in another tab, and once
- * the group's seats have been read. A page that reads the beach as it draws waits on
- * voicesLens.ready() before its first draw, and draws again only when known() holds. ── */
+ * A page opts in once with siteScope.watch(redraw, { owner }), asks siteScope.keep(handle)
+ * of each voice as it draws (or siteScope.sift(list, handleOf) for the kept and the count
+ * out of scope), and lays siteScope.note(out) beside the list. redraw runs again whenever
+ * the scope changes, here or in another tab, and once the group's seats have been read. A
+ * page that reads the beach as it draws waits on siteScope.ready() before its first draw,
+ * and draws again only when known() holds. ── */
 (function(){
   'use strict';
-  var KEY = 'view:voices', ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+  var KEY = 'view:scope', OLD = 'view:voices', ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
   var seats = null, readFor = null, readyP = Promise.resolve(), watchers = [], owners = [], styled = false, card = null, groups = null;
   function low(s){ return String(s == null ? '' : s).toLowerCase(); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  function chosen(){ try { return low(localStorage.getItem(KEY)).replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, ''); } catch(e){ return ''; } }
+  /* the scope this device reads through; a choice made under the first name, voices, carries over */
+  function chosen(){ try { return low(localStorage.getItem(KEY) || localStorage.getItem(OLD)).replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, ''); } catch(e){ return ''; } }
   /* the name this device signs with (knownName below reads the same) */
   function me(){ try { return low(localStorage.getItem('render:who') || localStorage.getItem('venture:who')); } catch(e){ return ''; } }
   function voiceOf(n){ while (n && typeof n === 'object'){ if (!('_' in n)) return null; n = n._; } return typeof n === 'string' ? n : null; }
@@ -237,35 +239,35 @@
     (list || []).forEach(function(x){ if (keep(handleOf ? handleOf(x) : x)) kept.push(x); else aside++; });
     return { kept: kept, aside: aside };
   }
-  /* the line that says what the lens set aside — empty when no group is chosen */
-  function note(aside){
+  /* the line that says what the scope left out — empty when there is no scope */
+  function note(out){
     var g = chosen(); if (!g) return '';
-    var ch = ' · <button type="button" data-voices-lens>change</button>';
-    if (!seats) return '<p class="vl-note">through sed:' + esc(g) + ' — reading its seats…' + ch + '</p>';
-    if (!seats.length) return '<p class="vl-note">sed:' + esc(g) + ' names nobody yet, so nobody is set aside' + ch + '</p>';
-    return '<p class="vl-note">through sed:' + esc(g) + ' — ' + (aside ? aside + (aside === 1 ? ' voice' : ' voices') + ' set aside' : 'nobody set aside here') + ch + '</p>';
+    var ch = ' · <button type="button" data-scope>change</button>';
+    if (!seats) return '<p class="sc-note">scope sed:' + esc(g) + ' — reading its seats…' + ch + '</p>';
+    if (!seats.length) return '<p class="sc-note">sed:' + esc(g) + ' seats nobody yet, so the scope holds everyone' + ch + '</p>';
+    return '<p class="sc-note">scope sed:' + esc(g) + ' — ' + (out ? out + (out === 1 ? ' voice' : ' voices') + ' out of scope' : 'every voice here is in scope') + ch + '</p>';
   }
 
-  var CSS = '.vl-note{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);margin:6px 0}' +
-    '.vl-note button{background:none;border:0;padding:0;font:inherit;letter-spacing:inherit;color:var(--liquid);cursor:pointer;text-decoration:underline;text-underline-offset:3px}' +
-    '.vl{border:1px solid var(--line-strong);border-radius:12px;background:rgb(var(--well-rgb));color:var(--foam);padding:0;' +
+  var CSS = '.sc-note{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);margin:6px 0}' +
+    '.sc-note button{background:none;border:0;padding:0;font:inherit;letter-spacing:inherit;color:var(--liquid);cursor:pointer;text-decoration:underline;text-underline-offset:3px}' +
+    '.sc{border:1px solid var(--line-strong);border-radius:12px;background:rgb(var(--well-rgb));color:var(--foam);padding:0;' +
       'width:min(420px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 12px 40px rgba(0,0,0,0.4)}' +
-    '.vl::backdrop{background:rgba(0,0,0,0.5)}' +
-    '.vl__in{padding:22px 20px 18px;display:grid;gap:12px}' +
-    '.vl__x{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--vapour-dim);font-size:14px;line-height:1;padding:6px;cursor:pointer}' +
-    '.vl__x:hover{color:var(--foam)}' +
-    '.vl__h{font-family:var(--display);font-weight:700;font-size:19px;line-height:1.2;margin:0}' +
-    '.vl__p{font-family:var(--body);font-size:15px;line-height:1.45;color:var(--vapour);margin:0}' +
-    '.vl__list{display:grid;gap:6px;max-height:46vh;overflow:auto}' +
-    '.vl__g{display:grid;gap:2px;text-align:left;background:none;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;color:var(--foam)}' +
-    '.vl__g:hover{border-color:var(--liquid)}' +
-    '.vl__g[aria-pressed="true"]{border-color:var(--liquid);background:rgba(var(--wash-rgb),0.07)}' +
-    '.vl__g b{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:0.02em}' +
-    '.vl__g span{font-family:var(--body);font-size:14px;line-height:1.35;color:var(--vapour-dim)}' +
-    '.vl__any{display:flex;gap:8px}' +
-    '.vl__any input{flex:1;min-width:0;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px;color:var(--foam);font-family:var(--mono);font-size:13px}' +
-    '.vl__any button{background:none;border:1px solid var(--liquid);border-radius:6px;color:var(--liquid);font-family:var(--mono);font-size:12.5px;padding:7px 12px;cursor:pointer}' +
-    '.vl__wait{font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}';
+    '.sc::backdrop{background:rgba(0,0,0,0.5)}' +
+    '.sc__in{padding:22px 20px 18px;display:grid;gap:12px}' +
+    '.sc__x{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--vapour-dim);font-size:14px;line-height:1;padding:6px;cursor:pointer}' +
+    '.sc__x:hover{color:var(--foam)}' +
+    '.sc__h{font-family:var(--display);font-weight:700;font-size:19px;line-height:1.2;margin:0}' +
+    '.sc__p{font-family:var(--body);font-size:15px;line-height:1.45;color:var(--vapour);margin:0}' +
+    '.sc__list{display:grid;gap:6px;max-height:46vh;overflow:auto}' +
+    '.sc__g{display:grid;gap:2px;text-align:left;background:none;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;color:var(--foam)}' +
+    '.sc__g:hover{border-color:var(--liquid)}' +
+    '.sc__g[aria-pressed="true"]{border-color:var(--liquid);background:rgba(var(--wash-rgb),0.07)}' +
+    '.sc__g b{font-family:var(--mono);font-size:13px;font-weight:700;letter-spacing:0.02em}' +
+    '.sc__g span{font-family:var(--body);font-size:14px;line-height:1.35;color:var(--vapour-dim)}' +
+    '.sc__any{display:flex;gap:8px}' +
+    '.sc__any input{flex:1;min-width:0;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px;color:var(--foam);font-family:var(--mono);font-size:13px}' +
+    '.sc__any button{background:none;border:1px solid var(--liquid);border-radius:6px;color:var(--liquid);font-family:var(--mono);font-size:12.5px;padding:7px 12px;cursor:pointer}' +
+    '.sc__wait{font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}';
   function style(){
     if (styled) return; styled = true;
     var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
@@ -273,27 +275,27 @@
 
   /* the act under options, saying what it is set to */
   function label(){
-    var b = document.getElementById('btn-voices'); if (!b) return;
+    var b = document.getElementById('btn-scope'); if (!b) return;
     var g = chosen();
-    b.textContent = g ? 'voices: ' + g : 'voices: everyone';
+    b.textContent = g ? 'scope: ' + g : 'no scope';
   }
   function offer(){
-    if (document.getElementById('btn-voices')) return;
+    if (document.getElementById('btn-scope')) return;
     var menu = document.querySelector('#dd-acts .dd__menu'), bar = document.querySelector('.bar');
     if (!menu && !bar) return;
     var b = document.createElement('button');
-    b.type = 'button'; b.id = 'btn-voices';
-    b.title = 'whose voices the lists show — everyone, or the people of one group';
+    b.type = 'button'; b.id = 'btn-scope';
+    b.title = 'whose walks the pages show — every walk, or the walks of the people in one group';
     b.addEventListener('click', choose);
     if (menu) menu.appendChild(b);
     else { var doors = bar.querySelector('details.dd[data-doors]'); bar.insertBefore(b, doors || null); }
     label();
   }
 
-  /* the chooser: everyone, or a group with somebody named in it — the groups this
-   * device's name sits in first — or any group by its name */
+  /* the chooser: no scope, or a group that seats somebody — the groups this device's
+   * name sits in first — or any group by its name */
   function set(g){
-    try { if (g) localStorage.setItem(KEY, g); else localStorage.removeItem(KEY); } catch(e){}
+    try { localStorage.removeItem(OLD); if (g) localStorage.setItem(KEY, g); else localStorage.removeItem(KEY); } catch(e){}
     load(); redraw(); if (card && card.open) card.close();
   }
   function listGroups(){
@@ -311,50 +313,50 @@
     });
   }
   function fill(){
-    var g = chosen(), list = card.querySelector('.vl__list');
-    var row = function(name, line){ return '<button type="button" class="vl__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'everyone') + '</b><span>' + line + '</span></button>'; };
-    list.innerHTML = row('', 'no lens: every voice, as the beach has it') + '<p class="vl__wait">reading the groups on the beach…</p>';
+    var g = chosen(), list = card.querySelector('.sc__list');
+    var row = function(name, line){ return '<button type="button" class="sc__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'no scope') + '</b><span>' + line + '</span></button>'; };
+    list.innerHTML = row('', 'every walk, as the beach has it') + '<p class="sc__wait">reading the groups on the beach…</p>';
     listGroups().then(function(gs){
       var mine = me();
-      list.innerHTML = row('', 'no lens: every voice, as the beach has it') + gs.map(function(x){
+      list.innerHTML = row('', 'every walk, as the beach has it') + gs.map(function(x){
         var names = x.seats.slice(0, 5).join(', ') + (x.seats.length > 5 ? ' and ' + (x.seats.length - 5) + ' more' : '');
         return row(x.name, x.seats.length + ' seated' + (mine && x.seats.indexOf(mine) >= 0 ? ', you among them' : '') + ': ' + esc(names));
-      }).join('') + (gs.some(function(x){ return x.name === g; }) || !g ? '' : row(g, 'chosen on this device; it names nobody yet'));
+      }).join('') + (gs.some(function(x){ return x.name === g; }) || !g ? '' : row(g, 'chosen on this device; it seats nobody yet'));
     });
   }
   function choose(){
     style();
     if (!card){
       card = document.createElement('dialog');
-      card.className = 'vl';
-      card.setAttribute('aria-label', 'whose voices to show');
-      card.innerHTML = '<div class="vl__in">' +
-        '<button type="button" class="vl__x" aria-label="close">✕</button>' +
-        '<p class="vl__h">Whose voices to show</p>' +
-        '<p class="vl__p">On every page that lists voices, on this device. A group hides nothing on the beach: it sets the others aside here, and each list says how many.</p>' +
-        '<div class="vl__list"></div>' +
-        '<form class="vl__any"><input type="text" spellcheck="false" autocapitalize="off" placeholder="or a group by name, sed:…" aria-label="a group by name"><button type="submit">use</button></form>' +
+      card.className = 'sc';
+      card.setAttribute('aria-label', 'scope: whose walks to show');
+      card.innerHTML = '<div class="sc__in">' +
+        '<button type="button" class="sc__x" aria-label="close">✕</button>' +
+        '<p class="sc__h">Scope</p>' +
+        '<p class="sc__p">Whose walks every page shows, on this device: all of them, or only the walks of the people seated in one group. A scope hides nothing on the beach, and each list says how many it left out.</p>' +
+        '<div class="sc__list"></div>' +
+        '<form class="sc__any"><input type="text" spellcheck="false" autocapitalize="off" placeholder="or a group by name, sed:…" aria-label="a group by name"><button type="submit">use</button></form>' +
         '</div>';
-      card.querySelector('.vl__x').addEventListener('click', function(){ card.close(); });
+      card.querySelector('.sc__x').addEventListener('click', function(){ card.close(); });
       card.addEventListener('click', function(e){
         if (e.target === card) return card.close();
         var b = e.target.closest('[data-g]'); if (b) set(b.getAttribute('data-g'));
       });
-      card.querySelector('.vl__any').addEventListener('submit', function(e){
+      card.querySelector('.sc__any').addEventListener('submit', function(e){
         e.preventDefault();
-        var v = low(card.querySelector('.vl__any input').value).trim().replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, '');
-        if (v){ card.querySelector('.vl__any input').value = ''; set(v); }
+        var v = low(card.querySelector('.sc__any input').value).trim().replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, '');
+        if (v){ card.querySelector('.sc__any input').value = ''; set(v); }
       });
       document.body.appendChild(card);
     }
     fill();
     if (card.showModal) card.showModal(); else card.setAttribute('open', '');
   }
-  document.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('[data-voices-lens]')) choose(); });
-  window.addEventListener('storage', function(e){ if (e.key === KEY){ load(); redraw(); } });
+  document.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('[data-scope]')) choose(); });
+  window.addEventListener('storage', function(e){ if (e.key === KEY || e.key === OLD){ load(); redraw(); } });
 
-  window.voicesLens = {
-    /* a page that lists voices: redraw runs on every change; owner is never set aside */
+  window.siteScope = {
+    /* a page that lists voices: redraw runs on every change; owner is never out of scope */
     watch: function(fn, opts){
       opts = opts || {};
       [].concat(opts.owner || []).forEach(function(h){ if (h && owners.indexOf(low(h)) < 0) owners.push(low(h)); });
@@ -363,7 +365,7 @@
     },
     keep: keep, sift: sift, note: note, active: active,
     name: chosen, choose: choose,
-    /* for a page that reads as it draws: whether the lens is settled (no group, or its seats
+    /* for a page that reads as it draws: whether the scope is settled (none, or its seats
      * read), and a promise of that — draw once it holds, and again only when it changes */
     known: function(){ return !chosen() || !!seats; },
     ready: function(){ load(); return readyP; }
