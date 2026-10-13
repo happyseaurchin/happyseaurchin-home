@@ -183,6 +183,15 @@
  * chosen, and offered only on a page that lists voices; once a person's organic web can
  * be read (open-commons 3.1), that is the default to come.
  *
+ * WHERE A SCOPE IS HELD (David, 2026-10-13: "yes build both — lists branch 5 and fold the
+ * cast in"). Who is in a scope stands in the group's own seats and nowhere else. Which
+ * scope a reader looks through is taken, in order, from: this window's own choice (the
+ * chooser; sessionStorage, so another tab is untouched); the person's own default, the
+ * first of the scopes they read through at lists:<handle> branch 5 — rank is depth, so it
+ * follows the person to every device and their own AI can read it, as the row at 3 does;
+ * what this device last chose (localStorage, for a reader the device knows no name for);
+ * else no scope. 'make this my default' writes branch 5 under the passport's key.
+ *
  * A page opts in once with siteScope.watch(redraw, { owner }), asks siteScope.keep(handle)
  * of each voice as it draws (or siteScope.sift(list, handleOf) for the kept and the count
  * out of scope), and lays siteScope.note(out) beside the list. redraw runs again whenever
@@ -192,13 +201,32 @@
 (function(){
   'use strict';
   var KEY = 'view:scope', OLD = 'view:voices', ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
-  var seats = null, readFor = null, readyP = Promise.resolve(), watchers = [], owners = [], styled = false, card = null, groups = null;
+  var seats = null, readFor = null, seatsP = Promise.resolve(), personal = null, personaP = null, watchers = [], owners = [], styled = false, card = null, groups = null;
   function low(s){ return String(s == null ? '' : s).toLowerCase(); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
-  /* the scope this device reads through; a choice made under the first name, voices, carries over */
-  function chosen(){ try { return low(localStorage.getItem(KEY) || localStorage.getItem(OLD)).replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, ''); } catch(e){ return ''; } }
-  /* the name this device signs with (knownName below reads the same) */
-  function me(){ try { return low(localStorage.getItem('render:who') || localStorage.getItem('venture:who')); } catch(e){ return ''; } }
+  function clean(v){ return low(v).replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, ''); }
+  /* the scope this window looks through: its own choice ('-' is no scope chosen here), else the
+   * person's default, else what this device last chose — one made under the first name,
+   * voices, carries over — else none */
+  function chosen(){
+    var w = null; try { w = sessionStorage.getItem(KEY); } catch(e){}
+    if (w !== null) return w === '-' ? '' : clean(w);
+    if (personal && personal.length) return personal[0];
+    try { return clean(localStorage.getItem(KEY) || localStorage.getItem(OLD)); } catch(e){ return ''; }
+  }
+  /* the name this device signs with (knownName below reads the same), as written and lower-cased */
+  function meRaw(){
+    try { var v = localStorage.getItem('render:who') || localStorage.getItem('venture:who') || ''; return (window.cleanHandle ? window.cleanHandle(v) : String(v).replace(/[^A-Za-z0-9_-]/g, '')) || ''; }
+    catch(e){ return ''; }
+  }
+  function me(){ return low(meRaw()); }
+  /* the scopes this person reads through, the default first — lists:<handle> branch 5 */
+  function persona(){
+    var h = meRaw();
+    if (!h || !window.siteLists){ personal = []; return Promise.resolve(personal); }
+    return window.siteLists.read(h, 5).then(function(names){ personal = (names || []).map(clean).filter(Boolean); return personal; },
+      function(){ personal = []; return personal; });
+  }
   function voiceOf(n){ while (n && typeof n === 'object'){ if (!('_' in n)) return null; n = n._; } return typeof n === 'string' ? n : null; }
   /* the hands a group seats, lower-cased */
   function seatsOf(sed){
@@ -220,11 +248,16 @@
     return fetch(ORIGIN + (name ? '?block=' + encodeURIComponent(name) : ''), { headers: { Accept: 'application/json' }, cache: 'no-store' })
       .then(function(r){ return r.ok ? r.json() : null; }).catch(function(){ return null; });
   }
-  function load(){
+  /* the seats of the scope now chosen, read once per choice */
+  function settle(){
     var g = chosen();
     if (readFor === g) return;
     readFor = g; seats = g ? null : [];
-    readyP = g ? read('sed:' + g).then(function(b){ if (readFor === g){ seats = b ? seatsOf(b) : []; redraw(); } }) : Promise.resolve();
+    seatsP = g ? read('sed:' + g).then(function(b){ if (readFor === g){ seats = b ? seatsOf(b) : []; redraw(); } }) : Promise.resolve();
+  }
+  function load(){
+    settle();
+    if (!personaP) personaP = persona().then(function(){ var was = readFor; settle(); if (readFor !== was) redraw(); });
   }
   function redraw(){ label(); watchers.forEach(function(f){ try { f(); } catch(e){} }); }
   /* narrowing right now: a group is chosen, read, and names somebody */
@@ -267,7 +300,13 @@
     '.sc__any{display:flex;gap:8px}' +
     '.sc__any input{flex:1;min-width:0;background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);border-radius:6px;padding:7px 10px;color:var(--foam);font-family:var(--mono);font-size:13px}' +
     '.sc__any button{background:none;border:1px solid var(--liquid);border-radius:6px;color:var(--liquid);font-family:var(--mono);font-size:12.5px;padding:7px 12px;cursor:pointer}' +
-    '.sc__wait{font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}';
+    '.sc__wait{font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}' +
+    '.sc__mine{border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px}' +
+    '.sc__mine[hidden]{display:none}' +
+    '.sc__mine b{font-family:var(--mono);font-size:13px;color:var(--foam)}' +
+    '.sc__acts button{background:none;border:1px solid var(--liquid);border-radius:6px;color:var(--liquid);font-family:var(--mono);font-size:12.5px;padding:7px 12px;cursor:pointer}' +
+    '.sc__said{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:0}' +
+    '.sc__said:empty{display:none}';
   function style(){
     if (styled) return; styled = true;
     var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
@@ -295,8 +334,23 @@
   /* the chooser: no scope, or a group that seats somebody — the groups this device's
    * name sits in first — or any group by its name */
   function set(g){
+    try { sessionStorage.setItem(KEY, g || '-'); } catch(e){}
     try { localStorage.removeItem(OLD); if (g) localStorage.setItem(KEY, g); else localStorage.removeItem(KEY); } catch(e){}
-    load(); redraw(); if (card && card.open) card.close();
+    settle(); redraw(); if (card && card.open) card.close();
+  }
+  /* the person's default: branch 5 of their lists, written whole under the passport's key —
+   * this scope first and the rest after it, or the list emptied for no scope */
+  var SCOPES_SAYS = "The scopes this hand reads through, the one it reads through first — each a standing group, sed:<group>, whose seated people's walks every page shows while the scope is on (happyseaurchin.com: scope, under options); a voice out of scope is left out and counted, never hidden. RANK IS DEPTH, as in the lists beside this: 5.1 is the default, taken up wherever this hand's name is on the device, and 5.11 the next, offered first in the chooser. Empty, no scope. Who is in a scope stands in that group's own seats, never here, and a window may look through another scope for itself without touching this list. Once this hand's organic web can be read (open-commons 3.1), an empty list means that instead.";
+  var said = '';   /* what the last keep said, shown in the footer it redraws */
+  function makeDefault(g){
+    var h = meRaw(), say = card && card.querySelector('.sc__said');
+    if (!h || !window.siteLists) return;
+    var names = g ? [g].concat((personal || []).filter(function(x){ return x !== g; })) : [];
+    if (say) say.textContent = 'keeping it in lists:' + h + '…';
+    window.siteLists.save(h, 5, SCOPES_SAYS, names.map(function(x){ return 'sed:' + x; })).then(function(w){
+      if (w && w.ok){ personal = names; said = g ? 'sed:' + g + ' is your default now, wherever your name is on the device.' : 'No scope is your default now.'; settle(); redraw(); fill(); }
+      else if (say) say.textContent = w && w.quiet ? 'Nothing kept.' : 'The beach refused it (' + ((w && w.status) || '?') + ').';
+    });
   }
   function listGroups(){
     if (groups) return Promise.resolve(groups);
@@ -305,9 +359,9 @@
         .filter(function(n, i, all){ return /^sed:[\w-]+$/.test(n) && all.indexOf(n) === i; }).map(function(n){ return n.slice(4); }).slice(0, 60);
       return Promise.all(names.map(function(n){ return read('sed:' + n).then(function(b){ return { name: n, seats: b ? seatsOf(b) : [] }; }); }));
     }).then(function(all){
-      var mine = me();
+      var mine = me(), rank = function(x){ var i = (personal || []).indexOf(x.name); return i < 0 ? 99 : i; };
       groups = all.filter(function(x){ return x.seats.length; }).sort(function(a, b){
-        return (b.seats.indexOf(mine) >= 0) - (a.seats.indexOf(mine) >= 0) || b.seats.length - a.seats.length || (a.name < b.name ? -1 : 1);
+        return rank(a) - rank(b) || (b.seats.indexOf(mine) >= 0) - (a.seats.indexOf(mine) >= 0) || b.seats.length - a.seats.length || (a.name < b.name ? -1 : 1);
       });
       return groups;
     });
@@ -316,12 +370,26 @@
     var g = chosen(), list = card.querySelector('.sc__list');
     var row = function(name, line){ return '<button type="button" class="sc__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'no scope') + '</b><span>' + line + '</span></button>'; };
     list.innerHTML = row('', 'every walk, as the beach has it') + '<p class="sc__wait">reading the groups on the beach…</p>';
+    var def = function(){ return (personal && personal[0]) || ''; };
     listGroups().then(function(gs){
       var mine = me();
-      list.innerHTML = row('', 'every walk, as the beach has it') + gs.map(function(x){
+      list.innerHTML = row('', 'every walk, as the beach has it' + (meRaw() && personal && !def() ? ' · your default' : '')) + gs.map(function(x){
         var names = x.seats.slice(0, 5).join(', ') + (x.seats.length > 5 ? ' and ' + (x.seats.length - 5) + ' more' : '');
-        return row(x.name, x.seats.length + ' seated' + (mine && x.seats.indexOf(mine) >= 0 ? ', you among them' : '') + ': ' + esc(names));
-      }).join('') + (gs.some(function(x){ return x.name === g; }) || !g ? '' : row(g, 'chosen on this device; it seats nobody yet'));
+        return row(x.name, (x.name === def() ? 'your default · ' : '') + x.seats.length + ' seated' + (mine && x.seats.indexOf(mine) >= 0 ? ', you among them' : '') + ': ' + esc(names));
+      }).join('') + (gs.some(function(x){ return x.name === g; }) || !g ? '' : row(g, 'chosen here; it seats nobody yet'));
+    });
+    /* the person's default, kept in their lists — offered only where the device knows their name */
+    var foot = card.querySelector('.sc__mine'), h = meRaw();
+    foot.hidden = !h;
+    if (!h) return;
+    (personaP || Promise.resolve()).then(function(){
+      var d = def(), act = '';
+      if (g && g !== d) act = '<button type="button" data-make="' + esc(g) + '">make sed:' + esc(g) + ' my default</button>';
+      else if (!g && d) act = '<button type="button" data-make="">make no scope my default</button>';
+      foot.innerHTML = '<p class="sc__p">Your default, kept in your lists so it follows you to every device: <b>' + (d ? 'sed:' + esc(d) : 'no scope') + '</b>.' +
+        (g === d ? ' This window is looking through it.' : ' This window is looking through ' + (g ? 'sed:' + esc(g) : 'no scope') + '.') + '</p>' +
+        (act ? '<p class="sc__acts">' + act + '</p>' : '') + '<p class="sc__said">' + esc(said) + '</p>';
+      said = '';
     });
   }
   function choose(){
@@ -336,10 +404,12 @@
         '<p class="sc__p">Whose walks every page shows, on this device: all of them, or only the walks of the people seated in one group. A scope hides nothing on the beach, and each list says how many it left out.</p>' +
         '<div class="sc__list"></div>' +
         '<form class="sc__any"><input type="text" spellcheck="false" autocapitalize="off" placeholder="or a group by name, sed:…" aria-label="a group by name"><button type="submit">use</button></form>' +
+        '<div class="sc__mine" hidden></div>' +
         '</div>';
       card.querySelector('.sc__x').addEventListener('click', function(){ card.close(); });
       card.addEventListener('click', function(e){
         if (e.target === card) return card.close();
+        var m = e.target.closest('[data-make]'); if (m) return makeDefault(m.getAttribute('data-make'));
         var b = e.target.closest('[data-g]'); if (b) set(b.getAttribute('data-g'));
       });
       card.querySelector('.sc__any').addEventListener('submit', function(e){
@@ -367,8 +437,8 @@
     name: chosen, choose: choose,
     /* for a page that reads as it draws: whether the scope is settled (none, or its seats
      * read), and a promise of that — draw once it holds, and again only when it changes */
-    known: function(){ return !chosen() || !!seats; },
-    ready: function(){ load(); return readyP; }
+    known: function(){ return personal !== null && (!chosen() || !!seats); },
+    ready: function(){ load(); return personaP.then(function(){ return seatsP; }); }
   };
 })();
 
@@ -1398,10 +1468,21 @@
     return node;
   }
 
-  function readItems(origin, handle, digit){
-    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(listBlockName(handle)),
+  /* ONE READ OF A HAND'S LISTS PER PAGE: the go menu reads branch 2, the project row
+   * branch 1 and the scope branch 5, all from the same block, so the block is fetched
+   * once and shared; a save puts what it wrote in its place, and a read about to be
+   * written back (the relationship line) asks for it fresh */
+  var listsRead = {};
+  function listsBlock(origin, handle, fresh){
+    var k = origin + '|' + handle;
+    if (fresh || !listsRead[k]) listsRead[k] = fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(listBlockName(handle)),
                  { headers:{Accept:'application/json'}, cache:'no-store' })
       .then(function(r){ return r.status === 404 ? null : r.json(); })
+      .catch(function(){ delete listsRead[k]; return null; });
+    return listsRead[k];
+  }
+  function readItems(origin, handle, digit, fresh){
+    return listsBlock(origin, handle, fresh)
       .then(function(b){ return b ? chainToItems(b[String(digit)]) : null; })
       .catch(function(){ return null; });
   }
@@ -1420,11 +1501,16 @@
    * the row's titles read it. A family not yet listed is appended at the chain's end,
    * so listing and saying how you stand to it are one act. Saved under the passport's
    * key, as every block named for a handle is (handle_bound). ── */
+  /* any branch of a hand's lists, by name: the scope keeps its own at 5 (theme.js siteScope) */
+  window.siteLists = {
+    read: function(handle, digit){ return readBranch('https://beach.happyseaurchin.com', handle, digit); },
+    save: function(handle, digit, says, names){ return saveBranch('https://beach.happyseaurchin.com', handle, digit, says, names); }
+  };
   window.siteRelation = {
     read: function(origin, handle){ return readItems(origin || 'https://beach.happyseaurchin.com', handle, 1); },
     write: function(origin, handle, family, line){
       origin = origin || 'https://beach.happyseaurchin.com';
-      return readItems(origin, handle, 1).then(function(items){
+      return readItems(origin, handle, 1, true).then(function(items){
         items = items || [];
         var it = items.filter(function(x){ return x.name === family; })[0];
         if (!it){ it = { name: family }; items.push(it); }
@@ -1483,15 +1569,16 @@
         var body = { block: name, content: content, secret: key, new_lock: key };
         if (existing) body.confirm = true;      /* replacing a block that stands */
 
+        var landed = function(){ listsRead[origin + '|' + handle] = Promise.resolve(content); };
         return post(origin, body).then(function(w){
-          if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} return w; }
+          if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} landed(); return w; }
           var bound = !w.ok && w.data && w.data.code === 'handle_bound';
           if (!lockRequired(w) && !bound) return w;
           var v = prompt(bound ? 'The beach binds ' + name + " to your passport's key — enter that key:" : 'That key was refused for ' + name + '. Try again:');
           if (v === null || !v.trim()) return { ok:false, quiet:true };
           body.secret = v.trim(); body.new_lock = v.trim();
           return post(origin, body).then(function(w2){
-            if (w2.ok) try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){}
+            if (w2.ok){ try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){} landed(); }
             return w2;
           });
         });
