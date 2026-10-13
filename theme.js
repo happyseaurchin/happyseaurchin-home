@@ -909,6 +909,8 @@
     ['dashboard',   'the beach, live'],
     /* the window as it is compiled — ribbons of what entered each call (David, 2026-10-13: "if only it were included in the go dropdown") */
     ['mindflow/flow', 'semantic flow'],
+    /* every call through bsp-mcp as it happens, drawn from the router's reflection (bsp-mcp #530) */
+    ['mindflow/reflection', 'the reflection, live'],
     ['path',        'part by part', '/path/beach-venture'],
     ['tracks',      'the tracks',   '/tracks/beach-venture'],
     ['ring',        'meetings'],

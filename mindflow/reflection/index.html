@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The reflection — every call, live</title>
+<meta name="description" content="Every call through bsp-mcp as it happens: a ribbon per session, a knot per bundle of calls thrown together, coloured by the turn, the session's own shell and the beach around it. Read from the router's reflection, which holds two minutes and stores nothing.">
+<script>
+  /* Theme before first paint: an explicit ?theme=, then this site's stored choice
+     under 'view:theme' (as mindflow/flow reads it), then the system. */
+  (function () {
+    var t = null;
+    try { t = new URLSearchParams(location.search).get('theme'); } catch (e) {}
+    if (t !== 'dark' && t !== 'light') { try { t = localStorage.getItem('view:theme'); } catch (e) {} }
+    if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  /* Chart tokens: the dataviz reference palette, slots 1-3 (validated all-pairs in
+     both modes; light aqua sits under 3:1, so the table view below is the relief). */
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+    --knot: rgba(11,11,11,0.055); --ribbon: rgba(11,11,11,0.035);
+    --turn: #2a78d6; --own: #eb6834; --beach: #1baf7a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+      --knot: rgba(255,255,255,0.07); --ribbon: rgba(255,255,255,0.04);
+      --turn: #3987e5; --own: #d95926; --beach: #199e70;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --knot: rgba(255,255,255,0.07); --ribbon: rgba(255,255,255,0.04);
+    --turn: #3987e5; --own: #d95926; --beach: #199e70;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+  .lede { color: var(--ink2); margin: 0 0 16px; max-width: 760px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 0 0 10px; }
+  .controls label { color: var(--ink2); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+  select { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+           border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+  .status { color: var(--muted); font-size: 12px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--ink2); font-size: 12px; margin: 0 0 10px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend svg { overflow: visible; }
+  .chart { position: relative; background: var(--surface); border: 1px solid var(--border);
+           border-radius: 8px; overflow: hidden; }
+  .chart svg { display: block; width: 100%; }
+  .tip { position: absolute; pointer-events: none; background: var(--surface); color: var(--ink);
+         border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px;
+         box-shadow: 0 2px 8px rgba(0,0,0,0.12); max-width: 320px; }
+  .tip b { display: block; font-weight: 600; }
+  .tip .sub { color: var(--ink2); }
+  details { margin-top: 14px; }
+  summary { cursor: pointer; color: var(--ink2); font-size: 13px; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; font-size: 12px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--grid); }
+  th { color: var(--ink2); font-weight: 600; }
+  td { font-variant-numeric: tabular-nums; }
+  td.key { display: flex; align-items: center; gap: 6px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 18px; max-width: 760px; }
+  .note code { font-size: 11px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The reflection</h1>
+  <p class="lede">Every call through bsp-mcp as it happens: a ribbon per session, a knot per bundle of calls thrown together. It is read from the router's reflection, which holds two minutes and stores nothing; this tab keeps what it has seen while it stays open.</p>
+
+  <div class="controls">
+    <label>who <select id="hand"><option value="">everyone</option></select></label>
+    <label>span <select id="span">
+      <option value="120">2 minutes</option>
+      <option value="600" selected>10 minutes</option>
+      <option value="1800">30 minutes</option>
+      <option value="3600">an hour</option>
+    </select></label>
+    <span class="status" id="status">opening…</span>
+  </div>
+
+  <div class="legend" aria-label="legend">
+    <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--turn)"/></svg>the turn — the strata, received first</span>
+    <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--own)"/></svg>its own shell — blocks named for its hand</span>
+    <span><svg width="12" height="12"><circle cx="6" cy="6" r="5" fill="var(--beach)"/></svg>the beach around it</span>
+    <span><svg width="12" height="12"><circle cx="6" cy="6" r="4" fill="var(--ink2)"/></svg>a write</span>
+    <span><svg width="12" height="12"><circle cx="6" cy="6" r="4" fill="var(--surface)" stroke="var(--ink2)" stroke-width="2"/></svg>a read</span>
+  </div>
+
+  <div class="chart" id="chart">
+    <svg id="svg" role="img" aria-label="Calls through bsp-mcp over time, one row per session"></svg>
+    <div class="tip" id="tip" hidden></div>
+  </div>
+
+  <details>
+    <summary>the calls as a table</summary>
+    <table>
+      <thead><tr><th>time</th><th>who</th><th>block</th><th>address</th><th>act</th><th>kind</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </details>
+
+  <p class="note" id="note"></p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var P = new URLSearchParams(location.search);
+  var FROM = P.get('from') || 'https://bsp.hermitcrab.me/reflection';
+  var BEACH = P.get('beach') || 'https://beach.happyseaurchin.com';
+  var EVERY = Math.max(1, Number(P.get('every')) || 4);
+  var HOLD_MS = 60 * 60 * 1000;      // what this tab keeps: an hour at most
+  var KNOT_MS = 1500;                // calls this close on one lane are one bundle
+  var NS = 'http://www.w3.org/2000/svg';
+
+  var held = new Map();              // one entry per call seen
+  var lanes = new Map();             // lane -> { hand, first }
+  var lastOk = null, lastErr = null;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var handSel = $('hand'), spanSel = $('span'), svg = $('svg'), tip = $('tip'), chart = $('chart');
+  if (P.get('hand')) { var o = document.createElement('option'); o.value = o.textContent = P.get('hand'); handSel.appendChild(o); handSel.value = P.get('hand'); }
+  if (P.get('span') && spanSel.querySelector('option[value="' + Number(P.get('span')) + '"]')) spanSel.value = String(Number(P.get('span')));
+
+  var note = $('note');
+  note.appendChild(document.createTextNode('Source: '));
+  var code = document.createElement('code'); code.textContent = FROM + '?beach=' + BEACH; note.appendChild(code);
+  note.appendChild(document.createTextNode(' — the router’s reflection laid out as data: a lane per session (never its id), a name only where the session gave one at a door. Nothing here is sent anywhere or kept after the tab closes.'));
+
+  // Which part of a mind's window a call belongs to — the present phase, the
+  // shell, or the task's beach. A call is the turn when it reads the strata
+  // family or the teaching it rests on; its own shell when the block is named
+  // for the lane's hand; the beach around it otherwise.
+  var STRATA = { 'spine:turn': 1, 'function:turn': 1, 'sunstone': 1, 'whetstone': 1, 'strata': 1 };
+  function kindOf(l) {
+    var b = String(l.block || '').toLowerCase();
+    if (STRATA[b] || b.indexOf('turn:') === 0) return 'turn';
+    var hand = String(l.hand || '').toLowerCase();
+    if (hand && b.split(':').pop() === hand) return 'own';
+    return 'beach';
+  }
+  var KIND_NAME = { turn: 'the turn', own: 'its own shell', beach: 'the beach around it' };
+  var KIND_VAR = { turn: 'var(--turn)', own: 'var(--own)', beach: 'var(--beach)' };
+
+  function clock(ms) { return new Date(ms).toTimeString().slice(0, 8); }
+  function who(lane) { var ln = lanes.get(lane); return (ln && ln.hand) || 'someone'; }
+
+  function take(d) {
+    for (var i = 0; i < d.looks.length; i++) {
+      var l = d.looks[i];
+      var ts = Date.parse(l.at);
+      if (!isFinite(ts)) continue;
+      var key = [l.lane, l.at, l.block, l.spindle, l.wrote ? 'w' : 'r'].join('|');
+      if (!held.has(key)) held.set(key, { lane: l.lane, hand: l.hand || null, block: l.block, spindle: l.spindle || '', wrote: !!l.wrote, ts: ts });
+      var ln = lanes.get(l.lane);
+      if (!ln) lanes.set(l.lane, { hand: l.hand || null, first: ts });
+      else { if (l.hand && !ln.hand) ln.hand = l.hand; if (ts < ln.first) ln.first = ts; }
+    }
+  }
+
+  function forget() {
+    var cutoff = Date.now() - HOLD_MS, live = {};
+    held.forEach(function (v, k) { if (v.ts < cutoff) held.delete(k); else live[v.lane] = 1; });
+    lanes.forEach(function (v, k) { if (!live[k]) lanes.delete(k); });
+  }
+
+  function refreshHands() {
+    var have = {}, cur = handSel.value;
+    for (var i = 1; i < handSel.options.length; i++) have[handSel.options[i].value] = 1;
+    var names = [];
+    lanes.forEach(function (v) { if (v.hand && !have[v.hand]) { have[v.hand] = 1; names.push(v.hand); } });
+    names.sort().forEach(function (n) { var o = document.createElement('option'); o.value = o.textContent = n; handSel.appendChild(o); });
+    handSel.value = cur;
+  }
+
+  function el(name, attrs, parent) {
+    var e = document.createElementNS(NS, name);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function text(x, y, s, attrs, parent) {
+    var t = el('text', Object.assign({ x: x, y: y }, attrs || {}), parent);
+    t.textContent = s;
+    return t;
+  }
+
+  function showTip(evt, c) {
+    tip.textContent = '';
+    var b = document.createElement('b'); b.textContent = c.block + (c.spindle ? ' @ ' + c.spindle : ' (the root)'); tip.appendChild(b);
+    var s = document.createElement('div'); s.className = 'sub';
+    s.textContent = (c.wrote ? 'write' : 'read') + ' · ' + clock(c.ts) + ' · ' + who(c.lane) + ' · lane ' + c.lane.slice(0, 4);
+    tip.appendChild(s);
+    var k = document.createElement('div'); k.className = 'sub'; k.textContent = KIND_NAME[kindOf(c)]; tip.appendChild(k);
+    tip.hidden = false;
+    var r = chart.getBoundingClientRect();
+    var x = evt.clientX - r.left + 14, y = evt.clientY - r.top + 14;
+    if (x + tip.offsetWidth > r.width - 8) x = evt.clientX - r.left - tip.offsetWidth - 14;
+    if (y + tip.offsetHeight > r.height - 8) y = evt.clientY - r.top - tip.offsetHeight - 14;
+    tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+  }
+
+  function render() {
+    var now = Date.now();
+    var span = Number(spanSel.value) * 1000, t0 = now - span;
+    var only = handSel.value;
+    var calls = [];
+    held.forEach(function (c) { if (c.ts >= t0 && (!only || who(c.lane) === only)) calls.push(c); });
+    calls.sort(function (a, b) { return a.ts - b.ts; });
+
+    var order = [], seen = {};
+    calls.forEach(function (c) { if (!seen[c.lane]) { seen[c.lane] = 1; order.push(c.lane); } });
+
+    var W = Math.max(320, chart.clientWidth), labelW = W < 560 ? 92 : 132, padR = 18;
+    var rowH = 46, top = 10, axisH = 28;
+    var H = top + Math.max(1, order.length) * rowH + axisH;
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.setAttribute('height', H);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    var x = function (t) { return labelW + (t - t0) / span * (W - labelW - padR); };
+
+    // the time axis — recessive hairlines, labels in muted ink
+    var step = span <= 120000 ? 15000 : span <= 600000 ? 60000 : span <= 1800000 ? 300000 : 600000;
+    var axisY = top + Math.max(1, order.length) * rowH;
+    el('line', { x1: labelW, x2: W - padR, y1: axisY, y2: axisY, stroke: 'var(--axis)', 'stroke-width': 1 }, svg);
+    for (var t = Math.ceil(t0 / step) * step; t <= now; t += step) {
+      var gx = x(t);
+      el('line', { x1: gx, x2: gx, y1: top, y2: axisY, stroke: 'var(--grid)', 'stroke-width': 1 }, svg);
+      text(gx, axisY + 17, step < 60000 ? clock(t) : clock(t).slice(0, 5), { 'text-anchor': 'middle', 'font-size': 11, fill: 'var(--muted)' }, svg);
+    }
+
+    if (!order.length) {
+      var msg = lastErr
+        ? 'The reflection’s window is not answering at ' + FROM + ' (' + lastErr + ').'
+        : (lastOk ? 'No calls through bsp-mcp in this span yet — the window is watching.' : 'Opening the window…');
+      text(W / 2, top + rowH / 2 + 4, msg, { 'text-anchor': 'middle', 'font-size': 13, fill: 'var(--ink2)' }, svg);
+    }
+
+    order.forEach(function (lane, i) {
+      var y = top + i * rowH + rowH / 2;
+      var mine = calls.filter(function (c) { return c.lane === lane; });
+      text(10, y - 2, who(lane), { 'font-size': 13, fill: 'var(--ink)' }, svg);
+      text(10, y + 13, 'lane ' + lane.slice(0, 4), { 'font-size': 11, fill: 'var(--muted)' }, svg);
+
+      // the knots: calls thrown together, placed so none hides another
+      var knots = [], cur = null;
+      mine.forEach(function (c) {
+        if (cur && c.ts - cur.last <= KNOT_MS) { cur.calls.push(c); cur.last = c.ts; }
+        else { cur = { calls: [c], last: c.ts }; knots.push(cur); }
+      });
+      var px = -Infinity, placed = [];
+      knots.forEach(function (k) {
+        k.xs = k.calls.map(function (c) { var cx = Math.max(x(c.ts), px + 12); px = cx; return cx; });
+        placed.push(k);
+      });
+      if (!placed.length) return;
+
+      // the ribbon: the lane's reach across this span
+      var rx0 = placed[0].xs[0], last = placed[placed.length - 1], rx1 = last.xs[last.xs.length - 1];
+      el('rect', { x: rx0 - 9, y: y - 9, width: Math.max(18, rx1 - rx0 + 18), height: 18, rx: 9, fill: 'var(--ribbon)' }, svg);
+
+      var labelEnd = -Infinity;      // a knot's count is said only where it has room
+      placed.forEach(function (k) {
+        var a = k.xs[0], b = k.xs[k.xs.length - 1];
+        if (k.calls.length > 1) {
+          el('rect', { x: a - 9, y: y - 11, width: b - a + 18, height: 22, rx: 11, fill: 'var(--knot)', stroke: 'var(--border)', 'stroke-width': 1 }, svg);
+          var say = k.calls.length + ' together', half = say.length * 2.9, mid = (a + b) / 2;
+          if (mid - half > labelEnd + 6) {
+            text(mid, y - 15, say, { 'text-anchor': 'middle', 'font-size': 10, fill: 'var(--muted)' }, svg);
+            labelEnd = mid + half;
+          }
+        }
+        k.calls.forEach(function (c, j) {
+          var cx = k.xs[j], col = KIND_VAR[kindOf(c)];
+          el('circle', c.wrote
+            ? { cx: cx, cy: y, r: 5, fill: col, stroke: 'var(--surface)', 'stroke-width': 2 }
+            : { cx: cx, cy: y, r: 4, fill: 'var(--surface)', stroke: col, 'stroke-width': 2 }, svg);
+          var hit = el('circle', { cx: cx, cy: y, r: 10, fill: 'transparent', tabindex: 0 }, svg);
+          hit.addEventListener('pointerenter', function (e) { showTip(e, c); });
+          hit.addEventListener('pointermove', function (e) { showTip(e, c); });
+          hit.addEventListener('pointerleave', function () { tip.hidden = true; });
+          hit.addEventListener('focus', function () { var r = hit.getBoundingClientRect(); showTip({ clientX: r.left + 10, clientY: r.top + 10 }, c); });
+          hit.addEventListener('blur', function () { tip.hidden = true; });
+        });
+      });
+    });
+
+    // the table — the relief for any reader the colours fail
+    var body = $('rows');
+    while (body.firstChild) body.removeChild(body.firstChild);
+    calls.slice(-300).reverse().forEach(function (c) {
+      var tr = document.createElement('tr');
+      [clock(c.ts), who(c.lane) + ' · ' + c.lane.slice(0, 4), c.block, c.spindle || '(the root)', c.wrote ? 'write' : 'read'].forEach(function (v) {
+        var td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+      });
+      var td = document.createElement('td'); td.className = 'key';
+      var sw = el('svg', { width: 10, height: 10 }); el('circle', { cx: 5, cy: 5, r: 4, fill: KIND_VAR[kindOf(c)] }, sw);
+      td.appendChild(sw); td.appendChild(document.createTextNode(KIND_NAME[kindOf(c)]));
+      tr.appendChild(td); body.appendChild(tr);
+    });
+
+    $('status').textContent = lastErr && !lastOk
+      ? 'not answering yet'
+      : 'reading every ' + EVERY + 's · ' + held.size + ' call' + (held.size === 1 ? '' : 's') + ' kept in this tab' + (lastOk ? ' · last read ' + clock(lastOk.getTime()) : '');
+  }
+
+  function poll() {
+    fetch(FROM + '?beach=' + encodeURIComponent(BEACH), { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (d) {
+        if (!d || !Array.isArray(d.looks)) throw new Error('not a reflection window');
+        take(d); lastOk = new Date(); lastErr = null;
+      })
+      .catch(function (e) { lastErr = (e && e.message) || String(e); })
+      .then(function () { forget(); refreshHands(); render(); });
+  }
+
+  handSel.addEventListener('change', render);
+  spanSel.addEventListener('change', render);
+  window.addEventListener('resize', render);
+  poll();
+  setInterval(poll, EVERY * 1000);
+})();
+</script>
+</body>
+</html>
