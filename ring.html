@@ -74,7 +74,7 @@
   .toggle button+button{border-left:1px solid var(--line-strong)}
   .toggle button[aria-pressed="true"]{background:var(--liquid);color:var(--abyss)}
   .plain{border:1px solid var(--line-strong);border-radius:6px}
-  a.plain{display:inline-block;text-decoration:none}
+  a.plain,a.make{display:inline-block;text-decoration:none}
   .plain[aria-pressed="true"]{border-color:var(--liquid);color:var(--liquid)}
   .field{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
   select,input,textarea{font:inherit;color:var(--foam);background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:6px}
@@ -223,6 +223,9 @@
   <span class="dot"></span>
   <span><b id="bar-name">ring</b> · a meeting drawn as one ring</span>
   <span class="spacer"></span>
+  <button id="make" title="Make a meeting of your own from this one, or a design of your own">duplicate meeting</button>
+  <button id="btn-tools" title="The meeting's tools beside Invite: the State Stack. This device remembers the choice for every meeting">show tools</button>
+  <button id="btn-layers" title="The ring's two layers, the phases and their parts, or the phases alone. This device remembers the choice for every meeting">show 1 layer</button>
   <button id="btn-pool" hidden title="Open a room for this meeting, to talk in before it, during it and after it, in the magic mirror">create a pool</button>
   <button id="btn-mirror" title="Show links into the magic mirror, where each part of the meeting is live, with everyone's readings there">show mirror links</button>
   <button id="btn-nums" title="Show the numbering, which is each part's address">show numbers</button>
@@ -235,10 +238,8 @@
       <div class="titlerow">
         <h1 id="title">The ring</h1>
         <div class="acts" id="acts" hidden>
-          <button type="button" class="make" id="make" title="Make a meeting of your own from this one, or a design of your own">Duplicate</button>
-          <button type="button" class="plain" id="copylink" title="Copies this meeting's own link, to send to the people coming">Copy link</button>
-          <a class="plain" id="invitelink" href="/invite" title="The invitation: who is invited, and how each one's AI finds a time with everyone else's">Invite</a>
-          <a class="plain" id="stacklink" href="/stack" title="The State Stack: on the big screen, everyone scans its code and sets their own stack on their phone">State Stack</a>
+          <a class="make" id="invitelink" href="/invite" title="The invitation: who is invited, and how each one's AI finds a time with everyone else's">Invite</a>
+          <a class="plain" id="stacklink" href="/stack" hidden title="The State Stack: on the big screen, everyone scans its code and sets their own stack on their phone">State Stack</a>
         </div>
       </div>
       <p class="fixed" id="fixed" hidden></p>
@@ -690,13 +691,15 @@ function drawRing(){
   }
   if (ov) el('circle', { cx:CX, cy:CY, r:(R.a0 + R.a1) / 2, 'class':'track' }, svg);
   const curStep = ri && ri.cur >= 0 ? M.steps[ri.cur] : null;
+  /* one layer: the phases alone, filling both bands; two: the phases, and their parts on the outer ring (function:meeting 3) */
+  const one = LAYERS === 1, P1 = one ? R.q1 : R.p1;
   M.ring.forEach(p => {
-    const g = el('path', { d: sector(R.p0, R.p1, p.d0, p.d1), 'class':'seg phase', tabindex:'0', role:'button',
+    const g = el('path', { d: sector(R.p0, P1, p.d0, p.d1), 'class':'seg phase', tabindex:'0', role:'button',
       'aria-label': 'Phase ' + p.title + ', ' + fmt(p.min * k), 'data-a': p.addr }, svg);
     g.style.fill = colorOf(p);
     if (S.sel === p.addr) g.classList.add('sel');
     if (curStep && curStep.p === p) g.classList.add('now');
-    p.parts.forEach(q => {
+    if (!one) p.parts.forEach(q => {
       const gq = el('path', { d: sector(R.q0, R.q1, q.d0, q.d1), 'class':'seg part', tabindex:'0', role:'button',
         'aria-label': 'Part ' + q.title + ' of ' + p.title + ', ' + fmt(q.plan * k), 'data-a': q.addr }, svg);
       gq.style.fill = colorOf(q);
@@ -707,9 +710,9 @@ function drawRing(){
   M.ring.forEach(p => {
     const t = (S.nums ? p.addr + '  ' : '') + p.title, size = (p.d1 - p.d0) > 40 ? 13 : 11.5;
     const mins = fmt(p.min * k) + (p.lo != null ? ' · ' + rangeOf(p, k) : '');
-    const tl = wrap(t, 100, p.d0, p.d1, size, 'phase');
-    arcStack(tl.map(x => [x, tl.length > 1 ? size * 0.88 : size, 'phase']).concat([[mins, 9, 'min']]), 93, 14, p.d0, p.d1);
-    p.parts.forEach(q => {
+    const tl = wrap(t, one ? 120 : 100, p.d0, p.d1, size, 'phase');
+    arcStack(tl.map(x => [x, tl.length > 1 ? size * 0.88 : size, 'phase']).concat([[mins, 9, 'min']]), one ? 114 : 93, 14, p.d0, p.d1);
+    if (!one) p.parts.forEach(q => {
       const qt = (S.nums ? q.addr.split('.')[1] + ' · ' : '') + q.title;
       arcStack(wrap(qt, 145, q.d0, q.d1, 10.5, 'part').map(x => [x, 10.5, 'part']), 145, 15, q.d0, q.d1);
     });
@@ -899,8 +902,7 @@ function drawPanel(){
   if (S.made && S.made === FAMILY) h += '<div class="made"><p>' + (S.madeKind === 'design'
       ? '<b>Your design is made</b>, kept under your key. Change it with Claude, and duplicate meetings from it.'
       : '<b>Your meeting is made</b>, kept under your key, with you on its list. At its invitation, add the people coming and tap Invite: each finds its link in their parlour, and each one’s AI finds a time with everyone else’s. If you are arranging it for others, take yourself off the list there.') +
-    '</p><div class="share">' + (S.madeKind === 'design' ? '' : '<a class="btn" style="padding:4px 10px;text-decoration:none" href="' + SITE + '/invite/' + encodeURIComponent(FAMILY) + '">Invite</a>') +
-    '<button type="button" class="btn" style="padding:4px 10px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></div></div>';
+    '</p>' + (S.madeKind === 'design' ? '' : '<div class="share"><a class="btn" style="padding:4px 10px;text-decoration:none" href="' + SITE + '/invite/' + encodeURIComponent(FAMILY) + '">Invite</a></div>') + '</div>';
   const v = viewed();
   if (v) h += '<div class="viewing"><span>Showing the run kept by <b>' + esc(v.who) + '</b>, ' + esc(runDate(v)) + ': ' + fmt(v.taken) + ' of ' + fmt(v.planned) + '</span><button type="button" class="btn warn" data-view="">Back to the plan</button></div>';
   h += crumbs(n);
@@ -940,11 +942,6 @@ function drawPanel(){
   const rn = $('rnote'); if (rn && window.dictate) window.dictate(rn);
 }
 
-function copyLink(btn){
-  const url = btn.getAttribute('data-copy'), done = t => { const o = btn.textContent; btn.textContent = t; setTimeout(() => { btn.textContent = o; }, 1600); };
-  try { navigator.clipboard.writeText(url).then(() => done('Copied'), () => done('Select the link to copy')); } catch(e){ done('Select the link to copy'); }
-}
-document.addEventListener('click', ev => { const c = ev.target.closest('[data-copy]'); if (c){ ev.preventDefault(); copyLink(c); } });
 panel.addEventListener('click', ev => {
   if (ev.target.closest('[data-make]')){ openMake(); return; }
   const g = ev.target.closest('[data-go]');
@@ -1096,7 +1093,25 @@ function openMake(then){
   $('mk-title').focus();
 }
 function showLink(){ const s = freeSlug(slugify($('mk-title').value)); $('mk-link').textContent = s ? 'Its link will be happyseaurchin.com/ring/' + s : ''; }
-$('make').addEventListener('click', () => openMake());
+/* Duplicate and the tools stand under options: the header keeps Invite, the act most people come for */
+const closeOptions = () => { const dd = document.getElementById('dd-acts'); if (dd) dd.open = false; };
+$('make').addEventListener('click', () => { closeOptions(); openMake(); });
+/* the tools beside Invite, shown or hidden on this device for every meeting: the State Stack for now */
+let TOOLS = (() => { try { return localStorage.getItem('ring:tools') === '1'; } catch(e){ return false; } })();
+function drawTools(){ $('btn-tools').textContent = TOOLS ? 'hide tools' : 'show tools'; $('stacklink').hidden = !TOOLS; }
+$('btn-tools').addEventListener('click', () => {
+  TOOLS = !TOOLS; try { localStorage.setItem('ring:tools', TOOLS ? '1' : '0'); } catch(e){}
+  closeOptions(); drawTools();
+});
+drawTools();
+/* the ring's layers on this device for every meeting: a meeting has two (function:meeting 3), its phases and their parts */
+let LAYERS = (() => { try { return localStorage.getItem('ring:layers') === '1' ? 1 : 2; } catch(e){ return 2; } })();
+const drawLayers = () => { $('btn-layers').textContent = LAYERS === 1 ? 'show 2 layers' : 'show 1 layer'; };
+$('btn-layers').addEventListener('click', () => {
+  LAYERS = LAYERS === 1 ? 2 : 1; try { localStorage.setItem('ring:layers', String(LAYERS)); } catch(e){}
+  closeOptions(); drawLayers(); drawRing();
+});
+drawLayers();
 $('invitelink').addEventListener('click', ev => { if (IS_DESIGN){ ev.preventDefault(); openMake('invite'); } });
 /* the pre-meeting's Who names the invited (function:meeting 2.1): a meeting to hold opens with its maker alone there,
    'WHO: invited — <maker>. Each says …', its own people and nobody copied from the meeting it came from */
@@ -1305,7 +1320,6 @@ function start(){
   const isDesign = /\(design\)/i.test(M.root.title);
   $('eyebrow').innerHTML = M.source ? 'A copy of <a href="' + ringHref(M.source.name) + '">' + esc(M.source.title) + '</a>, drawn as one ring' : (isDesign ? 'A design for a meeting' : 'A meeting') + ', drawn as one ring';
   $('acts').hidden = false;
-  $('copylink').setAttribute('data-copy', 'https://happyseaurchin.com/ring/' + FAMILY);
   /* a design is copied, never held, so only a meeting to hold has an invitation: a design's Invite opens Duplicate,
      and the invitation of the copy opens once it is made */
   IS_DESIGN = isDesign;
