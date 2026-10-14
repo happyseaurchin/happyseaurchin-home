@@ -345,9 +345,19 @@
   /* The ask box keeps its draft (on this site only) and takes dictation — the browser's own
    * speech service, and only where the page granted the microphone. The passphrase is never
    * typed here, so no credential ever meets either. */
+  /* a sentence per locked phrase, as the site's own dictation shapes it (theme.js sentence()): an
+   * engine recognising on the device hands back bare words, so a bare phrase gets a capital where
+   * a sentence starts and a full stop where it ended; a phrase the engine punctuated stays as it came */
+  function sentence(before, t) {
+    if (/[.,!?;:…]/.test(t)) return t;
+    if (/^en\b/i.test(navigator.language || '')) t = t.replace(/\bi\b/g, 'I');
+    if (!before.trim() || /[.!?…]["'”’)\]]*\s*$/.test(before) || /\n\s*$/.test(before)) t = t.charAt(0).toUpperCase() + t.slice(1);
+    return t + '.';
+  }
   function insert(t) {
     var el = $('q'), a = el.selectionStart, b = el.selectionEnd, v = el.value;
     var before = v.slice(0, a), gap = before && !/\s$/.test(before) ? ' ' : '';
+    t = sentence(before, t);
     el.value = before + gap + t + v.slice(b);
     el.selectionStart = el.selectionEnd = a + gap.length + t.length;
     put(localStorage, DRAFT, el.value);
