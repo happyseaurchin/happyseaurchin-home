@@ -986,6 +986,8 @@
     ['path',        'part by part', '/path/beach-venture'],
     ['tracks',      'the tracks',   '/tracks/beach-venture'],
     ['ring',        'meetings'],
+    /* a meeting's State Stack, live: phones set their stacks, one screen draws the room (task:weft 33, 2026-10-14) */
+    ['stack',       'the state stack'],
     ['availability','availability'],
     ['tree',        'every field'],
     ['found',       'found a field'],
