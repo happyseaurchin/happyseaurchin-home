@@ -1,0 +1,1160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>The State Stack, as birds</title>
+<meta name="description" content="The State Stack's room drawn as shorebirds: a bird for each person, lifting by their own lean; past the decision point the birds that are up stay up and follow one another; at B a murmuration; toward A the flock leaves for the light.">
+<meta property="og:title" content="The State Stack, as birds">
+<meta property="og:description" content="A bird for each person in the room, on a shore before dawn: below the decision point nobody moves alone, at B a murmuration, and toward A the flock leaves for the light.">
+<meta property="og:image" content="https://happyseaurchin.com/animations/state-stack-birds.jpg">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<script>if(window.self!==window.top)document.documentElement.classList.add('framed');</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..600&display=swap">
+<!--
+  THE STATE STACK, AS BIRDS — keel, 14 October 2026, at David's word.
+
+  FOR CLAUDE CODE (weft): the drawing is one self-contained block, StackBirds, in the first <script> below. Everything
+  else on this page is a demo harness (the State Stack's example rooms, a bird of your own, a read-only follow of a live
+  meeting) that /stack does not need.
+
+  To put the birds on /stack:
+    1. Copy the StackBirds block into stack.html (or a /vendor file). Give the room screen a <canvas> beside #fig-room,
+       with a pair of .seg buttons in .ctl-row, "Lines" and "Birds", that swaps which of the two shows in .room .fig.
+       The canvas takes its size from CSS. Put it absolutely positioned (inset 0, width and height 100%) inside a box
+       that has the size, as Matthew's scenes do, so the canvas's own pixels never feed back into the grid's layout.
+       Hidden and shown again, it picks up where the room is.
+    2. const BIRDS = StackBirds.create(canvas, { scale: 1.25 });   // scale: bird size; ~1.25 reads across a room
+    3. In paintRoom():   BIRDS.set(list.map(p => ({ id: p.id, v: p.v })));
+       In paintYours():  BIRDS.set(others.map(p => ({ id: p.id, v: p.v })).concat([{ id: ME.id, v: ME.v, mine: true }]));
+       v is the stack exactly as the page keeps it: [social, relational power, psychological], each 0 (C) to 2 (A).
+    4. Leave the side panel as it is. The birds read the room with the page's own arithmetic (the median of each
+       person's mean, phaseOf's bands), so they never disagree with the phase the panel names.
+
+  What the birds do, and from what:
+    - one bird per stack (option perPerson gives a few each instead). The phone's id seeds the bird, so the same
+      phone always hatches the same bird: its size, bill, gait. No name is ever drawn: name the system, never a person.
+    - psychological: how often a bird tries to lift (the turn begins within). relational power: on the sand, a bird
+      held at C keeps others off its patch, chasing or giving way (I > you, I < you); in the air it sets how closely
+      the bird follows its neighbours. social: how long a lone flight lasts before the structure brings it down. The
+      mean of the three: how high it climbs, and whether the flock can hold it.
+    - the room (the median of means, eased over a couple of seconds): below the decision point every flight ends on
+      the sand, because nobody moves alone; through it (0.35 to 0.65) the birds that are up begin to stay up and
+      circle together; at B they mill as a murmuration, a bird still near C staying on the sand; through 1.35 to
+      1.65 the flock ranges out toward the light and comes back; at A it goes, into the light on the horizon, and
+      stays visible there as a knot of specks. The light comes up with the room: C's slate night, B's amber dawn,
+      A's teal morning, the State Stack's own colours.
+    - a stack that arrives later flies in and lands; one that leaves the room flies off.
+
+  API:  const b = StackBirds.create(canvas, { perPerson: 1, scale: 1, trails: false, palette: {...}, sky: [C, B, A] });
+        b.set(list)              [{ id, v: [soc, rel, psy], mine? }]   ({ id, value } also works, for one number)
+        b.options({ perPerson, scale, trails })   change options live
+        b.state()                { n, med, phase: [label, cls], flock, away, ground, up, gone } for captions, labels
+        b.advance(seconds)       run the world ahead without waiting (tests, screenshots)
+        b.destroy()
+  It pauses off-screen and in a hidden tab, and draws one still picture for anyone whose device asks for less motion.
+  Plain canvas 2D, no libraries; each bird attends to its seven nearest, fine to a few hundred birds.
+-->
+<style>
+:root {
+  --paper: #F3F6F5; --panel: #E7EDEB; --ink: #16212B; --ink-2: #4E5B66; --rule: #B4C0C5;
+  --c: #7B8692; --b: #C27D0E; --b-ink: #8F5A00; --a: #1E7D6C;
+  --display: "Newsreader", Georgia, "Times New Roman", serif;
+  --body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0D1316; --panel: #16201F; --ink: #E3EAEC; --ink-2: #9EAEB6; --rule: #36464E;
+    --c: #8B97A2; --b: #E6A63C; --b-ink: #F0BC63; --a: #4FC3A9; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0D1316; --panel: #16201F; --ink: #E3EAEC; --ink-2: #9EAEB6; --rule: #36464E;
+  --c: #8B97A2; --b: #E6A63C; --b-ink: #F0BC63; --a: #4FC3A9; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 17px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 760px; margin-inline: auto; padding-inline: 16px; }
+header.wrap { padding-block: 30px 2px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-2); margin: 0; }
+h1 { font-family: var(--display); font-weight: 600; font-size: clamp(34px, 8vw, 54px); line-height: 1.02; letter-spacing: -.012em; margin: 8px 0 10px; text-wrap: balance; }
+h1 em { font-style: italic; font-weight: 500; color: var(--a); }
+h2 { font-family: var(--display); font-weight: 500; font-size: 27px; line-height: 1.1; margin: 0 0 8px; text-wrap: balance; }
+.lede { margin: 0; max-width: 60ch; font-size: 18px; }
+section { padding-block: 22px 26px; border-top: 1px solid var(--rule); }
+section.first { border-top: 0; padding-top: 14px; }
+.intro { margin: 0 0 12px; max-width: 62ch; color: var(--ink-2); }
+button, input { font: inherit; color: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--a); outline-offset: 2px; }
+
+.ctl-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.ctl-lab { font-family: var(--mono); font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-2); width: 100%; }
+.seg { border: 1px solid var(--rule); background: transparent; border-radius: 999px; padding: 6px 13px; font-size: 14.5px; cursor: pointer; }
+.seg[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+/* The scene: wider than the column, the shore before dawn painted by the stylesheet so it shows before any script runs. */
+.scene { max-width: 1140px; margin: 16px auto 0; padding-inline: 12px; }
+.scene canvas { display: block; width: 100%; height: clamp(320px, 64vh, 780px); border-radius: 14px; touch-action: pan-y;
+  background: linear-gradient(to bottom, #04080D 0%, #0A131B 30%, #18222A 55.8%, #0A1318 56.1%, #0F1D24 69%, #172126 70%, #262A2A 82%, #313432 100%); }
+@media (max-width: 640px) { .scene { padding-inline: 0; } .scene canvas { border-radius: 0; height: clamp(300px, 54vh, 520px); } }
+
+.caption { margin-top: 16px; min-height: 6.2em; }
+.caption h3 { font-family: var(--display); font-style: italic; font-weight: 500; font-size: 21px; margin: 0 0 2px; }
+.caption p { margin: 0; max-width: 62ch; }
+.readout { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 12px 16px; background: var(--panel); border-radius: 14px; margin-top: 10px; }
+.readout .lbl { font-family: var(--mono); font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-2); }
+.readout strong { font-family: var(--display); font-style: italic; font-weight: 500; font-size: 30px; line-height: 1.05; }
+.readout .say { flex: 1 1 260px; margin: 0; font-size: 15.5px; color: var(--ink-2); }
+.ph-c { color: var(--c); } .ph-cb, .ph-b { color: var(--b-ink); } .ph-ba, .ph-a { color: var(--a); }
+.nums { margin: 8px 0 0; font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); }
+.quiet { margin-left: auto; border: 0; background: none; font-family: var(--mono); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); cursor: pointer; padding: 4px 0; text-decoration: underline; text-underline-offset: 3px; }
+
+.you { display: grid; gap: 12px; }
+.chk { display: inline-flex; align-items: center; gap: 10px; font-size: 15.5px; cursor: pointer; }
+.chk input { width: 20px; height: 20px; accent-color: var(--ink); }
+.sl { display: grid; gap: 2px; }
+.sl label { font-family: var(--mono); font-size: 11.5px; letter-spacing: .09em; text-transform: uppercase; color: var(--ink-2); }
+.sl input[type="range"] { width: 100%; accent-color: var(--b); margin: 0; }
+.sl .ticks { display: flex; justify-content: space-between; font-family: var(--display); font-style: italic; font-size: 14px; color: var(--ink-2); padding-inline: 2px; }
+
+.live { display: flex; flex-wrap: wrap; gap: 8px; }
+.live input { flex: 1 1 260px; min-width: 0; background: transparent; border: 1px solid var(--rule); border-radius: 10px; padding: 9px 12px; font-size: 15.5px; }
+.live input:focus { border-color: var(--ink-2); outline: none; }
+.status { margin: 8px 0 0; font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); min-height: 1.5em; }
+
+.key { display: grid; gap: 10px; }
+.key p { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--panel); font-size: 15px; line-height: 1.5; }
+.key b { font-family: var(--display); font-style: italic; font-weight: 500; font-size: 17px; }
+footer.wrap { padding-block: 6px 44px; color: var(--ink-2); font-size: 13.5px; }
+footer p { margin: 0 0 6px; max-width: 70ch; }
+footer a { color: var(--ink); }
+.links { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+.back { display: inline-block; color: var(--ink); font-size: 14px; text-decoration: none; border: 1px solid var(--rule); border-radius: 999px; padding: 5px 12px; }
+.back:hover { border-color: var(--ink-2); }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <p class="eyebrow">Fulcrum · the State Stack, as birds</p>
+  <h1>The room as a <em>flock</em></h1>
+  <p class="lede">A bird for each person in the room, on a shore before dawn. Whether the birds that lift can stay up together depends on where most of the room is.</p>
+</header>
+
+<figure class="scene" style="margin-bottom:0">
+  <canvas id="flock" role="img" aria-label="A shore before dawn, a bird for each person in the room."></canvas>
+</figure>
+
+<main>
+<section class="wrap first">
+  <div class="ctl-row" aria-label="Example room">
+    <span class="ctl-lab">Example room</span>
+    <button class="seg scen" type="button" data-scen="arrive" aria-pressed="true">Arrive</button>
+    <button class="seg scen" type="button" data-scen="turn" aria-pressed="false">The turn</button>
+    <button class="seg scen" type="button" data-scen="back" aria-pressed="false">Back to normal life</button>
+    <button class="seg scen" type="button" data-scen="ba" aria-pressed="false">B ↔ A</button>
+    <button class="seg scen" type="button" data-scen="away" aria-pressed="false">Toward A</button>
+  </div>
+  <div class="caption" aria-live="polite">
+    <h3 id="cap-title">Arrive</h3>
+    <p id="cap-text"></p>
+  </div>
+  <div class="readout" aria-live="polite">
+    <span class="lbl">Most of the room</span>
+    <strong id="phase" class="ph-c">C</strong>
+    <p class="say" id="say"></p>
+    <button class="quiet" type="button" id="nums-btn" aria-pressed="false">numbers</button>
+  </div>
+  <p class="nums" id="nums" hidden></p>
+</section>
+
+<section class="wrap" id="yours">
+  <h2>Your bird</h2>
+  <p class="intro">Set your own stack and your bird joins the room, ringed so you can find it.</p>
+  <div class="you">
+    <label class="chk" for="you-on"><input type="checkbox" id="you-on"> Show my bird in the room</label>
+    <div class="sl"><label for="you-soc">Social</label><input type="range" id="you-soc" min="0" max="2" step="0.05" value="0.3"><div class="ticks" aria-hidden="true"><span>C</span><span>B</span><span>A</span></div></div>
+    <div class="sl"><label for="you-rel">Relational · power</label><input type="range" id="you-rel" min="0" max="2" step="0.05" value="0.6"><div class="ticks" aria-hidden="true"><span>C</span><span>B</span><span>A</span></div></div>
+    <div class="sl"><label for="you-psy">Psychological</label><input type="range" id="you-psy" min="0" max="2" step="0.05" value="1.1"><div class="ticks" aria-hidden="true"><span>C</span><span>B</span><span>A</span></div></div>
+  </div>
+</section>
+
+<section class="wrap" id="more">
+  <h2>More birds, or a real room</h2>
+  <div class="ctl-row" aria-label="Birds for each person" style="margin-bottom:16px">
+    <span class="ctl-lab">Birds for each person</span>
+    <button class="seg per" type="button" data-per="1" aria-pressed="true">One</button>
+    <button class="seg per" type="button" data-per="3" aria-pressed="false">A few</button>
+  </div>
+  <p class="intro">Or paste a meeting's State Stack link, and the birds follow that room as its phones change it. They only read.</p>
+  <div class="live">
+    <input type="text" id="live-in" placeholder="happyseaurchin.com/stack/…/…" autocapitalize="off" autocomplete="off" spellcheck="false" aria-label="A State Stack link">
+    <button class="seg" type="button" id="live-go">Follow it</button>
+  </div>
+  <p class="status" id="live-status" role="status"></p>
+</section>
+
+<section class="wrap" id="how">
+  <h2>How the birds read a stack</h2>
+  <div class="key">
+    <p><b>Psychological</b> is the urge to fly. Insight comes first, so a room on the turn grows restless on the sand before anything else moves.</p>
+    <p><b>Relational power</b> is how a bird stands with the others. Held at C, it keeps its patch, chasing one bird off and giving way to another; toward B it lets the others close, and in the air it follows them more nearly.</p>
+    <p><b>Social</b> is how long a lone flight lasts before the structure brings the bird back down.</p>
+    <p><b>The room</b> is read as the State Stack reads it, by its middle. Below the decision point every flight ends on the sand: nobody moves alone. Past it the flock holds whoever leans up, and a bird still near C stays on the sand, seen but not named.</p>
+  </div>
+</section>
+</main>
+
+<footer class="wrap">
+  <div class="links">
+    <a class="back" href="/animations/the-state-stack">The State Stack, as lines</a>
+    <a class="back" href="/stack">Live, in a meeting</a>
+  </div>
+  <p>The birds are drawn after Matthew's shore and sky at phenomemental.github.io; the states, the room's arithmetic and the example rooms are the State Stack's own. No bird carries a name.</p>
+  <p>keel, for David Pinto, 14 October 2026.</p>
+</footer>
+
+<script>
+/* ======================================================================================================================
+   StackBirds — the State Stack's room, drawn as shorebirds. Self-contained: copy this whole block.
+   ====================================================================================================================== */
+const StackBirds = (function () {
+  'use strict';
+  const TAU = Math.PI * 2;
+  const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+  const lerp = (a, b, t) => a + (b - a) * t;
+  const smooth = (e0, e1, x) => { const u = clamp((x - e0) / (e1 - e0), 0, 1); return u * u * (3 - 2 * u); };
+  const ease = (dt, tau) => 1 - Math.exp(-dt / tau);
+
+  function hash(s) {
+    s = String(s); let h = 2166136261;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  /* a small steady source of chance for each bird, from its id: the same phone hatches the same bird */
+  function chance(seed) {
+    return function () {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function rgb(h) { const m = /^#?([0-9a-f]{6})$/i.exec(String(h || '').trim()); const n = m ? parseInt(m[1], 16) : 0x808080; return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  const mix = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+  const css = (c, a) => 'rgba(' + Math.round(c[0]) + ',' + Math.round(c[1]) + ',' + Math.round(c[2]) + ',' + (a == null ? 1 : Math.max(0, Math.min(1, a)).toFixed(3)) + ')';
+
+  /* ---- the room, read exactly as the State Stack reads it (animations/the-state-stack, and stats() in /stack) ---- */
+  const avg = v => (v[0] + v[1] + v[2]) / 3;
+  function phaseOf(m) {
+    if (Math.abs(m - 0.5) < 0.15) return ['phasing C → B', 'ph-cb'];
+    if (Math.abs(m - 1.5) < 0.15) return ['phasing B → A', 'ph-ba'];
+    if (m < 0.5) return ['C', 'ph-c'];
+    if (m < 1.5) return ['B', 'ph-b'];
+    return ['A', 'ph-a'];
+  }
+  function middle(xs) {
+    const s = xs.slice().sort((a, b) => a - b), n = s.length;
+    if (!n) return 0;
+    return n % 2 ? s[(n - 1) / 2] : (s[n / 2 - 1] + s[n / 2]) / 2;
+  }
+  function asStack(p) {
+    if (p && Array.isArray(p.v) && p.v.length === 3) return p.v.map(x => clamp(+x || 0, 0, 2));
+    if (p && typeof p.value === 'number') { const x = clamp(p.value, 0, 2); return [x, x, x]; }
+    return [0, 0, 0];
+  }
+
+  /* The shore before dawn. The light comes up with the room: C's slate night, B's amber dawn, A's clear teal morning,
+     the State Stack's own colours. The warm light stays at the horizon throughout and the teal belongs to the sky,
+     so the passage from B to A never muddies. */
+  const SKY = [
+    { top: '#04080D', mid: '#0A131B', low: '#18222A', core: '#A9B2BA', halo: '#5A6670', sea: '#0A1318', gI: 0.3 },
+    { top: '#060C17', mid: '#121B2C', low: '#3A3244', core: '#FFD48A', halo: '#E6A63C', sea: '#0D141C', gI: 0.72 },
+    { top: '#05121A', mid: '#0E2C38', low: '#2A5D62', core: '#FFF1D0', halo: '#F0D49A', sea: '#0B1B21', gI: 0.86 }
+  ];
+  const PALETTE = {
+    seaNear: '#0F1D24', wet: '#172126', sand: '#262A2A', sandNear: '#313432', sandLit: '#3E3E39',
+    ink: '#ECE5D6', shade: '#0A0F13', flash: '#FFF6E4'
+  };
+
+  function create(canvas, options) {
+    const opt = Object.assign({ perPerson: 1, scale: 1, trails: false, still: null }, options || {});
+    const pal = Object.assign({}, PALETTE, opt.palette || {});
+    const P = {}; for (const k in pal) P[k] = rgb(pal[k]);
+    const SK = (opt.sky || SKY).map(o => { const r = {}; for (const k in o) r[k] = typeof o[k] === 'number' ? o[k] : rgb(o[k]); return r; });
+    const ctx = canvas.getContext && canvas.getContext('2d');
+    if (!ctx) return { set() {}, options() {}, state() { return null; }, advance() {}, destroy() {} };
+    const mq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    const still = () => (opt.still != null ? !!opt.still : !!(mq && mq.matches));
+
+    let W = 0, H = 0, dpr = 1, K = 1;
+    const L = { horizon: 0, edge: 0, top: 0, gx: 0, D: 1, roost: 1 };
+    let birds = [];
+    const byKey = new Map();
+    let people = [];
+    let roomRaw = { n: 0, med: 0, phase: phaseOf(0) };
+    let T = 0, last = 0, running = false, onScreen = true, dead = false, labelAt = 0;
+    let room = 0, F = 0, E = 0, S = 0, sally = 0;
+    let wheel = 1, wheelAt = 16, waveAt = 3;
+    let sky = skyAt(0);
+    const local = { x: 0, y: 0, z: 0 }, far = { x: 0, y: 0, z: 0 };
+    const acc = { x: 0, y: 0, z: 0 };
+    let stars = [], grain = null;
+
+    function skyAt(m) {
+      const u = smooth(0.15, 0.85, m), w = smooth(1.15, 1.85, m), out = {};
+      for (const k in SK[0]) {
+        const a = SK[0][k], b = SK[1][k], c = SK[2][k];
+        out[k] = typeof a === 'number' ? (m < 1 ? lerp(a, b, u) : lerp(b, c, w)) : (m < 1 ? mix(a, b, u) : mix(b, c, w));
+      }
+      return out;
+    }
+
+    /* ---------- layout: a sky over a strip of sea, the wash, wet sand, dry sand ---------- */
+    function layout() {
+      const w = canvas.clientWidth, h = canvas.clientHeight;
+      if (!w || !h) return false;
+      let d = Math.min(window.devicePixelRatio || 1, 2);
+      if (w * h * d * d > 7e6) d = Math.max(1, Math.sqrt(7e6 / (w * h)));
+      if (w === W && h === H && d === dpr) return true;
+      const kx = W ? w / W : 1, ky = H ? h / H : 1;
+      birds.forEach(b => { b.x *= kx; b.y *= ky; b.z *= kx; b.hx *= kx; b.lx *= kx; b.tx = null; b.trail.length = 0; b.sx = b.x; b.sy = b.y; });
+      W = w; H = h; dpr = d;
+      canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+      K = clamp(Math.min(W / 760, H / 430), 0.72, 2.6);
+      const tall = H > W * 0.9;
+      L.horizon = H * (tall ? 0.54 : 0.56);
+      L.edge = H * (tall ? 0.67 : 0.695);
+      L.top = H * 0.07;
+      L.gx = W * 0.66;
+      L.D = W * 0.32;
+      L.roost = Math.min(W * 0.13, (L.horizon - L.top) * 0.55);
+      birds.forEach(b => { if (!b.placed) arrive(b); });          /* stacks that came while the canvas had no size */
+      if (!stars.length) {
+        const r = chance(7);
+        for (let i = 0; i < 46; i++) stars.push({ x: r(), y: Math.pow(r(), 1.6) * 0.62, a: 0.3 + r() * 0.7, s: r() < 0.15 ? 1.6 : 1 });
+      }
+      if (!grain) {
+        const g = document.createElement('canvas'); g.width = g.height = 140;
+        const gc = g.getContext('2d'), r = chance(11);
+        for (let i = 0; i < 1500; i++) { gc.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.6)'; gc.fillRect(r() * 140, r() * 140, 1, 1); }
+        grain = ctx.createPattern(g, 'repeat');
+      }
+      return true;
+    }
+
+    /* depth: a bird further out over the sea is drawn smaller and nearer the horizon, toward the light */
+    const project = (x, y, z) => { const s = 1 / (1 + Math.max(z, 0) / L.D); return { x: L.gx + (x - L.gx) * s, y: L.horizon + (y - L.horizon) * s, s }; };
+    const swash = () => H * 0.011 * Math.sin(T * 0.6) + H * 0.004 * Math.sin(T * 1.33 + 1.1);
+    const ripple = x => Math.sin(x * 0.011 + T * 0.8) * K * 1.4;
+    const seaLine = x => L.edge + swash() + ripple(x);
+    /* where a bird's feet are: a long bill feeds at the water's edge and follows the wash; a short one stands up the sand */
+    function footing(b, x) {
+      const follow = clamp(1 - b.offF / 0.045, 0, 1);
+      return L.edge + K * 5 + b.offF * H + follow * (swash() + ripple(x));
+    }
+
+    /* ---------- a bird ---------- */
+    function hatch(key, person, n) {
+      const r = chance(hash(key));
+      const bill = 4 + r() * 5.5;
+      const b = {
+        key, id: person.id, copy: n, mine: false, r, leaving: false,
+        vt: asStack(person), vs: null, lean: 0, psy: 0, rel: 0, soc: 0, imp: 0, hold: 0, holdA: 0, goA: 0,
+        mode: 'ground', x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
+        dir: r() < 0.5 ? -1 : 1, tx: null, pause: r() * 2, alert: false, peck: 0, step: r() * TAU,
+        chase: 0, flee: 0, rest: 0, wings: 0, stretch: 0,
+        bill, size: 0.88 + r() * 0.24, pace: 0.85 + r() * 0.3, offF: (1 - (bill - 4) / 5.5) * 0.06 + r() * 0.035,
+        ph: r() * TAU, flapv: 0, glide: 0, boost: 0, bank: 0, head: 0, flash: 0,
+        hx: 0, hr: 0, ha: 0, hw: 1, alt: 0, aloft: 0, landing: false, lx: 0, flare: 0,
+        trail: [], sx: 0, sy: 0, ss: 1, svx: 1, svy: 0, placed: false
+      };
+      b.vs = b.vt.slice();
+      return b;
+    }
+    /* a spot on the sand near `around`, as far as can be from the birds already there */
+    function spot(b, around, range) {
+      let best = clamp(around, W * 0.05, W * 0.95), bestGap = -1;
+      for (let i = 0; i < 5; i++) {
+        const x = clamp(around + (b.r() * 2 - 1) * range, W * 0.05, W * 0.95);
+        let gap = W;
+        for (const o of birds) {
+          if (o === b || o.leaving) continue;
+          const ox = o.mode === 'ground' ? o.x : o.landing ? o.lx : null;
+          if (ox != null) gap = Math.min(gap, Math.abs(ox - x));
+        }
+        if (gap > bestGap) { bestGap = gap; best = x; }
+      }
+      return best;
+    }
+    /* a stack that comes in once the screen is running flies in from the side and lands */
+    function arrive(b) {
+      b.placed = true;
+      if (T > 1.5 && !still()) {
+        const left = b.r() < 0.5;
+        b.mode = 'air'; b.landing = true;
+        b.x = left ? -K * 30 : W + K * 30; b.y = L.top + (L.horizon - L.top) * (0.25 + 0.3 * b.r()); b.z = 0;
+        b.vx = (left ? 1 : -1) * K * 90; b.vy = 0;
+        b.lx = spot(b, left ? W * 0.3 : W * 0.7, W * 0.2);
+        b.dir = left ? 1 : -1;
+      } else {
+        b.x = spot(b, W * (0.08 + 0.84 * b.r()), W * 0.25);
+        b.y = footing(b, b.x);
+      }
+      b.sx = b.x; b.sy = b.y;
+    }
+    function depart(b) { if (b.leaving) return; b.leaving = true; if (b.mode === 'ground') takeoff(b); b.landing = false; }
+
+    function takeoff(b) {
+      b.mode = 'air'; b.landing = false; b.z = 0; b.tx = null; b.chase = b.flee = 0; b.wings = 0;
+      b.y -= K * 4;
+      b.vx = b.dir * K * (35 + 40 * b.r()); b.vy = -K * (120 + 60 * b.imp); b.vz = 0;
+      b.boost = 0.7; b.glide = 0;
+      const l1 = clamp(b.lean, 0, 1), avail = Math.max(K * 40, b.y - L.top);
+      b.alt = avail * (0.12 + 0.6 * l1) * (0.8 + 0.3 * b.r());
+      b.hx = clamp(b.x + b.dir * W * (0.03 + 0.07 * b.r()), W * 0.12, W * 0.88);
+      b.hr = W * (0.025 + 0.045 * l1) * (0.75 + 0.5 * b.r());
+      b.ha = b.dir > 0 ? Math.PI : 0;
+      b.hw = b.r() < 0.5 ? -1 : 1;
+      b.aloft = (1.2 + 3.4 * l1) * (0.75 + 0.9 * clamp(b.soc, 0, 1)) * (0.8 + 0.4 * b.r());
+      b.trail.length = 0;
+    }
+    function touchdown(b) {
+      b.mode = 'ground'; b.landing = false; b.flare = 0;
+      b.dir = b.vx < 0 ? -1 : 1;
+      b.x = b.lx; b.z = 0; b.vx = b.vy = b.vz = 0; b.y = footing(b, b.x);
+      b.wings = 1; b.rest = 1.0 + b.r() * 1.6; b.pause = 0.3; b.tx = null; b.trail.length = 0;
+    }
+
+    /* ---------- on the sand: walk, stop, peck; follow the wash; keep a patch, or let the others close ---------- */
+    function ground(b, dt, airFrac) {
+      const sp = K * 34 * b.pace;
+      b.wings = Math.max(0, b.wings - dt * 2.2);
+      if (b.stretch > 0) { b.stretch -= dt; b.wings = Math.max(b.wings, Math.min(1, b.stretch * 2.5)); }
+      if (b.rest > 0) b.rest -= dt;
+      let moving = false;
+      if (b.chase > 0) { b.chase -= dt; b.x += b.dir * sp * 3.4 * dt; moving = true; b.peck = 0; }
+      else if (b.flee > 0) { b.flee -= dt; b.x += b.dir * sp * 3.8 * dt; moving = true; b.peck = 0; }
+      else if (b.pause > 0) { b.pause -= dt; b.peck = b.alert ? 0 : Math.max(0, Math.sin(T * 7.5 + b.ph)); }
+      else {
+        if (b.tx == null) b.tx = spot(b, b.x, W * 0.1);
+        const gap = b.tx - b.x, d = sp * dt;
+        if (Math.abs(gap) <= d) { b.x = b.tx; b.tx = null; b.pause = 0.7 + b.r() * 2.6; b.alert = b.r() < 0.3; }
+        else { b.dir = gap < 0 ? -1 : 1; b.x += b.dir * d; moving = true; b.peck = 0; }
+      }
+      if (moving) b.step += dt * (b.chase > 0 || b.flee > 0 ? 34 : 15);
+      const patch = K * (14 + 40 * (1 - clamp(b.rel, 0, 1)));
+      for (const o of birds) {
+        if (o === b || o.mode !== 'ground' || o.leaving) continue;
+        const dx = o.x - b.x, ad = Math.abs(dx);
+        if (ad >= patch) continue;
+        if (b.rel < 0.45 && b.chase <= 0 && b.flee <= 0 && o.flee <= 0 && b.r() < dt * 0.9) {
+          b.dir = dx < 0 ? -1 : 1; b.chase = 0.28 + b.r() * 0.2; b.tx = null;
+          o.dir = b.dir; o.flee = 0.38 + o.r() * 0.2; o.tx = null; o.pause = 0;
+        } else b.x -= (dx < 0 ? -1 : 1) * (patch - ad) * dt * 0.6;
+      }
+      b.x = clamp(b.x, W * 0.03, W * 0.97);
+      b.y = footing(b, b.x);
+      b.sx = b.x; b.sy = b.y; b.ss = 1;
+      if (b.leaving) { takeoff(b); return; }
+      let lam = b.imp < 0.06 ? 0 : 0.01 + 0.14 * Math.pow(b.imp, 1.6);   /* every so often, more often the higher it leans */
+      lam *= 1 + 1.6 * airFrac;                                   /* others up make a bird readier */
+      lam += 2.4 * F * b.hold;                                    /* past the decision point the flock calls it up */
+      if (b.rest > 0 && F * b.hold < 0.5) lam *= 0.15;            /* just down: it settles first */
+      if (Math.random() < lam * dt) { takeoff(b); return; }
+      if (b.imp < 0.1 && b.stretch <= 0 && Math.random() < dt * 0.02) b.stretch = 0.8;   /* no wish to fly: a stretch */
+    }
+
+    /* ---------- in the air ---------- */
+    function seek(b, tx, ty, tz, speed, gain) {
+      const dx = tx - b.x, dy = ty - b.y, dz = tz - b.z;
+      const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+      const s = Math.min(speed, d * 1.6);
+      acc.x += (dx / d * s - b.vx) * gain; acc.y += (dy / d * s - b.vy) * gain; acc.z += (dz / d * s - b.vz) * gain;
+    }
+    /* the others, as starlings attend to them: the seven nearest, whatever the distance */
+    const near = [];
+    function flock(b, air) {
+      if (air.length < 2) return;
+      near.length = 0;
+      for (const o of air) {
+        if (o === b) continue;
+        const dx = o.x - b.x, dy = o.y - b.y, dz = o.z - b.z;
+        near.push({ o, d2: dx * dx + dy * dy + dz * dz });
+      }
+      near.sort((p, q) => p.d2 - q.d2);
+      const n = Math.min(7, near.length);
+      let cx = 0, cy = 0, cz = 0, ux = 0, uy = 0, uz = 0, sx = 0, sy = 0, sz = 0;
+      const sep = K * 40;
+      for (let i = 0; i < n; i++) {
+        const o = near[i].o;
+        cx += o.x; cy += o.y; cz += o.z; ux += o.vx; uy += o.vy; uz += o.vz;
+        const d = Math.sqrt(near[i].d2) || 0.01;
+        if (d < sep) { const f = (sep - d) / sep / d; sx += (b.x - o.x) * f; sy += (b.y - o.y) * f; sz += (b.z - o.z) * f; }
+      }
+      const wc = 0.12 + 0.5 * F;
+      const wa = (0.3 + 1.0 * F) * (0.55 + 0.45 * clamp(b.rel, 0, 1.4));
+      acc.x += (cx / n - b.x) * wc; acc.y += (cy / n - b.y) * wc; acc.z += (cz / n - b.z) * wc;
+      acc.x += (ux / n - b.vx) * wa; acc.y += (uy / n - b.vy) * wa; acc.z += (uz / n - b.vz) * wa;
+      const ws = K * 420;
+      acc.x += sx * ws; acc.y += sy * ws; acc.z += sz * ws;
+    }
+    function bounds(b, groundY) {
+      const p = project(b.x, b.y, b.z);
+      if (!b.leaving) {
+        const m = W * 0.04;
+        if (p.x < m) acc.x += (m - p.x) / p.s * 6;
+        if (p.x > W - m) acc.x -= (p.x - (W - m)) / p.s * 6;
+      }
+      const top = L.top * 0.7;
+      if (p.y < top) acc.y += (top - p.y) / p.s * 8;
+      if (!b.landing) { const floor = groundY - K * 26; if (b.y > floor) acc.y -= (b.y - floor) * 8; }
+      if (b.z < 0) acc.z -= b.z * 10;
+      if (b.z > W * 1.3) acc.z -= (b.z - W * 1.3) * 4;
+    }
+    function turn(b, a) {
+      const c = Math.cos(a), s = Math.sin(a), vx = b.vx, vy = b.vy;
+      b.vx = vx * c - vy * s; b.vy = vx * s + vy * c; b.vz += (Math.random() - 0.5) * K * 60;
+    }
+    function fly(b, dt, air) {
+      acc.x = acc.y = acc.z = 0;
+      const held = b.leaving ? 0 : F * b.hold;
+      const groundY = footing(b, b.x);
+      let cruise = K * 78 * b.pace;
+      if (b.leaving) {
+        seek(b, b.x < W / 2 ? -W * 0.3 : W * 1.3, L.top + (L.horizon - L.top) * 0.3, 0, K * 150, 1.2);
+        cruise = K * 140;
+      } else {
+        if (!b.landing) {
+          b.aloft -= dt * (1 - held);
+          if (b.aloft <= 0 && held < 0.5) { b.landing = true; b.lx = spot(b, clamp(b.x + b.vx * 0.9, W * 0.06, W * 0.94), W * 0.06); }
+        } else if (held > 0.8) { b.landing = false; b.aloft = 1.5; }
+        if (b.landing) {
+          const fy = footing(b, b.lx);
+          seek(b, b.lx, fy - K * 2, 0, K * 92, 2.0);
+          const d = Math.sqrt((b.lx - b.x) * (b.lx - b.x) + (fy - b.y) * (fy - b.y) + b.z * b.z);
+          b.flare = smooth(K * 70, K * 14, d);
+          cruise = K * lerp(92, 38, b.flare);
+          if (d < K * 8) { touchdown(b); return; }
+        } else {
+          const self = 1 - held;
+          if (self > 0.02) {                                         /* its own flight: climb to its height and look round */
+            b.ha += dt * b.hw * (K * 80) / Math.max(b.hr, K * 20);
+            seek(b, b.hx + Math.cos(b.ha) * b.hr, groundY - b.alt + Math.sin(b.ha) * b.hr * 0.32, 0, K * 95, 1.1 * self);
+          }
+          flock(b, air);
+          if (held > 0.01) {
+            /* held by the flock: free to wheel inside the roost, drawn back hard from beyond it, a slow common turn so
+               the flock mills; toward A the roost itself goes out over the sea, into the light */
+            const g = b.goA;
+            const rx = lerp(local.x, far.x, g), ry = lerp(local.y, far.y, g), rz = lerp(local.z, far.z, g);
+            const Rr = L.roost * (1 - 0.55 * g);
+            const dx = b.x - rx, dy = (b.y - ry) / 0.6, dz = (b.z - rz) / 0.55;
+            const r = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+            const pull = ((r > Rr ? (r - Rr) * 2.4 : 0) + r * 0.1) * held;
+            acc.x -= dx / r * pull; acc.y -= dy / r * pull; acc.z -= dz / r * pull;
+            const ang = 0.55 * Math.sin(T * 0.043), ay = Math.sin(ang), az = Math.cos(ang);
+            const tx = ay * dz - az * dy, ty = az * dx, tz = -ay * dx;
+            const tl = Math.sqrt(tx * tx + ty * ty + tz * tz) || 1;
+            const sw = wheel * held * (1 - g) * K * 38;
+            acc.x += tx / tl * sw; acc.y += ty / tl * sw; acc.z += tz / tl * sw;
+            cruise = K * (lerp(80, 94, held) + 160 * g) * b.pace;
+          }
+        }
+      }
+      bounds(b, groundY);
+      const amax = K * 1100;
+      const al = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
+      if (al > amax) { const q = amax / al; acc.x *= q; acc.y *= q; acc.z *= q; }
+      b.vx += acc.x * dt; b.vy += acc.y * dt; b.vz += acc.z * dt;
+      let sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz) || 1;
+      const q = 1 + (cruise / sp - 1) * Math.min(1, dt * 1.4);
+      b.vx *= q; b.vy *= q; b.vz *= q; sp *= q;
+      const vmax = cruise * 1.8;
+      if (sp > vmax) { const r = vmax / sp; b.vx *= r; b.vy *= r; b.vz *= r; }
+      b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+      /* how it looks on the screen: heading, bank, the flash of a turn, the wingbeat */
+      const p = project(b.x, b.y, b.z);
+      const svx = (p.x - b.sx) / dt, svy = (p.y - b.sy) / dt;
+      if (svx * svx + svy * svy > 1) {
+        const head = Math.atan2(svy, svx);
+        let dh = head - b.head; while (dh > Math.PI) dh -= TAU; while (dh < -Math.PI) dh += TAU;
+        b.head = head;
+        b.bank += (clamp(dh / dt * 0.22, -1, 1) - b.bank) * ease(dt, 0.18);
+        b.svx = svx; b.svy = svy;
+      }
+      b.flash = Math.max(b.flash - dt * 1.6, Math.abs(b.bank));
+      b.sx = p.x; b.sy = p.y; b.ss = p.s;
+      if (opt.trails) { b.trail.push(p.x, p.y); if (b.trail.length > 28) b.trail.splice(0, 2); }
+      const climbing = b.vy < -K * 30 || b.boost > 0;
+      if (b.boost > 0) b.boost -= dt;
+      if (b.glide > 0) b.glide -= dt;
+      else if (!climbing && !b.landing && Math.random() < dt * 0.45) b.glide = 0.35 + Math.random() * 0.6;
+      const hz = b.boost > 0 ? 5.4 : climbing ? 3.9 : 2.8;
+      if (b.glide <= 0 || b.landing) b.ph += dt * TAU * hz * (0.9 + 0.2 * b.size);
+      const target = b.landing && b.flare > 0.5 ? -0.9 : b.glide > 0 && !b.landing ? 0.3 : Math.sin(b.ph);
+      b.flapv += (target - b.flapv) * ease(dt, 0.05);
+    }
+
+    /* ---------- one step of the world ---------- */
+    function step(dt) {
+      T += dt;
+      const a = ease(dt, 0.9), leans = [];
+      for (const b of birds) {
+        for (let i = 0; i < 3; i++) b.vs[i] += (b.vt[i] - b.vs[i]) * a;
+        b.soc = b.vs[0]; b.rel = b.vs[1]; b.psy = b.vs[2];
+        b.lean = avg(b.vs);
+        b.imp = clamp((0.55 * Math.min(b.psy, 1.2) + 0.45 * Math.min(b.lean, 1.2) - 0.1) / 0.9, 0, 1);
+        b.hold = smooth(0.3, 0.6, b.lean);
+        b.holdA = smooth(1.1, 1.45, b.lean);
+        if (!b.leaving && b.copy === 0) leans.push(b.lean);
+      }
+      room += ((leans.length ? middle(leans) : 0) - room) * ease(dt, 1.6);
+      F = smooth(0.35, 0.65, room);
+      E = smooth(1.35, 1.65, room);
+      S = smooth(1.0, 1.4, room) * (1 - E);
+      sally = S * Math.pow(0.5 - 0.5 * Math.cos(T * 0.19), 2);
+      const span = L.horizon - L.top;
+      local.x = W * 0.44 + W * 0.16 * Math.sin(T * 0.061) + W * 0.04 * Math.sin(T * 0.17 + 1.0);
+      local.y = L.top + span * 0.36 + span * 0.08 * Math.sin(T * 0.083 + 0.6);
+      local.z = W * (0.05 + 0.02 * Math.sin(T * 0.047));
+      far.z = W * 0.75;
+      const fs = 1 / (1 + far.z / L.D);
+      far.x = L.gx + W * 0.04 * Math.sin(T * 0.23);
+      far.y = L.horizon - span * (0.13 + 0.03 * Math.sin(T * 0.31)) / fs;
+      if (T > wheelAt) { wheel = -wheel; wheelAt = T + 14 + Math.random() * 18; }
+      const air = birds.filter(b => b.mode === 'air' && !b.leaving && !b.landing);
+      const airFrac = birds.length ? air.length / birds.length : 0;
+      if (F > 0.55 && T > waveAt && air.length > 2) {
+        turn(air[(Math.random() * air.length) | 0], (Math.random() < 0.5 ? -1 : 1) * (0.9 + Math.random() * 0.6));
+        waveAt = T + 2.2 + Math.random() * 4;
+      }
+      for (const b of birds) {
+        b.goA += (Math.max(E, sally * 0.6) * b.holdA - b.goA) * ease(dt, 2.2);
+        if (b.mode === 'ground') ground(b, dt, airFrac); else fly(b, dt, air);
+      }
+      birds = birds.filter(b => {
+        if (!b.leaving || b.mode !== 'air') return true;
+        const gone = b.sx < -K * 60 || b.sx > W + K * 60;
+        if (gone) byKey.delete(b.key);
+        return !gone;
+      });
+      sky = skyAt(room);
+    }
+
+    /* ---------- drawing ---------- */
+    function line(x1, y1, x2, y2) { ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+    function oval(x, y, rx, ry, a) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, a, 0, TAU); ctx.fill(); }
+
+    function backdrop() {
+      const G = sky, hz = L.horizon;
+      let g = ctx.createLinearGradient(0, 0, 0, hz);
+      g.addColorStop(0, css(G.top)); g.addColorStop(0.55, css(G.mid)); g.addColorStop(1, css(G.low));
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, hz + 1);
+      const sa = 0.5 * (1 - smooth(0.25, 0.85, room));                 /* stars, before the light comes */
+      if (sa > 0.01) {
+        ctx.fillStyle = css(P.ink);
+        for (const s of stars) { ctx.globalAlpha = sa * s.a; ctx.fillRect(s.x * W, L.top * 0.5 + s.y * (hz - L.top), s.s, s.s); }
+        ctx.globalAlpha = 1;
+      }
+      ctx.save();                                                       /* the light: a wide halo and a bright core */
+      ctx.beginPath(); ctx.rect(0, 0, W, hz); ctx.clip();
+      ctx.translate(L.gx, hz); ctx.scale(1, 0.3);
+      let R = W * 0.7;
+      let rg = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+      rg.addColorStop(0, css(G.halo, 0.55 * G.gI)); rg.addColorStop(0.35, css(G.halo, 0.2 * G.gI)); rg.addColorStop(1, css(G.halo, 0));
+      ctx.fillStyle = rg; ctx.fillRect(-R, -R, 2 * R, R);
+      R = W * 0.16;
+      rg = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
+      rg.addColorStop(0, css(G.core, 0.95 * G.gI)); rg.addColorStop(0.4, css(G.core, 0.35 * G.gI)); rg.addColorStop(1, css(G.core, 0));
+      ctx.fillStyle = rg; ctx.fillRect(-R, -R, 2 * R, R);
+      ctx.restore();
+      g = ctx.createLinearGradient(0, hz, 0, L.edge);                  /* the sea */
+      g.addColorStop(0, css(mix(G.sea, G.halo, 0.1 * G.gI)));
+      g.addColorStop(1, css(P.seaNear));
+      ctx.fillStyle = g; ctx.fillRect(0, hz, W, L.edge - hz + H * 0.04);
+      const hl = ctx.createLinearGradient(L.gx - W * 0.42, 0, L.gx + W * 0.42, 0);
+      hl.addColorStop(0, css(G.core, 0)); hl.addColorStop(0.5, css(G.core, 0.8 * G.gI)); hl.addColorStop(1, css(G.core, 0));
+      ctx.fillStyle = hl; ctx.fillRect(L.gx - W * 0.42, hz - 0.5, W * 0.84, Math.max(1, K * 0.9));
+      ctx.lineWidth = Math.max(1, K * 0.75);                           /* the light's road on the water, cream glints aside */
+      for (let i = 1; i <= 9; i++) {
+        const f = i / 10;
+        const y = Math.round(hz + (L.edge - hz) * Math.pow(f, 1.35)) + 0.5;
+        const a = 0.16 + 0.1 * Math.sin(T * 0.8 + i * 1.7);
+        const half = W * (0.025 + 0.11 * f);
+        const drift = Math.sin(T * 0.25 + i * 2.3) * 8 * K;
+        ctx.strokeStyle = css(G.core, (a + 0.12 * (1 - f)) * (0.35 + 0.85 * G.gI));
+        line(L.gx - half + drift, y, L.gx + half + drift, y);
+        ctx.strokeStyle = css(P.ink, a * 0.32);
+        line(L.gx - half * 2.4 - drift * 0.5, y, L.gx - half * 1.5 - drift * 0.5, y);
+        line(L.gx + half * 1.6 + drift * 0.7, y, L.gx + half * 2.3 + drift * 0.7, y);
+      }
+      ctx.beginPath();                                                  /* the sand, below the moving edge of the water */
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W + 8; x += 8) ctx.lineTo(x, seaLine(x));
+      ctx.lineTo(W, H); ctx.closePath();
+      const lit = clamp((G.gI - 0.3) * 0.4, 0, 0.25);
+      g = ctx.createLinearGradient(0, L.edge, 0, H);
+      g.addColorStop(0, css(mix(P.wet, G.low, 0.22))); g.addColorStop(0.24, css(P.wet));
+      g.addColorStop(0.42, css(mix(P.sand, P.sandLit, lit))); g.addColorStop(1, css(mix(P.sandNear, P.sandLit, lit)));
+      ctx.fillStyle = g; ctx.fill();
+      ctx.save(); ctx.clip();
+      const ey = seaLine(L.gx);
+      ctx.translate(L.gx, ey); ctx.scale(1, 0.22);
+      const wr = ctx.createRadialGradient(0, 0, 0, 0, 0, W * 0.32);
+      wr.addColorStop(0, css(G.core, 0.2 * G.gI)); wr.addColorStop(1, css(G.core, 0));
+      ctx.fillStyle = wr; ctx.fillRect(-W * 0.4, 0, W * 0.8, H * 2);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (grain) { ctx.globalAlpha = 0.07; ctx.fillStyle = grain; ctx.fillRect(0, L.edge - H * 0.03, W, H); ctx.globalAlpha = 1; }
+      ctx.restore();
+      const wave = (dy, alpha, width, speed) => {                       /* the wash, and the film it leaves */
+        ctx.globalAlpha = alpha; ctx.strokeStyle = css(P.ink); ctx.lineWidth = width;
+        ctx.beginPath();
+        for (let x = 0; x <= W + 8; x += 8) { const y = seaLine(x) + dy + Math.sin(x * 0.031 + T * speed) * K * 1.1; if (x) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+        ctx.stroke(); ctx.globalAlpha = 1;
+      };
+      wave(0, 0.5, Math.max(1, K * 0.9), 0.6);
+      wave(K * 7 + (Math.sin(T * 0.6 + 1.4) + 1) * K * 4, 0.14, Math.max(1, K * 0.7), -0.4);
+    }
+
+    /* a bird against the light becomes a silhouette, as birds do at dawn */
+    function inkAt(x, y) {
+      if (y >= L.horizon) return P.ink;
+      const dx = x - L.gx, dy = y - L.horizon;
+      const hx = dx / (W * 0.3), hy = dy / (W * 0.08), cx = dx / (W * 0.07), cy = dy / (W * 0.022);
+      const lum = sky.gI * (0.55 * Math.exp(-(hx * hx + hy * hy)) + 0.95 * Math.exp(-(cx * cx + cy * cy)));
+      return mix(P.ink, P.shade, smooth(0.18, 0.5, lum));
+    }
+
+    /* a bird standing, its feet at (x, y), facing the way it last walked; flip draws its reflection in the wet sand */
+    function standing(b, x, y, flip, col, alpha) {
+      const kk = K * 1.4 * b.size * opt.scale;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(b.dir * kk, (flip ? -0.6 : 1) * kk);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = ctx.strokeStyle = css(col);
+      ctx.lineWidth = 1.05;
+      const dip = b.peck || 0;
+      const walking = b.chase > 0 || b.flee > 0 || (b.tx != null && b.pause <= 0);
+      const run = walking ? Math.sin(b.step) * (b.chase > 0 || b.flee > 0 ? 1.7 : 1.2) : 0;
+      line(-0.9 + run, 0, -0.1, -5.4); line(1.5 - run, 0, 1.0, -5.4);
+      oval(0, -7.6, 6.3, 3.35, -0.12 + dip * 0.4);
+      ctx.beginPath(); ctx.moveTo(-4.8, -8.9); ctx.lineTo(-8.8, -9.6 + dip * 0.8); ctx.lineTo(-5.2, -6.5); ctx.closePath(); ctx.fill();
+      const hx = 4.9 + dip * 1.7, hy = -10.3 + dip * 6.4;
+      oval(hx, hy, 2.3, 2.15, 0);
+      line(hx + 1.6, hy + 0.3, hx + 1.6 + b.bill * 0.9, hy + 0.85 + dip * b.bill * 0.6);
+      if (b.wings > 0.02 && !flip) {
+        const w = b.wings;
+        ctx.beginPath(); ctx.moveTo(-0.4, -9.6); ctx.quadraticCurveTo(-1.2, -15 - 5 * w, -6 - 2.5 * w, -13 - 8.5 * w); ctx.quadraticCurveTo(-4.4, -11.4 - 3 * w, -3.2, -8.8); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(1.2, -9.9); ctx.quadraticCurveTo(1.0, -16 - 6 * w, -2.8 - 1.5 * w, -14.5 - 9.5 * w); ctx.quadraticCurveTo(-1.4, -12 - 3 * w, -0.8, -9.2); ctx.closePath(); ctx.fill();
+      }
+      if (!flip && kk > 1.5) { ctx.fillStyle = css(P.shade, 0.9); oval(hx + 0.75, hy - 0.45, 0.42, 0.42, 0); }
+      ctx.restore();
+    }
+
+    /* a bird in flight: two wings from the body, beating; far off, a fleck */
+    function flyer(b, col, alpha) {
+      const s = b.ss, size = K * 10.5 * b.size * s * opt.scale;
+      ctx.globalAlpha = alpha;
+      if (size < 1.7) {
+        const w = Math.max(1, size * 2), h = Math.max(0.8, size * (0.45 + 0.35 * Math.abs(b.flapv)));
+        ctx.fillStyle = css(col); ctx.fillRect(b.sx - w / 2, b.sy - h / 2, w, h);
+        return;
+      }
+      const facing = b.svx >= 0 ? 1 : -1;
+      const tilt = clamp(b.svy / (Math.abs(b.svx) + K * 40), -0.6, 0.6) * 0.5 * facing + b.bank * 0.35;
+      ctx.save();
+      ctx.translate(b.sx, b.sy); ctx.rotate(tilt); ctx.scale(facing, 1);
+      const f = b.flapv;
+      const tipY = 0.2 * size - f * 0.85 * size, midY = -0.34 * size + f * 0.22 * size;
+      const back = 1 - 0.4 * Math.abs(b.bank);
+      ctx.strokeStyle = css(col);
+      ctx.lineWidth = Math.max(1, size * 0.15);
+      ctx.beginPath();
+      ctx.moveTo(-size * back, tipY * back);
+      ctx.quadraticCurveTo(-size * 0.42 * back, midY, 0, 0);
+      ctx.quadraticCurveTo(size * 0.42, midY, size, tipY);
+      ctx.stroke();
+      ctx.lineWidth = Math.max(1.1, size * 0.22);
+      line(-size * 0.28, size * 0.05, size * 0.32, -size * 0.03);
+      ctx.restore();
+    }
+
+    function ring(x, y, r) {
+      ctx.globalAlpha = 0.55; ctx.strokeStyle = css(P.shade); ctx.lineWidth = Math.max(2.5, K * 2.4);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = css(P.ink); ctx.lineWidth = Math.max(1, K * 1.1);
+      ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    function draw() {
+      if (!W) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      backdrop();
+      const grounded = birds.filter(b => b.mode === 'ground');
+      const flying = birds.filter(b => b.mode === 'air').sort((p, q) => q.z - p.z);
+      for (const b of grounded) {                                       /* reflections in the wet sand */
+        if (b.y < seaLine(b.x) + H * 0.06) standing(b, b.x, b.y + K * 0.6, true, P.ink, 0.12);
+      }
+      ctx.fillStyle = css(P.shade);                                     /* shadows of the low flyers */
+      for (const b of flying) {
+        if (b.z > W * 0.03) continue;
+        const gy = footing(b, b.x), h = gy - b.y, reach = H * 0.25;
+        if (h <= 0 || h >= reach) continue;
+        ctx.globalAlpha = 0.24 * (1 - h / reach);
+        oval(b.x, gy, K * 6 * opt.scale * (1 - h / (reach * 2)), K * 1.5, 0);
+      }
+      ctx.globalAlpha = 1;
+      const nearZ = W * 0.02;
+      const drawFlyer = b => {
+        const base = inkAt(b.sx, b.sy);
+        const col = mix(base, P.flash, clamp(b.flash * 0.6 * F, 0, 0.7));
+        if (opt.trails && b.trail.length > 6 && !b.landing) {
+          const tr = b.trail, a = 0.13 * F * (1 - b.goA * 0.7);
+          if (a > 0.01) {
+            ctx.strokeStyle = css(base); ctx.lineWidth = Math.max(0.6, K * 0.6 * b.ss);
+            ctx.globalAlpha = a; ctx.beginPath(); ctx.moveTo(tr[0], tr[1]);
+            for (let i = 2; i < tr.length; i += 2) ctx.lineTo(tr[i], tr[i + 1]);
+            ctx.stroke();
+          }
+        }
+        flyer(b, col, b.leaving ? 0.8 : 0.95);
+        if (b.mine) ring(b.sx, b.sy, Math.max(K * 5, K * 15 * b.ss * opt.scale));
+      };
+      flying.filter(b => b.z > nearZ).forEach(drawFlyer);
+      for (const b of grounded) {
+        standing(b, b.x, b.y, false, P.ink, 0.93);
+        if (b.mine) ring(b.x, b.y - K * 9 * opt.scale, K * 16 * opt.scale);
+      }
+      flying.filter(b => b.z <= nearZ).forEach(drawFlyer);
+      ctx.globalAlpha = 1;
+    }
+
+    /* for anyone whose device asks for less motion: one still picture of where the room stands */
+    function pose() {
+      for (const b of birds) { b.vs = b.vt.slice(); b.soc = b.vs[0]; b.rel = b.vs[1]; b.psy = b.vs[2]; b.lean = avg(b.vs); b.hold = smooth(0.3, 0.6, b.lean); b.holdA = smooth(1.1, 1.45, b.lean); }
+      room = roomRaw.med; F = smooth(0.35, 0.65, room); E = smooth(1.35, 1.65, room);
+      sky = skyAt(room);
+      const span = L.horizon - L.top;
+      local.x = W * 0.44; local.y = L.top + span * 0.36; local.z = W * 0.05;
+      far.z = W * 0.75; far.x = L.gx; far.y = L.horizon - span * 0.13 * (1 + far.z / L.D);
+      const down = birds.filter(b => !(F * b.hold > 0.5)).sort((p, q) => hash(p.key) - hash(q.key));
+      down.forEach((b, i) => { b.mode = 'ground'; b.x = W * (i + 0.5) / down.length; b.y = footing(b, b.x); b.peck = 0; b.wings = 0; b.tx = null; b.pause = 1; b.sx = b.x; b.sy = b.y; });
+      birds.forEach(b => {
+        if (!(F * b.hold > 0.5)) return;
+        const r = chance(hash(b.key)), a = r() * TAU, d = Math.sqrt(r());
+        const g = E * b.holdA, Rr = L.roost * (1 - 0.55 * g);
+        b.mode = 'air'; b.landing = false; b.goA = g;
+        b.x = lerp(local.x, far.x, g) + Math.cos(a) * d * Rr;
+        b.y = lerp(local.y, far.y, g) + Math.sin(a) * d * Rr * 0.6;
+        b.z = lerp(local.z, far.z, g) + (r() - 0.5) * Rr * 0.5;
+        const p = project(b.x, b.y, b.z); b.sx = p.x; b.sy = p.y; b.ss = p.s; b.svx = r() < 0.5 ? -1 : 1; b.svy = 0; b.flapv = 0.2; b.bank = 0; b.flash = 0; b.trail.length = 0;
+      });
+    }
+
+    function label() {
+      const st = state();
+      canvas.setAttribute('aria-label', st.n ? st.n + (st.n === 1 ? ' bird' : ' birds') + ', one for each stack: ' + st.ground + ' on the sand, ' +
+        st.up + ' in the air' + (st.gone ? ', ' + st.gone + ' heading away' : '') + '. Most of the room: ' + st.phase[0] + '.'
+        : 'A shore before dawn, waiting for the first stack.');
+    }
+
+    function frame(ts) {
+      if (dead || !running) return;
+      if (!onScreen || document.hidden || !layout()) { running = false; return; }
+      const dt = last ? Math.min((ts - last) / 1000, 0.05) : 1 / 60;
+      last = ts;
+      step(dt);
+      draw();
+      if (ts - labelAt > 1500) { labelAt = ts; label(); }
+      requestAnimationFrame(frame);
+    }
+    function wake() {
+      if (dead || !layout()) return;
+      if (still()) { pose(); draw(); label(); return; }
+      if (running || !onScreen || document.hidden) return;
+      running = true; last = 0;
+      requestAnimationFrame(frame);
+    }
+
+    function set(list) {
+      people = Array.isArray(list) ? list.filter(p => p && p.id != null) : [];
+      layout();
+      const per = clamp(opt.perPerson | 0 || 1, 1, 9);
+      const seen = new Set();
+      people.forEach(p => {
+        const v = asStack(p);
+        for (let n = 0; n < per; n++) {
+          const key = String(p.id) + (n ? '#' + n : '');
+          seen.add(key);
+          let b = byKey.get(key);
+          if (!b) { b = hatch(key, p, n); birds.push(b); byKey.set(key, b); if (W) arrive(b); }
+          b.vt = v; b.mine = !!p.mine && n === 0;
+          if (b.leaving) { b.leaving = false; b.aloft = 2; }
+        }
+      });
+      if (still()) {
+        birds = birds.filter(b => seen.has(b.key));
+        [...byKey.keys()].forEach(k => { if (!seen.has(k)) byKey.delete(k); });
+      } else birds.forEach(b => { if (!seen.has(b.key)) depart(b); });
+      const med = middle(people.map(p => avg(asStack(p))));
+      roomRaw = { n: people.length, med, phase: phaseOf(med) };
+      wake();
+      const now = performance.now();
+      if (now - labelAt > 1000) { labelAt = now; label(); }
+    }
+    function state() {
+      let ground = 0, up = 0, gone = 0;
+      birds.forEach(b => { if (b.leaving) return; if (b.mode === 'ground') ground++; else if (b.goA > 0.5) gone++; else up++; });
+      return { n: roomRaw.n, med: roomRaw.med, phase: roomRaw.phase, flock: F, away: E, room, ground, up, gone, birds: birds.length };
+    }
+    function advance(sec) {
+      if (!layout()) return;
+      const n = Math.round(Math.max(0, sec) * 60);
+      for (let i = 0; i < n; i++) step(1 / 60);
+      draw(); label();
+    }
+
+    let io = null, ro = null;
+    if (window.IntersectionObserver) {
+      io = new IntersectionObserver(es => { onScreen = es.some(e => e.isIntersecting); if (onScreen) wake(); });
+      io.observe(canvas);
+    }
+    /* a canvas hidden and shown again (a Lines | Birds switch) comes back to life here */
+    if (window.ResizeObserver) { ro = new ResizeObserver(() => { if (!layout()) return; if (still()) { pose(); draw(); } else { draw(); wake(); } }); ro.observe(canvas); }
+    const onVis = () => { if (!document.hidden) wake(); };
+    document.addEventListener('visibilitychange', onVis);
+    if (mq && mq.addEventListener) mq.addEventListener('change', () => { running = false; wake(); });
+    wake();
+
+    return {
+      set,
+      options(o) { Object.assign(opt, o || {}); set(people); },
+      state,
+      advance,
+      destroy() { dead = true; running = false; if (io) io.disconnect(); if (ro) ro.disconnect(); document.removeEventListener('visibilitychange', onVis); }
+    };
+  }
+
+  return { create, phaseOf };
+})();
+/* ====================================================================================================================== */
+</script>
+
+<script>
+/* The demo harness: the State Stack's example rooms (its nine players, its scenes and its words), your own bird, and
+   a read-only follow of a live meeting. The live page has all of this already; it needs only StackBirds above. */
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const Q = new URLSearchParams(location.search);
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const birds = StackBirds.create($('flock'));
+  window.stackBirds = birds;
+
+  /* the State Stack's example room: the nine players of an Action Cycle, drawn as examples, not anyone's evaluation */
+  const PEOPLE = ['v1', 'v2', 'v3', 'd1', 'd2', 'd3', 'h2', 'h3', 'h1'];
+  const SCEN = {
+    arrive: { v1: [0.05, 0, 0.15], v2: [0.1, 0.05, 0.2], v3: [0.15, 0.1, 0.25], d1: [0.15, 0.2, 0.3], d2: [0.2, 0.25, 0.4], d3: [0.1, 0.3, 0.45], h2: [0.9, 1, 1.1], h3: [1, 0.9, 1.2], h1: [2, 2, 2] },
+    turn:   { v1: [0.8, 0.95, 1.1], v2: [0.85, 1, 1.15], v3: [0.95, 1.05, 1.2], d1: [0.9, 1, 1.2], d2: [1, 1.1, 1.25], d3: [0.9, 1.15, 1.35], h2: [1.05, 1.1, 1.25], h3: [1.1, 1.05, 1.3], h1: [2, 2, 2] },
+    back:   { v1: [0.05, 0.1, 0.3], v2: [0.1, 0.1, 0.35], v3: [0.1, 0.2, 0.45], d1: [0.15, 0.25, 0.4], d2: [0.2, 0.3, 0.45], d3: [0.25, 0.35, 0.5], h2: [1, 1.05, 1.15], h3: [1, 1, 1.2], h1: [2, 2, 2] },
+    ba:     { v1: [1.2, 1.3, 1.4], v2: [1.3, 1.35, 1.5], v3: [1.25, 1.4, 1.55], d1: [1.3, 1.45, 1.6], d2: [1.4, 1.5, 1.65], d3: [1.35, 1.55, 1.7], h2: [1.5, 1.6, 1.7], h3: [1.55, 1.7, 1.75], h1: [2, 2, 2] },
+    away:   { v1: [1.7, 1.8, 1.85], v2: [1.75, 1.8, 1.9], v3: [1.7, 1.85, 1.9], d1: [1.75, 1.8, 1.9], d2: [1.8, 1.85, 1.95], d3: [1.75, 1.9, 1.95], h2: [1.85, 1.9, 1.95], h3: [1.9, 1.9, 2], h1: [2, 2, 2] }
+  };
+  const CAPS = {
+    arrive: ['Arrive', 'A first meeting. Most people arrive in C and stay on the sand. Two horizontal players hold B and one holds A: their birds keep lifting, circling and coming down, because nobody moves alone.'],
+    turn1: ['The turn begins within', 'Insight arises first, at the psychological level. The birds grow restless on the sand; more of them lift, and come down again.'],
+    turn2: ['Decision point', 'Halfway between C and B the room pauses. The birds that are up circle together, waiting on one another.'],
+    turn3: ['The room phases to B', 'The relational follows, then the social. The birds that are up stay up, and follow one another: a murmuration, with no bird leading.'],
+    back: ['Back to normal life', 'Outside the room the structure pulls first. The vertical players come down to the sand; the horizontal players and the one holding A keep lifting, alone again.'],
+    ba: ['B ↔ A', 'A group that has bought in. Stacks fluctuate between B and A, and the flock ranges out toward the light and comes back.'],
+    away: ['Toward A', 'Rare: most of the room drawn to the attractor. The flock leaves together, into the light on the horizon.']
+  };
+  const SAY = {
+    'ph-c': 'On the sand, each bird to its own patch. A bird that leans higher lifts, looks round, and lands again.',
+    'ph-cb': 'The decision point. The birds that are up begin to stay up and circle together. Nobody moves alone.',
+    'ph-b': 'A murmuration: the birds that are up follow one another, and none of them leads.',
+    'ph-ba': 'Restless: the flock ranges out toward the light, and comes back.',
+    'ph-a': 'Away: the flock heads into the light on the horizon.'
+  };
+
+  const cur = {}; PEOPLE.forEach(id => { cur[id] = SCEN.arrive[id].slice(); });
+  const you = ['soc', 'rel', 'psy'].map(l => parseFloat($('you-' + l).value));
+  let youOn = false, live = null;
+
+  function list() {
+    const l = live ? live.people.slice() : PEOPLE.map(id => ({ id, v: cur[id].slice() }));
+    if (youOn) l.push({ id: 'you', v: you.slice(), mine: true });
+    return l;
+  }
+  const push = () => birds.set(list());
+
+  /* the scenes, timed as the State Stack times them, a little slower so the birds have time to answer */
+  let token = 0, osc = 0;
+  const easeIO = t => (1 - Math.cos(Math.PI * t)) / 2;
+  const clamp01 = x => Math.max(0, Math.min(1, x));
+  const wait = (ms, my) => new Promise(r => setTimeout(r, reduce ? 0 : ms)).then(() => my === token);
+  function tween(target, order, dur, stagger, my) {
+    return new Promise(res => {
+      const from = {}; PEOPLE.forEach(id => { from[id] = cur[id].slice(); });
+      if (reduce) { PEOPLE.forEach(id => order.forEach(i => { cur[id][i] = target[id][i]; })); push(); res(true); return; }
+      const t0 = performance.now(), total = dur + stagger * (order.length - 1);
+      (function stepT(now) {
+        if (my !== token) { res(false); return; }
+        const el = now - t0;
+        order.forEach((i, k) => { const e = easeIO(clamp01((el - k * stagger) / dur)); PEOPLE.forEach(id => { cur[id][i] = from[id][i] + (target[id][i] - from[id][i]) * e; }); });
+        push();
+        if (el < total) requestAnimationFrame(stepT); else res(true);
+      })(performance.now());
+    });
+  }
+  function caption(c) { $('cap-title').textContent = c[0]; $('cap-text').textContent = c[1]; }
+  function middleNow() { const s = PEOPLE.map(id => (cur[id][0] + cur[id][1] + cur[id][2]) / 3).sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; }
+  async function run(name) {
+    const my = ++token;
+    cancelAnimationFrame(osc);
+    stopLive();
+    document.querySelectorAll('.scen').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.scen === name)));
+    if (name === 'turn') {
+      if (middleNow() > 0.4) { caption(CAPS.arrive); if (!await tween(SCEN.arrive, [0, 1, 2], 1200, 0, my) || !await wait(2500, my)) return; }
+      caption(CAPS.turn1);
+      const half = {}; PEOPLE.forEach(id => { half[id] = cur[id].slice(); half[id][2] = (cur[id][2] + SCEN.turn[id][2]) / 2; });
+      if (!await tween(half, [2], 2600, 0, my) || !await wait(3500, my)) return;
+      caption(CAPS.turn2);
+      const mid = {}; PEOPLE.forEach(id => { mid[id] = cur[id].map((x, i) => i === 2 ? x : x + (SCEN.turn[id][i] - x) * 0.2); });
+      if (!await tween(mid, [1, 0], 2000, 500, my) || !await wait(4500, my)) return;
+      caption(CAPS.turn3);
+      await tween(SCEN.turn, [2, 1, 0], 2000, 900, my);
+    } else if (name === 'back') {
+      caption(CAPS.back);
+      await tween(SCEN.back, [0, 1, 2], 2000, 1100, my);
+    } else if (name === 'ba') {
+      caption(CAPS.ba);
+      if (!await tween(SCEN.ba, [0, 1, 2], 1800, 0, my) || reduce) return;
+      const t0 = performance.now();
+      (function o(now) {
+        if (my !== token) return;
+        const t = (now - t0) / 1000, amp = 0.28 * Math.min(1, t / 1.5);
+        PEOPLE.forEach((id, k) => { if (id === 'h1') return; for (let i = 0; i < 3; i++) cur[id][i] = Math.max(1, Math.min(2, SCEN.ba[id][i] + amp * Math.sin(t * 0.35 + k * 1.3 + i * 0.7))); });
+        push();
+        osc = requestAnimationFrame(o);
+      })(t0);
+    } else if (name === 'away') {
+      caption(CAPS.away);
+      await tween(SCEN.away, [2, 1, 0], 2200, 900, my);
+    } else {
+      caption(CAPS.arrive);
+      await tween(SCEN.arrive, [0, 1, 2], 1400, 0, my);
+    }
+  }
+  document.querySelectorAll('.scen').forEach(b => b.addEventListener('click', () => run(b.dataset.scen)));
+
+  /* your bird */
+  ['soc', 'rel', 'psy'].forEach((l, i) => $('you-' + l).addEventListener('input', e => {
+    you[i] = parseFloat(e.target.value);
+    if (!youOn) { youOn = true; $('you-on').checked = true; }
+    push();
+  }));
+  $('you-on').addEventListener('change', e => { youOn = e.target.checked; push(); });
+
+  /* birds for each person */
+  document.querySelectorAll('.per').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('.per').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    birds.options({ perPerson: +b.dataset.per });
+  }));
+
+  /* the readout: words first; the numbers only when asked for */
+  let numsOn = false;
+  $('nums-btn').addEventListener('click', () => { numsOn = !numsOn; $('nums-btn').setAttribute('aria-pressed', String(numsOn)); $('nums').hidden = !numsOn; });
+  function readout() {
+    const st = birds.state();
+    if (st) {
+      const ph = $('phase');
+      if (ph.textContent !== st.phase[0]) ph.textContent = st.phase[0];
+      ph.className = st.phase[1];
+      let say = st.n ? SAY[st.phase[1]] : 'The shore is empty: the birds come as the stacks do.';
+      if (st.n && (st.phase[1] === 'ph-b' || st.phase[1] === 'ph-ba' || st.phase[1] === 'ph-a') && st.ground) say += st.ground === 1 ? ' One stays on the sand.' : ' A few stay on the sand.';
+      if ($('say').textContent !== say) $('say').textContent = say;
+      if (numsOn) $('nums').textContent = 'middle of the room ' + st.med.toFixed(2) + ' · drawn ' + st.room.toFixed(2) + ' · flock ' + st.flock.toFixed(2) + ' · away ' + st.away.toFixed(2) +
+        ' · ' + st.birds + ' birds: ' + st.ground + ' on the sand, ' + st.up + ' up' + (st.gone ? ', ' + st.gone + ' away' : '');
+    }
+    setTimeout(readout, 300);
+  }
+
+  /* follow a live meeting: read its room on the beach every few seconds, as the room screen does; never write */
+  const WIRE = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+  const RX = [/\bsocial\b[^0-9]*?([0-2](?:\.\d+)?)/i, /\brelational(?:\s+power)?\b[^0-9]*?([0-2](?:\.\d+)?)/i, /\bpsychological\b[^0-9]*?([0-2](?:\.\d+)?)/i];
+  function voiceOf(node) { let n = node; while (n && typeof n === 'object') { if (!('_' in n)) return null; n = n['_']; } return typeof n === 'string' ? n : null; }
+  function parseStack(text) {
+    const t = String(text || ''), i = t.indexOf(' — '), body = i >= 0 ? t.slice(i + 3) : t;
+    const v = RX.map(rx => { const m = body.match(rx); return m ? parseFloat(m[1]) : NaN; });
+    return v.every(x => isFinite(x) && x >= 0 && x <= 2) ? v : null;
+  }
+  function peopleOf(block) {
+    const out = [];
+    (function walk(node) {
+      if (!node || typeof node !== 'object') return;
+      if (node['_'] && typeof node['_'] === 'object') walk(node['_']);
+      for (const d of '123456789') { const n = node[d]; if (!n || typeof n !== 'object') continue; if (typeof n['1'] === 'string') out.push(n); else walk(n); }
+    })(block);
+    const m = new Map();
+    out.forEach(e => { const v = parseStack(voiceOf(e)); if (v) m.set(e['1'], { id: e['1'], v }); });
+    return [...m.values()];
+  }
+  const isKeyed = b => !!b && typeof b === 'object' && '123456789'.split('').some(d => typeof b[d] === 'string');
+  function stopLive() { if (live) { clearTimeout(live.timer); live = null; $('live-status').textContent = ''; } }
+  async function poll(my) {
+    if (!live || live.my !== my) return;
+    try {
+      const r = await fetch(WIRE + '?block=' + encodeURIComponent('pool:' + live.m + ':' + live.b), { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (!live || live.my !== my) return;
+      if (r.status === 404) $('live-status').textContent = 'No State Stack has been opened for that meeting at that time yet.';
+      else if (!r.ok) $('live-status').textContent = 'The beach answered ' + r.status + '; trying again.';
+      else {
+        const block = await r.json();
+        if (!live || live.my !== my) return;
+        if (isKeyed(block)) { $('live-status').textContent = 'That room is kept to its members, and their stacks are sealed: open it on its own page.'; live.people = []; }
+        else {
+          live.people = peopleOf(block);
+          $('live-status').textContent = 'Following ' + live.m.replace(/-/g, ' ') + ' · ' + (live.people.length ? live.people.length + (live.people.length === 1 ? ' stack' : ' stacks') : 'no stacks yet');
+        }
+        push();
+      }
+    } catch (e) { if (live && live.my === my) $('live-status').textContent = 'No connection to the beach; trying again.'; }
+    if (live && live.my === my) live.timer = setTimeout(() => poll(my), 3000);
+  }
+  function follow(text) {
+    const s = String(text || '').trim();
+    const m = s.match(/stack\/([a-z0-9-]+)\/(\d{10})/i) || s.match(/^([a-z0-9-]+)[\/:](\d{10})$/i);
+    if (!m) { $('live-status').textContent = 'Paste a State Stack link, one that ends in the meeting and its ten digits.'; return; }
+    ++token; cancelAnimationFrame(osc);
+    document.querySelectorAll('.scen').forEach(b => b.setAttribute('aria-pressed', 'false'));
+    stopLive();
+    live = { m: m[1].toLowerCase(), b: m[2], people: [], my: Math.random(), timer: 0 };
+    caption(['Live', 'The birds follow this meeting\'s room as its phones change it.']);
+    $('live-status').textContent = 'Reading the beach…';
+    poll(live.my);
+  }
+  $('live-go').addEventListener('click', () => follow($('live-in').value));
+  $('live-in').addEventListener('keydown', e => { if (e.key === 'Enter') follow($('live-in').value); });
+
+  push();
+  readout();
+  const start = Q.get('room');
+  if (start) { $('live-in').value = start; follow(start); }
+  else if (SCEN[Q.get('scene')]) run(Q.get('scene'));
+  else run('arrive');
+})();
+</script>
+<style>.home{max-width:760px;margin:40px auto 48px;padding:0 18px;font-size:13px;opacity:.8}.home a{color:inherit;text-underline-offset:2px}.framed .home{display:none}</style>
+<p class="home"><a href="/animations">All the animations</a></p>
+</body>
+</html>
