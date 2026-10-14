@@ -367,6 +367,8 @@ const ON_SITE = /^\/ring(\/|$)/.test(location.pathname);
 const ringHref = (name, share) => ON_SITE || SNAP || share
   ? 'https://happyseaurchin.com/ring/' + encodeURIComponent(name) + (HANDLE && !share && !SNAP ? '/' + encodeURIComponent(HANDLE) : '')
   : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
+/* a run's State Stack: the room of the meeting begun at the run's beat, pool:<name>:<beat>, drawn at /stack (task:weft 33) */
+const stackLink = r => (ON_SITE ? '' : 'https://happyseaurchin.com') + '/stack/' + encodeURIComponent(FAMILY) + '/' + beatOf(r.start) + '?screen';
 const pathFor = name => ON_SITE ? '/ring/' + encodeURIComponent(name) + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
 /* the key a name writes with, as /now, /walk and /recency keep it: this meeting's mirror, then the passport's.
    The page has no box for it: when a write needs a key the device does not keep, the browser asks, and the key is
@@ -850,6 +852,7 @@ function runBox(){
     const nextLabel = last ? 'Finish' : (nx.p !== p ? 'Next phase: ' + nx.p.title + (nx.q ? ' · ' + nx.q.title : '') : 'Next: ' + (nx.q ? nx.q.title : nx.p.title)) + (last ? '' : ' →');
     h += '<div class="runline"><span class="clock" id="rclock">' + clock(ri.elapsed * 60000) + '</span><span class="runsub">of ' + clock(r.total * 60000) + '</span></div>' +
          '<p class="runsub" style="margin:6px 0 0">Now: <b>' + esc(p.title) + (st.q ? ' · ' + esc(st.q.title) : '') + '</b> · <span id="rphase">' + fmt(took) + '</span> of ' + fmt(st.plan * k) + '</p>' +
+         '<p class="note" style="margin-top:8px"><a href="' + stackLink(r) + '" target="_blank" rel="noopener">The State Stack ↗</a> — open it on the big screen: everyone scans its code and sets their own stack on their phone, and the screen draws the room as it moves.</p>' +
          (p.done ? '<div class="done-box" style="margin-top:10px"><b>' + esc(p.title) + ' is done when</b>' + esc(cap(p.done)) + '</div>' : '') +
          '<span class="runlabel">Was it done?</span><div class="met" role="group" aria-label="Was it done">' +
          ['yes', 'partly', 'no'].map(v => '<button type="button" data-met="' + v + '" aria-pressed="' + (note.met === v) + '">' + cap(v) + '</button>').join('') + '</div>' +
@@ -859,7 +862,8 @@ function runBox(){
     return h + '</section>';
   }
   h += '<div class="runline"><span class="clock">' + clock(ri.elapsed * 60000) + '</span><span class="runsub">taken, of ' + clock(r.total * 60000) + ' planned · began ' +
-       esc(new Date(r.start).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })) + '</span></div>';
+       esc(new Date(r.start).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })) + '</span></div>' +
+       '<p class="note" style="margin-top:8px"><a href="' + stackLink(r) + '" target="_blank" rel="noopener">This meeting’s State Stack ↗</a></p>';
   if (SNAP){
     h += '<p class="note">This copy is a snapshot, so it cannot keep the run on the beach. Copy the record, or run the meeting on the live page, <a href="https://happyseaurchin.com/ring/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">happyseaurchin.com/ring/' + esc(FAMILY) + '</a>.</p>';
   } else if (r.kept){
@@ -996,11 +1000,12 @@ async function addReading(){
 }
 
 /* ---------- a run: kept as a dated mirror, <family>:<beat>:<name>, at the design's own addresses ---------- */
-function runRecord(name, who){
+function runRecord(name, who, room){
   const r = S.run, ri = runInfo(), k = r.total / M.sum;
   const iso = new Date(r.start).toISOString().replace(/\.\d+Z$/, 'Z');
   const out = [['_', 'RUN — ' + M.root.title + ' (spine:' + FAMILY + '), kept by ' + name + ': began ' + iso + ' (' + beatOf(r.start) + '); ' + num(r.total) + ' minutes planned, ' +
-    num(ri.elapsed) + ' taken' + (who ? '; with ' + who : '') + '. Each line opens with the minutes it took there; a phase line then says whether its done-when held (yes, partly or no) and what happened.']];
+    num(ri.elapsed) + ' taken' + (who ? '; with ' + who : '') + (room ? '; the room’s State Stack at ' + room : '') +
+    '. Each line opens with the minutes it took there; a phase line then says whether its done-when held (yes, partly or no) and what happened.']];
   const actAt = i => i < ri.acts.length ? ri.acts[i] : null;
   M.ring.forEach(p => {
     let took = null;
@@ -1024,9 +1029,10 @@ async function keepRun(){
   const hint = $('k-hint'), say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
   const name = clean($('k-who').value), who = ($('k-with').value || '').trim().replace(/\s+/g, ' ').slice(0, 200);
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how the run is signed.'); $('k-who').focus(); return; }
-  const block = FAMILY + ':' + beatOf(S.run.start) + ':' + name, content = toObj(runRecord(name, who));
   say('', 'keeping it beside the plan…');
   try {
+    const room = 'pool:' + FAMILY + ':' + beatOf(S.run.start), held = await readBlock(room).catch(() => null);
+    const block = FAMILY + ':' + beatOf(S.run.start) + ':' + name, content = toObj(runRecord(name, who, held ? room : ''));
     const stands = await readBlock(block);
     const w = await keyed(FAMILY, name, block, stands ? '' : 'Keeping this run founds its record',
       async secret => (await readBlock(block)) ? post({ confirm: true, content, secret }, block) : post({ block, new_lock: secret, content }));
