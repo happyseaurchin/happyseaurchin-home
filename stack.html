@@ -264,6 +264,7 @@
       <div id="k-found" hidden>
         <label class="f" for="k-members">The members, by handle</label>
         <input type="text" id="k-members" placeholder="e.g. emojisword, keel" autocapitalize="off" autocomplete="off" spellcheck="false">
+        <p class="hint" id="k-members-from" hidden>These are the people the meeting’s invitation names: keep them, or change them.</p>
         <p class="hint">You are a member yourself. Each member keys in on their own phone with their own key.</p>
       </div>
       <label class="f" for="k-handle">Your handle</label>
@@ -290,11 +291,12 @@
         <label><input type="radio" name="d-kind" value="open" checked> <span><b>Open</b>, from C to B: no key and no login, so anyone with its link takes part</span></label>
         <label><input type="radio" name="d-kind" value="keyed"> <span><b>Kept to its members</b>, from B to A: each member keys in with their own key, and every stack is sealed so only the members read it</span></label>
       </fieldset>
+      <p class="d-line" id="d-open" hidden></p>
       <button type="button" class="btn-go" id="d-go">Start it on this screen</button>
       <p class="hint">It is kept on the beach as the meeting’s own room, dated, and can be read afterwards at the same link.</p>
     </div>
     <details class="card" id="d-past"><summary>Earlier meetings</summary><ul id="d-list"></ul></details>
-    <nav class="foot"><a href="/animations/the-state-stack">the State Stack, explained →</a><a href="/ring">meetings, drawn as rings →</a></nav>
+    <nav class="foot"><a href="/animations/the-state-stack">the State Stack, explained →</a><a href="/ring" id="d-ring">meetings, drawn as rings →</a></nav>
   </section>
 
   <!-- the hand: a phone -->
@@ -931,9 +933,35 @@ function keyinUi(){
   $('k-lede').textContent = founding
     ? TITLE + ', kept to its members: name them, then key in as its keeper. Each member keys in on their own phone, and every stack is sealed so that only the members can read it.'
     : TITLE + ' is kept to its members: key in with your handle and the key your passport uses.';
-  if (!$('k-handle').value){ let who = ME && ME.id && !/^anon-/.test(ME.id) ? ME.id : ''; try { who = who || localStorage.getItem('render:who') || ''; } catch(e){} $('k-handle').value = handleOf(who); }
+  if (!$('k-handle').value){ let who = ME && ME.id && !/^anon-/.test(ME.id) ? ME.id : ''; try { who = who || localStorage.getItem('render:who') || localStorage.getItem('venture:who') || ''; } catch(e){} $('k-handle').value = handleOf(who); }
+  keptHint();
+  if (founding) invitedInto();
 }
-$('k-go').addEventListener('click', async () => { if (await keyIn($('k-handle').value, $('k-key').value)) show(VIEW); });
+/* the key this device already keeps for a handle, as the site's other pages keep it: the passport's, then the one the
+   meeting was made with; an empty key box uses it, and a wrong one is refused at the passport as any typed key is */
+function keptKey(h){
+  h = handleOf(h); if (!h) return '';
+  try { return localStorage.getItem('passport-latch:' + h) || localStorage.getItem('mirror-latch:' + MEETING + ':' + h) || ''; } catch(e){ return ''; }
+}
+function keptHint(){ $('k-key').placeholder = keptKey($('k-handle').value) ? 'kept on this device' : ''; }
+$('k-handle').addEventListener('input', keptHint);
+/* the members a keeper opens the room with: the people the meeting's invitation names at its Who, spine:<name> 1.2
+   ('WHO: invited — <handle> (<name>), …, the group sed:<group>. …'), offered to keep or change. A group's seats are
+   left for the keeper to name, since a room holds nine */
+let invitedRead = false;
+async function invitedInto(){
+  if (invitedRead || $('k-members').value) return;
+  invitedRead = true;
+  const line = voiceOf(await readBlock('spine:' + MEETING, '1.2').catch(() => null)) || '';
+  const m = /invited\s*[—–-]\s*([^.]*)/i.exec(line);
+  if (!m || $('k-members').value) return;
+  const hs = m[1].split(/\s*,\s*|\s+and\s+/).filter(p => !/sed:/i.test(p))
+    .map(p => handleOf((/^\s*([A-Za-z0-9_-]+)/.exec(p) || [])[1] || '')).filter((h, i, a) => h && a.indexOf(h) === i);
+  if (!hs.length) return;
+  $('k-members').value = hs.join(', ');
+  $('k-members-from').hidden = false;
+}
+$('k-go').addEventListener('click', async () => { if (await keyIn($('k-handle').value, $('k-key').value || keptKey($('k-handle').value))) show(VIEW); });
 $('k-key').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('k-go').click(); });
 $('btn-who').addEventListener('click', () => {
   const dd = $('dd-acts'); if (dd) dd.open = false;
@@ -1162,23 +1190,62 @@ async function door(note){
   if (note){ $('d-note').hidden = false; $('d-note').textContent = note; }
   const sel = $('d-meet');
   sel.innerHTML = '<option value="">reading the beach…</option>'; sel.disabled = true; $('d-go').disabled = true;
-  let list = [];
-  try {
-    const form = await readBlock('function:meeting');
-    const eight = form && form['8'] && typeof form['8'] === 'object' ? form['8'] : {};
-    list = Object.keys(eight).filter(k => /^[1-9]$/.test(k)).sort().map(k => {
-      const m = String(voiceOf(eight[k]) || '').match(/^([a-z0-9-]+)\s*[—–-]\s*([\s\S]*)$/);
-      return m ? { name: m[1], line: m[2].replace(/;\s*read at .*$/i, '').trim() } : null;
-    }).filter(Boolean);
-  } catch(e){}
-  if (MEETING && !list.some(x => x.name === MEETING)) list.unshift({ name: MEETING, line: '' });
+  let ms = { held: [], designs: [] };
+  try { ms = await meetingsOf(); } catch(e){}
+  if (MEETING && !ms.held.concat(ms.designs).some(x => x.name === MEETING)) ms.held.unshift({ name: MEETING, title: words(MEETING), line: '' });
+  const list = ms.held.concat(ms.designs);
   if (!list.length){ sel.innerHTML = '<option value="">no meetings found: try again in a moment</option>'; return; }
-  sel.innerHTML = list.map(x => '<option value="' + esc(x.name) + '">' + esc(words(x.name)) + '</option>').join('');
+  const opt = x => '<option value="' + esc(x.name) + '">' + esc(x.title) + '</option>';
+  sel.innerHTML = (ms.held.length ? '<optgroup label="Meetings held">' + ms.held.map(opt).join('') + '</optgroup>' : '') +
+    (ms.designs.length ? '<optgroup label="Designs, to try it">' + ms.designs.map(opt).join('') + '</optgroup>' : '');
   sel.value = MEETING && list.some(x => x.name === MEETING) ? MEETING : list[0].name;
-  const line = () => { const x = list.find(y => y.name === sel.value); $('d-line').textContent = x && x.line ? x.line : ''; };
+  const line = () => {
+    const x = list.find(y => y.name === sel.value);
+    $('d-line').textContent = x && x.line ? x.line : '';
+    $('d-ring').href = '/ring/' + encodeURIComponent(sel.value); $('d-ring').textContent = 'this meeting, drawn as a ring →';
+    openNow(sel.value);
+  };
   line();
   sel.disabled = false; $('d-go').disabled = false;
   sel.onchange = line;
+}
+/* the meetings a State Stack starts for: the ones people hold, made with Duplicate and listed in the form's room,
+   pool:meeting ('COPIED — <name> — <title>; from: <source>; …'), newest first, where the copy's law stands; then the
+   designs the form lists at function:meeting 8, and any copy made as a design, which says so in its title */
+async function meetingsOf(){
+  const [form, room, ix] = await Promise.all([readBlock('function:meeting').catch(() => null), readBlock('pool:meeting').catch(() => null),
+    fetch(WIRE, { headers:{ Accept:'application/json' }, cache:'no-store' }).then(r => r.json()).catch(() => ({}))]);
+  const has = new Set((ix.blocks || []).map(b => typeof b === 'string' ? b : (b && b.name) || ''));
+  const eight = form && form['8'] && typeof form['8'] === 'object' ? form['8'] : {};
+  const designs = Object.keys(eight).filter(k => /^[1-9]$/.test(k)).sort().map(k => {
+    const m = String(voiceOf(eight[k]) || '').match(/^([a-z0-9-]+)\s*[—–-]\s*([\s\S]*)$/);
+    return m ? { name: m[1], title: words(m[1]), line: m[2].replace(/;\s*read at .*$/i, '').trim() } : null;
+  }).filter(Boolean);
+  const copies = new Map();
+  (function walk(n){
+    if (!n || typeof n !== 'object') return;
+    if (n['_'] && typeof n['_'] === 'object') walk(n['_']);
+    Object.keys(n).filter(k => /^[1-9]$/.test(k)).sort().forEach(k => {
+      const m = (voiceOf(n[k]) || '').match(/^(?:COPIED|ARRANGED)\s*[—–-]\s*([a-z0-9-]+)\s*[—–-]\s*([^;]+);/i);
+      const name = m ? m[1].toLowerCase() : '';
+      if (name && has.has('function:' + name) && !designs.some(x => x.name === name)){ copies.delete(name); copies.set(name, { name, title: m[2].trim(), line: '' }); }
+      walk(n[k]);
+    });
+  })(room);
+  const all = [...copies.values()].reverse(), design = x => /\(design\)/i.test(x.title);
+  return { held: all.filter(x => !design(x)), designs: designs.concat(all.filter(design)) };
+}
+/* a room already open for the meeting, begun in this beat or the three before it (about an hour), is offered first, so a
+   screen and a ring that each open the State Stack for one sitting stay in one room */
+async function openNow(m){
+  const el = $('d-open'); el.hidden = true;
+  if (!m) return;
+  const now = Date.now(), beats = [0, 1, 2, 3].map(i => beatOf(now - i * 86400000 / 81));
+  const found = await Promise.all(beats.map(b => readBlock('pool:' + m + ':' + b).then(x => x ? b : '').catch(() => '')));
+  const b = found.find(Boolean);
+  if (!b || $('d-meet').value !== m) return;
+  el.innerHTML = 'Its State Stack was opened in the last hour: <a href="' + esc(linkOf(m, b) + (AWAY ? '&' : '?') + 'screen') + '">open that one on this screen</a>, or start a new one.';
+  el.hidden = false;
 }
 $('d-go').addEventListener('click', () => {
   const m = slug($('d-meet').value); if (!m) return;
