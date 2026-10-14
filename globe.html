@@ -83,6 +83,21 @@
     text-shadow:0 1px 4px rgba(var(--well-rgb),0.95), 0 0 2px rgba(var(--well-rgb),0.9)}
   .crowd-m:hover .cd{background:var(--solid)}
   .crowd-m:hover .cl{color:var(--foam)}
+  /* out of the rung the reader stands at. A class and not an inline opacity, because
+     MapLibre writes each marker's own style.opacity back to 1 on the frame after every
+     move, so the inline rule held only until the map next moved — which is always */
+  .folk-m.off, .crowd-m.off{opacity:0 !important;pointer-events:none !important}
+
+  /* a layer's entries in the card — the name, then the line as its register keeps it */
+  .entry{margin:0 0 12px;color:var(--vapour);font-size:14.5px;line-height:1.45}
+  .entry b{font-weight:600;color:var(--solid)}
+  .entry a{overflow-wrap:anywhere}
+  #sec-layer:not(.hidden) + #here-prose{margin-top:14px}
+
+  /* ?embed=1 — the sphere and its card alone, for a page that frames it */
+  body.embed .bar, body.embed .stickyhead, body.embed #ladder, body.embed #here-door,
+  body.embed #create-your-own, body.embed #addr .padded{display:none !important}
+  @media (min-width:761px){ body.embed #panel{top:14px} }
 
   /* ── the solar strip — above the sphere, the top rung is not a map ── */
   #solar{position:fixed;inset:0;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:34px;
@@ -201,6 +216,7 @@
   <div id="crumb"></div>
   <p id="here-rung"></p>
   <h1 id="here-name"></h1>
+  <div id="sec-layer" class="hidden"><h2>listed here <span class="work" id="layer-src"></span></h2><div id="layer"></div></div>
   <p id="here-prose"></p>
   <div id="sec-kids"><h2>finer ground <span class="work">spatial:earth</span></h2><div class="kid-row" id="kids"></div></div>
   <div id="sec-holds"><h2>how this place is held <span class="work">identity:earth</span></h2><div id="holds"></div></div>
@@ -246,6 +262,22 @@ const BEACH = (function(){
   const origin = /^https?:\/\//.test(q) ? q : 'https://' + q;
   return origin.replace(/\/+$/, '') + '/.well-known/pscale-beach';
 })();
+/* ?layer=lero — one register kept at the map's own addresses (lero:earth, the lived
+ * experience recovery organisations of the real), drawn INSTEAD of the people: every
+ * address whose line lists entries ('· ' lines) is one marker, and the card names
+ * them with their links. The hash stays the address, so a page can frame
+ * /globe?layer=lero#3,1,1 and open at the United Kingdom. A bare name is the earth's
+ * register of that name; anything that is not a block name is refused, never guessed.
+ * ?embed=1 leaves out the site's own chrome — bar, doors, ladder — for a page that
+ * frames the sphere. (Phenomemental at pool:weft 218, 2026-10-14: a LERO-only map.) */
+const LAYER = (function(){
+  const q = (new URLSearchParams(location.search).get('layer') || '').trim();
+  if (!q) return null;
+  const name = q.includes(':') ? q : q + ':earth';
+  return /^[a-z0-9-]+:[a-z0-9-]+$/i.test(name) ? name : null;
+})();
+const EMBED = new URLSearchParams(location.search).get('embed') === '1';
+if (EMBED) document.body.classList.add('embed');
 const RM = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* /globe/<handle> — a lens on the world, not a person: the segment is CARRIED
@@ -257,7 +289,7 @@ let HANDLE = (function(){
 })();
 /* the page hands over what only it knows; the catalogue is shared in theme.js — and its
    own hand for taking a name, so the go menu's switch happens in place as a tapped name does */
-if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'globe', take: takeName });
+if (window.siteDoors && !EMBED) siteDoors({ handle: HANDLE, here: 'globe', take: takeName });
 
 /* TAKING A NAME AND LETTING IT GO HAPPEN IN PLACE (David, 2026-10-03: letting a
  * name go reloaded the page, replayed the planet's arrival and flew him down to
@@ -272,7 +304,7 @@ function takeHandle(h, path){
   try { history.replaceState(null, '', (HANDLE ? '/globe/' + encodeURIComponent(HANDLE) : '/globe') + (qs ? '?' + qs : '') + location.hash); } catch(e){}
   const doors = document.querySelector('details.dd[data-doors]');
   if (doors) doors.remove();
-  if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'globe', take: takeName });
+  if (window.siteDoors && !EMBED) siteDoors({ handle: HANDLE, here: 'globe', take: takeName });
   if (HANDLE && path) setAddress(path); else renderPanel();
 }
 /* a name taken from the go menu — its way back, or a name typed at its first line — flies to
@@ -546,13 +578,86 @@ function loadCensus(){
   CROWDS = CROWDS.filter(c => !FOLK.some(f => f.path.join(',').startsWith(c.path.join(','))));
 }
 
+/* ── the layer — a register's entries, where its own lines put them ─────────
+   An entry is a '· ' line in an address's line, exactly as the register keeps it,
+   and an address with entries is one listing — one marker, however many it names.
+   Counts are read off the tree (entries at or beneath), never off the prose. */
+let LAYERBLOCK = null, LISTED = [];
+const entriesOf = s => s ? s.split('\n').filter(l => l.startsWith('· ')).map(l => l.slice(2).trim()) : [];
+const entryName = e => { const n = e.split(' — ')[0]; const i = n.indexOf(' ('); return i > 0 ? n.slice(0, i) : n; };
+function layerCount(node){
+  let c = 0;
+  (function walk(n){
+    if (n == null) return;
+    c += entriesOf(semOf(n)).length;
+    if (typeof n === 'object'){
+      for (const {node:ch} of kidsOf(n)) walk(ch);
+      if (groundBelow(n)) walk(n._);
+    }
+  })(node);
+  return c;
+}
+function loadLayer(){
+  LISTED = [];
+  if (!LAYERBLOCK) return;
+  (function walk(node, path){
+    const es = path.length ? entriesOf(semOf(node)) : [];
+    if (es.length){
+      const near = geoNearest(path);
+      if (near) LISTED.push({ path: path.slice(), entries: es, near, pin: !near.geo.bbox });
+    }
+    if (node && typeof node === 'object'){
+      for (const {d, node:ch} of kidsOf(node)) walk(ch, path.concat(d));
+      if (path.length && groundBelow(node)) walk(node._, path.concat(0));
+    }
+  })(LAYERBLOCK, []);
+}
+/* one entry in the card: its name, then the rest of its line with the links live */
+function entryRow(e){
+  const div = document.createElement('div'); div.className = 'entry';
+  const parts = e.split(' — ');
+  const b = document.createElement('b'); b.textContent = parts.shift(); div.appendChild(b);
+  const rest = parts.join(' — ');
+  if (!rest) return div;
+  div.appendChild(document.createTextNode(' — '));
+  const re = /https?:\/\/[^\s,]+/g; let m, i = 0;
+  while ((m = re.exec(rest))){
+    if (m.index > i) div.appendChild(document.createTextNode(rest.slice(i, m.index)));
+    const a = document.createElement('a');
+    a.href = m[0]; a.target = '_blank'; a.rel = 'noopener';
+    try { const u = new URL(m[0]); a.textContent = u.host.replace(/^www\./, '') + (u.pathname.length > 1 ? '/…' : ''); }
+    catch(err){ a.textContent = m[0]; }
+    a.title = m[0];
+    div.appendChild(a); i = m.index + m[0].length;
+  }
+  if (i < rest.length) div.appendChild(document.createTextNode(rest.slice(i)));
+  return div;
+}
+
 /* ── markers — DOM riders on the sphere ─────────────────────────────────── */
-let PLACEMS = [], FOLKMS = [], CROWDMS = [];
+let PLACEMS = [], FOLKMS = [], CROWDMS = [], LAYERMS = [];
 function buildMarkers(){
   for (const {m} of PLACEMS) m.remove();
   for (const {m} of FOLKMS) m.remove();
   for (const {m} of CROWDMS) m.remove();
-  PLACEMS = []; FOLKMS = []; CROWDMS = [];
+  for (const {m} of LAYERMS) m.remove();
+  PLACEMS = []; FOLKMS = []; CROWDMS = []; LAYERMS = [];
+  /* a layer's listings, drawn as the residents are — a pin at a point, a disc the size
+     of a ground — and, like them, never a disc the size of the planet */
+  for (const L of LISTED.filter(L => L.near.at.length > 1)){
+    const names = L.entries.map(entryName);
+    const el = document.createElement('div');
+    el.className = 'folk-m ' + (L.pin ? 'pin' : 'disc');
+    const fl = document.createElement('span'); fl.className = 'fl';
+    fl.textContent = names.length <= 2 ? names.join(', ') : names[0] + ' +' + (names.length - 1);
+    el.title = names.join(', ');
+    const fd = document.createElement('span'); fd.className = 'fd';
+    el.appendChild(fl); el.appendChild(fd);
+    el.addEventListener('click', ev => { ev.stopPropagation(); setAddress(L.path); });
+    const m = new maplibregl.Marker({ element: el, anchor: 'center' })
+      .setLngLat([L.near.geo.lon, L.near.geo.lat]).addTo(map);
+    LAYERMS.push({ L, el, m });
+  }
   for (const p of PLACES){
     const el = document.createElement('div');
     el.className = 'place-m';
@@ -623,6 +728,13 @@ function buildMarkers(){
   }
   refreshRungCaches();
 }
+/* a disc at exactly the size of the ground it stands for, fading as it grows */
+function sizeDisc(fd, b){
+  const a = map.project([b[2], b[1]]), c = map.project([b[3], b[0]]);
+  const d = Math.max(14, Math.abs(c.x - a.x), Math.abs(c.y - a.y));
+  fd.style.width = fd.style.height = d + 'px';
+  fd.style.opacity = Math.max(0.25, Math.min(1, 140 / d));
+}
 function refreshRungCaches(){
   for (const pm of PLACEMS) pm.zr = zoomFor(pm.p.g);
   buildRungZooms();
@@ -653,24 +765,21 @@ function updateOverlays(){
        under where I am standing", and standing at Nigeria at country zoom is exactly
        when its cities' counts are wanted. The fade zeroed them and the rung went
        silent; the address already decided what belongs. */
-    el.style.opacity = inScope ? 1 : 0;
-    el.style.pointerEvents = inScope ? 'auto' : 'none';
+    el.classList.toggle('off', !inScope);
   }
   for (const {f, el} of FOLKMS){
     /* A person shows under the rung the reader is standing at, by the same rule the
        crowds follow and the card already applies — otherwise the sphere names people
        the panel beside it does not, and the two stop describing one place. */
     const underHere = f.path.length >= ADDR.length && ADDR.every((d, i) => f.path[i] === d);
-    el.style.opacity = underHere ? 1 : 0;
-    el.style.pointerEvents = underHere ? 'auto' : 'none';
-    const fd = el.lastChild;
-    if (!f.pin && f.near.geo.bbox){
-      const b = f.near.geo.bbox;
-      const a = map.project([b[2], b[1]]), c = map.project([b[3], b[0]]);
-      const d = Math.max(14, Math.abs(c.x - a.x), Math.abs(c.y - a.y));
-      fd.style.width = fd.style.height = d + 'px';
-      fd.style.opacity = Math.max(0.25, Math.min(1, 140 / d));
-    }
+    el.classList.toggle('off', !underHere);
+    if (!f.pin && f.near.geo.bbox) sizeDisc(el.lastChild, f.near.geo.bbox);
+  }
+  /* a listing shows under the rung the reader stands at, by the residents' own rule */
+  for (const {L, el} of LAYERMS){
+    const underHere = L.path.length >= ADDR.length && ADDR.every((d, i) => L.path[i] === d);
+    el.classList.toggle('off', !underHere);
+    if (!L.pin && L.near.geo.bbox) sizeDisc(el.lastChild, L.near.geo.bbox);
   }
   const insolar = z < WORLDZ - 0.55;
   $('solar').classList.toggle('show', insolar);
@@ -893,6 +1002,33 @@ function renderPanel(){
   }
   $('sec-folk').classList.toggle('hidden', !folk.children.length);
 
+  /* the layer's card: what this address says, each entry by name with its links, then
+     the grounds beneath that hold entries, counted from the tree — a tap walks down */
+  const lay = $('layer'); lay.innerHTML = '';
+  if (LAYERBLOCK){
+    const ln = nodeAt(LAYERBLOCK, ADDR), ls = semOf(ln);
+    const head = ls ? ls.split('\n')[0] : '';
+    if (head){
+      const p = document.createElement('p'); p.className = 'hold-note';
+      p.textContent = proseOf(head) || head; lay.appendChild(p);
+    }
+    for (const e of entriesOf(ls)) lay.appendChild(entryRow(e));
+    const below = [];
+    if (ln && typeof ln === 'object'){
+      for (const {d, node:ch} of kidsOf(ln)){ const c = layerCount(ch); if (c) below.push({ path: ADDR.concat(d), c }); }
+      if (ADDR.length && groundBelow(ln)){ const c = layerCount(ln._); if (c) below.push({ path: ADDR.concat(0), c }); }
+    }
+    for (const b of below.sort((x, y) => y.c - x.c)){
+      const target = jumpZeros(b.path), sp = semOf(nodeAt(SPATIAL, target));
+      const row = document.createElement('div'); row.className = 'folkrow';
+      const h = document.createElement('span'); h.className = 'h'; h.textContent = sp ? nameOf(sp) : 'unresolved ground';
+      h.addEventListener('click', () => setAddress(target));
+      const at = document.createElement('span'); at.className = 'at'; at.textContent = fmt(b.c);
+      row.appendChild(h); row.appendChild(at); lay.appendChild(row);
+    }
+  }
+  $('sec-layer').classList.toggle('hidden', !lay.children.length);
+
   /* the door to /here — the same address, in your own words */
   const hd = $('here-door'), hl = $('here-link');
   if (hd) hd.classList.toggle('hidden', !HANDLE);
@@ -1024,7 +1160,7 @@ function buildSolar(){
   let index = null;
   try {
     const [sp, idy, idx] = await Promise.all([
-      readBlock('spatial:earth'), readBlock('identity:earth'),
+      readBlock('spatial:earth'), LAYER ? Promise.resolve(null) : readBlock('identity:earth'),
       fetch(BEACH, {headers:{Accept:'application/json'}, cache:'no-store'}).then(r => r.json())
     ]);
     SPATIAL = sp; IDENTITY = idy; index = idx;
@@ -1033,18 +1169,24 @@ function buildSolar(){
     return;
   }
   try { GEOBLOCK = await readBlock('geo:earth'); } catch(e){ GEOBLOCK = null; }
+  /* a layer is drawn INSTEAD of the people, so its page reads neither the census
+     nor the holds — only the register it was asked for */
+  if (LAYER){ try { LAYERBLOCK = await readBlock(LAYER); } catch(e){ LAYERBLOCK = null; } }
   /* the tally the keeper's pass folded — absent on a beach that has never run one,
      which simply means nobody is drawn, not that the page breaks */
-  try { CENSUS = await readBlock('census:earth'); } catch(e){ CENSUS = null; }
-  $('status').textContent = GEOBLOCK
+  else { try { CENSUS = await readBlock('census:earth'); } catch(e){ CENSUS = null; } }
+  $('status').textContent = (GEOBLOCK
     ? 'ground: spatial:earth · anchors: geo:earth'
-    : 'ground: spatial:earth · anchors: page gazetteer (geo:earth unreachable)';
+    : 'ground: spatial:earth · anchors: page gazetteer (geo:earth unreachable)')
+    + (LAYER ? ' · layer: ' + LAYER + (LAYERBLOCK ? '' : ' (unreachable)') : '');
   $('status').className = 'work';
+  $('layer-src').textContent = LAYER || '';
 
   FLOOR = floorOf(SPATIAL);
   buildSolar();
   collectPlaces();
   loadCensus();
+  loadLayer();
 
   const start = (function(){
     const h = (location.hash || '').replace(/^#/, '').replace(/[\s.]/g, '').replace(/,/g, '');
