@@ -21,6 +21,7 @@ This repo is **David's personal site** at https://happyseaurchin.com — the lan
 | `pscale/starstone/` | starstone format reference (JSON variants + bsp-star walkers in js/ts/py) |
 | `packages/`, `real-organic-human/`, `virtual-ai-agents/` | static site sections |
 | `dashboard/` | the beach dashboard — keel's claude.ai dashboard (`dash.js`, near-verbatim) on a small runtime (`runtime.js`) that reads the census, the `presence` block and each `/w/` table's census straight from the beach in the browser. The "who writes / doors / tables" tabs read keel's snapshot in `dashboard/data/` (only the fields drawn — no notes or aliases); refresh it by re-exporting from the claude.ai dashboard when keel recompiles. The virtual page's "the beach, right now" band reads the same census. |
+| `button/` | the beach button (prototype, 14 Oct 2026) — a floating frame any page carries with one script tag; handle, passphrase and key are typed only in the beach's own window, and the host page can read none of it. Its security case and limits are in `button/README.md`, proven by `scripts/smoke-button.js` (headless Chromium against a hostile page). It never takes the beach from the page — the frame's beach is fixed in its own code. |
 | `api/` | six serverless functions (see below; genus-clock.js, the egg-one cron, is documented in its own header) |
 | `scripts/` | inventory pipeline (active) + legacy beach ops (read the warnings) |
 
