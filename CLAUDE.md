@@ -2,7 +2,7 @@
 
 This repo is **David's personal site** at https://happyseaurchin.com — the landing page, the mindflow speech/pscale tools, the experiments gallery, and a handful of small Vercel serverless functions.
 
-**It is no longer the federated beach.** `api/pscale-beach.js` (the v2 handler, ~680 lines) was deleted in `45759f0` (11 May 2026). The beach lives at **https://beach.happyseaurchin.com**, deployed from [`pscale-commons/pscale-beach`](https://github.com/pscale-commons/pscale-beach) — that repo is now the wire-level reference for what the substrate accepts, validates, and rejects at the HTTP boundary. Do beach/substrate work there and in `bsp-mcp-server`, not here.
+**It is no longer the federated beach.** `api/pscale-beach.js` (the v2 handler, ~680 lines) was deleted in `45759f0` (11 May 2026). The beach lives at **https://beach.happyseaurchin.com**, built from [`pscale-commons/pscale-beach`](https://github.com/pscale-commons/pscale-beach) — that repo is now the wire-level reference for what the substrate accepts, validates, and rejects at the HTTP boundary. (The deploy itself is the private clone `happyseaurchin/pscale-beach-happyseaurchin`, Vercel project `pscale-beach-happyseaurchin`: changes land in the package first and are mirrored there, 'mirrored from pscale-beach #N'.) Do beach/substrate work there and in `bsp-mcp-server`, not here.
 
 ## The beach moved — what that means here
 
@@ -21,7 +21,7 @@ This repo is **David's personal site** at https://happyseaurchin.com — the lan
 | `pscale/starstone/` | starstone format reference (JSON variants + bsp-star walkers in js/ts/py) |
 | `packages/`, `real-organic-human/`, `virtual-ai-agents/` | static site sections |
 | `dashboard/` | the beach dashboard — keel's claude.ai dashboard (`dash.js`, near-verbatim) on a small runtime (`runtime.js`) that reads the census, the `presence` block and each `/w/` table's census straight from the beach in the browser. The "who writes / doors / tables" tabs read keel's snapshot in `dashboard/data/` (only the fields drawn — no notes or aliases); refresh it by re-exporting from the claude.ai dashboard when keel recompiles. The virtual page's "the beach, right now" band reads the same census. |
-| `button/` | the beach button (prototype, 14 Oct 2026) — a floating frame any page carries with one script tag; handle, passphrase and key are typed only in the beach's own window, and the host page can read none of it. Its security case and limits are in `button/README.md`, proven by `scripts/smoke-button.js` (headless Chromium against a hostile page). It never takes the beach from the page — the frame's beach is fixed in its own code. |
+| `button/` | a forwarding shim only: the beach button (a floating frame any page carries with one script tag, the host page unable to read what is typed into it) moved onto the beach itself on 14 Oct 2026 and is served at `https://beach.happyseaurchin.com/button/button.js`; its source, security case and hostile-page test are in `pscale-commons/pscale-beach` (`button/`, `npm run smoke:button`). `button/button.js` here hands any page that carried the old address to the beach's loader. |
 | `api/` | six serverless functions (see below; genus-clock.js, the egg-one cron, is documented in its own header) |
 | `scripts/` | inventory pipeline (active) + legacy beach ops (read the warnings) |
 
