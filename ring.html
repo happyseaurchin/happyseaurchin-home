@@ -214,15 +214,51 @@
   .how code{font-family:var(--mono);font-size:13px;color:var(--foam);word-break:break-word}
   .foot{margin-top:26px;display:flex;flex-wrap:wrap;gap:8px 18px;font-family:var(--mono);font-size:12px}
   .loading{color:var(--vapour-dim);font-style:italic}
-  @media (prefers-reduced-motion: reduce){*{transition:none!important}}
+
+  /* THE HUD (David, 2026-10-14, after the group page's words option): the ring big, the voices of the people, and a
+     big button to speak; every other word under options, 'show words', exactly as it stands without the HUD */
+  .hud #eyebrow,.hud #lede,.hud #formnote,.hud .tablebox,.hud .how,.hud #versions,.hud #foot{display:none!important}
+  .hud .main{grid-template-columns:minmax(0,1.4fr) minmax(0,0.85fr)}
+  .hud .ringbox{max-width:720px}
+  .hud .panel{padding:18px 18px 20px}
+  .hud .phead{margin:0 0 6px}
+  .hud .phead h2{font-size:clamp(24px,3vw,34px)}
+  .hud .phead .chip{margin-left:auto}
+  .hud-parts{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 12px}
+  .hud-parts button{font-family:var(--display);font-weight:700;font-size:15px;padding:8px 14px;border-radius:999px;border:1px solid var(--line-strong);background:none;color:var(--foam);cursor:pointer}
+  .hud-parts button[aria-pressed="true"]{border-color:var(--liquid);color:var(--liquid)}
+  .voices{display:grid;gap:8px;margin:6px 0 4px}
+  .voice{margin:0;padding:10px 14px 11px;border-radius:14px;background:rgba(var(--wash-rgb),0.07);font-size:18px;line-height:1.4}
+  .voice b{display:block;font-family:var(--mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim);font-weight:700;margin-bottom:2px}
+  .voice.mine{box-shadow:inset 0 0 0 1px rgba(var(--liquid-rgb),0.55)}
+  .say{display:grid;gap:8px;margin-top:14px}
+  .say-who{padding:10px 12px;font-size:16px}
+  .say-btn{display:flex;align-items:center;justify-content:center;gap:14px;width:100%;min-height:96px;border-radius:18px;border:1px solid rgba(var(--liquid-rgb),0.6);background:rgba(var(--liquid-rgb),0.12);color:var(--foam);font-family:var(--display);font-weight:700;font-size:clamp(19px,2.2vw,24px);cursor:pointer}
+  .say-btn:hover{background:rgba(var(--liquid-rgb),0.2)}
+  .say-btn.on{background:var(--liquid);color:var(--abyss);animation:speak 1.3s ease-in-out infinite}
+  @keyframes speak{0%,100%{box-shadow:0 0 0 0 rgba(var(--liquid-rgb),0.55)}50%{box-shadow:0 0 0 12px rgba(var(--liquid-rgb),0)}}
+  .say-text{display:none}
+  .say.typed .say-text{display:block;width:100%;min-height:78px;padding:8px 10px;resize:vertical}
+  .say .dictate{display:none!important}
+  .say-st{margin:0;min-height:1.2em;text-align:center}
+  .hud-run{padding:14px 16px 16px}
+  .hud-run .clock{font-size:clamp(46px,6vw,72px);line-height:1}
+  .hud-now{font-family:var(--display);font-weight:700;font-size:20px;margin:6px 0 0}
+  .hud-now span{font-family:var(--mono);font-weight:400;font-size:14px;color:var(--vapour-dim)}
+  .hud-go{display:block;width:100%;min-height:80px;margin-top:12px;border:0;border-radius:18px;background:var(--solid);color:var(--abyss);font-family:var(--display);font-weight:700;font-size:clamp(19px,2.2vw,24px);cursor:pointer}
+  @media (max-width:880px){.hud .main{grid-template-columns:minmax(0,1fr)}}
+  @media (prefers-reduced-motion: reduce){*{transition:none!important}.say-btn.on{animation:none}}
 </style>
 </head>
 <body>
-<script>document.documentElement.classList.remove('no-js');</script>
+<script>document.documentElement.classList.remove('no-js');
+/* THE HUD, unless this device has asked for the words: the ring and the voices, as the group page keeps its tiles */
+try { if (localStorage.getItem('ring:words') !== '1') document.documentElement.classList.add('hud'); } catch(e){ document.documentElement.classList.add('hud'); }</script>
 <div class="bar">
   <span class="dot"></span>
   <span><b id="bar-name">ring</b> · a meeting drawn as one ring</span>
   <span class="spacer"></span>
+  <button id="btn-words" title="Every word of the meeting: what each part is for, when it is done, the synthesis, the runs and how it lives on the beach. This device remembers the choice">show words</button>
   <button id="make" title="Make a meeting of your own from this one, or a design of your own">duplicate meeting</button>
   <button id="btn-tools" title="The meeting's tools beside Invite: the State Stack. This device remembers the choice for every meeting">show tools</button>
   <button id="btn-layers" title="The ring's two layers, the phases and their parts, or the phases alone. This device remembers the choice for every meeting">show 1 layer</button>
@@ -894,8 +930,90 @@ function runBox(){
        '<p class="hint" id="k-hint"></p><pre class="rec" id="rec" hidden></pre>';
   return h + '</section>';
 }
+/* ---------- the HUD's panel: where you are, the voices there, and a big button to speak ---------- */
+const HUD = () => document.documentElement.classList.contains('hud');
+const MIC = '<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="currentColor" stroke="none"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>';
+function hudPanel(){
+  const n = find(S.sel), a = n.addr, k = scale(), me = whoHere();
+  let h = '';
+  if (S.mode === 'run') h += hudRun();
+  if (S.made && S.made === FAMILY && S.madeKind !== 'design') h += '<div class="made"><p><b>Your meeting is made.</b></p><div class="share"><a class="btn" style="padding:4px 10px;text-decoration:none" href="' + SITE + '/invite/' + encodeURIComponent(FAMILY) + '">Invite</a></div></div>';
+  const v = viewed();
+  if (v) h += '<div class="viewing"><span>' + esc(v.who) + ' · ' + esc(runDate(v)) + '</span><button type="button" class="btn warn" data-view="">Back to the plan</button></div>';
+  const mins = n.kind === 'root' ? M.sum : n.kind === 'part' ? n.plan : n.min;
+  h += '<div class="phead">' + (n.kind !== 'root' ? '<span class="sw' + (n.door ? ' door-sw' : '') + '" style="' + (n.door ? '' : 'background:' + colorOf(n)) + '"></span>' : '') +
+       '<h2>' + esc(n.kind === 'root' ? M.root.title : n.title) + '</h2>' + (n.door ? '' : '<span class="chip">' + fmt(mins * k) + '</span>') + '</div>';
+  /* a phase's parts to step into: the ring shows them only at two layers, and never a door's */
+  const parts = n.kind === 'phase' ? n.parts : n.kind === 'part' ? n.phase.parts : [];
+  if (parts.length) h += '<div class="hud-parts">' + parts.map(q => '<button type="button" data-go="' + q.addr + '" aria-pressed="' + (q.addr === a) + '">' + esc(q.title) + '</button>').join('') + '</div>';
+  /* the voices: each person's own words here, and nothing the page says about them */
+  const VL = window.siteScope, all = readingsAt(a), rs = VL ? VL.sift(all, r => r.who).kept : all;
+  if (rs.length) h += '<div class="voices">' + rs.map(r => '<p class="voice' + (r.who === me ? ' mine' : '') + '"><b>' + esc(r.who) + '</b>' + esc(r.text) + '</p>').join('') + '</div>';
+  if (S.mode === 'design' && !SNAP) h += '<div class="say" id="addbox" data-at="' + esc(a) + '">' +
+    '<input id="f-who" class="say-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name"' + (me ? ' hidden' : '') + '>' +
+    '<button type="button" class="say-btn" id="h-say" aria-pressed="false">' + MIC + '<span class="say-t">' + (rs.some(r => r.who === me) ? 'say it again' : 'say yours') + '</span></button>' +
+    '<textarea id="f-text" class="say-text" aria-label="your words here"></textarea>' +
+    '<p class="hint say-st" id="f-hint"></p><button type="button" id="f-send" hidden></button></div>';
+  return h;
+}
+/* the run as a HUD: the clock, where the meeting is, one big button to move on, and a big button to say what happened */
+function hudRun(){
+  const ri = runInfo(), r = S.run;
+  if (!r) return '<section class="run hud-run" aria-label="Run the meeting"><span class="clock">' + clock(len() * 60000) + '</span>' +
+    '<button type="button" class="hud-go" data-run="start">Start the meeting</button></section>';
+  if (!r.end){
+    const st = M.steps[ri.cur], p = st.p, note = r.notes[p.idx] || {}, nx = M.steps[ri.cur + 1];
+    const next = !nx ? 'Finish' : (nx.p !== p ? nx.p.title : (nx.q ? nx.q.title : nx.p.title)) + ' →';
+    return '<section class="run hud-run" aria-label="Run the meeting"><span class="clock" id="rclock">' + clock(ri.elapsed * 60000) + '</span>' +
+      '<p class="hud-now">' + esc(p.title) + (st.q ? ' · ' + esc(st.q.title) : '') + ' <span id="rphase">' + fmt((ri.now - ri.curStart) / 60000) + '</span></p>' +
+      '<button type="button" class="hud-go" data-run="next">' + esc(next) + '</button>' +
+      '<div class="met" role="group" aria-label="Was it done">' + ['yes', 'partly', 'no'].map(v => '<button type="button" data-met="' + v + '" aria-pressed="' + (note.met === v) + '">' + cap(v) + '</button>').join('') + '</div>' +
+      '<div class="say"><button type="button" class="say-btn" id="h-note" aria-pressed="false">' + MIC + '<span class="say-t">' + (note.text ? 'say more' : 'what happened') + '</span></button>' +
+      '<textarea id="rnote" class="say-text" data-note="' + p.idx + '" aria-label="what happened in ' + esc(p.title) + '">' + esc(note.text || '') + '</textarea></div>' +
+      '<div class="runbtns"><a class="btn ghost" style="text-decoration:none" href="' + stackLink(r) + '" target="_blank" rel="noopener">State Stack ↗</a>' +
+      '<button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard</button></div></section>';
+  }
+  return '<section class="run hud-run" aria-label="The run, ended"><span class="clock">' + clock(ri.elapsed * 60000) + '</span><p class="hud-now"><span>of ' + clock(r.total * 60000) + '</span></p>' +
+    (r.kept ? '<p class="hint ok">kept ✓</p>' : SNAP ? '' : '<div class="box" style="margin-top:10px"><div class="row"><input id="k-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
+      '<input id="k-with" placeholder="who was there (optional)" aria-label="who was there, optional"></div></div>') +
+    (r.kept || SNAP ? '' : '<button type="button" class="hud-go" data-run="keep">Keep this run</button>') +
+    '<div class="runbtns"><button type="button" class="btn warn" data-run="reset">New run</button></div><p class="hint" id="k-hint"></p><pre class="rec" id="rec" hidden></pre></section>';
+}
+/* a big button over a box: tap to speak into it, tap again to stop, and where the box is a reading, it is said then.
+   A browser with no microphone shows the box itself, to type into */
+function bigMic(btn, box, sends){
+  if (!btn || !box) return;
+  if (window.dictate) window.dictate(box);
+  const d = box._dictate, label = btn.querySelector('.say-t'), rest = label.textContent;
+  if (!d){
+    btn.closest('.say').classList.add('typed');
+    if (sends){ label.textContent = 'say it'; btn.addEventListener('click', () => addReading()); } else btn.hidden = true;
+    return;
+  }
+  let watch = null;
+  const paint = on => { btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', String(on)); label.textContent = on ? (sends ? 'listening · tap to say it' : 'listening · tap to stop') : rest; };
+  btn.addEventListener('click', () => {
+    clearInterval(watch);
+    if (d.listening()){
+      d.stop(); paint(false);
+      /* the last words firm a moment after the microphone closes */
+      if (sends) setTimeout(() => { if (box.value.trim()) addReading(); }, 700);
+      return;
+    }
+    if (sends) box.value = '';
+    d.begin(); paint(d.listening());
+    watch = setInterval(() => { if (!d.listening()){ clearInterval(watch); paint(false); } }, 500);
+  });
+}
+function wireHud(){
+  const fw = $('f-who'); if (fw && !fw.value) fw.value = whoHere();
+  const kw = $('k-who'); if (kw && !kw.value) kw.value = whoHere();
+  bigMic($('h-say'), $('f-text'), true);
+  bigMic($('h-note'), $('rnote'), false);
+}
 function drawPanel(){
   if (!M){ return; }
+  if (HUD()){ panel.innerHTML = hudPanel(); wireHud(); return; }
   const n = find(S.sel), a = n.addr, k = scale();
   let h = '';
   if (S.mode === 'run') h += runBox();
@@ -981,7 +1099,7 @@ async function addReading(){
   const mEl = $('f-min'), est = mEl && mEl.value ? parseFloat(mEl.value) : 0;
   const line = (est > 0 ? num(est / scale()) + ' — ' : '') + text;
   const block = FAMILY + ':' + name;
-  send.disabled = true; say('', 'putting it beside the meeting…');
+  send.disabled = true; say('', HUD() ? 'saying it…' : 'putting it beside the meeting…');
   try {
     const stands = await readBlock(block);
     /* the mirror is founded under the key with the first reading in it, or the reading is written into it */
@@ -1010,7 +1128,7 @@ async function addReading(){
     if (!w.ok){ say('err', refusal(w)); send.disabled = false; return; }
     if (window.keepDraft) window.keepDraft(null, draftKey(a))();
     await load(); render();
-    const h2 = $('f-hint'); if (h2){ h2.className = 'hint ok'; h2.textContent = 'It stands beside the meeting in your name. Writing again here replaces it.'; }
+    const h2 = $('f-hint'); if (h2){ h2.className = 'hint ok'; h2.textContent = HUD() ? 'said ✓' : 'It stands beside the meeting in your name. Writing again here replaces it.'; }
   } catch(e){ say('err', 'couldn’t put that on the beach: ' + e.message); send.disabled = false; }
 }
 
@@ -1112,6 +1230,14 @@ $('btn-layers').addEventListener('click', () => {
   closeOptions(); drawLayers(); drawRing();
 });
 drawLayers();
+/* the words, on this device for every meeting: off is the HUD, on is the page as it always was */
+const drawWords = () => { $('btn-words').textContent = HUD() ? 'show words' : 'hide words'; };
+$('btn-words').addEventListener('click', () => {
+  const on = HUD(); document.documentElement.classList.toggle('hud', !on);
+  try { localStorage.setItem('ring:words', on ? '1' : '0'); } catch(e){}
+  closeOptions(); drawWords(); render();
+});
+drawWords();
 $('invitelink').addEventListener('click', ev => { if (IS_DESIGN){ ev.preventDefault(); openMake('invite'); } });
 /* the pre-meeting's Who names the invited (function:meeting 2.1): a meeting to hold opens with its maker alone there,
    'WHO: invited — <maker>. Each says …', its own people and nobody copied from the meeting it came from */
