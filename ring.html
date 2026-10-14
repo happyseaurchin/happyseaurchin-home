@@ -238,6 +238,7 @@
           <button type="button" class="make" id="make" title="Make a meeting of your own from this one, or a design of your own">Duplicate</button>
           <button type="button" class="plain" id="copylink" title="Copies this meeting's own link, to send to the people coming">Copy link</button>
           <a class="plain" id="invitelink" href="/invite" title="The invitation: who is invited, and how each one's AI finds a time with everyone else's">Invite</a>
+          <a class="plain" id="stacklink" href="/stack" title="The State Stack: on the big screen, everyone scans its code and sets their own stack on their phone">State Stack</a>
         </div>
       </div>
       <p class="fixed" id="fixed" hidden></p>
@@ -367,8 +368,19 @@ const ON_SITE = /^\/ring(\/|$)/.test(location.pathname);
 const ringHref = (name, share) => ON_SITE || SNAP || share
   ? 'https://happyseaurchin.com/ring/' + encodeURIComponent(name) + (HANDLE && !share && !SNAP ? '/' + encodeURIComponent(HANDLE) : '')
   : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
-/* a run's State Stack: the room of the meeting begun at the run's beat, pool:<name>:<beat>, drawn at /stack (task:weft 33) */
-const stackLink = r => (ON_SITE ? '' : 'https://happyseaurchin.com') + '/stack/' + encodeURIComponent(FAMILY) + '/' + beatOf(r.start) + '?screen';
+/* a run's State Stack: the room of the meeting, pool:<name>:<beat>, drawn at /stack (task:weft 33) — the one opened for
+   this sitting in the hour before the run began, where there is one, else the room begun at the run's own beat */
+const SITE = ON_SITE ? '' : 'https://happyseaurchin.com';
+const stackLink = r => SITE + '/stack/' + encodeURIComponent(FAMILY) + '/' + (r.room || beatOf(r.start)) + '?screen';
+/* before any run, the State Stack's own page with this meeting chosen: open or kept to its members, and a room
+   already open for it offered first */
+const stackHome = () => SITE + '/stack/' + encodeURIComponent(FAMILY);
+/* the rooms this meeting may already have open: the beat an instant falls in and the three before it, about an hour */
+async function openRoom(at){
+  const beats = [0, 1, 2, 3].map(i => beatOf(at - i * 86400000 / 81));
+  const found = await Promise.all(beats.map(b => readBlock('pool:' + FAMILY + ':' + b).then(x => x ? b : '').catch(() => '')));
+  return found.find(Boolean) || '';
+}
 const pathFor = name => ON_SITE ? '/ring/' + encodeURIComponent(name) + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
 /* the key a name writes with, as /now, /walk and /recency keep it: this meeting's mirror, then the passport's.
    The page has no box for it: when a write needs a key the device does not keep, the browser asks, and the key is
@@ -436,7 +448,7 @@ function parseLine(s){
 }
 
 /* ---------- the design ---------- */
-let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [], COPIES = [];
+let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [], COPIES = [], IS_DESIGN = false;
 /* a copy's law says where it came from, at its 9: "PROVENANCE: copied from: <name>" */
 const copiedFrom = law => { const m = /copied from:\s*([a-z0-9][a-z0-9-]*)/i.exec(voiceOf(law && law['9']) || ''); return m ? m[1].toLowerCase() : ''; };
 function buildModel(spine){
@@ -886,8 +898,9 @@ function drawPanel(){
   if (S.mode === 'run') h += runBox();
   if (S.made && S.made === FAMILY) h += '<div class="made"><p>' + (S.madeKind === 'design'
       ? '<b>Your design is made</b>, kept under your key. Change it with Claude, and duplicate meetings from it.'
-      : '<b>Your meeting is made</b>, kept under your key. Send its link to the people coming: they say when they can come at the pre-meeting, and what they think after at the post-meeting.') +
-    '</p><div class="share"><button type="button" class="btn" style="padding:4px 10px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></div></div>';
+      : '<b>Your meeting is made</b>, kept under your key, with you on its list. Name the people coming at its invitation, and send them its link: each one’s AI finds a time with everyone else’s. If you are arranging it for others, take yourself off the list there.') +
+    '</p><div class="share">' + (S.madeKind === 'design' ? '' : '<a class="btn" style="padding:4px 10px;text-decoration:none" href="' + SITE + '/invite/' + encodeURIComponent(FAMILY) + '">Invite</a>') +
+    '<button type="button" class="btn" style="padding:4px 10px" data-copy="https://happyseaurchin.com/ring/' + esc(FAMILY) + '">Copy link</button></div></div>';
   const v = viewed();
   if (v) h += '<div class="viewing"><span>Showing the run kept by <b>' + esc(v.who) + '</b>, ' + esc(runDate(v)) + ': ' + fmt(v.taken) + ' of ' + fmt(v.planned) + '</span><button type="button" class="btn warn" data-view="">Back to the plan</button></div>';
   h += crumbs(n);
@@ -944,7 +957,11 @@ panel.addEventListener('click', ev => {
   const r = ev.target.closest('[data-run]');
   if (!r) return;
   const act = r.getAttribute('data-run');
-  if (act === 'start'){ S.run = { start: Date.now(), marks: [], notes: {}, end: null, total: len() }; S.view = ''; setSel(M.steps[0].addr); }
+  if (act === 'start'){
+    const run = S.run = { start: Date.now(), marks: [], notes: {}, end: null, total: len() }; S.view = ''; setSel(M.steps[0].addr);
+    /* a State Stack already opened for this sitting is the run's own: the room's screen and the run's link stay one room */
+    if (!SNAP) openRoom(run.start).then(b => { if (b && S.run === run){ run.room = b; save(); render(); } });
+  }
   else if (act === 'next'){ S.run.marks.push(Date.now()); if (S.run.marks.length >= M.steps.length) S.run.end = Date.now(); else setSel(M.steps[S.run.marks.length].addr); }
   else if (act === 'end'){ S.run.marks.push(Date.now()); S.run.end = Date.now(); }
   else if (act === 'reset'){ S.run = null; }
@@ -1032,7 +1049,7 @@ async function keepRun(){
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how the run is signed.'); $('k-who').focus(); return; }
   say('', 'keeping it beside the plan…');
   try {
-    const room = 'pool:' + FAMILY + ':' + beatOf(S.run.start), held = await readBlock(room).catch(() => null);
+    const room = 'pool:' + FAMILY + ':' + (S.run.room || beatOf(S.run.start)), held = await readBlock(room).catch(() => null);
     const block = FAMILY + ':' + beatOf(S.run.start) + ':' + name, content = toObj(runRecord(name, who, held ? room : ''));
     const stands = await readBlock(block);
     const w = await keyed(FAMILY, name, block, stands ? '' : 'Keeping this run founds its record',
@@ -1064,10 +1081,14 @@ function freeSlug(base){
 }
 /* "The action cycle" reads as "the action cycle" inside a sentence; a name stays as it is */
 const inSentence = t => /^(The|A|An)\s/.test(t) ? t.charAt(0).toLowerCase() + t.slice(1) : t;
-function openMake(){
+/* what the maker came for: Duplicate itself, or a design's Invite, which goes on to the copy's invitation once it is made */
+let MAKE_THEN = '';
+function openMake(then){
   if (!M) return;
+  MAKE_THEN = then === 'invite' ? then : '';
   const meetingKind = document.querySelector('input[name="mk-kind"][value="meeting"]'); if (meetingKind) meetingKind.checked = true;
-  $('mk-lede').textContent = 'A copy of ' + inSentence(M.root.title) + ', made yours: the same phases and timings, a pre-meeting where people say when, who and where, and a post-meeting for what they think after. It gets the name you give it, its own link, and its own readings and record.';
+  $('mk-lede').textContent = (MAKE_THEN ? 'A design is never held, so the people are invited to a meeting of your own: name it here, and its invitation opens with you on its list. ' : '') +
+    'A copy of ' + inSentence(M.root.title) + ', made yours: the same phases and timings, a pre-meeting where people say when, who and where, and a post-meeting for what they think after. It gets the name you give it, its own link, and its own readings and record.';
   $('mk-hint').className = 'hint'; $('mk-hint').textContent = 'The copy is yours: it is kept under your key, so only you can change what it says. Anyone with its link can say when they can come, and what they think.';
   $('mk-who').value = $('mk-who').value || whoHere();
   $('mk-go').disabled = false; showLink();
@@ -1075,7 +1096,15 @@ function openMake(){
   $('mk-title').focus();
 }
 function showLink(){ const s = freeSlug(slugify($('mk-title').value)); $('mk-link').textContent = s ? 'Its link will be happyseaurchin.com/ring/' + s : ''; }
-$('make').addEventListener('click', openMake);
+$('make').addEventListener('click', () => openMake());
+$('invitelink').addEventListener('click', ev => { if (IS_DESIGN){ ev.preventDefault(); openMake('invite'); } });
+/* the pre-meeting's Who names the invited (function:meeting 2.1): a meeting to hold opens with its maker alone there,
+   'WHO: invited — <maker>. Each says …', its own people and nobody copied from the meeting it came from */
+function whoWith(line, handle){
+  const rest = String(line || 'WHO: each says they are coming.').replace(/invited\s*[—–-]\s*[^.]*\.?\s*/i, '');
+  const head = /^\s*WHO\s*:\s*/i.exec(rest);
+  return head ? head[0] + 'invited — ' + handle + '. ' + cap(rest.slice(head[0].length)) : 'invited — ' + handle + '. ' + rest;
+}
 $('mk-title').addEventListener('input', showLink);
 $('mk-cancel').addEventListener('click', () => dlg.close ? dlg.close() : dlg.removeAttribute('open'));
 /* a copy is the meeting written again under the maker's key: the spine whole, its root re-voiced with their name
@@ -1103,6 +1132,11 @@ $('mk-form').addEventListener('submit', async ev => {
       ? 'A design of its own, duplicated from ' + of + ' (spine:' + src + ') on ' + date + ' by ' + name + ' and kept under their own key, to be changed by its keeper and to duplicate meetings from; what it teaches can go back to ' + of + ' as readings there.'
       : 'A copy of ' + of + ' (spine:' + src + '), made ' + date + ' by ' + name + " with Duplicate and kept under their own key: its phases and timings were " + of +
         "'s that day, and only its keeper changes them. Its readings, its fold and its runs are its own."].filter(Boolean).join(' ');
+  if (kind === 'meeting' && spine['1'] && typeof spine['1'] === 'object' && lineAt(spine, '1.2') != null){
+    let who = spine['1']['2'];
+    if (who && typeof who === 'object'){ while (who['_'] && typeof who['_'] === 'object') who = who['_']; who['_'] = whoWith(who['_'], name); }
+    else spine['1']['2'] = whoWith(who, name);
+  }
   const law = JSON.parse(JSON.stringify(LAW || {}));
   law['_'] = 'Operator for ' + slug + ': ' + named + ', ' + (kind === 'design' ? 'a design' : 'a meeting') + ' drawn as one ring, copied with its spine from ' + src + ' on ' + date + ' — the lines here are ' + src +
     "'s own law as it stood then, and where they name " + src + ', read ' + slug + '; the shared law at function:meeting. Deliver it with function:meeting whole to any LLM that reads, runs or folds it.';
@@ -1121,6 +1155,7 @@ $('mk-form').addEventListener('submit', async ev => {
     if (!w.ok){ say('err', refusal(w)); go.disabled = false; return; }
     await post({ append: true, content: 'COPIED — ' + slug + ' — ' + named + '; from: ' + src + '; by ' + name + '; happyseaurchin.com/ring/' + slug }, 'pool:meeting').catch(() => null);
     $('mk-title').value = ''; $('mk-what').value = '';
+    if (MAKE_THEN === 'invite' && kind === 'meeting'){ location.href = SITE + '/invite/' + encodeURIComponent(slug); return; }
     if (dlg.close) dlg.close(); else dlg.removeAttribute('open');
     switchTo(slug, true, kind);
   } catch(e){ say('err', 'couldn’t make the copy: ' + e.message); go.disabled = false; }
@@ -1156,6 +1191,10 @@ function drawControls(){
   rs.value = S.view;
   $('m-run').setAttribute('aria-pressed', String(S.mode === 'run'));
   $('m-run').title = S.mode === 'run' ? 'Back to the readings; a run in progress keeps going' : 'Run the meeting: a clock, a mark at each change of part, and the run kept at the end';
+  /* the State Stack is one tap away at any time: a live run's own room, else its page with this meeting chosen */
+  const live = S.run && !S.run.end;
+  $('stacklink').href = live ? stackLink(S.run) : stackHome();
+  if (live) $('stacklink').target = '_blank'; else $('stacklink').removeAttribute('target');
   /* the meetings the form lists, each with the copies made from it beneath, and copies of copies beneath those */
   const flat = [], seen = new Set();
   const add = (name, title, depth) => { if (seen.has(name)) return; seen.add(name); flat.push({ name, title, depth }); COPIES.filter(y => y.from === name).forEach(y => add(y.name, y.title, depth + 1)); };
@@ -1267,8 +1306,12 @@ function start(){
   $('eyebrow').innerHTML = M.source ? 'A copy of <a href="' + ringHref(M.source.name) + '">' + esc(M.source.title) + '</a>, drawn as one ring' : (isDesign ? 'A design for a meeting' : 'A meeting') + ', drawn as one ring';
   $('acts').hidden = false;
   $('copylink').setAttribute('data-copy', 'https://happyseaurchin.com/ring/' + FAMILY);
-  /* a design is copied, never held, so only a meeting to hold has an invitation */
-  $('invitelink').href = '/invite/' + encodeURIComponent(FAMILY); $('invitelink').hidden = isDesign;
+  /* a design is copied, never held, so only a meeting to hold has an invitation: a design's Invite opens Duplicate,
+     and the invitation of the copy opens once it is made */
+  IS_DESIGN = isDesign;
+  $('invitelink').href = '/invite/' + encodeURIComponent(FAMILY);
+  $('invitelink').title = isDesign ? 'A design is never held: duplicate it as a meeting of your own, and its invitation opens, with you on its list'
+    : 'The invitation: who is invited, and how each one’s AI finds a time with everyone else’s';
   /* every duplicate made from this meeting, and the duplicates of those, as the form's room lists them */
   const tree = [];
   (function under(name, depth, seen){

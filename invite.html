@@ -27,6 +27,10 @@
   .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);
     font-size:12px;padding:6px 10px;cursor:pointer}
   .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .bar a.back{border:1px solid var(--line-strong);border-radius:4px;color:var(--foam);font-size:12px;padding:6px 10px;text-decoration:none;white-space:nowrap}
+  .bar a.back:hover{border-color:var(--liquid);color:var(--liquid)}
+  /* a phone's bar is full with the site's own doors: there the way back is the meeting's link under the title */
+  @media (max-width:600px){.bar a.back{display:none}}
   *{box-sizing:border-box} html{-webkit-text-size-adjust:100%}
   body{margin:0;background:var(--abyss);color:var(--foam);font-family:var(--body);font-size:18px;line-height:1.55}
   .wrap{max-width:740px;margin:0 auto;padding-inline:20px;padding-block:28px 64px;display:grid;gap:30px}
@@ -83,6 +87,7 @@
   .keeper .list{display:flex;flex-wrap:wrap;gap:8px}
   .keeper .list span{font-family:var(--mono);font-size:12.5px;border:1px solid var(--line);border-radius:999px;padding:3px 6px 3px 12px;display:inline-flex;align-items:center;gap:6px}
   .keeper .list button{background:none;border:0;color:var(--vapour-dim);cursor:pointer;font-size:14px;padding:0 4px}
+  .keeper .list button.self{font-family:var(--mono);font-size:12.5px;border:1px dashed var(--liquid);border-radius:999px;padding:3px 12px;color:var(--liquid)}
   .keeper h3{font-family:var(--mono);font-size:11.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim);margin:0}
   .loading{color:var(--vapour-dim);font-style:italic}
   button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
@@ -96,6 +101,7 @@
   <span class="dot"></span>
   <span><b>invite</b> · <span id="bar-name">a meeting on the beach</span></span>
   <span class="spacer"></span>
+  <a class="back" id="bar-ring" href="/ring" hidden title="The meeting itself, drawn as one ring: run it there, and open its State Stack">← the meeting</a>
   <button id="btn-theme" title="light or dark">◐</button>
 </div>
 <main class="wrap">
@@ -157,6 +163,9 @@
         <input id="k-shown" placeholder="what to call them (optional)" aria-label="what to call them, optional">
         <button class="btn" type="button" id="k-add">Invite</button>
       </div>
+      <h3>The link to send</h3>
+      <div class="addr"><code id="k-link"></code><button class="copy ghost" type="button" data-copy="k-link">Copy</button></div>
+      <p class="quiet">This page sends nothing by itself: putting a name on the list doesn’t tell them. Send them this link in the message you’d send anyway<span id="k-link-door" hidden>, with the door word</span>.</p>
       <h3>The door word</h3>
       <p class="quiet" id="k-door-state"></p>
       <div class="row">
@@ -314,6 +323,7 @@ $('door-form').addEventListener('submit', async ev => {
 });
 const shownName = h => { const p = M && M.people.find(x => x.handle === h); return p ? (p.name || p.handle) : h; };
 function pick(){
+  $('pick-eyebrow').innerHTML = 'An invitation' + (M.keeper ? ' · from ' + esc(shownName(M.keeper)) : '') + ' · <a href="/ring/' + encodeURIComponent(NAME) + '">the meeting</a>';
   $('pick-title').textContent = M.title;
   $('pick-names').innerHTML = M.people.length
     ? M.people.map(p => '<button type="button" data-h="' + esc(p.handle) + '">' + esc(p.name || p.handle) + '</button>').join('')
@@ -419,8 +429,11 @@ function steps(again){
   out.push(['When the time is fixed, book it',
     '<p>Once everyone’s AI has named the same time, it shows at the top of this page and of <a href="' + ring + '">the meeting</a>, marked fixed. If your AI didn’t book it already, paste this:</p>' +
     promptBox('p2', 'The ' + M.title + ' time is fixed. Please book it in my now and my availability on the beach, exactly as the meeting rules say (function:meeting 7.1), and tell me the time in my own time zone.')]);
+  const keeps = !!M.keeper && ME.handle.toLowerCase() === M.keeper.toLowerCase();
   out.push(['On the day',
-    '<p>Open <a href="' + ring + '">the meeting</a>' + (M.pool ? ' and tap <b>talk · in the pool</b>, the meeting’s own room, or go straight there: <a href="' + MIRROR + '?pool=' + encodeURIComponent(NAME) + '" target="_blank" rel="noopener">the pool ↗</a>' : '') + '. If the meeting agrees a call instead, its link is at the top.</p>']);
+    '<p>Open <a href="' + ring + '">the meeting</a>' + (M.pool ? ' and tap <b>talk · in the pool</b>, the meeting’s own room, or go straight there: <a href="' + MIRROR + '?pool=' + encodeURIComponent(NAME) + '" target="_blank" rel="noopener">the pool ↗</a>' : '') + '. If the meeting agrees a call instead, its link is at the top.</p>' +
+    (keeps ? '<p>The State Stack: open <a href="/stack/' + encodeURIComponent(NAME) + '">the State Stack</a> on the screen everyone can see, or tap <b>State Stack</b> on the meeting. Everyone scans its code with their phone and sets their own stack, and the screen draws the room.</p>'
+      : '<p>The State Stack: when ' + esc(shownName(M.keeper) || 'the keeper') + ' puts it on the screen, scan its code with your phone and set your own stack. The screen draws the whole room as it moves.</p>')]);
   /* AFTER IT ALL, AND ONLY IF THEY WISH: the group the meeting names (David, 2026-10-13: "to apply to be
    * in the beach-venture sed … asking to join"). Nobody is added by anyone else: a person asks by taking a
    * seat themselves, under their own key, and by leaving a line for the keeper in the keeper's own room,
@@ -470,8 +483,14 @@ async function keyed(write){
 const ksay = (t, err) => { $('k-msg').className = 'quiet' + (err ? ' err' : ''); $('k-msg').textContent = t; };
 function keeper(){
   $('keeper-sum').textContent = 'For the keeper' + (M.keeper ? ', ' + shownName(M.keeper) : '') + ': who’s invited, and the door';
-  $('k-list').innerHTML = M.people.filter(p => !p.seated).map(p => '<span>' + esc(p.name ? p.name + ' · ' + p.handle : p.handle) + '<button type="button" data-rm="' + esc(p.handle) + '" aria-label="take ' + esc(p.handle) + ' off the list">×</button></span>').join('') +
-    (M.group ? '<span>the group sed:' + esc(M.group) + ' · ' + M.seats.length + ' seated<button type="button" data-rmgroup="1" aria-label="stop inviting the group">×</button></span>' : '') || '<span class="quiet">nobody yet</span>';
+  const chips = M.people.filter(p => !p.seated).map(p => '<span>' + esc(p.name ? p.name + ' · ' + p.handle : p.handle) + '<button type="button" data-rm="' + esc(p.handle) + '" aria-label="take ' + esc(p.handle) + ' off the list">×</button></span>').join('') +
+    (M.group ? '<span>the group sed:' + esc(M.group) + ' · ' + M.seats.length + ' seated<button type="button" data-rmgroup="1" aria-label="stop inviting the group">×</button></span>' : '');
+  /* the keeper is on their own list unless they take themselves off, arranging it for others: one tap puts them back */
+  const self = M.keeper && !M.people.some(p => p.handle.toLowerCase() === M.keeper.toLowerCase())
+    ? '<button type="button" class="self" data-self="1" title="Put the keeper on the list">+ ' + esc(M.keeper) + ', the keeper</button>' : '';
+  $('k-list').innerHTML = (chips || '<span class="quiet">nobody yet</span>') + self;
+  $('k-link').textContent = 'https://happyseaurchin.com/invite/' + NAME;
+  $('k-link-door').hidden = !M.door.hash;
   $('k-passports').innerHTML = M.passports.slice(0, 500).map(h => '<option value="' + esc(h) + '">').join('');
   $('k-door-state').textContent = M.door.hash ? 'The invite has a door: whoever opens it is asked for the word first.' : 'No door: anyone with the link sees the invite.';
 }
@@ -483,6 +502,7 @@ async function saveWho(people, note, group){
   if (!w.ok) return ksay('The beach refused it (' + w.status + '). Check the key.', true);
   M = await load(); ksay(note); keeper();
   if (ME) draw(M.people.find(p => p.handle === ME.handle) || ME);
+  else if (!$('pick').hidden) pick();   /* the names to choose from follow the list as it changes */
 }
 $('k-add').addEventListener('click', () => {
   const typed = String($('k-handle').value || '').trim(), g = /^sed:([\w-]+)$/i.exec(typed);
@@ -492,9 +512,10 @@ $('k-add').addEventListener('click', () => {
   if (M.people.some(p => p.handle.toLowerCase() === h.toLowerCase())) return ksay(h + ' is already invited.');
   const known = M.passports.some(p => p.toLowerCase() === h.toLowerCase());
   saveWho(M.people.concat([{ handle: h, name: String($('k-shown').value || '').trim().replace(/[(),.]/g, '') }]),
-    h + ' is invited.' + (known ? '' : ' (No passport by that name yet; their AI can make one.)')).then(() => { $('k-handle').value = ''; $('k-shown').value = ''; });
+    h + ' is on the list. Nothing has been sent: send them the link above.' + (known ? '' : ' (No passport by that name yet; their AI can make one.)')).then(() => { $('k-handle').value = ''; $('k-shown').value = ''; });
 });
 $('k-list').addEventListener('click', ev => {
+  if (ev.target.closest('[data-self]')) return saveWho(M.people.concat([{ handle: M.keeper, name: '' }]), M.keeper + ' is on the list.');
   if (ev.target.closest('[data-rmgroup]')) return saveWho(M.people, 'The group is off the list; its seats are no longer invited by it.', null);
   const b = ev.target.closest('[data-rm]'); if (!b) return;
   const h = b.getAttribute('data-rm');
@@ -527,6 +548,8 @@ async function start(){
   try { M = await load(); } catch(e){ $('msg').textContent = 'Couldn’t read the beach: ' + e.message; return; }
   if (!M){ $('msg').innerHTML = 'No meeting called <b>' + esc(NAME) + '</b> stands on the beach. The meetings are on <a href="/ring">the ring</a>.'; return; }
   $('bar-name').textContent = M.title;
+  /* the way back to the meeting: in the bar on every view of a wide screen, and under the title on a phone */
+  $('bar-ring').href = '/ring/' + encodeURIComponent(NAME); $('bar-ring').hidden = false;
   enter();
 }
 start();
