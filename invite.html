@@ -161,11 +161,11 @@
         <input id="k-handle" list="k-passports" placeholder="a name on the beach, or sed:group" spellcheck="false" autocapitalize="off" aria-label="a name on the beach, or sed: and a standing group">
         <datalist id="k-passports"></datalist>
         <input id="k-shown" placeholder="what to call them (optional)" aria-label="what to call them, optional">
-        <button class="btn" type="button" id="k-add">Invite</button>
+        <button class="btn" type="button" id="k-add">Add</button>
       </div>
       <h3>The link to send</h3>
-      <div class="addr"><code id="k-link"></code><button class="copy ghost" type="button" data-copy="k-link">Copy</button></div>
-      <p class="quiet">This page sends nothing by itself: putting a name on the list doesn’t tell them. Send them this link in the message you’d send anyway<span id="k-link-door" hidden>, with the door word</span>.</p>
+      <div class="addr"><code id="k-link"></code><button class="copy ghost" type="button" data-copy="k-link">Copy</button><button class="btn" type="button" id="k-tell">Invite</button></div>
+      <p class="quiet"><b>Add</b> puts a name on the list and tells nobody. <b>Invite</b> leaves a line with this link in the parlour of everyone on the list: their own room on the beach, which reaches their phone if they listen to it. Nobody is told twice. You can always send the link yourself as well<span id="k-link-door" hidden>, with the door word, which never goes in a parlour</span>.</p>
       <h3>The door word</h3>
       <p class="quiet" id="k-door-state"></p>
       <div class="row">
@@ -512,7 +512,7 @@ $('k-add').addEventListener('click', () => {
   if (M.people.some(p => p.handle.toLowerCase() === h.toLowerCase())) return ksay(h + ' is already invited.');
   const known = M.passports.some(p => p.toLowerCase() === h.toLowerCase());
   saveWho(M.people.concat([{ handle: h, name: String($('k-shown').value || '').trim().replace(/[(),.]/g, '') }]),
-    h + ' is on the list. Nothing has been sent: send them the link above.' + (known ? '' : ' (No passport by that name yet; their AI can make one.)')).then(() => { $('k-handle').value = ''; $('k-shown').value = ''; });
+    h + ' is on the list. Nothing has been sent yet: Invite, beside the link, tells everyone on the list in their parlour.' + (known ? '' : ' (No passport by that name yet; their AI can make one.)')).then(() => { $('k-handle').value = ''; $('k-shown').value = ''; });
 });
 $('k-list').addEventListener('click', ev => {
   if (ev.target.closest('[data-self]')) return saveWho(M.people.concat([{ handle: M.keeper, name: '' }]), M.keeper + ' is on the list.');
@@ -520,6 +520,57 @@ $('k-list').addEventListener('click', ev => {
   const b = ev.target.closest('[data-rm]'); if (!b) return;
   const h = b.getAttribute('data-rm');
   saveWho(M.people.filter(p => p.handle !== h), h + ' is off the list.');
+});
+/* INVITE: a line with the link in the parlour of everyone on the list, pool:<handle>, in the keeper's name: the room on
+   the beach a person hears on their phone when their ear listens to it (ear:<handle>). The keeper's key proves the act
+   first, the list written again as it stands, so nobody invites in the keeper's name from this page. A person the keeper
+   has told about this meeting in their parlour already is never told twice, and a person with no parlour is left for the
+   keeper to send the link to, as the alarm leaves one (function:alarm): a parlour is its holder's to found */
+const toldIn = (pool, keeper) => {
+  const re = new RegExp('/invite/' + NAME + '(?![a-z0-9-])');
+  let hit = false;
+  (function walk(n){
+    if (hit || !n || typeof n !== 'object') return;
+    if (typeof n['_'] === 'string' && String(n['1'] || '').toLowerCase() === keeper.toLowerCase() && re.test(n['_'])){ hit = true; return; }
+    Object.keys(n).forEach(k => walk(n[k]));
+  })(pool);
+  return hit;
+};
+function parlourLine(p){
+  const who = shownName(M.keeper) || M.keeper;
+  /* the link last, so no full stop rides on it when it is made clickable */
+  return (p.name || p.handle) + ' — ' + who + ' invites you to ' + M.title + (/[.!?]$/.test(M.title) ? '' : '.') + ' Open the invitation and tap your name, and your own AI finds a time that suits everyone.' +
+    (M.door.hash ? ' ' + who + ' sends you the word that opens it.' : '') + ' https://happyseaurchin.com/invite/' + NAME;
+}
+$('k-tell').addEventListener('click', async () => {
+  const b = $('k-tell'), keeper = M.keeper || '';
+  const people = M.people.filter(p => p.handle.toLowerCase() !== keeper.toLowerCase());
+  if (!keeper) return ksay('This meeting names no keeper, so nobody can be invited in its name.', true);
+  if (!people.length) return ksay('Nobody else is on the list yet: add them first.');
+  const node = nodeAt(M.spine, '1.2');
+  if (node == null) return ksay('This meeting has no Who to invite from.', true);
+  b.disabled = true; ksay('inviting…');
+  try {
+    const w = await keyed(secret => post({ block: 'spine:' + NAME, spindle: '1.2', content: node, secret }));
+    if (!w) return ksay('Nothing sent.');
+    if (!w.ok) return ksay('The beach refused the key (' + w.status + '): only ' + keeper + ' invites in this meeting’s name.', true);
+    const ix = await readIndex().catch(() => []);
+    const out = { sent: [], had: [], none: [], shut: [] };
+    await Promise.all(people.map(async p => {
+      const room = 'pool:' + p.handle;
+      const pool = ix.indexOf(room) >= 0 ? await readBlock(room).catch(() => null) : null;
+      if (!pool){ out.none.push(p); return; }
+      if (toldIn(pool, keeper)){ out.had.push(p); return; }
+      const r = await post({ block: room, append: true, content: { '_': parlourLine(p), '1': keeper, '2': '', '3': new Date().toISOString() } });
+      (r.ok ? out.sent : out.shut).push(p);
+    }));
+    const names = a => a.map(p => p.name || p.handle).join(', ');
+    ksay([out.sent.length ? 'Invited in their parlour: ' + names(out.sent) + '.' : '',
+      out.had.length ? 'Told already: ' + names(out.had) + '.' : '',
+      out.none.length ? 'No parlour on the beach: ' + names(out.none) + ' — send them the link yourself.' : '',
+      out.shut.length ? 'Parlour closed to others: ' + names(out.shut) + ' — send them the link yourself.' : ''].filter(Boolean).join(' '));
+  } catch(e){ ksay('Couldn’t invite: ' + e.message, true); }
+  finally { b.disabled = false; }
 });
 async function saveDoor(line, note){
   const d = M.door.digit || ['8', '7', '6', '5', '4'].find(x => !(M.law && M.law[x]));
