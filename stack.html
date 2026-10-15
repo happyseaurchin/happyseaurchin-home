@@ -164,7 +164,9 @@
   .acts .btn-ghost.away{visibility:hidden}
 
   .yours{display:flex;flex-direction:column;gap:6px}
+  .yours .fig{position:relative}
   .yours .fig svg{max-height:44dvh}
+  .yours .looks{display:flex;gap:6px}
   .roomsay{margin:2px 0 6px;font-size:1.02rem;color:var(--vapour)}
   .roomsay strong{font-style:italic;font-weight:500;font-size:1.3rem}
   .ph-c{color:var(--c)} .ph-cb,.ph-b{color:var(--b-ink)} .ph-ba,.ph-a{color:var(--a)}
@@ -189,9 +191,9 @@
   .room-head .sub{margin:0;font-size:max(14px,1.9vmin);color:var(--vapour)}
   .room .fig{grid-area:fig;min-height:0;display:flex;align-items:center;justify-content:center;padding:1vmin 0;position:relative}
   .room .fig svg{height:100%;max-height:100%;width:auto;max-width:100%}
-  /* Birds: the same room as shorebirds, drawn over the lines' own box so the canvas never sizes the grid */
-  #birds-room{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:12px}
-  .room.birds #fig-room{visibility:hidden}
+  /* Birds: the same room as shorebirds, drawn over the lines' own box so the canvas never sizes the grid (the phone's figure too) */
+  #birds-room,#birds-hand{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:12px}
+  .room.birds #fig-room,.yours.birds #fig-hand{visibility:hidden}
   .room.birds .seg.focus{display:none}
   .seg.look[data-look="birds"]{margin-right:10px}
   .ctl-row{grid-area:ctl;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
@@ -323,7 +325,11 @@
       <div class="acts"><button type="button" class="btn-ghost" id="l-back">← back</button><button type="button" class="btn-go" id="l-next">Next →</button></div>
     </div>
     <div class="yours" id="yours" hidden>
-      <figure class="fig"><svg class="hand-fig" id="fig-hand" data-focus="all" role="group" aria-label="The room’s stacks, with yours in front"></svg></figure>
+      <figure class="fig"><svg class="hand-fig" id="fig-hand" data-focus="all" role="group" aria-label="The room’s stacks, with yours in front"></svg><canvas id="birds-hand" hidden role="img" aria-label="The room as shorebirds: a bird for each stack, yours ringed"></canvas></figure>
+      <div class="looks" role="group" aria-label="Look at">
+        <button type="button" class="seg look" data-look="lines" aria-pressed="true">Lines</button>
+        <button type="button" class="seg look" data-look="birds" aria-pressed="false" title="The same room as shorebirds: a bird for each stack, yours ringed, lifting by its own lean">Birds</button>
+      </div>
       <p class="roomsay" id="y-room" aria-live="polite"></p>
       <h2>Your stack</h2>
       <div id="y-sl"></div>
@@ -999,12 +1005,12 @@ function paint(){
 }
 
 /* the screen: every latest stack, the centre of weight, the phase by the room's middle */
-let NAMES = false, BIRDS = null;
+let NAMES = false, LOOK = 'lines', BR = null, BH = null;
 function paintRoom(){
   const list = [...PEOPLE.values()];
   $('room').classList.toggle('empty', !list.length);
   drawFig(FR, list.map(p => ({ id: p.id, v: p.v })));
-  if (BIRDS) BIRDS.set(list.map(p => ({ id: p.id, v: p.v })));
+  if (BR) BR.set(list.map(p => ({ id: p.id, v: p.v })));
   const st = stats(list.map(p => p.v));
   $('r-sub').textContent = dayOf(BEAT) + (KEYED ? ' · kept to its members' : '') + (list.length ? ' · ' + list.length + (list.length === 1 ? ' stack' : ' stacks') : '');
   $('r-members').hidden = !KEYED;
@@ -1037,7 +1043,8 @@ document.querySelectorAll('.seg.focus').forEach(b => b.addEventListener('click',
 }));
 
 /* Lines or Birds: the same room drawn as shorebirds (keel's StackBirds, vendor/stack-birds.js, loaded the first time
-   the screen asks for it), reading the room with this page's own arithmetic. The device keeps its choice; ?birds opens on it. */
+   a screen or a phone asks for it), reading the room with this page's own arithmetic; on a phone, the holder's own bird
+   is ringed. The device keeps its choice; ?birds opens on it. */
 let birdsLoading = null;
 function loadBirds(){
   if (!birdsLoading) birdsLoading = new Promise((ok, no) => {
@@ -1048,12 +1055,15 @@ function loadBirds(){
 }
 function setLook(look){
   const birds = look === 'birds';
-  try { localStorage.setItem('stack:look', birds ? 'birds' : 'lines'); } catch(e){}
-  $('room').classList.toggle('birds', birds);
-  $('birds-room').hidden = !birds;
+  LOOK = birds ? 'birds' : 'lines';
+  try { localStorage.setItem('stack:look', LOOK); } catch(e){}
+  $('room').classList.toggle('birds', birds); $('yours').classList.toggle('birds', birds);
+  $('birds-room').hidden = $('birds-hand').hidden = !birds;
   document.querySelectorAll('.seg.look').forEach(x => x.setAttribute('aria-pressed', String((x.dataset.look === 'birds') === birds)));
-  if (birds) loadBirds().then(() => {
-    if (!BIRDS) BIRDS = StackBirds.create($('birds-room'), { scale: 1.25 });
+  if (!birds){ paint(); return; }
+  loadBirds().then(() => {
+    if (!BR) BR = StackBirds.create($('birds-room'), { scale: 1.25 });
+    if (!BH) BH = StackBirds.create($('birds-hand'));
     paint();
   }).catch(() => { birdsLoading = null; setLook('lines'); });
 }
@@ -1164,10 +1174,12 @@ $('y-name').addEventListener('change', () => { ME.name = cleanName($('y-name').v
 function paintYours(){
   if (!ME.v) return;
   const others = [...PEOPLE.values()].filter(p => p.id !== ME.id);
-  drawFig(FH, others.map(p => ({ id: p.id, v: p.v })).concat([{ id: ME.id, v: ME.v, mine: true }]));
+  const list = others.map(p => ({ id: p.id, v: p.v })).concat([{ id: ME.id, v: ME.v, mine: true }]);
+  drawFig(FH, list);
+  if (BH) BH.set(list);
   const st = stats(others.map(p => p.v).concat([ME.v]));
   $('y-room').innerHTML = 'Most of the room: <strong class="' + st.phase[1] + '">' + esc(st.phase[0]) + '</strong>' +
-    ' · ' + st.n + (st.n === 1 ? ' stack, yours' : ' stacks, yours in front');
+    ' · ' + st.n + (st.n === 1 ? ' stack, yours' : ' stacks, yours ' + (LOOK === 'birds' ? 'ringed' : 'in front'));
 }
 
 /* ---------- sending: the whole stack, appended; a burst of changes goes as one; a refused minute waits for the next ---------- */
