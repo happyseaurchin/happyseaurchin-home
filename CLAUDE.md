@@ -22,6 +22,7 @@ This repo is **David's personal site** at https://happyseaurchin.com — the lan
 | `packages/`, `real-organic-human/`, `virtual-ai-agents/` | static site sections |
 | `dashboard/` | the beach dashboard — keel's claude.ai dashboard (`dash.js`, near-verbatim) on a small runtime (`runtime.js`) that reads the census, the `presence` block and each `/w/` table's census straight from the beach in the browser. The "who writes / doors / tables" tabs read keel's snapshot in `dashboard/data/` (only the fields drawn — no notes or aliases); refresh it by re-exporting from the claude.ai dashboard when keel recompiles. The virtual page's "the beach, right now" band reads the same census. |
 | `button/` | a forwarding shim only: the beach button (a floating frame any page carries with one script tag, the host page unable to read what is typed into it) moved onto the beach itself on 14 Oct 2026 and is served at `https://beach.happyseaurchin.com/button/button.js`; its source, security case and hostile-page test are in `pscale-commons/pscale-beach` (`button/`, `npm run smoke:button`). `button/button.js` here hands any page that carried the old address to the beach's loader. The o-pages carry the beach's own button through `theme.js` (`beachButton`, 15 Oct 2026): every page with the bar, never in an embed or a framed page, and not on a page whose body says `data-beach-button="off"` because its bottom right is taken (earth, globe, field, social-brain, experience-ecology); while a page's `.sheet-back`/`.pop-back` is open the button and its grip step under it. A switch under options ('hide beach button' / 'show beach button', localStorage `beach-button`) keeps it off on a device until switched back on. The button is moved by the grip beside it, on the page itself, as xstream's construction button is. |
+| `read/` | the longer pieces to read, each a public copy anyone can open without a Claude sign-in, listed at `/read` and linked from the animations they go with (15 Oct 2026). The Package and the Machine and AI in the Room are rendered from their Claude Docs' own Markdown exports by `scripts/build-doc-copies.js` (refresh the `.md` and rerun; never hand-edit their `.html`); The Two Turns and The CBA transform are keel's pages carried as they stand. Their old `/animations/<slug>` addresses redirect here (`vercel.json`). |
 | `api/` | six serverless functions (see below; genus-clock.js, the egg-one cron, is documented in its own header) |
 | `scripts/` | inventory pipeline (active) + legacy beach ops (read the warnings) |
 
@@ -55,6 +56,9 @@ Foundry → public: tools iterate here; stable versions are mirrored to `pscale-
 - `classify.js` + `prompts/` — LLM classification step
 - `build-inventory.js` — regenerates the marked regions of `experiments/pscale-inventory.html` and rebuilds `docs/components.zip`
 - `watch-inbox.js` — foreground watcher on `~/xstream-inbox/`; drops feed `ingest.js`
+
+**Active — the read copies:**
+- `build-doc-copies.js` — renders `read/`'s copies of David's Claude Docs from their Markdown exports, one table for every doc; how to refresh one is in its header.
 
 **Legacy — pre-migration beach ops. Read before touching:**
 - `wipe-block.js` — still works: the live handler kept per-block HTTP DELETE (lock-gated), so `BEACH_URL=https://beach.happyseaurchin.com/.well-known/pscale-beach node scripts/wipe-block.js <name>` is valid. Only its **default** URL (the bare domain) is stale — it now 404s.- `bootstrap-beach-locks.js` — Phase B lock installer for the long-gone legacy `beach` block; inert without the deleted handler.
