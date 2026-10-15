@@ -1342,26 +1342,58 @@
    * origin (pscale-commons/pscale-beach button/, served at beach/button/): a
    * person unlocks it in the beach's own window, may add their own key, and
    * asks the beach from it, and nothing on this site — this file included — can
-   * read what is typed into it or kept there. It floats bottom right, can be
-   * dragged, and its × puts it away until the page reloads.
+   * read what is typed into it or kept there. It floats bottom right, moved by
+   * the grip beside it, and its × puts it away until the page reloads.
    * Never in an embed or in a page framed by another, which has its own; never
    * on a page whose body says data-beach-button="off" (its own bottom right is
    * taken: a map's attribution, a side panel). While a page's own sheet or pop
-   * is open the button steps under it, so the sheet's save stays in reach on a
-   * phone: the style is carried here, as the ＋card carries its own.
+   * is open the button and its grip step under it, so the sheet's save stays in
+   * reach on a phone: the style is carried here, as the ＋card carries its own.
+   * A SWITCH UNDER OPTIONS turns it off on this device and on again (David,
+   * 2026-10-15: 'a toggle in options … to enable/disable the beach button'):
+   * off, it is put away now and not loaded on any page until switched back on.
    * ────────────────────────────────────────────────────────────────────────── */
   var BEACH_BUTTON = 'https://beach.happyseaurchin.com/button/button.js';
-  function beachButton(){
-    var b = document.body;
-    if (!b || window.beachButton || !document.querySelector('.bar')) return;
-    if (window.top !== window || b.getAttribute('data-beach-button') === 'off' || b.classList.contains('embed') ||
-        new URLSearchParams(location.search).get('embed') === '1') return;
+  var BB_KEY = 'beach-button';   /* 'off' = kept off on this device */
+  function bbOn(){ try { return localStorage.getItem(BB_KEY) !== 'off'; } catch(e){ return true; } }
+  var bbLoading = false;
+  function bbLoad(){
+    if (window.beachButton) { window.beachButton.show(); return; }
+    if (bbLoading) return;
+    bbLoading = true;
     var st = document.createElement('style');
-    st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) iframe[title="beach button"]{z-index:29 !important}';
+    st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) :is(iframe[title="beach button"],[data-beach-button-grip]){z-index:29 !important}';
     document.head.appendChild(st);
     var s = document.createElement('script');
     s.src = BEACH_BUTTON; s.async = true;
-    b.appendChild(s);
+    document.body.appendChild(s);
+  }
+  /* the act under options, saying what it will do */
+  function bbSwitch(){
+    if (document.getElementById('btn-beach-button')) return;
+    var menu = document.querySelector('#dd-acts .dd__menu'), bar = document.querySelector('.bar');
+    if (!menu && !bar) return;
+    var t = document.createElement('button');
+    t.type = 'button'; t.id = 'btn-beach-button';
+    t.title = 'the beach button: a frame from the beach, bottom right, holding your handle, passphrase and key where this page cannot reach them';
+    var say = function(){ t.textContent = bbOn() ? 'hide beach button' : 'show beach button'; };
+    say();
+    t.addEventListener('click', function(){
+      var on = !bbOn();
+      try { localStorage.setItem(BB_KEY, on ? 'on' : 'off'); } catch(e){}
+      if (on) bbLoad(); else if (window.beachButton) window.beachButton.hide();
+      say();
+    });
+    if (menu) menu.appendChild(t);
+    else { var doors = bar.querySelector('details.dd[data-doors]'); bar.insertBefore(t, doors || null); }
+  }
+  function beachButton(){
+    var b = document.body;
+    if (!b || !document.querySelector('.bar')) return;
+    if (window.top !== window || b.getAttribute('data-beach-button') === 'off' || b.classList.contains('embed') ||
+        new URLSearchParams(location.search).get('embed') === '1') return;
+    bbSwitch();
+    if (bbOn()) bbLoad(); else if (window.beachButton) window.beachButton.hide();
   }
   document.addEventListener('DOMContentLoaded', beachButton);
 
