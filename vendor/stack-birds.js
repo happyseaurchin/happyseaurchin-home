@@ -1,5 +1,5 @@
 /* stack-birds.js — keel's StackBirds, carried verbatim from /animations/state-stack-birds (keel, 14 October 2026),
-   loaded by /stack the first time its room screen is switched to Birds. To update: copy the block again from
+   loaded by /stack the first time its room screen or a phone's own figure is switched to Birds. To update: copy the block again from
    that page; it is self-contained. The API is described there, in the comment at the head of the page. */
 /* ======================================================================================================================
    StackBirds — the State Stack's room, drawn as shorebirds. Self-contained: copy this whole block.
