@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// build-doc-copies.js — render the site's public read-only copies of David's Claude Docs, each beside the
-// pieces it belongs with. A Claude Doc opens only to people signed in to Claude whom it is shared with, so
-// the site carries a copy anyone can read:
+// build-doc-copies.js — render the site's public read-only copies of David's Claude Docs, kept at /read with
+// the other pieces to read and linked from the animations they go with. A Claude Doc opens only to people
+// signed in to Claude whom it is shared with, so the site carries a copy anyone can read:
 //
 //   node scripts/build-doc-copies.js
 //
@@ -10,7 +10,7 @@
 // the .md, set its copied date below, and rerun. The doc is canonical; never hand-edit an .html.
 //
 // The export leaves a placeholder line where the doc embeds a chart or a diagram. A diagram whose embed is a
-// static SVG (the embed node's code returns one) is kept beside the .md as <slug>.<name>.svg, rendered once
+// static SVG (the embed node's code returns one) is kept beside the .md as read/<slug>.<name>.svg, rendered once
 // from that code, and inlined here by its caption, coloured by the page's own palette through the doc's
 // --cds-* names. Any other embed gets a line saying what the doc draws there.
 //
@@ -34,7 +34,8 @@ const DOCS = [
     embed: (caption) => '<p class="note">The doc draws the waits as a chart here (' + inline(caption) + '). The same waits are drawn in ' +
       '<a href="/animations/front-wheel-drive">Front-wheel drive</a> and tested across thirty-one technologies in ' +
       '<a href="/animations/tech-finance-evolution">Tech-finance evolution</a>.</p>',
-    home: '<a href="/animations">All the animations</a>',
+    home: '<a href="/read">Everything to read</a> · <a href="/animations/front-wheel-drive">Front-wheel drive, the pitch</a> · ' +
+      '<a href="/animations/tech-finance-evolution">Tech-finance evolution, the evidence</a>',
     // Front-wheel drive's palette and type, the pitch this doc argues
     fonts: 'family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..700&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400',
     light: '--page:#F3EEE3;--ink:#1B2521;--ink-soft:#56615C;--rule:#D9D0BE;--link:#7A5A1E;--accent:#9A7432;--card:#FBF8F1;' +
@@ -52,8 +53,8 @@ const DOCS = [
       'four loci of agency · two held by the labs, two by people': 'loci',
       'direct messages beside stigmergy · the same four people': 'stigmergy',
     },
-    home: '<a href="/animations">All the animations</a> · <a href="/animations/reflexive-cba">Reflexive CBA, the room’s app</a> · ' +
-      '<a href="/animations/the-two-turns">The Two Turns</a>',
+    home: '<a href="/read">Everything to read</a> · <a href="/animations/reflexive-cba">Reflexive CBA, the room’s app</a> · ' +
+      '<a href="/read/the-two-turns">The Two Turns</a>',
     // The Two Turns' palette and type, the family Reflexive CBA links it from
     fonts: 'family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400..600',
     light: '--page:#F3F6F5;--ink:#16212B;--ink-soft:#4E5B66;--rule:#B4C0C5;--link:#176A5C;--accent:#C27D0E;--card:#E7EDEB;' +
@@ -95,7 +96,7 @@ const cells = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) =
 function embed(d, caption) {
   const fig = d.figures && d.figures[caption];
   if (fig) {
-    const svg = fs.readFileSync(path.join(root, 'animations', d.slug + '.' + fig + '.svg'), 'utf8').trim();
+    const svg = fs.readFileSync(path.join(root, 'read', d.slug + '.' + fig + '.svg'), 'utf8').trim();
     return '<figure class="fig"><div class="figbox">' + svg + '</div><figcaption>' + inline(caption) + '</figcaption></figure>';
   }
   return d.embed ? d.embed(caption) : '<p class="note">The doc draws a diagram here (' + inline(caption) + ').</p>';
@@ -153,7 +154,7 @@ function render(md, d) {
 }
 
 const page = (d, out) => {
-  const URL = 'https://happyseaurchin.com/animations/' + d.slug;
+  const URL = 'https://happyseaurchin.com/read/' + d.slug;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -227,7 +228,7 @@ ${out.join('\n')}
 };
 
 for (const d of DOCS) {
-  const src = 'animations/' + d.slug + '.md', dest = 'animations/' + d.slug + '.html';
+  const src = 'read/' + d.slug + '.md', dest = 'read/' + d.slug + '.html';
   const out = render(fs.readFileSync(path.join(root, src), 'utf8'), d);
   fs.writeFileSync(path.join(root, dest), page(d, out));
   console.log(dest + ' written (' + out.length + ' blocks from ' + src + ')');
