@@ -363,6 +363,29 @@ function digitKeys(node){
   if (!node || typeof node !== 'object') return [];
   return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort((a, b) => a - b);
 }
+/* every post of a diary, as the beach's own disc at pscale 0 lists them: the walks to the
+   floor, through the rungs a diary raises when it passes nine (posts 1-9 move down to 01-09,
+   the tenth lands at 11) — a container's own underscore is its summary, never a post */
+function postWalks(block){
+  const F = floorOf(block) || 1, out = [];
+  (function walk(node, w){
+    if (!node || typeof node !== 'object') return;
+    if (w.length === F - 1){ for (const k of digitKeys(node)) out.push(w + k); return; }
+    if (node['_'] && typeof node['_'] === 'object') walk(node['_'], w + '0');
+    for (const k of digitKeys(node)) walk(node[k], w + k);
+  })(block, '');
+  return out;
+}
+/* a reader's mirror holds each reading at the post's own SCALE, not its walk depth: one
+   founded before the diary raised its floor stands that many rungs shallower, so the post's
+   leading zeros are not in it (bsp-floor: blocks align by pscale) — null when it cannot hold
+   the post at all */
+function mirrorWalk(mirror, walk){
+  const diff = FLOOR - (floorOf(mirror) || 1);
+  if (diff <= 0) return '0'.repeat(-diff) + walk;
+  return /^0+$/.test(walk.slice(0, diff)) ? walk.slice(diff) : null;
+}
+const readingAt = (mirror, walk) => { const w = mirror ? mirrorWalk(mirror, walk) : null; return w == null ? undefined : walkTo(mirror, w); };
 function walkTo(block, walk){
   let n = block;
   for (const ch of String(walk)){
@@ -718,8 +741,8 @@ async function load(){
   /* which posts: the latest alone by default (a diary's face is its newest entry), the one a
      link names (#post-N), or every post (?posts=all) — the header link goes the other way */
   if (spine || !WORLD){
-    const allPosts = spine ? digitKeys(spine) : [];
-    const linked = (location.hash.match(/^#post-([1-9]\d*)$/) || [])[1];
+    const allPosts = spine ? postWalks(spine) : [];
+    const linked = (location.hash.match(/^#post-(\d+)$/) || [])[1];
     const showAll = new URLSearchParams(location.search).get('posts') === 'all';
     const shown = !allPosts.length ? [] : showAll ? allPosts : (linked && allPosts.includes(linked)) ? [linked] : [allPosts[allPosts.length - 1]];
     const headLink = !allPosts.length ? '' : showAll
@@ -1238,7 +1261,7 @@ function latchGet(){ try { return localStorage.getItem(latchHome()) || null; } c
 function latchSet(v){ try { if (v) localStorage.setItem(latchHome(), v); else localStorage.removeItem(latchHome()); } catch(e){} }
 
 function renderPost(d){
-  const node = SPINE[d];
+  const node = walkTo(SPINE, d);
   const lede = shallowVoice(node);
   /* position 3 is the post's date when the wire stamped it on append — a date, not a part */
   const stamp = (node && typeof node === 'object' && isIso(node['3'])) ? node['3'] : null;
@@ -1261,7 +1284,7 @@ function renderPost(d){
   out.push('<div class="fold"><p class="fh">what readers made of it</p>' + renderFold(d) + '</div>');
   /* THE WRITE BOX — one voice per reader per post, revisable; the reader's own block, born locked */
   const mine = rememberedName();
-  const standing = mine && MIRRORS[mine] ? (shallowVoice(walkTo(MIRRORS[mine], d)) || '') : '';
+  const standing = mine && MIRRORS[mine] ? (shallowVoice(readingAt(MIRRORS[mine], d)) || '') : '';
   out.push('<div class="answer"><p class="ah">Answer this post <span>— say what you make of it, in your own words</span></p>' +
     '<div class="say">' +
     '<input class="a-name" placeholder="your name" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40" value="' + esc(mine) + '">' +
@@ -1274,7 +1297,7 @@ function renderPost(d){
 function renderFold(d){
   const rows = [];
   for (const who of Object.keys(MIRRORS).sort()){
-    const mnode = walkTo(MIRRORS[who], d);
+    const mnode = readingAt(MIRRORS[who], d);
     const t = shallowVoice(mnode);
     if (t) rows.push('<div class="frow"><span class="fwho"' + nameTag(who) + '>' + esc(who) + '</span><span class="ftext">' + esc(t) + '</span></div>');
     else if (mnode && typeof mnode === 'object'){
@@ -1338,22 +1361,37 @@ async function writeReading(reader, walk, text){
   const born = await ensureReaderMirror(reader);
   if (born !== true) return born;
   const name = HANDLE + ':' + reader;
-  const fresh = await readBlock(name).catch(() => undefined);
+  let fresh = await readBlock(name).catch(() => undefined);
   if (fresh === undefined) return 'the beach did not answer — nothing written';
+  /* one write under the reader's key: the latch this device remembers, else asked once */
+  async function send(body){
+    const latch = readerLatchGet(reader);
+    if (latch) body.secret = latch;
+    let w = await writeBlock(body);
+    if (lockRequired(w)){
+      const v = prompt(name + ' is latched — enter your key (kept on this device; check the first letter — phones capitalise it):');
+      if (v === null || !v.trim()) return null;
+      body.secret = v.trim();
+      w = await writeBlock(body);
+      if (w.ok) readerLatchSet(reader, v.trim());
+    }
+    return w;
+  }
+  /* a mirror founded before the diary raised its floor rises with it first, wrapped as the
+     beach wraps an accumulator, so its readings move down to the posts' new addresses */
+  if (fresh && (floorOf(fresh) || 1) < FLOOR){
+    let raised = fresh;
+    for (let i = floorOf(fresh) || 1; i < FLOOR; i++) raised = { '_': raised };
+    const r = await send({ block: name, content: raised });
+    if (!r) return 'nothing written';
+    if (!r.ok) return 'your reading could not rise to the diary’s floor (' + r.status + ') — key trouble? happyseaurchin.com/key';
+    fresh = raised;
+  }
   const node = fresh ? walkTo(fresh, walk) : undefined;
   /* merge at the address: the reader's parts beneath the post stay as they were */
   const content = (node && typeof node === 'object') ? Object.assign({}, node, { '_': text }) : { '_': text };
-  const body = { block: name, spindle: wireAddr(walk), content };
-  const latch = readerLatchGet(reader);
-  if (latch) body.secret = latch;
-  let w = await writeBlock(body);
-  if (lockRequired(w)){
-    const v = prompt(name + ' is latched — enter your key (kept on this device; check the first letter — phones capitalise it):');
-    if (v === null || !v.trim()) return 'nothing written';
-    body.secret = v.trim();
-    w = await writeBlock(body);
-    if (w.ok) readerLatchSet(reader, v.trim());
-  }
+  const w = await send({ block: name, spindle: wireAddr(walk), content });
+  if (!w) return 'nothing written';
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   if (fresh){ const clone = JSON.parse(JSON.stringify(fresh)); setAt(clone, walk, content); MIRRORS[reader] = clone; }
   return true;
@@ -1382,7 +1420,7 @@ function wirePosts(){
     /* the box shows what this reader already said here, once the name is known */
     name.addEventListener('change', () => {
       const r = cleanHandle(name.value);
-      if (r && MIRRORS[r] && !text.value.trim()) text.value = shallowVoice(walkTo(MIRRORS[r], walk)) || '';
+      if (r && MIRRORS[r] && !text.value.trim()) text.value = shallowVoice(readingAt(MIRRORS[r], walk)) || '';
     });
     async function submit(){
       const reader = cleanHandle(name.value), t = text.value.trim();
@@ -1424,7 +1462,7 @@ function scrollToHash(){
   /* the page is drawn after it loads, so the browser's own jump finds nothing: a post by
      its address, and #parlour — where every name on the site leads a visitor who wants
      to leave a line — to the parlour's section, its heading in view */
-  const h = location.hash || '', m = h.match(/^#post-([1-9]\d*)$/);
+  const h = location.hash || '', m = h.match(/^#post-(\d+)$/);
   const el = m ? document.getElementById('post-' + m[1])
     : h === '#parlour' && $('parlour') ? $('parlour').closest('section') : null;
   if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
