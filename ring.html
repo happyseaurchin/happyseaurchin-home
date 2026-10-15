@@ -248,6 +248,20 @@
   .hud-now span{font-family:var(--mono);font-weight:400;font-size:14px;color:var(--vapour-dim)}
   .hud-go{display:block;width:100%;min-height:80px;margin-top:12px;border:0;border-radius:18px;background:var(--solid);color:var(--abyss);font-family:var(--display);font-weight:700;font-size:clamp(19px,2.2vw,24px);cursor:pointer}
   @media (max-width:880px){.hud .main{grid-template-columns:minmax(0,1fr)}}
+  dialog#joindlg{width:min(480px,calc(100vw - 32px));border:1px solid var(--line-strong);border-radius:12px;background:var(--deep);color:var(--foam);padding:20px 22px 18px}
+  dialog#joindlg::backdrop{background:rgba(var(--well-rgb),0.72)}
+  dialog#joindlg h2{font-family:var(--display);font-weight:700;font-size:24px;margin:0 0 8px}
+  .jn-when{margin:0 0 10px;font-size:17px}
+  .jn-where{margin:0 0 8px;color:var(--vapour)}
+  .jn-room{margin:12px 0 0;font-family:var(--mono);font-size:13px}
+  .jn-set{margin-top:12px;display:grid;gap:6px}
+  .jn-set label{font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour-dim)}
+  #jn-call .hud-go{text-decoration:none;text-align:center;line-height:80px}
+  .runtools{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}
+  .runtools .btn{text-decoration:none}
+  button.voice{display:block;width:100%;text-align:left;border:0;color:inherit;font:inherit;cursor:pointer}
+  button.voice.mine:hover{box-shadow:inset 0 0 0 1px var(--liquid)}
+  .say.editing .say-text{display:block;width:100%;min-height:96px;padding:10px 12px;resize:vertical;font-size:17px}
   @media (prefers-reduced-motion: reduce){*{transition:none!important}.say-btn.on{animation:none}}
 </style>
 </head>
@@ -261,7 +275,6 @@ try { if (localStorage.getItem('ring:words') !== '1') document.documentElement.c
   <span class="spacer"></span>
   <button id="btn-words" title="Every word of the meeting: what each part is for, when it is done, the synthesis, the runs and how it lives on the beach. This device remembers the choice">show words</button>
   <button id="make" title="Make a meeting of your own from this one, or a design of your own">duplicate meeting</button>
-  <button id="btn-tools" title="The meeting's tools beside Invite: the State Stack. This device remembers the choice for every meeting">show tools</button>
   <button id="btn-layers" title="The ring's two layers, the phases and their parts, or the phases alone. This device remembers the choice for every meeting">show 1 layer</button>
   <button id="btn-pool" hidden title="Open a room for this meeting, to talk in before it, during it and after it, in the magic mirror">create a pool</button>
   <button id="btn-mirror" title="Show links into the magic mirror, where each part of the meeting is live, with everyone's readings there">show mirror links</button>
@@ -276,8 +289,7 @@ try { if (localStorage.getItem('ring:words') !== '1') document.documentElement.c
         <h1 id="title">The ring</h1>
         <div class="acts" id="acts" hidden>
           <a class="make" id="invitelink" href="/invite" title="The invitation: who is invited, and how each one's AI finds a time with everyone else's">Invite</a>
-          <a class="plain" id="stacklink" href="/stack" hidden title="The State Stack: on the big screen, everyone scans its code and sets their own stack on their phone">State Stack</a>
-          <a class="plain explain" id="stackexplain" href="/animations/the-state-stack" target="_blank" rel="noopener" hidden title="The State Stack, explained: the animation of a room phasing, and your own stack" aria-label="The State Stack, explained">?</a>
+          <button type="button" class="plain" id="joinbtn" title="Join the meeting: its call, its time and its room on the beach">Join</button>
         </div>
       </div>
       <p class="fixed" id="fixed" hidden></p>
@@ -308,6 +320,20 @@ try { if (localStorage.getItem('ring:words') !== '1') document.documentElement.c
 
   <details class="versions" id="versions" hidden><summary id="versions-sum">Duplicates of this meeting</summary><ul class="vlist" id="versions-list"></ul></details>
 
+  <dialog id="joindlg" aria-labelledby="jn-h">
+    <div class="box">
+      <h2 id="jn-h">Join</h2>
+      <p class="jn-when" id="jn-when"></p>
+      <div id="jn-call"></div>
+      <p class="jn-room" id="jn-room"></p>
+      <div class="jn-set" id="jn-set" hidden>
+        <label for="jn-url">The call's link, for everyone</label>
+        <div class="row"><input id="jn-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" placeholder="https://meet.google.com/…"><button type="button" class="btn" id="jn-save">Set it</button></div>
+      </div>
+      <p class="hint" id="jn-hint"></p>
+      <div class="runbtns"><button type="button" class="btn warn" id="jn-close">Close</button></div>
+    </div>
+  </dialog>
   <dialog id="makedlg" aria-labelledby="mk-h">
     <form id="mk-form" class="box" novalidate>
       <h2 id="mk-h">Duplicate this meeting</h2>
@@ -407,13 +433,13 @@ const ON_SITE = /^\/ring(\/|$)/.test(location.pathname);
 const ringHref = (name, share) => ON_SITE || SNAP || share
   ? 'https://happyseaurchin.com/ring/' + encodeURIComponent(name) + (HANDLE && !share && !SNAP ? '/' + encodeURIComponent(HANDLE) : '')
   : location.pathname + '?f=' + encodeURIComponent(name) + (HANDLE ? '&h=' + encodeURIComponent(HANDLE) : '');
-/* a run's State Stack: the room of the meeting, pool:<name>:<beat>, drawn at /stack (task:weft 33) — the one opened for
-   this sitting in the hour before the run began, where there is one, else the room begun at the run's own beat */
+/* the State Stack of a sitting, pool:<name>:<beat>, drawn at /stack (task:weft 33): ONE ROOM for everyone at the meeting,
+   whoever opens it. A meeting with a fixed time has its room at the fixed start's beat; otherwise the room is the one
+   opened in the last hour, and only the first to open it makes a new one. A run knows its room once found; before
+   that, /stack?join finds it by the same rule (function:meeting 2.2) */
 const SITE = ON_SITE ? '' : 'https://happyseaurchin.com';
-const stackLink = r => SITE + '/stack/' + encodeURIComponent(FAMILY) + '/' + (r.room || beatOf(r.start)) + '?screen';
-/* before any run, the State Stack's own page with this meeting chosen: open or kept to its members, and a room
-   already open for it offered first */
-const stackHome = () => SITE + '/stack/' + encodeURIComponent(FAMILY);
+const fixedBeat = () => { const m = /^\s*FIXED\b[\s\S]*?\bbeats?\s+(\d{10})/i.exec((FOLD && lineAt(FOLD, '1.1')) || ''); return m ? m[1] : ''; };
+const stackLink = (r, keyed) => SITE + '/stack/' + encodeURIComponent(FAMILY) + (r && r.room ? '/' + r.room + '?screen' : '?join&screen') + (keyed ? '&keyed' : '');
 /* the rooms this meeting may already have open: the beat an instant falls in and the three before it, about an hour */
 async function openRoom(at){
   const beats = [0, 1, 2, 3].map(i => beatOf(at - i * 86400000 / 81));
@@ -881,12 +907,12 @@ function runsHtml(n){
 }
 function addBox(n){
   if (SNAP) return '<h3>Add your reading</h3><p class="note">Readings are added on the live page, <a href="https://happyseaurchin.com/ring/' + encodeURIComponent(FAMILY) + (n.addr ? '#' + n.addr : '') + '" target="_blank" rel="noopener">happyseaurchin.com/ring/' + esc(FAMILY) + '</a>, where each lands in its writer’s own mirror.</p>';
-  const label = n.kind === 'root' ? 'the whole meeting' : n.title;
-  return '<h3>Add your reading</h3><div class="box" id="addbox" data-at="' + esc(n.addr) + '">' +
-    '<label for="f-text">What you see in ' + esc(label) + ', or what you would change</label><textarea id="f-text"></textarea>' +
-    (n.kind !== 'root' && !n.door ? '<div class="row"><input class="mins" id="f-min" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Minutes?" aria-label="How many minutes you would give it, at this length"></div>' : '') +
+  const label = n.kind === 'root' ? 'the whole meeting' : n.title, mine = readingsAt(n.addr).find(r => r.who === whoHere());
+  return '<h3>' + (mine ? 'Your reading' : 'Add your reading') + '</h3><div class="box" id="addbox" data-at="' + esc(n.addr) + '">' +
+    '<label for="f-text">What you see in ' + esc(label) + ', or what you would change</label><textarea id="f-text">' + esc(mine ? mine.text : '') + '</textarea>' +
+    (n.kind !== 'root' && !n.door ? '<div class="row"><input class="mins" id="f-min" type="number" min="0" step="0.5" inputmode="decimal" placeholder="Minutes?" aria-label="How many minutes you would give it, at this length"' + (mine && mine.est != null ? ' value="' + num(mine.est * scale()) + '"' : '') + '></div>' : '') +
     '<div class="row"><input id="f-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
-    '<button type="button" class="btn" id="f-send">Add my reading</button></div>' +
+    '<button type="button" class="btn" id="f-send">' + (mine ? 'Change my reading' : 'Add my reading') + '</button></div>' +
     '<p class="hint" id="f-hint">It goes into your own mirror of this meeting, in your name, at this part; writing again here replaces it.</p>' +
     '<a class="mlink live" href="' + esc(mirrorUrl(n.addr)) + '" target="_blank" rel="noopener" title="' + esc(label) + ', live, with everyone’s readings here">view live in the magic mirror ↗</a></div>';
 }
@@ -897,6 +923,7 @@ function runBox(){
     return h + '<div class="runline"><span class="clock">' + clock(len() * 60000) + '</span><span class="runsub">ready, ' + M.ring.length + ' phases, ' + M.steps.length + ' parts</span></div>' +
       '<p class="note">Start when the meeting starts. Mark each change of part as it happens, and the outer ring records how long each one actually took against the plan.</p>' +
       (M.source ? '' : '<p class="note">A run kept here stands beside this meeting. For a meeting of your own, with its own link, its own people and its own record, <button type="button" class="btn ghost" style="padding:3px 8px" data-make="1">duplicate it</button> first, under your own key.</p>') +
+      '<p class="note" style="margin-top:8px"><a href="' + stackLink(null) + '" target="_blank" rel="noopener">The State Stack ↗</a>, one room for everyone at the meeting — <a href="/animations/the-state-stack" target="_blank" rel="noopener">explained ↗</a></p>' +
       '<div class="runbtns"><button type="button" class="btn" data-run="start">Start the meeting</button></div></section>';
   }
   if (!r.end){
@@ -906,7 +933,7 @@ function runBox(){
     h += '<div class="runline"><span class="clock" id="rclock">' + clock(ri.elapsed * 60000) + '</span><span class="runsub">of ' + clock(r.total * 60000) + '</span></div>' +
          '<p class="runsub" style="margin:6px 0 0">Now: <b>' + esc(p.title) + (st.q ? ' · ' + esc(st.q.title) : '') + '</b> · <span id="rphase">' + fmt(took) + '</span> of ' + fmt(st.plan * k) + '</p>' +
          '<p class="note" style="margin-top:8px"><a href="' + stackLink(r) + '" target="_blank" rel="noopener">The State Stack ↗</a> — open it on the big screen: everyone scans its code and sets their own stack on their phone, and the screen draws the room as it moves. ' +
-         'Or <a href="' + stackLink(r) + '&keyed" target="_blank" rel="noopener">kept to its members ↗</a>, each keying in with their own key, for a meeting from B to A. <a href="/animations/the-state-stack" target="_blank" rel="noopener">The State Stack, explained ↗</a></p>' +
+         'Or <a href="' + stackLink(r, true) + '" target="_blank" rel="noopener">kept to its members ↗</a>, each keying in with their own key, for a meeting from B to A. <a href="/animations/the-state-stack" target="_blank" rel="noopener">The State Stack, explained ↗</a></p>' +
          (p.done ? '<div class="done-box" style="margin-top:10px"><b>' + esc(p.title) + ' is done when</b>' + esc(cap(p.done)) + '</div>' : '') +
          '<span class="runlabel">Was it done?</span><div class="met" role="group" aria-label="Was it done">' +
          ['yes', 'partly', 'no'].map(v => '<button type="button" data-met="' + v + '" aria-pressed="' + (note.met === v) + '">' + cap(v) + '</button>').join('') + '</div>' +
@@ -950,7 +977,10 @@ function hudPanel(){
   if (parts.length) h += '<div class="hud-parts">' + parts.map(q => '<button type="button" data-go="' + q.addr + '" aria-pressed="' + (q.addr === a) + '">' + esc(q.title) + '</button>').join('') + '</div>';
   /* the voices: each person's own words here, and nothing the page says about them */
   const VL = window.siteScope, all = readingsAt(a), rs = VL ? VL.sift(all, r => r.who).kept : all;
-  if (rs.length) h += '<div class="voices">' + rs.map(r => '<p class="voice' + (r.who === me ? ' mine' : '') + '"><b>' + esc(r.who) + '</b>' + esc(r.text) + '</p>').join('') + '</div>';
+  /* your own voice is the one you can tap, to change its words */
+  if (rs.length) h += '<div class="voices">' + rs.map(r => r.who === me && S.mode === 'design' && !SNAP
+    ? '<button type="button" class="voice mine" data-edit="1" title="Change your words here"><b>' + esc(r.who) + ' · tap to change</b>' + esc(r.text) + '</button>'
+    : '<p class="voice' + (r.who === me ? ' mine' : '') + '"><b>' + esc(r.who) + '</b>' + esc(r.text) + '</p>').join('') + '</div>';
   if (S.mode === 'design' && !SNAP) h += '<div class="say" id="addbox" data-at="' + esc(a) + '">' +
     '<input id="f-who" class="say-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name"' + (me ? ' hidden' : '') + '>' +
     '<button type="button" class="say-btn" id="h-say" aria-pressed="false">' + MIC + '<span class="say-t">' + (rs.some(r => r.who === me) ? 'say it again' : 'say yours') + '</span></button>' +
@@ -961,22 +991,23 @@ function hudPanel(){
 /* the run as a HUD: the clock, where the meeting is, one big button to move on, and a big button to say what happened */
 function hudRun(){
   const ri = runInfo(), r = S.run;
-  if (!r) return '<section class="run hud-run" aria-label="Run the meeting"><span class="clock">' + clock(len() * 60000) + '</span>' +
+  /* the tools beside the clock: the State Stack, one room for the sitting, and what it is */
+  const tools = '<div class="runtools"><a class="btn ghost" href="' + stackLink(r) + '" target="_blank" rel="noopener">State Stack ↗</a>' +
+    '<a class="btn ghost" href="/animations/the-state-stack" target="_blank" rel="noopener" title="The State Stack, explained" aria-label="The State Stack, explained">?</a></div>';
+  if (!r) return '<section class="run hud-run" aria-label="Run the meeting"><span class="clock">' + clock(len() * 60000) + '</span>' + tools +
     '<button type="button" class="hud-go" data-run="start">Start the meeting</button></section>';
   if (!r.end){
     const st = M.steps[ri.cur], p = st.p, note = r.notes[p.idx] || {}, nx = M.steps[ri.cur + 1];
     const next = !nx ? 'Finish' : (nx.p !== p ? nx.p.title : (nx.q ? nx.q.title : nx.p.title)) + ' →';
-    return '<section class="run hud-run" aria-label="Run the meeting"><span class="clock" id="rclock">' + clock(ri.elapsed * 60000) + '</span>' +
+    return '<section class="run hud-run" aria-label="Run the meeting"><span class="clock" id="rclock">' + clock(ri.elapsed * 60000) + '</span>' + tools +
       '<p class="hud-now">' + esc(p.title) + (st.q ? ' · ' + esc(st.q.title) : '') + ' <span id="rphase">' + fmt((ri.now - ri.curStart) / 60000) + '</span></p>' +
       '<button type="button" class="hud-go" data-run="next">' + esc(next) + '</button>' +
       '<div class="met" role="group" aria-label="Was it done">' + ['yes', 'partly', 'no'].map(v => '<button type="button" data-met="' + v + '" aria-pressed="' + (note.met === v) + '">' + cap(v) + '</button>').join('') + '</div>' +
       '<div class="say"><button type="button" class="say-btn" id="h-note" aria-pressed="false">' + MIC + '<span class="say-t">' + (note.text ? 'say more' : 'what happened') + '</span></button>' +
       '<textarea id="rnote" class="say-text" data-note="' + p.idx + '" aria-label="what happened in ' + esc(p.title) + '">' + esc(note.text || '') + '</textarea></div>' +
-      '<div class="runbtns"><a class="btn ghost" style="text-decoration:none" href="' + stackLink(r) + '" target="_blank" rel="noopener">State Stack ↗</a>' +
-      '<a class="btn ghost" style="text-decoration:none" href="/animations/the-state-stack" target="_blank" rel="noopener" title="The State Stack, explained" aria-label="The State Stack, explained">?</a>' +
-      '<button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard</button></div></section>';
+      '<div class="runbtns"><button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard</button></div></section>';
   }
-  return '<section class="run hud-run" aria-label="The run, ended"><span class="clock">' + clock(ri.elapsed * 60000) + '</span><p class="hud-now"><span>of ' + clock(r.total * 60000) + '</span></p>' +
+  return '<section class="run hud-run" aria-label="The run, ended"><span class="clock">' + clock(ri.elapsed * 60000) + '</span>' + tools + '<p class="hud-now"><span>of ' + clock(r.total * 60000) + '</span></p>' +
     (r.kept ? '<p class="hint ok">kept ✓</p>' : SNAP ? '' : '<div class="box" style="margin-top:10px"><div class="row"><input id="k-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
       '<input id="k-with" placeholder="who was there (optional)" aria-label="who was there, optional"></div></div>') +
     (r.kept || SNAP ? '' : '<button type="button" class="hud-go" data-run="keep">Keep this run</button>') +
@@ -997,6 +1028,8 @@ function bigMic(btn, box, sends){
   const paint = on => { btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', String(on)); label.textContent = on ? (sends ? 'listening · tap to say it' : 'listening · tap to stop') : rest; };
   btn.addEventListener('click', () => {
     clearInterval(watch);
+    /* changing your own words: the big button saves what the box holds */
+    if (btn.closest('.say').classList.contains('editing')){ if (d.listening()) d.stop(); setTimeout(() => addReading(), d.listening() ? 700 : 0); return; }
     if (d.listening()){
       d.stop(); paint(false);
       /* the last words firm a moment after the microphone closes */
@@ -1007,6 +1040,14 @@ function bigMic(btn, box, sends){
     d.begin(); paint(d.listening());
     watch = setInterval(() => { if (!d.listening()){ clearInterval(watch); paint(false); } }, 500);
   });
+}
+/* tap your own voice: its words open in the box, the big button saves them, and the microphone stays in the box's corner */
+function editMine(){
+  const me = whoHere(), box = $('addbox'), t = $('f-text'), mine = readingsAt(box ? box.getAttribute('data-at') : '').find(r => r.who === me);
+  if (!box || !t || !mine) return;
+  box.classList.add('editing', 'typed'); t.value = mine.text;
+  const b = $('h-say'); if (b){ b.classList.remove('on'); b.querySelector('.say-t').textContent = 'save'; }
+  try { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } catch(e){}
 }
 function wireHud(){
   const fw = $('f-who'); if (fw && !fw.value) fw.value = whoHere();
@@ -1065,6 +1106,7 @@ function drawPanel(){
 
 panel.addEventListener('click', ev => {
   if (ev.target.closest('[data-make]')){ openMake(); return; }
+  if (ev.target.closest('[data-edit]')){ editMine(); return; }
   const g = ev.target.closest('[data-go]');
   if (g){ select(g.getAttribute('data-go')); return; }
   const vw = ev.target.closest('[data-view]');
@@ -1078,7 +1120,8 @@ panel.addEventListener('click', ev => {
   if (act === 'start'){
     const run = S.run = { start: Date.now(), marks: [], notes: {}, end: null, total: len() }; S.view = ''; setSel(M.steps[0].addr);
     /* a State Stack already opened for this sitting is the run's own: the room's screen and the run's link stay one room */
-    if (!SNAP) openRoom(run.start).then(b => { if (b && S.run === run){ run.room = b; save(); render(); } });
+    if (fixedBeat()) run.room = fixedBeat();
+    else if (!SNAP) openRoom(run.start).then(b => { if (b && S.run === run){ run.room = b; save(); render(); } });
   }
   else if (act === 'next'){ S.run.marks.push(Date.now()); if (S.run.marks.length >= M.steps.length) S.run.end = Date.now(); else setSel(M.steps[S.run.marks.length].addr); }
   else if (act === 'end'){ S.run.marks.push(Date.now()); S.run.end = Date.now(); }
@@ -1167,7 +1210,8 @@ async function keepRun(){
   if (!name || name.length > 32){ say('err', 'Pick a name of up to 32 letters, digits, - or _: it is how the run is signed.'); $('k-who').focus(); return; }
   say('', 'keeping it beside the plan…');
   try {
-    const room = 'pool:' + FAMILY + ':' + (S.run.room || beatOf(S.run.start)), held = await readBlock(room).catch(() => null);
+    const beat = S.run.room || fixedBeat() || (await openRoom(S.run.end || Date.now())) || beatOf(S.run.start);
+    const room = 'pool:' + FAMILY + ':' + beat, held = await readBlock(room).catch(() => null);
     const block = FAMILY + ':' + beatOf(S.run.start) + ':' + name, content = toObj(runRecord(name, who, held ? room : ''));
     const stands = await readBlock(block);
     const w = await keyed(FAMILY, name, block, stands ? '' : 'Keeping this run founds its record',
@@ -1214,17 +1258,9 @@ function openMake(then){
   $('mk-title').focus();
 }
 function showLink(){ const s = freeSlug(slugify($('mk-title').value)); $('mk-link').textContent = s ? 'Its link will be happyseaurchin.com/ring/' + s : ''; }
-/* Duplicate and the tools stand under options: the header keeps Invite, the act most people come for */
+/* Duplicate stands under options: the header keeps Invite and Join, the acts most people come for; the State Stack stands beside the run's clock */
 const closeOptions = () => { const dd = document.getElementById('dd-acts'); if (dd) dd.open = false; };
 $('make').addEventListener('click', () => { closeOptions(); openMake(); });
-/* the tools beside Invite, shown or hidden on this device for every meeting: the State Stack for now */
-let TOOLS = (() => { try { return localStorage.getItem('ring:tools') === '1'; } catch(e){ return false; } })();
-function drawTools(){ $('btn-tools').textContent = TOOLS ? 'hide tools' : 'show tools'; $('stacklink').hidden = !TOOLS; $('stackexplain').hidden = !TOOLS; }
-$('btn-tools').addEventListener('click', () => {
-  TOOLS = !TOOLS; try { localStorage.setItem('ring:tools', TOOLS ? '1' : '0'); } catch(e){}
-  closeOptions(); drawTools();
-});
-drawTools();
 /* the ring's layers on this device for every meeting: a meeting has two (function:meeting 3), its phases and their parts */
 let LAYERS = (() => { try { return localStorage.getItem('ring:layers') === '1' ? 1 : 2; } catch(e){ return 2; } })();
 const drawLayers = () => { $('btn-layers').textContent = LAYERS === 1 ? 'show 2 layers' : 'show 1 layer'; };
@@ -1298,11 +1334,70 @@ $('mk-form').addEventListener('submit', async ev => {
     if (!w){ say('', 'Nothing made: no key was given.'); go.disabled = false; return; }
     if (!w.ok){ say('err', refusal(w)); go.disabled = false; return; }
     await post({ append: true, content: 'COPIED — ' + slug + ' — ' + named + '; from: ' + src + '; by ' + name + '; happyseaurchin.com/ring/' + slug }, 'pool:meeting').catch(() => null);
+    if (kind === 'meeting') await post({ block: 'pool:' + slug, content: { '_': roomPurpose(slug, named) } }).catch(() => null);
     $('mk-title').value = ''; $('mk-what').value = '';
     if (MAKE_THEN === 'invite' && kind === 'meeting'){ location.href = SITE + '/invite/' + encodeURIComponent(slug); return; }
     if (dlg.close) dlg.close(); else dlg.removeAttribute('open');
     switchTo(slug, true, kind);
   } catch(e){ say('err', 'couldn’t make the copy: ' + e.message); go.disabled = false; }
+});
+
+/* a meeting's room on the beach, pool:<name>, its purpose linking back to the meeting (task:weft 34) */
+function roomPurpose(name, title){
+  return 'ROOM — talk about ' + inSentence(title) + ' (spine:' + name + '), open to anyone with its link, before the meeting, during it and after it. ' +
+    'Talk, not the record: a reading counts where it is said, at the meeting’s own address in the reader’s own mirror, and whatever is settled here, a time or a place, ' +
+    'counts once it is written there (the meeting’s When at 1.1, its Where at 1.3) and in each person’s own now. The meeting: happyseaurchin.com/ring/' + name + '; its law: function:' + name + '.';
+}
+
+/* ---------- JOIN (task:weft 34): the call, the time and the meeting's room, read from one place each ----------
+   The call's link lives only in the meeting's own Where, spine:<name> 1.3: the first link there that is not one of the
+   beach's own pages. The time is the fix the readings agreed (7.1), else the keeper's own word at 1.1. The room is
+   pool:<name>. A keeper with no call link yet sets it here, into 1.3 under the meeting's key, and nowhere else. */
+const OWN_HOSTS = /(^|\.)(happyseaurchin\.com|mirror\.onen\.ai|hermitcrab\.me)$/i;
+function callLink(){
+  const where = lineAt(SPINE, '1.3') || '';
+  for (const u of where.match(/https?:\/\/[^\s)\]]+/g) || []){
+    const url = u.replace(/[.,;:!?]+$/, '');
+    try { if (!OWN_HOSTS.test(new URL(url).hostname)) return url; } catch(e){}
+  }
+  return '';
+}
+function keeperOf(){
+  const t = String(voiceOf(SPINE) || '') + ' ' + String((LAW && voiceOf(LAW['9'])) || '');
+  const m = /kept under ([\w-]+)['’]s own key/.exec(t) || /\bby ([\w-]+)\b/.exec(String((LAW && voiceOf(LAW['9'])) || ''));
+  return m ? m[1] : '';
+}
+const joindlg = $('joindlg');
+function openJoin(){
+  if (!M) return;
+  const fix = (FOLD && lineAt(FOLD, '1.1')) || '', keeper = keeperOf(), theirs = keeper && MIRRORS.find(m => m.h === keeper);
+  const said = theirs ? lineAt(theirs.b, '1.1') : '';
+  $('jn-h').textContent = 'Join ' + M.root.title;
+  $('jn-when').textContent = /^FIXED\b/i.test(fix) ? (fix.split(/\s+[—–]\s+/)[1] || fix) : said ? said + ' (as ' + keeper + ' has it; not yet fixed)' : 'No time fixed yet.';
+  const url = callLink(), where = String(lineAt(SPINE, '1.3') || '').replace(/^\s*WHERE\s*:\s*/i, '').split(/(?<=[.!?])\s+/)[0];
+  let host = ''; try { host = url ? new URL(url).hostname.replace(/^www\./, '') : ''; } catch(e){}
+  $('jn-call').innerHTML = url ? '<a class="hud-go" href="' + esc(url) + '" target="_blank" rel="noopener">Open the call ↗</a><p class="hint" style="text-align:center">' + esc(host) + '</p>'
+    : '<p class="jn-where">' + esc(where || 'No place said yet.') + '</p><p class="hint">No call link yet.</p>';
+  $('jn-room').innerHTML = hasPool() ? '<a href="' + RENDER + encodeURIComponent('pool:' + FAMILY) + '" target="_blank" rel="noopener">The meeting’s room on the beach, pool:' + esc(FAMILY) + ' ↗</a>' : '';
+  $('jn-set').hidden = !!url || SNAP || !keeper || keeper !== whoHere();
+  $('jn-hint').className = 'hint'; $('jn-hint').textContent = '';
+  if (joindlg.showModal) joindlg.showModal(); else joindlg.setAttribute('open', '');
+}
+$('joinbtn').addEventListener('click', openJoin);
+$('jn-close').addEventListener('click', () => joindlg.close ? joindlg.close() : joindlg.removeAttribute('open'));
+$('jn-save').addEventListener('click', async () => {
+  const hint = $('jn-hint'), say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
+  const url = String($('jn-url').value || '').trim(), keeper = keeperOf();
+  if (!/^https?:\/\/\S+$/i.test(url)){ say('err', 'A link that opens the call, starting https://'); return; }
+  const node = nodeAt(SPINE, '1.2') !== undefined ? nodeAt(SPINE, '1.3') : undefined;
+  const was = String(lineAt(SPINE, '1.3') || 'WHERE: online.').trim();
+  const line = was.replace(/[\s.]*$/, '.') + ' The call: ' + url;
+  const content = node && typeof node === 'object' ? Object.assign(JSON.parse(JSON.stringify(node)), { '_': line }) : line;
+  say('', 'setting it…');
+  const w = await keyed(FAMILY, keeper, 'spine:' + FAMILY, '', secret => post({ block: 'spine:' + FAMILY, spindle: '1.3', content, secret }));
+  if (!w){ say('', 'Nothing set: no key was given.'); return; }
+  if (!w.ok){ say('err', refusal(w)); return; }
+  await load(); openJoin(); say('ok', 'The call is set, for everyone, at the meeting’s Where.');
 });
 
 /* ---------- the page around the ring ---------- */
@@ -1335,10 +1430,6 @@ function drawControls(){
   rs.value = S.view;
   $('m-run').setAttribute('aria-pressed', String(S.mode === 'run'));
   $('m-run').title = S.mode === 'run' ? 'Back to the readings; a run in progress keeps going' : 'Run the meeting: a clock, a mark at each change of part, and the run kept at the end';
-  /* the State Stack is one tap away at any time: a live run's own room, else its page with this meeting chosen */
-  const live = S.run && !S.run.end;
-  $('stacklink').href = live ? stackLink(S.run) : stackHome();
-  if (live) $('stacklink').target = '_blank'; else $('stacklink').removeAttribute('target');
   /* the meetings the form lists, each with the copies made from it beneath, and copies of copies beneath those */
   const flat = [], seen = new Set();
   const add = (name, title, depth) => { if (seen.has(name)) return; seen.add(name); flat.push({ name, title, depth }); COPIES.filter(y => y.from === name).forEach(y => add(y.name, y.title, depth + 1)); };
@@ -1367,9 +1458,7 @@ $('btn-pool').addEventListener('click', async () => {
   const b = $('btn-pool');
   if (!M || SNAP || hasPool()) return;
   b.disabled = true; b.textContent = 'creating the pool…';
-  const purpose = 'ROOM — talk about ' + inSentence(M.root.title) + ' (spine:' + FAMILY + '), open to anyone with its link, before the meeting, during it and after it. ' +
-    'Talk, not the record: a reading counts where it is said, at the meeting’s own address in the reader’s own mirror, and whatever is settled here, a time or a place, ' +
-    'counts once it is written there (the meeting’s When at 1.1, its Where at 1.3) and in each person’s own now. The meeting: happyseaurchin.com/ring/' + FAMILY + '; its law: function:' + FAMILY + '.';
+  const purpose = roomPurpose(FAMILY, M.root.title);
   try {
     const w = await post({ block: 'pool:' + FAMILY, content: { '_': purpose } });
     /* refused because someone made it a moment ago is as good as made */

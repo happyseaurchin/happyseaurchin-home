@@ -1239,22 +1239,36 @@ async function meetingsOf(){
   const all = [...copies.values()].reverse(), design = x => /\(design\)/i.test(x.title);
   return { held: all.filter(x => !design(x)), designs: designs.concat(all.filter(design)) };
 }
-/* a room already open for the meeting, begun in this beat or the three before it (about an hour), is offered first, so a
-   screen and a ring that each open the State Stack for one sitting stay in one room */
-async function openNow(m){
-  const el = $('d-open'); el.hidden = true;
-  if (!m) return;
+/* THE SITTING'S ONE ROOM (function:meeting 2.2): whoever opens a meeting's State Stack, and from wherever, lands in the
+   same room — the meeting's fixed start where its readings agreed a time (the fold's FIXED line at 1.1 names its beats),
+   else the room opened for it in this beat or the three before (about an hour), else a new one, which only the first
+   to open it makes */
+async function sittingBeat(m){
+  const fix = voiceOf(await readBlock(m, '1.1').catch(() => null)) || '';
+  const f = /^\s*FIXED\b[\s\S]*?\bbeats?\s+(\d{10})/i.exec(fix);
+  if (f) return f[1];
   const now = Date.now(), beats = [0, 1, 2, 3].map(i => beatOf(now - i * 86400000 / 81));
   const found = await Promise.all(beats.map(b => readBlock('pool:' + m + ':' + b).then(x => x ? b : '').catch(() => '')));
-  const b = found.find(Boolean);
+  return found.find(Boolean) || '';
+}
+let SITTING = null;
+async function openNow(m){
+  const el = $('d-open'); el.hidden = true; SITTING = null; $('d-go').textContent = 'Start it on this screen';
+  if (!m) return;
+  const b = await sittingBeat(m);
   if (!b || $('d-meet').value !== m) return;
-  el.innerHTML = 'Its State Stack was opened in the last hour: <a href="' + esc(linkOf(m, b) + (AWAY ? '&' : '?') + 'screen') + '">open that one on this screen</a>, or start a new one.';
+  const stands = await readBlock('pool:' + m + ':' + b).then(x => !!x).catch(() => false);
+  SITTING = { m, b };
+  el.textContent = stands ? 'Its State Stack is open for this sitting: everyone who opens it lands in the same room.'
+    : 'Its room is the meeting’s fixed start, so everyone who opens it lands in the same room.';
   el.hidden = false;
+  $('d-go').textContent = stands ? 'Open it on this screen' : 'Start it on this screen';
 }
 $('d-go').addEventListener('click', () => {
   const m = slug($('d-meet').value); if (!m) return;
   const keyed = (document.querySelector('input[name="d-kind"]:checked') || {}).value === 'keyed';
-  location.href = '/stack/' + encodeURIComponent(m) + '/' + beatOf(Date.now()) + '?screen' + (keyed ? '&keyed' : '') + (AWAY ? '&beach=' + encodeURIComponent(BEACH) : '');
+  const beat = SITTING && SITTING.m === m ? SITTING.b : beatOf(Date.now());
+  location.href = '/stack/' + encodeURIComponent(m) + '/' + beat + '?screen' + (keyed ? '&keyed' : '') + (AWAY ? '&beach=' + encodeURIComponent(BEACH) : '');
 });
 let pastRead = false;
 $('d-past').addEventListener('toggle', async () => {
@@ -1276,6 +1290,12 @@ $('d-past').addEventListener('toggle', async () => {
 
 /* ---------- boot ---------- */
 (async function boot(){
+  /* ?join: the sitting's one room, found as the start page finds it; a first opener founds it, open or (?keyed) kept */
+  if (MEETING && !BEAT && Q.has('join')){
+    BEAT = (await sittingBeat(MEETING).catch(() => '')) || beatOf(Date.now());
+    const rest = ['screen', 'phone', 'keyed'].filter(k => Q.has(k));
+    try { history.replaceState(null, '', linkOf(MEETING, BEAT) + (rest.length ? (AWAY ? '&' : '?') + rest.join('&') : '')); } catch(e){}
+  }
   if (!MEETING || !BEAT) return door();
   let root;
   try { root = await readBlock('spine:' + MEETING, '0'); } catch(e){ root = undefined; }
