@@ -1168,6 +1168,9 @@ async function writeMirrorAt(addr, content){
 }
 /* the keeper's key — the spine's own lock, a different key from the deck latch */
 const keeperKey = () => 'morning-keeper:spine:' + VENTURE;
+/* the page sees no latch, only the key this device was given: options → add my latch-key, or
+ * kept after a spine write the beach admitted */
+const keeperHeld = () => { try { return !!localStorage.getItem(keeperKey()); } catch(e){ return false; } };
 async function writeSpine(addr, content){
   const body = { block: 'spine:' + VENTURE, spindle: wireAddr(addr), content };
   let latch = localStorage.getItem(keeperKey());
@@ -2133,6 +2136,30 @@ function wireSay(addr, label, done){
   wireEnter(box, () => go.click());
   if (window.dictate) dictate(box);
 }
+/* THE SPINE'S OWN BOX: the line at this address, written back under the keeper's key
+ * (writeSpine), which the beach refuses from any other hand */
+function editSpine(addr){
+  const cur = textAt(SPINE, addr) || '';
+  $('sh-body').innerHTML = '<div class="spineedit">' +
+    '<textarea id="sp-text" placeholder="the line everyone reads at this point"></textarea>' +
+    '<div class="row"><span class="hint">the spine is keeper-held — this write lands only if your key holds spine:' + esc(VENTURE) + '; everyone else proposes in voices</span>' +
+    '<button id="sp-go">write the spine</button></div></div>';
+  $('sp-text').value = cur;
+  if (window.dictate) dictate($('sp-text'));
+  $('sp-go').addEventListener('click', async () => {
+    if (BUSY) return;
+    const text = $('sp-text').value.trim();
+    if (!text){ toast('nothing to write', true); return; }
+    BUSY = true; $('sp-go').disabled = true;
+    try {
+      const w = await writeSpine(addr, text);
+      if (w.ok){ toast('✓ the spine speaks at ' + selLabel()); await load(); paintSheet(); }
+      else { const g = document.getElementById('sp-go'); if (g) g.disabled = false; if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true); }
+    } catch(e){ const g = document.getElementById('sp-go'); if (g) g.disabled = false; toast('the beach did not answer — ' + String(e.message || e), true); }
+    finally { BUSY = false; }
+  });
+  wireEnter($('sp-text'), () => $('sp-go').click());
+}
 function paintSheet(){
   if (!SHEET) return;
   if (GROUND){ paintGroundSheet(); return; }
@@ -2346,28 +2373,13 @@ function paintSheet(){
     });
   }
   if (SHEET.pane === 'text' && $('sp-edit')){
-    $('sp-edit').addEventListener('click', () => {
-      const cur = textAt(SPINE, addr) || '';
-      $('sh-body').innerHTML = '<div class="spineedit">' +
-        '<textarea id="sp-text"></textarea>' +
-        '<div class="row"><span class="hint">the spine is keeper-held — this write lands only if your key holds spine:' + esc(VENTURE) + '; everyone else proposes in voices</span>' +
-        '<button id="sp-go">write the spine</button></div></div>';
-      $('sp-text').value = cur;
-      if (window.dictate) dictate($('sp-text'));
-      $('sp-go').addEventListener('click', async () => {
-        if (BUSY) return;
-        const text = $('sp-text').value.trim();
-        if (!text){ toast('nothing to write', true); return; }
-        BUSY = true; $('sp-go').disabled = true;
-        try {
-          const w = await writeSpine(addr, text);
-          if (w.ok){ toast('✓ the spine speaks at ' + selLabel()); await load(); paintSheet(); }
-          else { const g = document.getElementById('sp-go'); if (g) g.disabled = false; if (!w.quiet) toast('refused — ' + ((w.data && (w.data.error || w.data.code)) || w.status), true); }
-        } catch(e){ const g = document.getElementById('sp-go'); if (g) g.disabled = false; toast('the beach did not answer — ' + String(e.message || e), true); }
-        finally { BUSY = false; }
-      });
-      wireEnter($('sp-text'), () => $('sp-go').click());
-    });
+    /* THE KEEPER TYPES STRAIGHT INTO THE LINE. A device that holds this spine's keeper key
+     * opens the line's own box at once, the line already in it, so the lead never meets the
+     * visitor's road — say it in voices, and the keeper may adopt it — and never copies her
+     * own words across by hand (happyhedgehog, 2026-10-12, leading fairy-tales: "the page
+     * only ever saves into my mirror"). Everyone else reads the line, the edit a button away. */
+    if (keeperHeld()) editSpine(addr);
+    else $('sp-edit').addEventListener('click', () => editSpine(addr));
   }
   if (SHEET.pane === 'cards' && HANDLE){
     $('addto-go').addEventListener('click', async () => {
@@ -2447,6 +2459,7 @@ document.getElementById('btn-latch').addEventListener('click', () => {
   if (v === null) return;
   if (!v.trim()){ localStorage.removeItem(keeperKey()); toast('key cleared'); }
   else { localStorage.setItem(keeperKey(), v.trim()); toast('key kept on this device'); }
+  if (SHEET) paintSheet();
 });
 document.getElementById('btn-refresh').addEventListener('click', () => load().then(() => toast('re-read')));
 
