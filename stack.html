@@ -187,8 +187,13 @@
   .room-head .eyebrow{font-size:max(11px,1.35vmin)}
   .room-head h1{font-family:var(--display);font-weight:800;font-size:clamp(22px,4.6vmin,60px);line-height:1.04;margin:.18em 0 .1em}
   .room-head .sub{margin:0;font-size:max(14px,1.9vmin);color:var(--vapour)}
-  .room .fig{grid-area:fig;min-height:0;display:flex;align-items:center;justify-content:center;padding:1vmin 0}
+  .room .fig{grid-area:fig;min-height:0;display:flex;align-items:center;justify-content:center;padding:1vmin 0;position:relative}
   .room .fig svg{height:100%;max-height:100%;width:auto;max-width:100%}
+  /* Birds: the same room as shorebirds, drawn over the lines' own box so the canvas never sizes the grid */
+  #birds-room{position:absolute;inset:0;width:100%;height:100%;display:block;border-radius:12px}
+  .room.birds #fig-room{visibility:hidden}
+  .room.birds .seg.focus{display:none}
+  .seg.look[data-look="birds"]{margin-right:10px}
   .ctl-row{grid-area:ctl;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center}
   .seg{border:1px solid var(--line-strong);background:transparent;border-radius:999px;padding:6px 13px;cursor:pointer;
     font-family:var(--body);font-size:max(14px,1.7vmin);color:var(--vapour)}
@@ -340,8 +345,10 @@
       <h1 id="r-title">The meeting</h1>
       <p class="sub" id="r-sub"></p>
     </header>
-    <figure class="fig"><svg id="fig-room" data-focus="all" role="group" aria-label="Every stack in the room on the lines C, B and A, with the room’s centre of weight at each level"></svg></figure>
+    <figure class="fig"><svg id="fig-room" data-focus="all" role="group" aria-label="Every stack in the room on the lines C, B and A, with the room’s centre of weight at each level"></svg><canvas id="birds-room" hidden role="img" aria-label="The room as shorebirds: a bird for each stack"></canvas></figure>
     <div class="ctl-row" aria-label="Look at">
+      <button type="button" class="seg look" data-look="lines" aria-pressed="true">Lines</button>
+      <button type="button" class="seg look" data-look="birds" aria-pressed="false" title="The same room as shorebirds: a bird for each stack, lifting by its own lean">Birds</button>
       <button type="button" class="seg focus" data-focus="all" aria-pressed="true">All levels</button>
       <button type="button" class="seg focus" data-focus="soc" aria-pressed="false">Social</button>
       <button type="button" class="seg focus" data-focus="rel" aria-pressed="false">Relational · power</button>
@@ -992,11 +999,12 @@ function paint(){
 }
 
 /* the screen: every latest stack, the centre of weight, the phase by the room's middle */
-let NAMES = false;
+let NAMES = false, BIRDS = null;
 function paintRoom(){
   const list = [...PEOPLE.values()];
   $('room').classList.toggle('empty', !list.length);
   drawFig(FR, list.map(p => ({ id: p.id, v: p.v })));
+  if (BIRDS) BIRDS.set(list.map(p => ({ id: p.id, v: p.v })));
   const st = stats(list.map(p => p.v));
   $('r-sub').textContent = dayOf(BEAT) + (KEYED ? ' · kept to its members' : '') + (list.length ? ' · ' + list.length + (list.length === 1 ? ' stack' : ' stacks') : '');
   $('r-members').hidden = !KEYED;
@@ -1027,6 +1035,31 @@ document.querySelectorAll('.seg.focus').forEach(b => b.addEventListener('click',
   $('fig-room').dataset.focus = b.dataset.focus;
   document.querySelectorAll('.seg.focus').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
 }));
+
+/* Lines or Birds: the same room drawn as shorebirds (keel's StackBirds, vendor/stack-birds.js, loaded the first time
+   the screen asks for it), reading the room with this page's own arithmetic. The device keeps its choice; ?birds opens on it. */
+let birdsLoading = null;
+function loadBirds(){
+  if (!birdsLoading) birdsLoading = new Promise((ok, no) => {
+    if (typeof StackBirds !== 'undefined') return ok();
+    const s = document.createElement('script'); s.src = '/vendor/stack-birds.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s);
+  });
+  return birdsLoading;
+}
+function setLook(look){
+  const birds = look === 'birds';
+  try { localStorage.setItem('stack:look', birds ? 'birds' : 'lines'); } catch(e){}
+  $('room').classList.toggle('birds', birds);
+  $('birds-room').hidden = !birds;
+  document.querySelectorAll('.seg.look').forEach(x => x.setAttribute('aria-pressed', String((x.dataset.look === 'birds') === birds)));
+  if (birds) loadBirds().then(() => {
+    if (!BIRDS) BIRDS = StackBirds.create($('birds-room'), { scale: 1.25 });
+    paint();
+  }).catch(() => { birdsLoading = null; setLook('lines'); });
+}
+document.querySelectorAll('.seg.look').forEach(b => b.addEventListener('click', () => setLook(b.dataset.look)));
+let lookSaved = ''; try { lookSaved = localStorage.getItem('stack:look') || ''; } catch(e){}
+if (Q.has('birds') || lookSaved === 'birds') setLook('birds');
 
 /* the code a phone scans — loaded when a screen first shows the room (vendor/qrcode.js, as the news sheets load it) */
 let qrLoading = null;
