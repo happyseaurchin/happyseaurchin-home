@@ -1336,6 +1336,35 @@
   /* registered after gatherActs, so it runs after it */
   document.addEventListener('DOMContentLoaded', mintAct);
 
+  /* ── the beach button, on every page that carries the bar ──────────────────
+   * David, 2026-10-15: 'implement it in my O pages … I'm looking at the Now
+   * page, and the button is there.' The button is a frame from the beach's own
+   * origin (pscale-commons/pscale-beach button/, served at beach/button/): a
+   * person unlocks it in the beach's own window, may add their own key, and
+   * asks the beach from it, and nothing on this site — this file included — can
+   * read what is typed into it or kept there. It floats bottom right, can be
+   * dragged, and its × puts it away until the page reloads.
+   * Never in an embed or in a page framed by another, which has its own; never
+   * on a page whose body says data-beach-button="off" (its own bottom right is
+   * taken: a map's attribution, a side panel). While a page's own sheet or pop
+   * is open the button steps under it, so the sheet's save stays in reach on a
+   * phone: the style is carried here, as the ＋card carries its own.
+   * ────────────────────────────────────────────────────────────────────────── */
+  var BEACH_BUTTON = 'https://beach.happyseaurchin.com/button/button.js';
+  function beachButton(){
+    var b = document.body;
+    if (!b || window.beachButton || !document.querySelector('.bar')) return;
+    if (window.top !== window || b.getAttribute('data-beach-button') === 'off' || b.classList.contains('embed') ||
+        new URLSearchParams(location.search).get('embed') === '1') return;
+    var st = document.createElement('style');
+    st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) iframe[title="beach button"]{z-index:29 !important}';
+    document.head.appendChild(st);
+    var s = document.createElement('script');
+    s.src = BEACH_BUTTON; s.async = true;
+    b.appendChild(s);
+  }
+  document.addEventListener('DOMContentLoaded', beachButton);
+
   /* ── the projects you are in ───────────────────────────────────────────────
    * There is no directory page and none is needed: YOUR PROJECTS ARE THE FAMILIES
    * YOU HOLD A MIRROR IN, which the beach index already knows. A family exists iff
