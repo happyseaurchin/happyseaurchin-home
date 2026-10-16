@@ -1342,45 +1342,35 @@
    * origin (pscale-commons/pscale-beach button/, served at beach/button/): a
    * person unlocks it in the beach's own window, may add their own key, and
    * asks the beach from it, and nothing on this site — this file included — can
-   * read what is typed into it or kept there. It floats bottom right, moved by
-   * the grip beside it, and its × puts it away until the page reloads.
+   * read what is typed into it or kept there. Since 2026-10-16 it is tapped as
+   * xstream's construction button is ('let's go with the new one!'): its circle,
+   * bottom right and moved by the grip beside it, shows + to open the prompt, #
+   * for settings (where 'hide the button' puts it away until the page reloads)
+   * and × to close; one window holds the reply, anything it would write staged
+   * with commit, and the prompt.
    * Never in an embed or in a page framed by another, which has its own; never
    * on a page whose body says data-beach-button="off" (its own bottom right is
    * taken: a map's attribution, a side panel). While a page's own sheet or pop
-   * is open the button and its grip step under it, so the sheet's save stays in
-   * reach on a phone: the style is carried here, as the ＋card carries its own.
+   * is open the button's circle, edge and window step under it, so the sheet's
+   * save stays in reach on a phone: the style is carried here, as the ＋card
+   * carries its own.
    * A SWITCH UNDER OPTIONS turns it off on this device and on again (David,
    * 2026-10-15: 'a toggle in options … to enable/disable the beach button'):
    * off, it is put away now and not loaded on any page until switched back on.
-   * THE NEXT BUTTON, ON TRIAL (David, 2026-10-16: 'Build as next'): a second act
-   * under options swaps the classic button for the next one on this device —
-   * tapped as xstream's construction button is (# opens the prompt, + settings,
-   * × closes), one window holding the reply, anything it would write staged with
-   * commit, and the prompt; served beside the classic at beach/button/next/. The
-   * page reloads to carry the other. When the trial ends one of the two goes,
-   * and so does this act.
    * ────────────────────────────────────────────────────────────────────────── */
   var BEACH_BUTTON = 'https://beach.happyseaurchin.com/button/button.js';
-  var BEACH_BUTTON_NEXT = 'https://beach.happyseaurchin.com/button/next/button.js';
-  var BB_KEY = 'beach-button';        /* 'off' = kept off on this device */
-  var BB_KIND = 'beach-button-kind';  /* 'next' = the trial, on this device */
+  var BB_KEY = 'beach-button';   /* 'off' = kept off on this device */
   function bbOn(){ try { return localStorage.getItem(BB_KEY) !== 'off'; } catch(e){ return true; } }
-  function bbNext(){ try { return localStorage.getItem(BB_KIND) === 'next'; } catch(e){ return false; } }
-  var bbLoading = false, bbCarried = '';   /* the kind this page loaded */
+  var bbLoading = false;
   function bbLoad(){
-    var kind = bbNext() ? 'next' : 'classic';
-    if (window.beachButton) {
-      /* the other kind was chosen while it was off: the page reloads to carry that one */
-      if (bbCarried && bbCarried !== kind) { location.reload(); return; }
-      window.beachButton.show(); return;
-    }
+    if (window.beachButton) { window.beachButton.show(); return; }
     if (bbLoading) return;
-    bbLoading = true; bbCarried = kind;
+    bbLoading = true;
     var st = document.createElement('style');
-    st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) :is(iframe[title="beach button"],[data-beach-button-grip],[data-beach-button-dock],[data-beach-button-edge]){z-index:29 !important}';
+    st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) :is(iframe[title="beach button"],[data-beach-button-dock],[data-beach-button-edge]){z-index:29 !important}';
     document.head.appendChild(st);
     var s = document.createElement('script');
-    s.src = kind === 'next' ? BEACH_BUTTON_NEXT : BEACH_BUTTON; s.async = true;
+    s.src = BEACH_BUTTON; s.async = true;
     document.body.appendChild(s);
   }
   /* the act under options, saying what it will do */
@@ -1401,17 +1391,6 @@
     });
     if (menu) menu.appendChild(t);
     else { var doors = bar.querySelector('details.dd[data-doors]'); bar.insertBefore(t, doors || null); }
-    /* the trial: the other button, carried after a reload */
-    var k = document.createElement('button');
-    k.type = 'button'; k.id = 'btn-beach-button-kind';
-    k.title = 'the next beach button: tapped as xstream\u2019s construction button is, one window holding the reply, staged writes and the prompt — on this device only';
-    k.textContent = bbNext() ? 'back to the classic button' : 'try the next button';
-    k.addEventListener('click', function(){
-      try { if (bbNext()) localStorage.removeItem(BB_KIND); else localStorage.setItem(BB_KIND, 'next'); } catch(e){}
-      if (bbOn()) location.reload();
-      else k.textContent = bbNext() ? 'back to the classic button' : 'try the next button';
-    });
-    t.insertAdjacentElement('afterend', k);
   }
   function beachButton(){
     var b = document.body;
