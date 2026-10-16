@@ -1413,13 +1413,24 @@
    * it, passport:, shell:, history:, pool:, ear: and a dozen other role-blocks all
    * end in your handle and would arrive here pretending to be projects.
    *
-   * Three families are left out because they have their own pages and are not
-   * projects in the sense this row means: your now, your ahead, your deck.
+   * Three families are left out of that reckoning because they have their own
+   * pages: your now, your ahead, your deck. Now comes back in by another door,
+   * below: it is not found, it is given.
    * ────────────────────────────────────────────────────────────────────────── */
   /* a family whose own page is better than its walk. 'ahead' was here until its
    * page folded into /hands — the FAMILY is untouched and its blocks are a hand
    * per project, ahead:<project>:<handle> (hand.js); only the surface went. */
   var OWN_PAGE = { 'now':'now', 'today-beach-deck':'today-beach-deck', 'ahead':'ahead' };
+  /* THE PROJECTS EVERY HAND HAS, whether or not it has spoken in them (David,
+   * 2026-10-16: "when new person sees projects, they see now ... obviously
+   * they're part of now. So the now project should be automatic", and here with
+   * it). Every handle has a now (function:now) and stands on the ground, so the
+   * two lead the row of anyone who has not yet saved a list, and a hand's first
+   * list starts from them, so joining a first project adds to the row rather
+   * than replacing it. Still choices like any other once a list stands, except
+   * that an empty list is no list. 'here' only where the page can walk the
+   * ground. */
+  var EVERY_HAND = ['now', 'here'];
   /* the depth of a block's underscore chain — /walk's floorOf, held to exactly: ten is the clock */
   function floorOf(block){ var n = 0, node = block; while (node && typeof node === 'object' && ('_' in node)){ node = node._; n++; } return n; }
   /* A DEFAULT, NOT A LAW. There is no substrate fact that means 'project' — the
@@ -1579,7 +1590,9 @@
     write: function(origin, handle, family, line){
       origin = origin || 'https://beach.happyseaurchin.com';
       return readItems(origin, handle, 1, true).then(function(items){
-        items = items || [];
+        /* a first list starts from the projects every hand has, so the row the
+         * hand was shown is still there after it joins */
+        items = items && items.length ? items : EVERY_HAND.map(function(f){ return { name: f }; });
         var it = items.filter(function(x){ return x.name === family; })[0];
         if (!it){ it = { name: family }; items.push(it); }
         it.line = (line || '').trim();
@@ -1835,10 +1848,12 @@
        * cannot find it. Every handle stands on the earth-map, so it is offered in the
        * row on every page that can walk it (David, 2026-09-14: "why doesn't here
        * appear?") and stays a choice like any other; a page that cannot walk the
-       * ground leaves it out even when a saved list names it. */
+       * ground leaves it out even when a saved list names it. Now and here stand
+       * first, as every hand's own (EVERY_HAND), and the found families after. */
       var walksGround = !!{ walk: 1 }[cfg.page];
-      if (walksGround && mine.indexOf('here') < 0) mine.push('here');
+      var given = EVERY_HAND.filter(function(f){ return f !== 'here' || walksGround; });
       mine.sort();
+      mine = given.concat(mine.filter(function(f){ return given.indexOf(f) < 0; }));
 
       /* THE LIST IS THE TRUTH WHERE ONE STANDS. Said plainly at lists:<handle> branch 1,
        * it decides both membership and order and nothing is computed; absent, the
@@ -1881,10 +1896,16 @@
        * while 'choose' held only the hand's own families; since the documents and any
        * family by name stand there too, it is always a choice, so a hand with a list or
        * a mirror keeps its row however short, and the offer below ends in it as well. */
+      /* IN NO PROJECT YET now means nothing beyond the projects every hand has, save
+       * the one being stood in (2026-10-16); standing in a family on the walk, its own
+       * join door in the masthead is the offer. Without a passport the row still
+       * stands, now and here in it, and only the offer waits: the row used to be
+       * withheld whole, which hid the very projects a newcomer has from the start. */
       var offer = null;
-      if (visible.length < 2 && mine.length < 2 && !bare.length && !stated.length &&
-          !mine.some(function(f){ return f !== 'here' && have[f + ':' + cfg.handle]; })){
-        if (!have['passport:' + cfg.handle]) return;
+      var joined = mine.filter(function(f){ return EVERY_HAND.indexOf(f) < 0; });
+      var doorHere = cfg.page === 'walk' && joined.indexOf(cfg.family) >= 0;
+      if (!doorHere && joined.length < 2 && !bare.length && !stated.length && have['passport:' + cfg.handle] &&
+          !joined.some(function(f){ return have[f + ':' + cfg.handle]; })){
         /* people in a family, counted as /tree counts them: <f>:<handle> */
         var people = {};
         blocks.forEach(function(n){
@@ -1893,7 +1914,7 @@
         });
         offer = blocks.filter(function(n){ return n.indexOf('spine:') === 0; })
           .map(function(n){ return n.slice(6); })
-          .filter(function(f){ return !OWN_PAGE[f] && !OFF_BY_DEFAULT[f] && !isDiary(f) && have['function:' + f] && have['pool:' + f]; })
+          .filter(function(f){ return f !== cfg.family && !OWN_PAGE[f] && !OFF_BY_DEFAULT[f] && !isDiary(f) && have['function:' + f] && have['pool:' + f]; })
           .sort(function(x, y){ return (people[y] || 0) - (people[x] || 0) || x.localeCompare(y); })
           .map(function(f){ return { name: f, people: people[f] || 0 }; });
         if (!offer.length) offer = null;
@@ -1904,7 +1925,7 @@
 
       var row = document.createElement('div');
       row.className = 'projrow';
-      row.setAttribute('aria-label', offer ? 'projects to join' : 'your projects');
+      row.setAttribute('aria-label', offer ? 'your projects, and projects to join' : 'your projects');
 
       visible.forEach(function(f, i){
         if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
@@ -2102,12 +2123,12 @@
         row.appendChild(panel);
         readForms().then(draw);
       });
-      /* the offer stands before the chooser — nothing of the hand's own yet, but the
-       * documents and any family by name are there to choose all the same */
+      /* the offer stands before the chooser — nothing joined yet beyond now and here,
+       * but the documents and any family by name are there to choose all the same */
       if (offer){
         var lead = document.createElement('span');
         lead.className = 'projrow__lead';
-        lead.textContent = 'no projects yet \u2014 pick one to join:';
+        lead.textContent = 'nothing joined yet \u2014 pick one:';
         row.appendChild(lead);
         offer.slice(0, 9).forEach(function(p, i){
           if (i){ var s = document.createElement('span'); s.className = 'sep'; s.textContent = '•'; row.appendChild(s); }
