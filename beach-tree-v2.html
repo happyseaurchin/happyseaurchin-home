@@ -622,7 +622,7 @@ function journal() {
     const shoots = [...M.parts.values()].filter((q) => q.proposed);
     J.append(...sec('Ideas: proposed parts', shoots.length ? h('ul', { class: 'list' }, shoots.map((q) => h('li', {}, partRow(q, 'proposed by ' + q.hand + ', under ' + (q.parent.addr || 'the trunk'))))) : h('p', { class: 'quiet', text: 'No parts proposed yet.' })));
   }
-  if (LENS === 'blockages') J.append(...sec('Blockages, gathered by what they wait on', blockageList()));
+  if (LENS === 'blockages') J.append(...sec('Blockages, gathered by what they wait on', blockageList()), ...sec('Offers standing', offerList()));
   if (LENS === 'people') J.append(...sec('Who stands where', peopleList()));
   if (CHANGED.size) J.append(...sec('Moved since you last looked', h('ul', { class: 'list' }, [...CHANGED.entries()].slice(0, 9).map(([a, c]) => { const q = M.parts.get(a); return q ? h('li', {}, partRow(q, (STAGE[c.from] || STAGE.none).word + ' → ' + (STAGE[c.to] || STAGE.none).word)) : null; }))));
   J.append(...sec('On the tree', h('ul', { class: 'list' }, M.minds.map((m) => h('li', {}, h('button', { class: 'row', type: 'button', onclick: () => { SELBIRD = m.id; journal(); } }, h('span', { class: 'dot', style: 'background:var(--bird)' }), h('span', {}, h('span', { class: 't', text: m.name }), h('span', { class: 'a', text: m.said ? ago(m.said.ts) : '' }), h('span', { class: 's', text: m.said ? clip(m.said.text, 150) : 'No word on the beach today.' })))))), h('p', { class: 'said', text: 'Named, not hatched: ' + GHOSTS.map((g) => g.id + ' (' + g.kind + ')').join(', ') + '.' })));
@@ -664,6 +664,13 @@ function blockageList() {
   const groups = new Map();
   blocked.forEach((q) => { const on = waitsOn(q.fold); if (!groups.has(on)) groups.set(on, []); groups.get(on).push(q); });
   return h('div', {}, [...groups.entries()].sort((a, b) => b[1].length - a[1].length).map(([on, qs]) => h('div', {}, h('p', { style: 'margin:8px 0 4px' }, h('b', { text: on }), ' · ' + qs.length + (qs.length === 1 ? ' part' : ' parts')), h('ul', { class: 'list' }, qs.map((q) => h('li', {}, partRow(q, clip(stripMark(q.fold), 160))))))));
+}
+/* what people say they can bring, beside what waits: a reader matches them, never a dispatcher (function:path 5) */
+function offerList() {
+  const offers = [];
+  MODEL.parts.forEach((q) => q.readings.forEach((r) => { if (r.kind === 'stands' && /^\s*OFFER\b/.test(r.text)) offers.push({ q, r }); }));
+  if (!offers.length) return h('p', { class: 'quiet', text: 'No offers standing. An offer is a line in your own mirror at a part, opening OFFER: a skill, a part, time.' });
+  return h('ul', { class: 'list' }, offers.map(({ q, r }) => h('li', {}, partRow(q, r.hand + ': ' + clip(r.text.replace(/^\s*OFFER\s*[—–-]?\s*/, ''), 160)))));
 }
 function waitsOn(line) {
   const s = String(line || '');
