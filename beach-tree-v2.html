@@ -97,6 +97,7 @@ main.grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);g
 blockquote{margin:6px 0 10px;padding:6px 0 6px 12px;border-left:2px solid var(--line);color:var(--ink);font-size:15px}
 blockquote cite{display:block;font:500 11px/1.4 var(--mono);color:var(--ink-soft);font-style:normal;margin-top:4px}
 .prompt{background:var(--chip);border-radius:10px;padding:10px 12px;font:13px/1.5 var(--mono);color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.ctl.add{justify-content:flex-start;margin:0 0 8px}
 .prompt button{float:right;margin:0 0 6px 10px;font-size:13px;padding:5px 11px}
 .err{font-size:14px;color:var(--ink-soft);border:1px dashed var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
 .home{max-width:1240px;margin:18px auto 40px;padding:0 max(16px,env(safe-area-inset-left,0px));font-size:13.5px;color:var(--ink-soft)}
@@ -176,6 +177,7 @@ html[data-skin="night"] .wood,html[data-skin="night"] .rootwood{mix-blend-mode:s
 const BEACH = 'https://beach.happyseaurchin.com';
 const WIRE = BEACH + '/.well-known/pscale-beach';
 const FAMILY = 'beach-venture-path';
+const PROJECT = 'beach-venture';                 // the project the path belongs to: its pool is pool:beach-venture
 const REFLECT = 'https://bsp.hermitcrab.me/reflection';
 const ROOTS = ['1', '2'];                       // the physics and the chemistry everything stands on
 const MINDS = [
@@ -275,11 +277,11 @@ async function readAll() {
   if (!spine) throw new Error('spine:' + FAMILY + ' is not on the beach');
   const proposers = names.filter((n) => n.startsWith('spine:' + FAMILY + ':')).map((n) => n.slice(('spine:' + FAMILY + ':').length));
   const readers = names.filter((n) => n.startsWith(FAMILY + ':')).map((n) => n.slice(FAMILY.length + 1));
-  const has = new Set(names), hasPool = has.has('pool:' + FAMILY);
+  const has = new Set(names);
   const settled = await Promise.allSettled([
     ...proposers.map((p) => get('spine:' + FAMILY + ':' + p)),
     ...readers.map((p) => get(FAMILY + ':' + p)),
-    hasPool ? get('pool:' + FAMILY) : Promise.resolve(null),
+    has.has('pool:' + PROJECT) ? get('pool:' + PROJECT) : null,
     ...MINDS.map((m) => (has.has('torus-mirror:' + m.id) ? get('torus-mirror:' + m.id, day) : null)),
     ...MINDS.map((m) => (has.has('beach-venture:' + m.id) ? get('beach-venture:' + m.id, week) : null))
   ]);
@@ -312,33 +314,32 @@ function build(spine, fold, props, mirrors, pool, lines, cards) {
   const foldMap = fold ? voiced(fold) : new Map();
   foldMap.forEach((line, a) => { const p = parts.get(a); if (p) { p.fold = line; p.mark = markOf(line); } });
   const foldRoot = fold ? voice(fold) : '';
-  // proposed parts: a voiced address in someone's own spine:<family>:<handle> that the spine does not name
+  // the deepest part standing at or above an address
+  const nearest = (a) => { let ds = digitsOf(a); while (ds.length && !parts.has(fmt(ds))) ds = ds.slice(0, -1); return parts.get(fmt(ds)) || root; };
   const hands = new Map();
   const handCol = (hand) => { if (!hands.has(hand)) hands.set(hand, HANDCOL[hands.size % HANDCOL.length]); return hands.get(hand); };
-  props.forEach(({ hand, block }) => {
-    if (!block) return;
-    voiced(block).forEach((text, a) => {
-      if (parts.has(a) && !parts.get(a).proposed) { parts.get(a).readings.push({ hand, text, kind: 'wording' }); return; }
-      const ds = digitsOf(a); let up = ds.slice(0, -1);
-      while (up.length && !parts.has(fmt(up))) up = up.slice(0, -1);
-      const parent = parts.get(fmt(up)) || root;
-      const p = { addr: a, ds, depth: ds.length, text, kids: [], parent, mark: 'none', readings: [], proposals: [], entries: [], proposed: true, hand };
-      parts.set(a, p); parent.kids.push(p); parent.proposals.push(p); handCol(hand);
-    });
-  });
+  // a proposed part: an address the spine does not name, voiced in a hand's own spine:<family>:<handle>, or in their
+  // mirror (proposal-by-mirror, tree 5.1); where the spine names it already, the voicing is another wording
+  const propose = (hand, a, text) => {
+    const q = parts.get(a);
+    if (q) { q.readings.push({ hand, text, kind: 'wording' }); handCol(hand); return; }
+    const ds = digitsOf(a), parent = nearest(fmt(ds.slice(0, -1)));
+    const p = { addr: a, ds, depth: ds.length, text, kids: [], parent, mark: 'none', readings: [], proposals: [], entries: [], proposed: true, hand };
+    parts.set(a, p); parent.kids.push(p); parent.proposals.push(p); handCol(hand);
+  };
+  props.forEach(({ hand, block }) => { if (block) voiced(block).forEach((text, a) => propose(hand, a, text)); });
   // where each hand stands: their mirror's line at a part
   mirrors.forEach(({ hand, block }) => {
-    if (!block) return;
-    voiced(block).forEach((text, a) => { const p = parts.get(a); if (p) { p.readings.push({ hand, text, kind: 'stands' }); handCol(hand); } });
+    if (block) voiced(block).forEach((text, a) => { const p = parts.get(a); if (p && !p.proposed) { p.readings.push({ hand, text, kind: 'stands' }); handCol(hand); } else propose(hand, a, text); });
   });
-  // the project's pool, located at the parts (field 2), when it stands
+  // the project's own pool sits on the project's clock, so a voice there names the part it speaks of as a card does,
+  // [beach-venture-path 2.5], and is gathered at that part
   if (pool) {
+    const ptr = new RegExp(FAMILY + '\\s+(\\d(?:\\.\\d+)?)', 'g');
     (function walk(n) {
       if (!n || typeof n !== 'object') return;
       if (typeof n._ === 'string' && typeof n['1'] === 'string' && typeof n['3'] === 'string') {
-        const at = String(n['2'] || ''); let ds = digitsOf(at);
-        while (ds.length && !parts.has(fmt(ds))) ds = ds.slice(0, -1);
-        const p = parts.get(fmt(ds)) || root; p.entries = (p.entries || []).concat([{ hand: n['1'], text: n._, at, ts: n['3'], kind: n['4'] || '' }]); handCol(n['1']);
+        new Set([...n._.matchAll(ptr)].map((m) => nearest(m[1]))).forEach((p) => { if (p.addr) { p.entries.push({ hand: n['1'], text: n._, ts: n['3'] }); handCol(n['1']); } });
       }
       for (const k in n) if (k !== '_' && n[k] && typeof n[k] === 'object') walk(n[k]);
     })(pool);
@@ -347,14 +348,12 @@ function build(spine, fold, props, mirrors, pool, lines, cards) {
   const minds = MINDS.map((m, j) => {
     const said = latest(lines[j], (n) => typeof n._ === 'string');
     const card = latest(cards[j], (n) => typeof n['5'] === 'string' && n['5'].startsWith(FAMILY + ' '));
-    let perch = card ? String(card['5']).slice(FAMILY.length + 1).trim() : '';
-    let ds = digitsOf(perch); while (ds.length && !parts.has(fmt(ds))) ds = ds.slice(0, -1);
-    perch = fmt(ds);
+    const perch = card ? nearest(String(card['5']).slice(FAMILY.length + 1).trim()).addr : '';
     return { id: m.id, name: m.name, said: said ? { text: said._, ts: said['3'] } : null, card: card ? { text: card._, ts: card['3'], mark: card['4'] || '' } : null, perch };
   });
   // weights, for room on the plate: a part counts its parts and proposals beneath
   (function weigh(p) { p.w = 1; p.kids.forEach((k) => { weigh(k); p.w += k.w; }); })(root);
-  return { parts, root, foldRoot, hands, minds, hasPool: !!pool, read: Date.now() };
+  return { parts, root, foldRoot, hands, minds, read: Date.now() };
 }
 function latest(block, test) {
   let best = null;
@@ -512,7 +511,7 @@ function birdAt(layer, x, y, dx, dy, name, ghost, sel) {
   sv('text', { class: 'birdname', y: -9, 'text-anchor': 'middle', 'font-size': 10.5, 'stroke-width': 3, text: name }, g);
 }
 const rnd = (i) => { const x = Math.sin(i * 12.9898 + 78.233) * 43758.5453; return x - Math.floor(x); };
-function ideasAt(p) { let n = (p.proposed ? 1 : 0) + (p.entries ? p.entries.length : 0) + p.readings.filter((r) => r.kind === 'wording').length; p.kids.forEach((k) => { n += ideasAt(k); }); return n; }
+function ideasAt(p) { let n = (p.proposed ? 1 : 0) + p.entries.length + p.readings.filter((r) => r.kind === 'wording').length; p.kids.forEach((k) => { n += ideasAt(k); }); return n; }
 function blockedUnder(p) { return (p.mark === 'blocked' ? 1 : 0) + p.kids.reduce((s, k) => s + blockedUnder(k), 0); }
 /* what a lens lights: brightness is life, the rest dims */
 function litFor(p) {
@@ -584,13 +583,27 @@ function partRow(p, sub) {
   return h('button', { class: 'row', type: 'button', onclick: () => select(p.addr) }, h('span', { class: 'dot', style: 'background:var(--' + (p.proposed ? 'shoot' : p.mark) + ')' }), h('span', {}, h('span', { class: 't', text: nice(titleOf(p.text)) }), h('span', { class: 'a', text: p.addr }), sub ? h('span', { class: 's', text: sub }) : null));
 }
 function ago(iso) { const t = Date.parse(iso); if (!isFinite(t)) return ''; const m = Math.round((Date.now() - t) / 60000); return m < 2 ? 'just now' : m < 60 ? m + ' minutes ago' : m < 1440 ? Math.round(m / 60) + ' hours ago' : Math.round(m / 1440) + ' days ago'; }
-function addPrompt(p) {
-  const at = p && p.addr ? p.addr : '', under = at ? `under ${at}, ${nice(titleOf(p.text))}` : 'at the part it belongs to';
-  return `Using bsp, propose a part for the beach venture's path ${under}: read spine:${FAMILY}, then write it at the next free digit ${at ? 'beneath ' + at : 'beneath the part it belongs to'} in your own spine:${FAMILY}:<your handle>, with your passphrase. Never overwrite an address already voiced; the part's keeper adopts it or leaves it.`;
+/* three ways to add, each in a block or slot that is the writer's own: never over anyone else's words */
+const ADD = [['stands', 'Say where it stands'], ['propose', 'Propose a part'], ['talk', 'Talk about it']];
+let ADDING = 'stands';
+function addPrompt(p, kind) {
+  const at = p && p.addr ? p.addr : '', name = at ? `${at}, ${nice(titleOf(p.text))}` : '';
+  if (kind === 'stands') return `Using bsp, say where ${at ? name + ',' : 'a part'} stands on the beach venture's path from your side, or what you can bring to it: ${at ? '' : 'read spine:' + FAMILY + ' for the part, then '}write one line at ${at || 'its address'} in your own ${FAMILY}:<your handle>, with your passphrase, opening with DONE, DOING, BLOCKED or OFFER. The line is yours alone, and writing there again replaces only your own.`;
+  if (kind === 'talk') return `Using pscale_pool_engage, add a contribution to the beach venture's own pool (pool_name ${PROJECT}) about ${at ? name : 'a part of its path'}, naming the part in your line as [${FAMILY} ${at || '<its address>'}], under your own handle and with your passphrase.`;
+  return `Using bsp, propose a part for the beach venture's path ${at ? 'under ' + name : 'at the part it belongs to'}: read spine:${FAMILY}, then write it at the next free digit beneath ${at || 'the part it belongs to'} in your own spine:${FAMILY}:<your handle>, with your passphrase. Never overwrite an address already voiced; the part's keeper adopts it or leaves it.`;
 }
-function promptBox(p) {
-  const text = addPrompt(p);
+function promptBox(text) {
   return h('div', { class: 'prompt' }, h('button', { class: 'pill', type: 'button', text: 'Copy', onclick: (e) => { const b = e.currentTarget; navigator.clipboard && navigator.clipboard.writeText(text).then(() => { b.textContent = 'Copied'; setTimeout(() => (b.textContent = 'Copy'), 1500); }, () => {}); } }), text);
+}
+function addBox(p) {
+  const box = h('div', {});
+  const paint = () => {
+    box.textContent = '';
+    box.appendChild(h('div', { class: 'ctl add', role: 'group', 'aria-label': 'What to add' }, ADD.map(([k, label]) => h('button', { class: 'pill', type: 'button', 'aria-pressed': String(ADDING === k), text: label, onclick: () => { ADDING = k; paint(); } }))));
+    box.appendChild(promptBox(addPrompt(p, ADDING)));
+  };
+  paint();
+  return box;
 }
 function journal() {
   const M = MODEL; J.textContent = '';
@@ -614,7 +627,7 @@ function journal() {
   if (CHANGED.size) J.append(...sec('Moved since you last looked', h('ul', { class: 'list' }, [...CHANGED.entries()].slice(0, 9).map(([a, c]) => { const q = M.parts.get(a); return q ? h('li', {}, partRow(q, (STAGE[c.from] || STAGE.none).word + ' → ' + (STAGE[c.to] || STAGE.none).word)) : null; }))));
   J.append(...sec('On the tree', h('ul', { class: 'list' }, M.minds.map((m) => h('li', {}, h('button', { class: 'row', type: 'button', onclick: () => { SELBIRD = m.id; journal(); } }, h('span', { class: 'dot', style: 'background:var(--bird)' }), h('span', {}, h('span', { class: 't', text: m.name }), h('span', { class: 'a', text: m.said ? ago(m.said.ts) : '' }), h('span', { class: 's', text: m.said ? clip(m.said.text, 150) : 'No word on the beach today.' })))))), h('p', { class: 'said', text: 'Named, not hatched: ' + GHOSTS.map((g) => g.id + ' (' + g.kind + ')').join(', ') + '.' })));
   J.append(...sec('Rain', h('p', { class: 'said', id: 'rainline', text: rainLine() })));
-  J.append(...sec('Add to the tree', h('p', { text: 'Named, with your own passphrase: propose a part in your own spine:' + FAMILY + ':<handle>, at the next free digit beneath the part it belongs to. Nothing anyone wrote is replaced, and the parts’ keeper adopts what grows. Paste this into any LLM app with the bsp connector:' }), promptBox(null)));
+  J.append(...sec('Add to the tree', h('p', { text: 'Named, and with your own passphrase, in a block that is yours: your word on where a part stands, a part you propose beneath it, or talk in the venture’s own pool that names it. Nothing anyone wrote is replaced, and the parts’ keeper adopts what grows. Paste one into any LLM app with the bsp connector:' }), addBox(null)));
 }
 function partJournal(p) {
   const M = MODEL;
@@ -626,13 +639,13 @@ function partJournal(p) {
   const stands = p.readings.filter((r) => r.kind === 'stands'), words = p.readings.filter((r) => r.kind === 'wording');
   if (stands.length) J.append(...sec('Each hand’s reading', ...stands.map((r) => h('blockquote', {}, clip(r.text, 600), h('cite', { text: r.hand })))));
   if (words.length) J.append(...sec('Other wordings proposed', ...words.map((r) => h('blockquote', {}, clip(r.text, 400), h('cite', { text: r.hand })))));
-  if (p.entries && p.entries.length) J.append(...sec('In the pool here', ...p.entries.map((e) => h('blockquote', {}, clip(e.text, 400), h('cite', { text: e.hand + (e.kind ? ' · ' + e.kind : '') + ' · ' + ago(e.ts) })))));
+  if (p.entries.length) J.append(...sec('Talk in the venture’s pool', ...p.entries.map((e) => h('blockquote', {}, clip(e.text, 400), h('cite', { text: e.hand + ' · pool:' + PROJECT + ' · ' + ago(e.ts) })))));
   const real = p.kids.filter((k) => !k.proposed), shoots = p.kids.filter((k) => k.proposed);
   if (real.length) J.append(...sec('Its parts', h('ul', { class: 'list' }, real.map((k) => h('li', {}, partRow(k, k.fold ? clip(stripMark(k.fold), 110) : ''))))));
   if (shoots.length) J.append(...sec('Proposed beneath it', h('ul', { class: 'list' }, shoots.map((k) => h('li', {}, partRow(k, 'by ' + k.hand))))));
   const perched = M.minds.filter((m) => m.perch === p.addr);
   if (perched.length) J.append(...sec('Working here', h('ul', { class: 'list' }, perched.map((m) => h('li', {}, h('span', { class: 't', text: m.name }), ' ', h('span', { class: 'said', text: m.card ? clip(m.card.text, 200) + ' · ' + ago(m.card.ts) : '' }))))));
-  J.append(...sec('Add an idea here', promptBox(p)));
+  J.append(...sec('Add to it', addBox(p)));
 }
 let SELBIRD = null;
 function birdJournal(id) {
