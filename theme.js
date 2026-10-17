@@ -1427,9 +1427,12 @@
    * it). Every handle has a now (function:now) and stands on the ground, so the
    * two lead the row of anyone who has not yet saved a list, and a hand's first
    * list starts from them, so joining a first project adds to the row rather
-   * than replacing it. Still choices like any other once a list stands, except
-   * that an empty list is no list. 'here' only where the page can walk the
-   * ground. */
+   * than replacing it. NOW IS IN EVERY LIST (David, 2026-10-17: "add now to
+   * everyone's list"): a list saved without it still shows it, first; the
+   * chooser holds it ticked; and every write of a list carries it. A list is
+   * locked to its holder's key, so this is how now reaches the lists nobody else
+   * can write. 'here' stays a choice once a list stands (an empty list is no
+   * list), and shows only where the page can walk the ground. */
   var EVERY_HAND = ['now', 'here'];
   /* the depth of a block's underscore chain — /walk's floorOf, held to exactly: ten is the clock */
   function floorOf(block){ var n = 0, node = block; while (node && typeof node === 'object' && ('_' in node)){ node = node._; n++; } return n; }
@@ -1593,6 +1596,8 @@
         /* a first list starts from the projects every hand has, so the row the
          * hand was shown is still there after it joins */
         items = items && items.length ? items : EVERY_HAND.map(function(f){ return { name: f }; });
+        /* and now is in every list, however the list was saved before */
+        if (!items.some(function(x){ return x.name === 'now'; })) items.unshift({ name: 'now' });
         var it = items.filter(function(x){ return x.name === family; })[0];
         if (!it){ it = { name: family }; items.push(it); }
         it.line = (line || '').trim();
@@ -1708,7 +1713,7 @@
     '.projrow__open button{font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:4px;background:none;' +
       'color:var(--vapour);padding:5px 10px;cursor:pointer;flex:none}' +
     '.projrow__open button:hover{color:var(--foam);border-color:var(--line-strong)}' +
-    '.projrow__panel input:disabled + *,.projrow__panel input:disabled{opacity:0.45;cursor:default}' +
+    '.projrow__panel input:disabled{opacity:0.45;cursor:default}' +
     '.projrow__note{flex:1 0 100%;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;' +
       'color:var(--solid);padding-top:7px}' +
     '.projrow__note a{color:var(--solid);border-bottom:none}' +
@@ -1865,6 +1870,8 @@
          * nobody chose it. Named in the list it is a choice, so it stands. */
         visible = stated.slice();
         if (!walksGround) visible = visible.filter(function(f){ return f !== 'here'; });
+        /* now is in every list (EVERY_HAND): one saved without it still shows it, first */
+        if (visible.indexOf('now') < 0) visible.unshift('now');
         if (cfg.family && visible.indexOf(cfg.family) < 0) visible.push(cfg.family);
         /* a stated family with no form yet stays yours and stays listed; it waits in
          * the chooser until its law stands, never drawn as a project beside the
@@ -1977,6 +1984,7 @@
          * places menu keeps, where `here` reaches the menu and never the editor. */
         var inList = {}, listed = {};
         (stated && stated.length ? stated : visible).forEach(function(f){ inList[f] = 1; listed[f] = 1; });
+        inList.now = 1;      /* in every list, so a save writes it into one saved without it */
 
         /* SEPARATED BY FORM, as the walk reads it (David, 2026-10-01): a spine whose
          * underscore chain runs ten deep walks as the clock, any other spine as
@@ -2029,6 +2037,8 @@
               rowEl.className = 'projrow__item';
               var cb = document.createElement('input');
               cb.type = 'checkbox'; cb.checked = !!inList[f];
+              /* now is in every list (EVERY_HAND): held ticked, never one to drop */
+              if (f === 'now'){ cb.disabled = true; cb.title = 'every hand has a now — it stays in the list'; }
               /* THE ONE YOU ARE STANDING IN IS UNTICKABLE LIKE ANY OTHER. It used to
                * be disabled here — "you are standing in it" — which made a family
                * joined by accident permanent: the row shows it on every page that
