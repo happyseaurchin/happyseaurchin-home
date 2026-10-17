@@ -71,6 +71,14 @@
   .copy.ghost{background:none;color:var(--liquid);border:1px solid var(--liquid)}
   .gate{display:grid;gap:14px;max-width:560px}
   .gate form{display:flex;flex-wrap:wrap;gap:10px}
+  .joinrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+  .joinrow .copy{font-size:15px;padding:10px 24px}
+  dialog#joindlg{width:min(480px,calc(100vw - 32px));border:1px solid var(--line-strong);border-radius:12px;background:var(--deep);color:var(--foam);padding:20px 22px 18px}
+  dialog#joindlg::backdrop{background:rgba(var(--well-rgb),0.72)}
+  dialog#joindlg h2{margin:0 0 8px}
+  dialog#joindlg .open{display:block;text-align:center;text-decoration:none;font-family:var(--display);font-weight:700;font-size:22px;background:var(--solid);color:var(--abyss);border-radius:16px;padding:22px 16px;margin:6px 0}
+  dialog#joindlg .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px}
+  dialog#joindlg input{flex:1 1 200px;min-width:0;background:var(--abyss);color:var(--foam);border:1px solid var(--line-strong);border-radius:8px;padding:9px 11px;font:inherit;font-size:16px}
   .gate .btn,.keeper .btn{font-family:var(--mono);font-size:13px;font-weight:700;background:var(--liquid);color:var(--abyss);border:0;border-radius:8px;padding:9px 16px;cursor:pointer}
   .gate .names{display:flex;flex-wrap:wrap;gap:10px}
   .gate .names button{font-family:var(--display);font-weight:700;font-size:16px;background:var(--deep);color:var(--foam);border:1px solid var(--line-strong);border-radius:999px;padding:8px 18px;cursor:pointer}
@@ -106,6 +114,19 @@
 </div>
 <main class="wrap">
   <p class="loading" id="msg">reading the beach…</p>
+  <div class="joinrow" id="joinrow" hidden><button type="button" class="copy" id="joinbtn" title="The meeting's call, its time and its room on the beach">Join</button></div>
+  <dialog id="joindlg" aria-labelledby="jn-h">
+    <h2 id="jn-h">Join</h2>
+    <p id="jn-when"></p>
+    <div id="jn-call"></div>
+    <p class="quiet" id="jn-room"></p>
+    <div id="jn-set" hidden>
+      <p class="quiet">For the keeper: the call's link, for everyone, kept at the meeting's Where.</p>
+      <div class="row"><input id="jn-url" type="url" inputmode="url" spellcheck="false" autocapitalize="off" placeholder="https://meet.google.com/…"><button type="button" class="copy" id="jn-save">Set it</button></div>
+    </div>
+    <p class="quiet" id="jn-hint"></p>
+    <div class="row"><button type="button" class="copy ghost" id="jn-close">Close</button></div>
+  </dialog>
 
   <section class="gate" id="door" hidden aria-label="The door">
     <p class="eyebrow">An invitation</p>
@@ -296,7 +317,8 @@ async function load(){
   const seats = inv.group ? seatsOf(await readBlock('sed:' + inv.group).catch(() => null)) : [];
   seats.forEach(h => { if (!inv.people.some(p => p.handle.toLowerCase() === h.toLowerCase())) inv.people.push({ handle: h, name: '', seated: true }); });
   const when = fold ? (lineAt(fold, '1.1') || '') : '', where = fold ? (lineAt(fold, '1.3') || '') : '';
-  return { spine, law, title, lede, minutes, hour, people: inv.people, group: inv.group, seats, keeper: keeperOf(spine, law), door: doorOf(law), when, where,
+  const post = Object.keys(spine).filter(k => /^[1-9]$/.test(k)).sort().pop() || '';
+  return { spine, law, title, lede, minutes, hour, people: inv.people, group: inv.group, seats, keeper: keeperOf(spine, law), door: doorOf(law), when, where, post,
     pool: ix.indexOf('pool:' + NAME) >= 0, passports: ix.filter(b => b.startsWith('passport:')).map(b => b.slice(9)) };
 }
 
@@ -307,6 +329,7 @@ function showOnly(id){
   /* the keeper's corner stands on the name page, and past it only for the keeper (or when nobody is known to keep it) */
   const k = !!M && (id === 'pick' || (id === 'invite' && (!M.keeper || (ME && ME.handle.toLowerCase() === M.keeper.toLowerCase()))));
   $('keeper').hidden = !k; if (k) keeper();
+  $('joinrow').hidden = !(M && (id === 'pick' || id === 'invite'));
 }
 function enter(){
   if (M.door.hash && mem.get(doorKey()) !== M.door.hash){ $('door-title').textContent = M.title; showOnly('door'); $('door-word').focus(); return; }
@@ -381,6 +404,12 @@ function shortPrompt(me){
     'suggest up to three ' + lenWords() + ' times when nobody is busy, and once I choose, write them at the When (1.1) with "coming" at the Who (1.2) and "in its pool" at the Where (1.3). ' +
     'If everyone coming already names the same time, fix and book it as function:meeting 7.1 says.' + ' Tell me in plain words what you did.';
 }
+function afterPrompt(me){
+  return 'We have held the meeting ' + M.title + ' (its page is happyseaurchin.com/ring/' + NAME + '). Here is [the transcript, or its link: PASTE IT HERE] [or, with no recording, what I took from it, in my own words: SAY IT HERE]. ' +
+    'My name on the beach is ' + me.handle + '. Please, using the beach connector, read the meeting rules at function:meeting 7.3, and show me what you would write before you write anything. ' +
+    'Then write: (1) my summary, as my reading at the post-meeting' + (M.post ? ' (' + M.post + ')' : '') + ' of the meeting called ' + NAME + '; (2) each decision I made, at the part where it was made; ' +
+    '(3) each thing I said I would do, as a card in my hand; (4) the next meeting, if we set one, in my now. Only my own words, nothing for anyone else. When a write needs my key, ask me for it. Tell me in plain words what you wrote.';
+}
 function promptBox(id, text){
   return '<div class="prompt"><div class="pbar"><span>Paste into your AI</span><button class="copy" type="button" data-copy="' + id + '">Copy</button></div><pre id="' + id + '">' + esc(text) + '</pre></div>';
 }
@@ -429,11 +458,15 @@ function steps(again){
   out.push(['When the time is fixed, book it',
     '<p>Once everyone’s AI has named the same time, it shows at the top of this page and of <a href="' + ring + '">the meeting</a>, marked fixed. If your AI didn’t book it already, paste this:</p>' +
     promptBox('p2', 'The ' + M.title + ' time is fixed. Please book it in my now and my availability on the beach, exactly as the meeting rules say (function:meeting 7.1), and tell me the time in my own time zone.')]);
-  const keeps = !!M.keeper && ME.handle.toLowerCase() === M.keeper.toLowerCase();
   out.push(['On the day',
-    '<p>Open <a href="' + ring + '">the meeting</a>' + (M.pool ? ' and tap <b>talk · in the pool</b>, the meeting’s own room, or go straight there: <a href="' + MIRROR + '?pool=' + encodeURIComponent(NAME) + '" target="_blank" rel="noopener">the pool ↗</a>' : '') + '. If the meeting agrees a call instead, its link is at the top.</p>' +
-    (keeps ? '<p><a href="/animations/the-state-stack" target="_blank" rel="noopener">The State Stack</a>: open <a href="/stack/' + encodeURIComponent(NAME) + '">the State Stack</a> on the screen everyone can see, or tap <b>State Stack</b> on the meeting. Everyone scans its code with their phone and sets their own stack, and the screen draws the room.</p>'
-      : '<p><a href="/animations/the-state-stack" target="_blank" rel="noopener">The State Stack</a>: when ' + esc(shownName(M.keeper) || 'the keeper') + ' puts it on the screen, scan its code with your phone and set your own stack. The screen draws the whole room as it moves.</p>')]);
+    '<p>Tap <b>Join</b> at the top: the call, the time and the meeting’s room. Or open <a href="' + ring + '">the meeting</a>' + (M.pool ? ', or its room on the beach, <a href="' + MIRROR + '?pool=' + encodeURIComponent(NAME) + '" target="_blank" rel="noopener">the pool ↗</a>' : '') + '.</p>' +
+    '<p><b>Record it, if everyone agrees.</b> Start the call’s own recorder, or a phone’s voice memo in a room, and ask everyone aloud first. Afterwards your AI does the admin from it.</p>' +
+    '<p><a href="/animations/the-state-stack" target="_blank" rel="noopener">The State Stack</a>: tap <b>Run</b> on the meeting, then <b>State Stack</b>, or <a href="/stack/' + encodeURIComponent(NAME) + '?join&amp;screen">open it here</a>. Whoever opens it lands in the same room: put it on a screen everyone can see, and everyone scans its code with their phone and sets their own stack.</p>']);
+  /* AFTER THE MEETING (function:meeting 7.3): the transcript, or the person's own words, given to their own AI, which
+     writes only their own summary, decisions and actions, showing them first */
+  out.push(['After the meeting',
+    '<p>Give your AI what happened, and it does the admin: your summary at the post-meeting, your decisions, the things you said you’d do as cards in your hand, and the next meeting in your now. It shows you first, and writes only your own words.</p>' +
+    promptBox('p4', afterPrompt(ME))]);
   /* AFTER IT ALL, AND ONLY IF THEY WISH: the group the meeting names (David, 2026-10-13: "to apply to be
    * in the beach-venture sed … asking to join"). Nobody is added by anyone else: a person asks by taking a
    * seat themselves, under their own key, and by leaving a line for the keeper in the keeper's own room,
@@ -571,6 +604,48 @@ $('k-tell').addEventListener('click', async () => {
       out.shut.length ? 'Parlour closed to others: ' + names(out.shut) + ' — send them the link yourself.' : ''].filter(Boolean).join(' '));
   } catch(e){ ksay('Couldn’t invite: ' + e.message, true); }
   finally { b.disabled = false; }
+});
+/* JOIN (task:weft 34): the call's link lives only at the meeting's Where, spine:<name> 1.3, the first link there that is
+   not one of the beach's own pages; the time is the fix the readings agreed (function:meeting 7.1), else the keeper's
+   own word at 1.1; the room is pool:<name>. A keeper with no call link yet sets it here, into 1.3, and nowhere else */
+const OWN_HOSTS = /(^|\.)(happyseaurchin\.com|mirror\.onen\.ai|hermitcrab\.me)$/i;
+function callLink(){
+  for (const u of (lineAt(M.spine, '1.3') || '').match(/https?:\/\/[^\s)\]]+/g) || []){
+    const url = u.replace(/[.,;:!?]+$/, '');
+    try { if (!OWN_HOSTS.test(new URL(url).hostname)) return url; } catch(e){}
+  }
+  return '';
+}
+const joindlg = $('joindlg');
+async function openJoin(){
+  if (!M) return;
+  $('jn-h').textContent = 'Join ' + M.title;
+  let when = /^FIXED\b/i.test(M.when) ? (M.when.split(/\s+[—–]\s+/)[1] || M.when) : '';
+  if (!when && M.keeper){ const kb = await readBlock(NAME + ':' + M.keeper).catch(() => null), said = kb ? lineAt(kb, '1.1') : ''; if (said) when = said + ' (as ' + shownName(M.keeper) + ' has it; not yet fixed)'; }
+  $('jn-when').textContent = when || 'No time fixed yet.';
+  const url = callLink(), where = String(lineAt(M.spine, '1.3') || '').replace(/^\s*WHERE\s*:\s*/i, '').split(/(?<=[.!?])\s+/)[0];
+  let host = ''; try { host = url ? new URL(url).hostname.replace(/^www\./, '') : ''; } catch(e){}
+  $('jn-call').innerHTML = url ? '<a class="open" href="' + esc(url) + '" target="_blank" rel="noopener">Open the call ↗</a><p class="quiet" style="text-align:center">' + esc(host) + '</p>'
+    : '<p>' + esc(where || 'No place said yet.') + '</p><p class="quiet">No call link yet.</p>';
+  $('jn-room').innerHTML = M.pool ? '<a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&amp;block=' + encodeURIComponent('pool:' + NAME) + '" target="_blank" rel="noopener">The meeting’s room on the beach, pool:' + esc(NAME) + ' ↗</a>' : '';
+  $('jn-set').hidden = !!url || !M.keeper || !ME || ME.handle.toLowerCase() !== M.keeper.toLowerCase();
+  $('jn-hint').className = 'quiet'; $('jn-hint').textContent = '';
+  if (joindlg.showModal) joindlg.showModal(); else joindlg.setAttribute('open', '');
+}
+$('joinbtn').addEventListener('click', openJoin);
+$('jn-close').addEventListener('click', () => joindlg.close ? joindlg.close() : joindlg.removeAttribute('open'));
+$('jn-save').addEventListener('click', async () => {
+  const say = (t, err) => { $('jn-hint').className = 'quiet' + (err ? ' err' : ''); $('jn-hint').textContent = t; };
+  const url = String($('jn-url').value || '').trim();
+  if (!/^https?:\/\/\S+$/i.test(url)) return say('A link that opens the call, starting https://', true);
+  const node = nodeAt(M.spine, '1.3'), was = String(lineAt(M.spine, '1.3') || 'WHERE: online.').trim();
+  const line = was.replace(/[\s.]*$/, '.') + ' The call: ' + url;
+  const content = node && typeof node === 'object' ? Object.assign(JSON.parse(JSON.stringify(node)), { '_': line }) : line;
+  say('setting it…');
+  const w = await keyed(secret => post({ block: 'spine:' + NAME, spindle: '1.3', content, secret }));
+  if (!w) return say('Nothing set: no key was given.');
+  if (!w.ok) return say('The beach refused it (' + w.status + '). Check the key.', true);
+  M = await load(); await openJoin(); say('The call is set, for everyone, at the meeting’s Where.');
 });
 async function saveDoor(line, note){
   const d = M.door.digit || ['8', '7', '6', '5', '4'].find(x => !(M.law && M.law[x]));
