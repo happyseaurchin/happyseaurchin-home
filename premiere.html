@@ -956,12 +956,25 @@ function kept(){
   RUN.kept = true; hint('roomHint', 'ok', 'Kept on the beach, in your name.');
   loadRoom(true).catch(() => {}).then(() => { const s = SLIDES[RUN.idx]; if (s && s.kind === 'room') paintRoomSlide(s); else paintKeep(); });
 }
+/* THE LINK IS WHAT IS SHARED, as the wave's is (David, 2026-10-18: 'how do i share it?'): the design's own
+ * address and nothing on the beach; whoever opens it has a premiere of their own, and finds the sharer's
+ * answers already in its room */
+async function shareIt(hintId, mine){
+  const url = BK.SITE + '/premiere/' + encodeURIComponent(NAME);
+  if (navigator.share){
+    try { await navigator.share({ title: TITLE, text: TITLE + (mine ? ': I’ve had my premiere. Open it to have yours, and see mine in the room:' : ', a premiere. Open it to have yours:'), url }); hint(hintId, 'ok', 'Shared.'); return; }
+    catch(e){ if (e && e.name === 'AbortError'){ hint(hintId, '', ''); return; } }
+  }
+  let ok = false; try { await navigator.clipboard.writeText(url); ok = true; } catch(e){}
+  hint(hintId, 'ok', (ok ? 'Link copied: ' : 'Your link: ') + url);
+}
 function paintActions(el, hintId){
   if (!el) return;
   const mine = STORED || (RUN && !RUN.dry && Object.keys(RUN.answers).length && (ME.route === 'box' || RUN.kept));
-  el.innerHTML = '<button type="button" id="aLook">Look again</button>' +
+  el.innerHTML = '<button type="button" class="go" id="aShare">Share the link</button><button type="button" id="aLook">Look again</button>' +
     (mine ? '<button type="button" id="aAgain">Watch it again</button><button type="button" id="aDown">Take my answers down</button>' : '') +
     '<button type="button" class="mlink" id="aNot">Not ' + esc(ME.h || 'you') + '?</button>';
+  $('aShare').onclick = () => shareIt(hintId, !!mine);
   $('aLook').onclick = () => { hint(hintId, '', 'Reading the room again…'); loadFold().then(() => loadRoom(true)).then(() => { hint(hintId, '', ''); repaintRoom(); }).catch(e => hint(hintId, 'err', 'Couldn’t reach the beach: ' + e.message)); };
   if ($('aAgain')) $('aAgain').onclick = () => { if (!STORED) STORED = PEOPLE.find(p => p.h === ME.h) || STORED; beginShow('relative', true); };
   if ($('aDown')) $('aDown').onclick = () => takeDown(hintId);
@@ -1067,22 +1080,30 @@ async function startButton(){
   beginShow(mode, false);
 }
 
-/* ── no name given: the designs the form names at its 8 (function:reflexive-experience, 'the designs
- * founded on this form so far'), each at its own address, read live; nothing about them is written here ── */
+/* ── no name given: the open list (spine:premieres, the form's 8.1). Nobody holds it: each maker names the
+ * designs they have founded or hold in their own mirror, premieres:<handle>, '<name> — what it is' at 1 to 9,
+ * and this page gathers every list, the earliest first, showing each design whose two blocks stand. At most
+ * 27 lists and 54 names are read, so a crowded beach never turns one visit into a flood of reads ── */
 async function showList(){
-  const intro = 'Short shows of slides you answer as they appear, each ending in the room: everyone’s answers beside your own, in their own names. Each has its own address, so a link to one opens it straight away.';
+  const intro = 'Short shows of slides you answer as they appear, each ending in the room: everyone’s answers beside your own, in their own names. Each has its own address, so a link to one opens it straight away, and anyone can make one.';
   document.title = 'Premieres'; $('kicker').textContent = 'Reflexive experiences'; $('xTitle').textContent = 'Premieres'; $('xLede').textContent = intro;
   $('homeAll').hidden = true;
-  let form = null, ix = null;
-  try { [form, ix] = await Promise.all([BK.read('function:reflexive-experience'), BK.index(true)]); }
-  catch(e){ $('xLede').textContent = intro + ' The beach can’t be reached just now, so they can’t be listed: try again in a moment.'; return; }
-  const names = [], branch = form && form['8'];
-  if (branch && typeof branch === 'object') for (let d = 1; d <= 9; d++){
-    const m = /^\s*([a-z0-9][a-z0-9-]*)\s*[—–]/i.exec(BK.voice(branch[String(d)]) || '');
-    if (m && names.indexOf(m[1].toLowerCase()) < 0) names.push(m[1].toLowerCase());
-  }
-  const got = (await Promise.all(names.map(n => Promise.all([BK.read('spine:' + n), BK.read('function:' + n)])
-    .then(r => r[0] ? { n, spine: r[0], op: r[1] } : null).catch(() => null)))).filter(Boolean);
+  let ix = null, lists = [];
+  try {
+    ix = await BK.index(true);
+    const born = h => Date.parse(ix.born['premieres:' + h] || '') || Infinity;
+    const hands = ix.blocks.filter(b => b.startsWith('premieres:') && b.indexOf(':', 10) < 0).map(b => b.slice(10))
+      .sort((a, b) => born(a) - born(b) || (a < b ? -1 : 1)).slice(0, 27);
+    lists = await Promise.all(hands.map(h => BK.read('premieres:' + h).then(b => ({ h, b })).catch(() => ({ h, b: null }))));
+  } catch(e){ $('xLede').textContent = intro + ' The beach can’t be reached just now, so they can’t be listed: try again in a moment.'; return; }
+  const named = [], seen = {};
+  lists.forEach(m => { if (m.b) for (let d = 1; d <= 9; d++){
+    const x = /^\s*([a-z0-9][a-z0-9-]*)\s*[—–]/i.exec(BK.voice(m.b[String(d)]) || ''), n = x && x[1].toLowerCase();
+    if (n && !seen[n]){ seen[n] = 1; named.push({ n, by: m.h }); }
+  } });
+  const got = (await Promise.all(named.slice(0, 54).map(x => Promise.all([BK.read('spine:' + x.n), BK.read('function:' + x.n)])
+    .then(r => r[0] && slidesOf(r[0]).length && /^mode:\s*experience\b/i.test(BK.voice(r[1] && r[1]['1']) || '') ? Object.assign({ spine: r[0], op: r[1] }, x) : null)
+    .catch(() => null)))).filter(Boolean);
   const me = BK.savedName().replace(/\s+/g, '-');
   $('designs').innerHTML = got.map(x => {
     const root = BK.voice(x.spine) || '', c = root.indexOf(':'), split = c > 0 && c < 80, href = '/premiere/' + encodeURIComponent(x.n);
@@ -1091,11 +1112,11 @@ async function showList(){
     return '<li class="design"><h2><a href="' + href + '">' + esc(split ? root.slice(0, c).trim() : x.n) + '</a></h2>' +
       '<p>' + esc(cap(split ? root.slice(c + 1) : root)) + '</p>' +
       '<p class="meta"><a href="' + href + '">happyseaurchin.com' + esc(href) + '</a> · ' + when + ' · ' +
-      (count ? count + (count === 1 ? ' premiere' : ' premieres') + ' so far' : 'no one yet') + (me && ix.set.has(x.n + ':' + me) ? ', yours among them' : '') + '</p></li>';
-  }).join('') || '<li class="design"><p>No design is named on the beach yet.</p></li>';
+      (count ? count + (count === 1 ? ' premiere' : ' premieres') + ' so far' : 'no one yet') + (me && ix.set.has(x.n + ':' + me) ? ', yours among them' : '') + ' · listed by ' + BK.nameHTML(x.by) + '</p></li>';
+  }).join('') || '<li class="design"><p>No design is listed on the beach yet.</p></li>';
   $('list').hidden = false;
-  $('colophon').innerHTML = 'Read live from the beach: the designs the form at ' + esc('function:reflexive-experience') + ' names at its 8, each two blocks, ' + esc('spine:<name>') + ' and ' + esc('function:<name>') + ', played at its own address. ' +
-    'To make your own on the same pattern, ask Claude to read ' + esc('function:reflexive-experience') + ' on the beach, and found it with you.';
+  $('colophon').innerHTML = 'Read live from the beach. Nobody holds this list: each maker names the designs they have made in their own, ' + esc('premieres:<handle>') + ', and this page gathers every one. Each design is two blocks, ' + esc('spine:<name>') + ' and ' + esc('function:<name>') + ', played at its own address. ' +
+    'To make your own on the same pattern, ask Claude to read ' + esc('function:reflexive-experience') + ' on the beach and found it with you: it names it in your list, and it shows here.';
 }
 async function init(){
   if (!GIVEN) return showList();
