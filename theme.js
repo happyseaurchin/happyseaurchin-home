@@ -25,7 +25,19 @@
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     apply(next);
     try { localStorage.setItem(KEY, next); } catch(e){}
+    /* AND IN THE PERSON'S OWN SETTINGS (David, 2026-10-18: 'the light dark theme should be in
+     * options'): settings:<handle> 9.2, through the beach's voice, wherever this device knows their
+     * name, so the choice follows them to every device; below, every page takes it up */
+    if (window.siteVoice) window.siteVoice().then(function(v){ return v.set('9.2', next); }, function(){});
   }
+  /* the person's own choice, read from their settings once the page has painted in this device's */
+  window.siteTheme = {
+    adopt: function(t){
+      if ((t !== 'light' && t !== 'dark') || t === document.documentElement.getAttribute('data-theme')) return;
+      apply(t);
+      try { localStorage.setItem(KEY, t); } catch(e){}
+    }
+  };
 
   /* Follow the system while the reader has expressed no preference of their own —
    * someone whose machine turns light at sunrise should find the page has too. */
@@ -1367,10 +1379,12 @@
    * at 9.1 (the per-person layer of the beach's settings block; 9 is pages), so
    * it follows them to every device that knows their name; a device that knows
    * none keeps it for itself. This file loads the voice on every page with the
-   * bar and offers the switch; nothing else here touches the button.
+   * bar and offers the switch; nothing else here touches the button. The light
+   * or the dark is kept beside it, at 9.2 (the ◐, at the top of this file).
    * ────────────────────────────────────────────────────────────────────────── */
   var VOICE = 'https://beach.happyseaurchin.com/button/voice.js';
   var voiceP = null;
+  window.siteVoice = function(){ return voice(); };
   /* the beach's voice, once a page: a page that carries it already is not given a second */
   function voice(){
     if (window.beachVoice) return Promise.resolve(window.beachVoice);
@@ -1408,12 +1422,18 @@
   function beachButton(){
     var b = document.body;
     if (!b || !document.querySelector('.bar')) return;
-    if (window.top !== window || b.getAttribute('data-beach-button') === 'off' || b.classList.contains('embed') ||
-        new URLSearchParams(location.search).get('embed') === '1') return;
-    var st = document.createElement('style');
-    st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) :is(iframe[title="beach button"],[data-beach-button-dock],[data-beach-button-edge]){z-index:29 !important}';
-    document.head.appendChild(st);
-    voice().then(bbSwitch, function(){ /* the beach's voice could not be reached: no switch */ });
+    if (window.top !== window || b.classList.contains('embed') || new URLSearchParams(location.search).get('embed') === '1') return;
+    /* a page whose corner is taken still follows the person's light or dark; it only has no button */
+    var corner = b.getAttribute('data-beach-button') !== 'off';
+    if (corner){
+      var st = document.createElement('style');
+      st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) :is(iframe[title="beach button"],[data-beach-button-dock],[data-beach-button-edge]){z-index:29 !important}';
+      document.head.appendChild(st);
+    }
+    voice().then(function(v){
+      if (corner) bbSwitch(v);
+      v.setting('9.2').then(function(t){ if (window.siteTheme) window.siteTheme.adopt(t); });
+    }, function(){ /* the beach's voice could not be reached: no switch, and this device's own register */ });
   }
   document.addEventListener('DOMContentLoaded', beachButton);
 
