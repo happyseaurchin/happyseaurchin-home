@@ -197,6 +197,11 @@ function digitKeys(node){
   if (!node || typeof node !== 'object') return [];
   return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort();
 }
+function floorOf(block){
+  let n = 0, node = block;
+  while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
+  return n;
+}
 function walkTo(block, walk){
   let n = block;
   for (const ch of walk){
@@ -323,21 +328,29 @@ function parseEntry(line){
 }
 
 /* slot-shaped children of an accumulator node — {_, 1: who, 3: ts} per mark/pool
- * shape. Slots beyond 9 sit at two-digit paths (slot 11 = walk 1→1, zero-free
- * allocation), so a digit child with no text of its own is a container: recurse. */
-function slotsOf(node, out){
+ * shape — read at the floor: `left` is how many steps below this node the slots sit
+ * (the block's floor at its root, less the steps walked to an address). Every node
+ * above that depth is a container, walked whether voiced or not: the supernest wrap
+ * under the underscore holds the older slots, containers at 1, 2 … the newer, and a
+ * container's own underscore is the summary of what it holds (block-conventions 3.5),
+ * never a slot. Telling a slot by its text hid every slot beneath a paid summary. */
+function slotsOf(node, left, out){
   out = out || [];
   if (!node || typeof node !== 'object') return out;
+  if (left === undefined) left = floorOf(node);
+  if (left > 1){
+    slotsOf(node['_'], left - 1, out);
+    for (const d of digitKeys(node)) slotsOf(node[d], left - 1, out);
+    return out;
+  }
   for (const d of digitKeys(node)){
     const kid = node[d];
     const text = textAt(kid);
-    if (text){
-      const who = (kid && typeof kid === 'object' && typeof kid['1'] === 'string') ? kid['1'] : '';
-      const ts = (kid && typeof kid === 'object' && typeof kid['3'] === 'string') ? kid['3'] : '';
-      out.push({ text, who, ts });
-    } else if (kid && typeof kid === 'object') slotsOf(kid, out);
+    if (!text) continue;
+    const who = (kid && typeof kid === 'object' && typeof kid['1'] === 'string') ? kid['1'] : '';
+    const ts = (kid && typeof kid === 'object' && typeof kid['3'] === 'string') ? kid['3'] : '';
+    out.push({ text, who, ts });
   }
-  if (node['_'] && typeof node['_'] === 'object') slotsOf(node['_'], out);  /* the supernest wrap holds the older slots */
   return out;
 }
 
@@ -416,7 +429,7 @@ const MODES = {
      * attribution overflowing its box on the live board (caught by the keeper,
      * 2026-08-12). The strict pair is the same isVoice test /venture has always run:
      * field 1 a name, field 3 a real time; structure is never shown as speech. */
-    const lv = lensOf(slotsOf(node).filter(s =>
+    const lv = lensOf(slotsOf(node, floorOf(b) - (e.addr || '').length).filter(s =>
       s.who && s.who.length <= 40 && s.ts && isFinite(Date.parse(s.ts))), s => s.who), slots = lv.kept;
     slots.sort((a, x) => (x.ts || '').localeCompare(a.ts || ''));
     const rows = slots.slice(0, 8).map(s =>
@@ -648,7 +661,7 @@ const MODES = {
           readBlock(host, n).catch(() => null),
           readBlock(host, 'liquid:' + n).catch(() => null),
         ]);
-        const voices = pool ? slotsOf(pool) : [];
+        const voices = pool ? slotsOf(pool, floorOf(pool)) : [];
         /* ISO-shaped stamps only. A pool whose field 3 holds something else —
            prose, a tag, a test fixture — has no readable clock, and taking it as
            one both dated the row wrongly and sorted it above every pool that IS

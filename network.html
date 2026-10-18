@@ -173,6 +173,11 @@ function digitKeys(node){
   if (!node || typeof node !== 'object') return [];
   return Object.keys(node).filter(k => /^[1-9]$/.test(k)).sort();
 }
+function floorOf(block){
+  let n = 0, node = block;
+  while (node && typeof node === 'object' && ('_' in node)) { node = node['_']; n += 1; }
+  return n;
+}
 function walkTo(block, walk){
   let n = block;
   for (const ch of walk){
@@ -219,26 +224,33 @@ function ago(ts){
 
 /* Voices in a gathering: text at the underscore, name at 1, where-it-stands at 2
  * (a stamp-shaped 2 is an old arrival mark, not a standing), stamps at 3 or 6.
- * Deep digit paths are the ladder growing past nine; the underscore wrap holds
- * the older lines — both walked, so no voice is dropped for being early. */
-function slotsOf(node, out){
+ * The voices sit at the floor — `left` is how many steps below this node — and
+ * everything above is a container, walked whether voiced or not: the ladder grown
+ * past nine at 1, 2 …, the underscore wrap holding the older lines, so no voice is
+ * dropped for being early. A container's own underscore is the summary of what it
+ * holds (block-conventions 3.5), never a voice, so a paid summary hides none. */
+function slotsOf(node, left, out){
   out = out || [];
   if (!node || typeof node !== 'object') return out;
+  if (left === undefined) left = floorOf(node);
+  if (left > 1){
+    slotsOf(node['_'], left - 1, out);
+    for (const d of digitKeys(node)) slotsOf(node[d], left - 1, out);
+    return out;
+  }
   for (const d of digitKeys(node)){
     const kid = node[d];
     const text = textAt(kid);
-    if (text){
-      const f = k => (kid && typeof kid === 'object' && typeof kid[k] === 'string') ? kid[k] : '';
-      const two = f('2');
-      out.push({
-        text,
-        who: f('1'),
-        at: (two && !ISO_STAMP.test(two) && /^[1-9][0-9]*$/.test(two)) ? two : '',
-        ts: ISO_STAMP.test(f('3')) ? f('3') : (ISO_STAMP.test(f('6')) ? f('6') : ''),
-      });
-    } else if (kid && typeof kid === 'object') slotsOf(kid, out);
+    if (!text) continue;
+    const f = k => (kid && typeof kid === 'object' && typeof kid[k] === 'string') ? kid[k] : '';
+    const two = f('2');
+    out.push({
+      text,
+      who: f('1'),
+      at: (two && !ISO_STAMP.test(two) && /^[1-9][0-9]*$/.test(two)) ? two : '',
+      ts: ISO_STAMP.test(f('3')) ? f('3') : (ISO_STAMP.test(f('6')) ? f('6') : ''),
+    });
   }
-  if (node['_'] && typeof node['_'] === 'object') slotsOf(node['_'], out);
   return out;
 }
 
@@ -283,7 +295,7 @@ function voiceRow(v, extraClass){
 
 /* ---------- the field: welcome, voices at the table, then the places ---------- */
 function renderField(pool, liquid, readings){
-  const slots = slotsOf(pool);
+  const slots = slotsOf(pool, floorOf(pool));
   slots.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
   const atTable = slots.filter(s => !s.at);
   const atPlace = d => slots.filter(s => s.at && s.at[0] === d).reverse();  /* oldest first where you stand */
