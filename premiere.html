@@ -171,16 +171,15 @@ ul.said b{font-weight:500;margin-right:6px}
   <p class="clockline" id="clockLine"></p>
   <div id="entryButton" hidden>
     <button type="button" class="go big" id="useButton">Start with the beach button</button>
-    <button type="button" class="mlink" id="useBox">or with a handle and passphrase</button>
     <p class="note">The beach button keeps your handle and passphrase in the beach&rsquo;s own window, so this page never sees them. New here? Unlock it with a handle and a passphrase you make up, and keep the passphrase.</p>
   </div>
   <div id="entryBox">
     <div class="who">
       <label>Your handle <input id="who" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="the name your answers go under"></label>
-      <label>Your passphrase <input id="key" type="password" autocomplete="current-password" placeholder="your passport&rsquo;s, or one you make up now"></label>
     </div>
-    <p class="note" id="boxNote">New here? Make up a handle and a passphrase, and keep the passphrase: it proves these answers are yours, here and whenever you ask Claude about them. If you have a passport on the beach, use its passphrase.</p>
+    <p class="note" id="boxNote">Your answers are signed with your handle, in your own mirror on the beach, and only you can change them. New here? Make up a handle. The first time, your browser asks for your key (the one your passport uses, or one you choose and keep) and keeps it on this device: it proves these answers are yours, here and whenever you ask Claude about them.</p>
     <button type="button" class="go big" id="start">Start my premiere</button>
+    <button type="button" class="mlink" id="turnOn">or use the beach button</button>
   </div>
   <p class="hint" id="enterHint" aria-live="polite"></p>
 </section>
@@ -202,15 +201,20 @@ ul.said b{font-weight:500;margin-right:6px}
 <p class="colophon" id="colophon"></p>
 <p class="home"><a href="/reflexive-charts">Reflexive charts, its kin</a> · <a href="/">happyseaurchin.com</a></p>
 </div>
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
 <script>
-/* BK — the beach kit these pages share. Every read goes to the beach directly (its surface is
- * open to any page); every write is the person's own: a mirror named <family>:<handle>, founded
- * on first use and locked to their key (a handle with a passport must use the passport's key:
- * the beach refuses any other, code handle_bound). The beach button, when it is on the page,
- * keeps the handle and key in the beach's own frame; until it answers 'say', 'keep' and 'ask'
- * the pages fall back to their own handle-and-key box. */
+/* BK — the beach kit these pages share: reading the beach, and the site's law for a write box. Every
+ * read goes to the beach directly (its surface is open to any page). Every write is the person's own,
+ * into their own mirror of a family, <family>:<handle>, and goes through the beach's voice
+ * (button/voice.js, loaded just above): through the beach button where they have it on the page, else
+ * this page's own box — their handle, and the key the browser keeps or asks for once. */
 (function(){
 'use strict';
+/* the voice, or, where it could not be reached, a stand-in that says so: the page still plays from the beach */
+if (!window.beachVoice){
+  const away = () => Promise.resolve({ ok:false, error:'the beach could not be reached just now' });
+  window.beachVoice = { say: away, keep: away, ask: away, drop: away, name: () => '', button: { shown: () => false, set: away }, onButton(){} };
+}
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 const SITE = 'https://happyseaurchin.com';
 const esc = s => { const d = document.createElement('span'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
@@ -220,10 +224,8 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, v); } catch(e){} },
   del(k){ try { localStorage.removeItem(k); } catch(e){} }
 };
-/* the site's own device keys, so a reader who typed theirs on the portal is not asked twice */
-const keyHome = (fam, n) => 'mirror-latch:' + fam + ':' + n;
-const keptKey = (fam, n) => n ? (store.get(keyHome(fam, n)) || store.get('passport-latch:' + n) || '') : '';
-const savedName = () => clean(store.get('venture:who') || store.get('render:who') || '');
+/* the name this device signs with (theme.js knownName), which a write under it sets */
+const savedName = () => clean(store.get('render:who') || store.get('venture:who') || '');
 function voice(n){ while (n && typeof n === 'object'){ if (!('_' in n)) return null; n = n._; } return typeof n === 'string' && n.trim() ? n.trim() : null; }
 function at(node, path){ let n = node; for (const d of path){ if (!n || typeof n !== 'object') return undefined; n = n[d]; } return n; }
 const dotted = p => p.length > 1 ? p[0] + '.' + p.slice(1) : p;
@@ -244,16 +246,6 @@ async function index(force){
   IX = { blocks, touched: ix.touched || {}, born: ix.born || {}, now: ix.now || null, set: new Set(blocks), at: Date.now() };
   return IX;
 }
-async function post(body){
-  const r = await fetch(BEACH, { method:'POST', cache:'no-store', headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify(body) });
-  let d = null; try { d = await r.json(); } catch(e){}
-  return { ok: r.ok && !(d && d.error), status: r.status, code: d && d.code, error: d && (d.error || d.message) };
-}
-async function wipe(block, key){
-  const r = await fetch(BEACH + '?block=' + encodeURIComponent(block), { method:'DELETE', cache:'no-store', headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify({ secret: key, confirm: true }) });
-  let d = null; try { d = await r.json(); } catch(e){}
-  return { ok: r.ok && !(d && d.error), status: r.status, code: d && d.code, error: d && (d.error || d.message) };
-}
 /* every mirror of a family: <family>:<handle>, and nothing with a further colon */
 async function mirrors(fam, force, extra){
   const ix = await index(force);
@@ -267,53 +259,12 @@ const hasPage = h => !!(IX && (IX.set.has('passport:' + h) || IX.set.has('now:' 
 const pageUrl = h => SITE + '/page/' + encodeURIComponent(h);
 const nameHTML = h => hasPage(h) ? '<a href="' + pageUrl(h) + '" target="_blank" rel="noopener">' + esc(h) + '</a>' : esc(h);
 
-async function found(block, key, content){
-  let w = await post({ block, new_lock: key, content });
-  if (!w.ok && w.code === 'handle_bound') w = await post({ block, content, secret: key, new_lock: key });
-  if (!w.ok && w.code === 'confirm_required') w = { ok: true };    /* founded a moment ago */
-  return w;
-}
-async function sayBox(fam, name, key, spindle, text, intro){
-  const block = fam + ':' + name;
-  if (!(await read(block))){ const w = await found(block, key, { _: intro }); if (!w.ok) return w; }
-  return post({ block, spindle, content: text, secret: key });
-}
-async function keepBox(fam, name, key, tree){
-  const block = fam + ':' + name;
-  if (await read(block)) return post({ block, content: tree, secret: key, confirm: true });
-  return found(block, key, tree);
-}
-const button = () => (window.beachButton && typeof window.beachButton.request === 'function' && document.querySelector('iframe[title="beach button"]')) ? window.beachButton : null;   /* on the page, not put away */
-const unknown = r => !!(r && /does not know/i.test(r.error || ''));
-/* the say of pscale_stream_engage, through the button; until it knows 'say', 'who' and 'write' */
-async function sayButton(fam, spindle, text){
-  const b = button(); if (!b) return { ok:false, error:'the beach button is not on this page' };
-  let r = await b.request({ kind:'say', field: fam, at: dotted(spindle), text });
-  if (r && r.ok) return r;
-  if (!unknown(r)) return r || { ok:false, error:'the beach button did not answer' };
-  const who = await b.request({ kind:'who' });
-  if (!who || !who.ok) return who || { ok:false, error:'the beach button did not answer' };
-  const block = fam + ':' + who.handle;
-  if (!(await read(block))) return { ok:false, found:true, handle: who.handle };
-  r = await b.request({ kind:'write', block, spindle, content: text });
-  return Object.assign({ handle: who.handle }, r || { ok:false, error:'the beach button did not answer' });
-}
-async function keepButton(fam, tree){
-  const b = button(); if (!b) return { ok:false, unsupported:true };
-  const r = await b.request({ kind:'keep', field: fam, content: tree });
-  if (unknown(r)) return { ok:false, unsupported:true };
-  return r || { ok:false, error:'the beach button did not answer' };
-}
-async function askButton(text){
-  const b = button(); if (!b) return { ok:false, unsupported:true };
-  const r = await b.request({ kind:'ask', text });
-  if (unknown(r)) return { ok:false, unsupported:true };
-  return r || { ok:false, error:'the beach button did not answer' };
-}
 function errText(r){
   const code = r && r.code;
-  if (code === 'handle_bound') return 'That handle has a passport here with its own key. Use the key your passport uses, or choose another handle.';
-  if (code === 'lock_required' || (r && r.status === 403)) return 'That handle’s words are kept under another key. If it is yours, check the key (phones capitalise the first letter); if not, choose another handle.';
+  if (r && r.needName) return r.error;
+  if (code === 'handle_bound') return 'That handle has a passport here with its own key. Try again with the key your passport uses, or choose another handle.';
+  if (code === 'lock_required' || (r && r.status === 403)) return 'That handle’s words are kept under another key. If it is yours, try again with the key you used before; if not, choose another handle.';
+  if (r && /^declined|^covered/.test(r.error || '')) return 'Not written: you let it go in the beach button.';
   return 'Not written: ' + ((r && r.error) || 'the beach did not answer') + '.';
 }
 /* THE SITE'S LAW FOR A WRITE BOX (happyseaurchin-home CLAUDE.md, What NOT to do 4 and 5): it keeps
@@ -376,8 +327,8 @@ function dictate(box){
   box.addEventListener('input', e => { if (rec && e.isTrusted) stop(); });   /* typing while it listens ends the listening */
   return b;
 }
-window.BK = { BEACH, SITE, esc, clean, store, keyHome, keptKey, savedName, voice, at, dotted, read, index, post, wipe, mirrors,
-  hasPage, pageUrl, nameHTML, found, sayBox, keepBox, button, sayButton, keepButton, askButton, errText, keepDraft, dictate };
+window.BK = { BEACH, SITE, esc, clean, store, savedName, voice, at, dotted, read, index, mirrors,
+  hasPage, pageUrl, nameHTML, errText, keepDraft, dictate };
 })();
 </script>
 <script>
@@ -398,7 +349,7 @@ const FONTSTACK = '"IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif'
 const TIMED = { flock: 1, word: 1, choose: 1 };
 const KNOWN = { card: 1, flock: 1, word: 1, choose: 1, guess: 1, room: 1 };
 let SLIDES = [], CLOCK = { kind: 'relative', at: 0 }, OFFSET = 0, PEOPLE = [], FOLD = null, BORN = {};
-let ME = { h: '', key: '', route: '', first: 0 }, STORED = null, RUN = null, chain = Promise.resolve(), useBox = false;
+let ME = { h: '', route: '', first: 0 }, STORED = null, RUN = null, chain = Promise.resolve();
 let TITLE = NAME, pollT = 0, entryTimer = 0;
 const now = () => Date.now() + OFFSET;
 const fontsReady = (document.fonts && document.fonts.load)
@@ -420,7 +371,7 @@ function rngOf(a){ return function(){ a |= 0; a = a + 0x6D2B79F5 | 0; let t = Ma
 function debounce(f, ms){ let t = 0; return function(){ clearTimeout(t); t = setTimeout(f, ms); }; }
 const norm = w => String(w || '').toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '');
 const cap = t => { t = String(t || '').trim(); return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
-const errText = r => BK.errText(r).replace(/\bkeys?\b/g, m => m === 'keys' ? 'passphrases' : 'passphrase');
+const errText = BK.errText;
 
 /* ── the design, read from its blocks ── */
 function parseLine(s){
@@ -535,12 +486,14 @@ function roomPeople(){
 const othersAt = s => PEOPLE.filter(p => p.h !== ME.h).map(p => p.ans[s.addr]).filter(a => a && a.t != null);
 const roomSize = () => PEOPLE.filter(p => p.h !== ME.h).length + 1;
 
-/* ── writing: the person's own mirror, and nothing else; a dropped connection is tried again ── */
-async function postRetry(body){
+/* ── writing: the person's own mirror, and nothing else, through the beach's voice (the button where
+ * they have it, else this page's box under the key the browser keeps); a dropped connection is tried again ── */
+const unreached = r => !!(r && !r.ok && /could not be reached/.test(r.error || ''));
+async function retried(act){
   let last = null;
   for (let i = 0; i < 3; i++){
-    try { last = await BK.post(body); if (last.ok || (last.status && last.status < 500 && last.status !== 429)) return last; }
-    catch(e){ last = { ok: false, error: e.message }; }
+    try { last = await act(); } catch(e){ last = { ok: false, error: 'the beach could not be reached: ' + e.message }; }
+    if (!unreached(last)) return last;
     await new Promise(r => setTimeout(r, 900 * (i + 1)));
   }
   return last;
@@ -550,8 +503,9 @@ function answer(addr, text){
   RUN.answers[addr] = text;
   if (RUN.dry) return;
   if (ME.route === 'box'){
-    chain = chain.then(() => postRetry({ block: NAME + ':' + ME.h, spindle: addr, content: text, secret: ME.key }))
-      .then(r => { if (r && !r.ok) hint('showHint', 'err', r.status ? errText(r) : 'Couldn’t reach the beach just now, so that answer isn’t kept. Check your connection.'); else hint('showHint', '', ''); })
+    const h = ME.h, intro = introFor(h, RUN.mode, ME.first);
+    chain = chain.then(() => retried(() => beachVoice.say({ field: NAME, at: addr, text, name: h, intro })))
+      .then(r => { if (r && !r.ok){ if (!r.quiet) hint('showHint', 'err', unreached(r) ? 'Couldn’t reach the beach just now, so that answer isn’t kept. Check your connection.' : errText(r)); } else hint('showHint', '', ''); })
       .catch(e => hint('showHint', 'err', 'Couldn’t reach the beach: ' + e.message));
   } else if (ME.route === 'button' && (RUN.mode === 'shared' || RUN.kept)){
     RUN.pending[addr] = text;
@@ -560,8 +514,8 @@ function answer(addr, text){
 function flush(addr){
   if (!RUN || RUN.dry || !(addr in RUN.pending)) return;
   const text = RUN.pending[addr]; delete RUN.pending[addr];
-  chain = chain.then(() => BK.sayButton(NAME, addr, text))
-    .then(r => { if (!r || !r.ok) hint('showHint', 'err', 'The beach button didn’t keep that answer' + (r && r.error ? ': ' + r.error : '') + '.'); })
+  chain = chain.then(() => beachVoice.say({ field: NAME, at: addr, text, name: ME.h }))
+    .then(r => { if ((!r || !r.ok) && !(r && r.quiet)) hint('showHint', 'err', errText(r)); })
     .catch(e => hint('showHint', 'err', 'Couldn’t reach the beach: ' + e.message));
 }
 
@@ -976,21 +930,13 @@ function paintKeep(){
 }
 async function keepNow(){
   const btn = $('keepNow'); if (btn) btn.disabled = true;
-  hint('roomHint', '', 'Asking the beach button to keep your answers…');
+  hint('roomHint', '', beachVoice.button.shown() ? 'Asking the beach button to keep your answers…' : 'Keeping your answers on the beach…');
+  /* named 'a': the voice names the mirror for whoever it lands under; where the button has gone, the browser asks for the key */
   const tree = { _: introFor(null, RUN.mode, ME.first) }; Object.keys(RUN.answers).forEach(a => { tree[a] = RUN.answers[a]; });
   let r;
-  try { r = await BK.keepButton(NAME, tree); } catch(e){ r = { ok: false, error: e.message }; }
-  if (r && r.unsupported){
-    hint('roomHint', 'err', 'The beach button can’t keep answers on this page. Give your passphrase below to keep them yourself.');
-    $('keepBox').innerHTML = '<div class="who"><label>Your passphrase for ' + esc(ME.h) + ' <input id="kk" type="password" autocomplete="current-password"></label></div><button type="button" class="go" id="kkGo">Keep them</button>';
-    $('kkGo').onclick = async () => { const key = $('kk').value.trim(); if (!key) return;
-      const t2 = Object.assign({}, tree, { _: introFor(ME.h, RUN.mode, ME.first) }); const w = await BK.keepBox(NAME, ME.h, key, t2);
-      if (!w.ok){ hint('roomHint', 'err', errText(w)); return; }
-      BK.store.set(BK.keyHome(NAME, ME.h), key); ME.key = key; ME.route = 'box'; kept(); };
-    return;
-  }
-  if (!r || !r.ok){ if (btn) btn.disabled = false; hint('roomHint', 'err', 'Not kept' + (r && r.error ? ': ' + r.error : '') + '.'); return; }
-  if (r.handle && r.handle !== ME.h) ME.h = r.handle;
+  try { r = await beachVoice.keep({ field: NAME, content: tree, name: ME.h }); } catch(e){ r = { ok: false, error: e.message }; }
+  if (!r || !r.ok){ if (btn) btn.disabled = false; hint('roomHint', r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
+  if (r.name && r.name !== ME.h) ME.h = r.name;
   kept();
 }
 function kept(){
@@ -1005,26 +951,22 @@ function paintActions(el, hintId){
     '<button type="button" class="mlink" id="aNot">Not ' + esc(ME.h || 'you') + '?</button>';
   $('aLook').onclick = () => { hint(hintId, '', 'Reading the room again…'); loadFold().then(() => loadRoom(true)).then(() => { hint(hintId, '', ''); repaintRoom(); }).catch(e => hint(hintId, 'err', 'Couldn’t reach the beach: ' + e.message)); };
   if ($('aAgain')) $('aAgain').onclick = () => { if (!STORED) STORED = PEOPLE.find(p => p.h === ME.h) || STORED; beginShow('relative', true); };
-  if ($('aDown')) $('aDown').onclick = () => takeDown(el, hintId);
-  $('aNot').onclick = () => { BK.store.del('venture:who'); ME = { h: '', key: '', route: '', first: 0 }; STORED = null; RUN = null; $('who').value = ''; showEntry(); };
+  if ($('aDown')) $('aDown').onclick = () => takeDown(hintId);
+  $('aNot').onclick = () => { BK.store.del('render:who'); BK.store.del('venture:who'); ME = { h: '', route: '', first: 0 }; STORED = null; RUN = null; $('who').value = ''; showEntry(); };
 }
 function repaintRoom(){
   if (RUN && !$('show').hidden){ const s = SLIDES[RUN.idx]; if (s && s.kind === 'room') paintRoomSlide(s); return; }
   if (!$('after').hidden) showAfter($('afterLine').textContent);
 }
-async function takeDown(el, hintId){
-  const h = ME.h, key = ME.key || BK.keptKey(NAME, h);
-  const go = async k => {
-    hint(hintId, '', 'Taking your answers down…');
-    const r = await BK.wipe(NAME + ':' + h, k);
-    if (!r.ok){ hint(hintId, 'err', errText(r)); return; }
-    BK.store.del(BK.keyHome(NAME, h)); STORED = null; PEOPLE = PEOPLE.filter(p => p.h !== h); RUN = null; ME = { h: '', key: '', route: '', first: 0 };
-    showEntry(); hint('enterHint', 'ok', 'Taken down. Your answers no longer stand on the beach.');
-  };
-  if (key) return go(key);
-  el.insertAdjacentHTML('beforeend', '<div class="row td"><input id="tdk" type="password" placeholder="the passphrase for ' + esc(h) + '" aria-label="your passphrase"><button type="button" class="go" id="tdGo">Take them down</button></div>');
-  $('tdGo').onclick = () => { const k = $('tdk').value.trim(); if (k) go(k); };
-  $('tdk').focus();
+/* a deletion, which the beach button does not make: the key this device keeps, or the browser asks */
+async function takeDown(hintId){
+  const h = ME.h;
+  hint(hintId, '', 'Taking your answers down…');
+  let r;
+  try { r = await beachVoice.drop({ field: NAME, name: h }); } catch(e){ r = { ok: false, error: e.message }; }
+  if (!r || !r.ok){ hint(hintId, r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
+  STORED = null; PEOPLE = PEOPLE.filter(p => p.h !== h); RUN = null; ME = { h: '', route: '', first: 0 };
+  showEntry(); hint('enterHint', 'ok', 'Taken down. Your answers no longer stand on the beach.');
 }
 
 /* ── coming in ── */
@@ -1038,14 +980,13 @@ function showAfter(msg){
   paintActions($('afterActions'), 'afterHint');
 }
 function renderEntry(){
-  const viaButton = !!BK.button() && !useBox, m = modeNow(), before = CLOCK.kind === 'shared' && now() < CLOCK.at;
+  const viaButton = beachVoice.button.shown(), m = modeNow(), before = CLOCK.kind === 'shared' && now() < CLOCK.at;
   $('entryButton').hidden = !viaButton; $('entryBox').hidden = viaButton;
   if (!$('who').value) $('who').value = BK.savedName();
   const label = before ? 'I’m here' : m === 'shared' ? 'Join the premiere' : 'Start my premiere';
   if ($('start').textContent !== label) $('start').textContent = label;
   const bl = before ? 'I’m here, through the beach button' : m === 'shared' ? 'Join through the beach button' : 'Start with the beach button';
   if ($('useButton').textContent !== bl) $('useButton').textContent = bl;
-  keyHint();
 }
 function entryTick(){
   clearTimeout(entryTimer);
@@ -1060,45 +1001,41 @@ function entryTick(){
     entryTimer = setTimeout(entryTick, 1000);
   }
 }
-function showEntry(){ RUN = null; clearInterval(pollT); show('enter'); renderEntry(); entryTick(); }
-function keyHint(){ const h = handleOf($('who').value); $('key').placeholder = h && BK.keptKey(NAME, h) ? 'kept on this device' : 'your passport’s, or one you make up now'; }
-const NOTE_NEW = 'New here? Make up a handle and a passphrase, and keep the passphrase: it proves these answers are yours, here and whenever you ask Claude about them. If you have a passport on the beach, use its passphrase.';
+function showEntry(){ RUN = null; clearInterval(pollT); show('enter'); renderEntry(); entryTick(); nameCheck(); }
+const NOTE_NEW = 'Your answers are signed with your handle, in your own mirror on the beach, and only you can change them. New here? Make up a handle. The first time, your browser asks for your key (the one your passport uses, or one you choose and keep) and keeps it on this device: it proves these answers are yours, here and whenever you ask Claude about them.';
 async function nameCheck(){
   const h = handleOf($('who').value), note = $('boxNote');
   if (!h){ note.textContent = NOTE_NEW; return; }
   try {
     const ix = await BK.index();
-    if (ix.set.has('passport:' + h)) note.textContent = 'That name has a passport on the beach: use its passphrase.';
-    else if (ix.blocks.some(b => b.endsWith(':' + h))) note.textContent = 'That name is already on the beach. If it’s yours, use your usual passphrase; if not, choose another.';
+    if (ix.set.has('passport:' + h)) note.textContent = 'That name has a passport on the beach: when your browser asks for a key, give the one that passport uses.';
+    else if (ix.blocks.some(b => b.endsWith(':' + h))) note.textContent = 'That name is already on the beach. If it’s yours, give your usual key when your browser asks; if not, choose another.';
     else note.textContent = NOTE_NEW;
   } catch(e){}
 }
+/* the box: a handle here, and the key through the browser's own prompt (the beach's voice), as the site's
+ * pages and keel's charts take it; tested before the show by founding or opening the mirror */
 async function startBox(){
+  if (beachVoice.button.shown()) return startButton();   /* the button came while the box stood: it signs */
   const h = handleOf($('who').value);
   if (!h){ hint('enterHint', 'err', 'Give a handle: up to 32 letters, digits, - or _. Your answers go under it.'); $('who').focus(); return; }
-  const key = $('key').value.trim() || BK.keptKey(NAME, h);
-  if (!key){ hint('enterHint', 'err', 'Give a passphrase: your passport’s if you have one, or one you make up now and keep.'); $('key').focus(); return; }
   $('start').disabled = true; hint('enterHint', '', 'Opening your premiere…');
   try {
     const block = NAME + ':' + h, cur = await BK.read(block), mode = modeNow(), firstAt = now();
     if (cur){
       const p = personOf(h, cur);
-      if (p.any){ ME = { h, key, route: 'box', first: p.first }; STORED = p; BK.store.set('venture:who', h); $('key').value = ''; await loadRoom(true);
+      if (p.any){ ME = { h, route: 'box', first: p.first }; STORED = p; BK.store.set('render:who', h); await loadRoom(true);
         return showAfter('You’ve had your premiere of this one, on ' + dateStr(p.first) + '. Here is the room as it stands.'); }
-      const w = await postRetry({ block, content: { _: introFor(h, mode, firstAt) }, secret: key, confirm: true });
-      if (!w.ok){ hint('enterHint', 'err', errText(w)); return; }
-    } else {
-      const w = await BK.found(block, key, { _: introFor(h, mode, firstAt) });
-      if (!w.ok){ hint('enterHint', 'err', errText(w)); return; }
     }
-    BK.store.set(BK.keyHome(NAME, h), key); BK.store.set('venture:who', h); $('key').value = '';
-    ME = { h, key, route: 'box', first: firstAt }; STORED = null; hint('enterHint', '', '');
+    const w = await beachVoice.keep({ field: NAME, content: { _: introFor(h, mode, firstAt) }, name: h });
+    if (!w || !w.ok){ hint('enterHint', w && w.quiet ? '' : 'err', w && w.quiet ? '' : errText(w)); return; }
+    ME = { h, route: 'box', first: firstAt }; STORED = null; hint('enterHint', '', '');
     beginShow(mode, false);
   } catch(e){ hint('enterHint', 'err', 'Couldn’t reach the beach: ' + e.message); }
   finally { $('start').disabled = false; }
 }
 async function startButton(){
-  const b = BK.button(); if (!b){ useBox = true; renderEntry(); return; }
+  const b = beachVoice.button.shown() ? window.beachButton : null; if (!b){ renderEntry(); return; }
   hint('enterHint', '', 'Asking the beach button who you are…');
   let who = null; try { who = await b.request({ kind: 'who' }); } catch(e){}
   if (!who || !who.ok){
@@ -1110,10 +1047,10 @@ async function startButton(){
   const h = who.handle, mode = modeNow();
   try {
     const cur = await BK.read(NAME + ':' + h);
-    if (cur){ const p = personOf(h, cur); if (p.any){ ME = { h, key: '', route: 'button', first: p.first }; STORED = p; BK.store.set('venture:who', h); await loadRoom(true);
+    if (cur){ const p = personOf(h, cur); if (p.any){ ME = { h, route: 'button', first: p.first }; STORED = p; BK.store.set('render:who', h); await loadRoom(true);
       return showAfter('You’ve had your premiere of this one, on ' + dateStr(p.first) + '. Here is the room as it stands.'); } }
   } catch(e){}
-  BK.store.set('venture:who', h); ME = { h, key: '', route: 'button', first: now() }; STORED = null; hint('enterHint', '', '');
+  BK.store.set('render:who', h); ME = { h, route: 'button', first: now() }; STORED = null; hint('enterHint', '', '');
   beginShow(mode, false);
 }
 
@@ -1139,35 +1076,21 @@ async function init(){
   const saved = BK.savedName().replace(/\s+/g, '-');
   if (saved){
     try { const b = await BK.read(NAME + ':' + saved);
-      if (b){ const p = personOf(saved, b); if (p.any){ ME = { h: saved, key: BK.keptKey(NAME, saved), route: 'box', first: p.first }; STORED = p; await loadRoom(true); return showAfter(); } } } catch(e){}
+      if (b){ const p = personOf(saved, b); if (p.any){ ME = { h: saved, route: 'box', first: p.first }; STORED = p; await loadRoom(true); return showAfter(); } } } catch(e){}
   }
   showEntry();
 }
 
 $('start').addEventListener('click', startBox);
 $('useButton').addEventListener('click', startButton);
-$('useBox').addEventListener('click', () => { useBox = true; renderEntry(); $('who').focus(); });
-$('who').addEventListener('input', keyHint);
+$('turnOn').addEventListener('click', () => beachVoice.button.set(true));   /* the person's choice, kept in their settings */
 $('who').addEventListener('input', debounce(nameCheck, 450));
-$('key').addEventListener('keydown', e => { if (e.key === 'Enter') startBox(); });
+$('who').addEventListener('keydown', e => { if (e.key === 'Enter') startBox(); });
 window.addEventListener('resize', () => { if (RUN && RUN.st && RUN.st.flock) RUN.st.flock.fit(); });
-window.addEventListener('load', () => setTimeout(() => { if (!$('enter').hidden) renderEntry(); }, 400));
-document.addEventListener('beachbutton:ready', () => { if (!$('enter').hidden) renderEntry(); });
-setTimeout(() => { if (!$('enter').hidden) renderEntry(); }, 1600);
+beachVoice.onButton(() => { if (!$('enter').hidden) renderEntry(); });
 init();
 })();
 
-</script>
-<script>
-/* the beach button as the person chose it (David, 2026-10-18: off until they turn it on): the beach's
- * voice brings it where their settings say so (settings:<handle> 9.1, read wherever this device knows
- * their name), never in a frame, and the page offers it whenever it comes or goes */
-(function(){
-  if (window.top !== window) return;
-  var s = document.createElement('script'); s.src = 'https://beach.happyseaurchin.com/button/voice.js'; s.async = true;
-  s.onload = function(){ if (window.beachVoice) beachVoice.onButton(function(){ document.dispatchEvent(new Event('beachbutton:ready')); }); };
-  document.body.appendChild(s);
-})();
 </script>
 </body>
 </html>
