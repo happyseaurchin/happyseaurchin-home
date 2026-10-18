@@ -57,6 +57,15 @@ def instant(addr):
     return day + timedelta(milliseconds=-(-rem // 6561))
 
 
+def free(t, taken):
+    """The address of t's second, or, when this sweep has given that second already, the next free one."""
+    a = address(t)
+    while a in taken:
+        a = address(instant(a) + timedelta(milliseconds=1464))
+    taken.add(a)
+    return a
+
+
 def seen(now):
     """The second the sweep ran and the eight after it, each its own second (a ticker second is 1.46 s)."""
     day = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -182,8 +191,9 @@ def main():
             if r['when'] > since and r['link'] not in links:
                 links.add(r['link'])
                 reports.append(r)
-    for r in sorted(reports, key=lambda r: r['when']):
-        print(json.dumps({'address': address(r['when']), 'when': r['when'].astimezone(timezone.utc).isoformat(),
+    taken = set()
+    for r in sorted(reports, key=lambda r: r['when']):  # two reports in one second: the later takes the next
+        print(json.dumps({'address': free(r['when'], taken), 'when': r['when'].astimezone(timezone.utc).isoformat(),
                           'source': r['source'], 'title': r['title'], 'link': r['link'], 'summary': r['summary']},
                          ensure_ascii=False))
     day = since.astimezone(timezone.utc)
