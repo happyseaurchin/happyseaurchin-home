@@ -126,6 +126,31 @@ var coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matc
 
 function store(){ try { sessionStorage.setItem(KEY, JSON.stringify(turns)); } catch (e) {} }
 function say(text, cls){ var s = $('said'); s.textContent = text || ''; s.className = 'hint' + (cls ? ' ' + cls : ''); }
+/* The helper's answers name the web pages it found, and each address is drawn as a
+   link out. Built as nodes, never as markup, so nothing in an answer is ever read as
+   HTML; only http(s) addresses link, and the sentence's punctuation after one stays
+   text unless it closes a bracket the address itself opened. */
+var URL_RE = /https?:\/\/[^\s<>"']+/gi;
+function count(s, c){ return s.split(c).length - 1; }
+function withLinks(el, text){
+  var last = 0, m;
+  URL_RE.lastIndex = 0;
+  while ((m = URL_RE.exec(text))){
+    var url = m[0];
+    while (/[.,;:!?*)\]]$/.test(url)){
+      var c = url.slice(-1);
+      if (c === ')' && count(url, ')') <= count(url, '(')) break;
+      if (c === ']' && count(url, ']') <= count(url, '[')) break;
+      url = url.slice(0, -1);
+    }
+    el.appendChild(document.createTextNode(text.slice(last, m.index)));
+    var a = document.createElement('a');
+    a.href = url; a.textContent = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+    el.appendChild(a);
+    last = m.index + url.length;
+  }
+  el.appendChild(document.createTextNode(text.slice(last)));
+}
 function line(role, text, extra){
   var d = document.createElement('div');
   d.className = 'msg ' + (role === 'user' ? 'me' : 'it') + (extra ? ' ' + extra : '');
@@ -134,7 +159,7 @@ function line(role, text, extra){
   who.textContent = role === 'user' ? 'you' : H;
   var said = document.createElement('div');
   said.className = 'said';
-  said.textContent = text;
+  if (role === 'user') said.textContent = text; else withLinks(said, text);
   d.appendChild(who); d.appendChild(said);
   $('talk').appendChild(d);
   d.scrollIntoView({ block: 'end', behavior: 'smooth' });
