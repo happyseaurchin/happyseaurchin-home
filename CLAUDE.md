@@ -61,6 +61,9 @@ Foundry → public: tools iterate here; stable versions are mirrored to `pscale-
 **Active — the read copies:**
 - `build-doc-copies.js` — renders `read/`'s copies of David's Claude Docs from their Markdown exports, one table for every doc; how to refresh one is in its header.
 
+**Active — the zeitgeist tree:**
+- `build-zeitgeist.js` — builds `spine:zeitgeist`, the topic tree where a person's voice on the news stands, from IPTC Media Topics' own export (CC BY 4.0): nine sections of the tree's own, then IPTC's terms in code order, nine at most per level. Writes the block and a code-to-address index to `data/zeitgeist/`; its three rules are in its header. Cloud sessions cannot reach cv.iptc.org, so download the export where you can.
+
 **Legacy — pre-migration beach ops. Read before touching:**
 - `wipe-block.js` — still works: the live handler kept per-block HTTP DELETE (lock-gated), so `BEACH_URL=https://beach.happyseaurchin.com/.well-known/pscale-beach node scripts/wipe-block.js <name>` is valid. Only its **default** URL (the bare domain) is stale — it now 404s.- `bootstrap-beach-locks.js` — Phase B lock installer for the long-gone legacy `beach` block; inert without the deleted handler.
 
