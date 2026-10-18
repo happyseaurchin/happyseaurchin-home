@@ -25,7 +25,19 @@
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     apply(next);
     try { localStorage.setItem(KEY, next); } catch(e){}
+    /* AND IN THE PERSON'S OWN SETTINGS (David, 2026-10-18: 'the light dark theme should be in
+     * options'): settings:<handle> 9.2, through the beach's voice, wherever this device knows their
+     * name, so the choice follows them to every device; below, every page takes it up */
+    if (window.siteVoice) window.siteVoice().then(function(v){ return v.set('9.2', next); }, function(){});
   }
+  /* the person's own choice, read from their settings once the page has painted in this device's */
+  window.siteTheme = {
+    adopt: function(t){
+      if ((t !== 'light' && t !== 'dark') || t === document.documentElement.getAttribute('data-theme')) return;
+      apply(t);
+      try { localStorage.setItem(KEY, t); } catch(e){}
+    }
+  };
 
   /* Follow the system while the reader has expressed no preference of their own —
    * someone whose machine turns light at sunrise should find the page has too. */
@@ -1354,40 +1366,55 @@
    * is open the button's circle, edge and window step under it, so the sheet's
    * save stays in reach on a phone: the style is carried here, as the ＋card
    * carries its own.
-   * A SWITCH UNDER OPTIONS turns it off on this device and on again (David,
-   * 2026-10-15: 'a toggle in options … to enable/disable the beach button'):
-   * off, it is put away now and not loaded on any page until switched back on.
+   * A SWITCH UNDER OPTIONS turns it on and off (David, 2026-10-15: 'a toggle in
+   * options … to enable/disable the beach button'), and IT IS OFF UNTIL A PERSON
+   * TURNS IT ON (David, 2026-10-18: 'relegate the beach button to hidden as
+   * default -- and the user needs to enable it, and then it is saved as a
+   * configuration on the beach like the go listing'). It comes with the beach's
+   * voice (pscale-beach button/voice.js, served beside it), the page's side of
+   * the button: a page that takes words asks the voice for them, which goes
+   * through the button where the person has it and through the page's own box
+   * where not, and the voice brings the button wherever the person has turned it
+   * on. Their choice is kept with their settings on the beach, settings:<handle>
+   * at 9.1 (the per-person layer of the beach's settings block; 9 is pages), so
+   * it follows them to every device that knows their name; a device that knows
+   * none keeps it for itself. This file loads the voice on every page with the
+   * bar and offers the switch; nothing else here touches the button. The light
+   * or the dark is kept beside it, at 9.2 (the ◐, at the top of this file).
    * ────────────────────────────────────────────────────────────────────────── */
-  var BEACH_BUTTON = 'https://beach.happyseaurchin.com/button/button.js';
-  var BB_KEY = 'beach-button';   /* 'off' = kept off on this device */
-  function bbOn(){ try { return localStorage.getItem(BB_KEY) !== 'off'; } catch(e){ return true; } }
-  var bbLoading = false;
-  function bbLoad(){
-    if (window.beachButton) { window.beachButton.show(); return; }
-    if (bbLoading) return;
-    bbLoading = true;
-    var st = document.createElement('style');
-    st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) :is(iframe[title="beach button"],[data-beach-button-dock],[data-beach-button-edge]){z-index:29 !important}';
-    document.head.appendChild(st);
-    var s = document.createElement('script');
-    s.src = BEACH_BUTTON; s.async = true;
-    document.body.appendChild(s);
+  var VOICE = 'https://beach.happyseaurchin.com/button/voice.js';
+  var voiceP = null;
+  window.siteVoice = function(){ return voice(); };
+  /* the beach's voice, once a page: a page that carries it already is not given a second */
+  function voice(){
+    if (window.beachVoice) return Promise.resolve(window.beachVoice);
+    if (!voiceP) voiceP = new Promise(function(ok, no){
+      var s = document.createElement('script');
+      s.src = VOICE; s.async = true;
+      s.onload = function(){ if (window.beachVoice) ok(window.beachVoice); else no(); };
+      s.onerror = function(){ voiceP = null; no(); };
+      document.body.appendChild(s);
+    });
+    return voiceP;
   }
   /* the act under options, saying what it will do */
-  function bbSwitch(){
+  function bbSwitch(v){
     if (document.getElementById('btn-beach-button')) return;
     var menu = document.querySelector('#dd-acts .dd__menu'), bar = document.querySelector('.bar');
     if (!menu && !bar) return;
     var t = document.createElement('button');
     t.type = 'button'; t.id = 'btn-beach-button';
-    t.title = 'the beach button: a frame from the beach, bottom right, holding your handle, passphrase and key where this page cannot reach them';
-    var say = function(){ t.textContent = bbOn() ? 'hide beach button' : 'show beach button'; };
-    say();
+    t.title = 'the beach button: a frame from the beach, bottom right, holding your handle, passphrase and key where this page cannot reach them — kept in your own settings on the beach wherever your name is known';
+    var say = function(){ t.textContent = v.button.shown() ? 'hide beach button' : 'show beach button'; };
+    say(); v.onButton(say);
     t.addEventListener('click', function(){
-      var on = !bbOn();
-      try { localStorage.setItem(BB_KEY, on ? 'on' : 'off'); } catch(e){}
-      if (on) bbLoad(); else if (window.beachButton) window.beachButton.hide();
-      say();
+      var on = !v.button.shown();
+      v.button.set(on).then(function(r){
+        say();
+        /* let go at the browser's prompt or in the button: nothing to tell */
+        if (r && !r.ok && !r.quiet && !/^declined|^covered/.test(r.error || ''))
+          alert('The beach did not keep this in your settings (' + (r.error || r.status || 'no answer') + '), so the beach button is ' + (on ? 'on' : 'off') + ' on this device only.');
+      });
     });
     if (menu) menu.appendChild(t);
     else { var doors = bar.querySelector('details.dd[data-doors]'); bar.insertBefore(t, doors || null); }
@@ -1395,10 +1422,18 @@
   function beachButton(){
     var b = document.body;
     if (!b || !document.querySelector('.bar')) return;
-    if (window.top !== window || b.getAttribute('data-beach-button') === 'off' || b.classList.contains('embed') ||
-        new URLSearchParams(location.search).get('embed') === '1') return;
-    bbSwitch();
-    if (bbOn()) bbLoad(); else if (window.beachButton) window.beachButton.hide();
+    if (window.top !== window || b.classList.contains('embed') || new URLSearchParams(location.search).get('embed') === '1') return;
+    /* a page whose corner is taken still follows the person's light or dark; it only has no button */
+    var corner = b.getAttribute('data-beach-button') !== 'off';
+    if (corner){
+      var st = document.createElement('style');
+      st.textContent = 'body:has(.sheet-back:not(.hidden),.pop-back:not(.hidden)) :is(iframe[title="beach button"],[data-beach-button-dock],[data-beach-button-edge]){z-index:29 !important}';
+      document.head.appendChild(st);
+    }
+    voice().then(function(v){
+      if (corner) bbSwitch(v);
+      v.setting('9.2').then(function(t){ if (window.siteTheme) window.siteTheme.adopt(t); });
+    }, function(){ /* the beach's voice could not be reached: no switch, and this device's own register */ });
   }
   document.addEventListener('DOMContentLoaded', beachButton);
 
@@ -1638,7 +1673,11 @@
 
     return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
                  { headers:{Accept:'application/json'}, cache:'no-store' })
-      .then(function(r){ return r.status === 404 ? null : r.json(); })
+      .then(function(r){
+        /* a read that failed is never written over: the block would be replaced by its error */
+        if (!r.ok && r.status !== 404) throw { ok:false, status:r.status };
+        return r.status === 404 ? null : r.json();
+      })
       .then(function(existing){
         var content = existing ? JSON.parse(JSON.stringify(existing)) : {};
         if (typeof content._ !== 'string' || !content._) content._ = ROOT_SAYS;
@@ -1668,7 +1707,8 @@
             return w2;
           });
         });
-      });
+      })
+      .catch(function(e){ return e && e.ok === false ? e : { ok:false, error: String((e && e.message) || e) }; });
   }
 
   /* the quiet line beneath the row — how a hand stands to the family it is in */
