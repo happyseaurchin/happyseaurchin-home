@@ -948,6 +948,11 @@
      * (David, 2026-10-10, availability.1: "an /availability o-page … a traditional
      * display with blocked calendar") */
     ['availability', 'availability', 'carry'],
+    /* the reflexive experiences this hand has had and made, first, then every premiere —
+     * a premiere's address is its design's name, so the handle rides the query (David,
+     * 2026-10-18: "it should be in the go dropdown list under the user's handle in order
+     * to navigate to the user's premieres") */
+    ['premieres',    'premiere', 'carry'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
     ['the ledger',   'ledger',   'handle']
@@ -960,7 +965,7 @@
     ['across',           'across',       'handle'],
     ['earth',            'earth',        'optional']
   ];
-  /* off until chosen — the ten that remain are what a newcomer meets */
+  /* off until chosen — the eleven that remain are what a newcomer meets */
   var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, 'https://mirror.onen.ai/':1 };
   /* a page renamed keeps the lists that named it */
   var DOOR_ALIAS = { shell:'passport', self:'passport' };
@@ -990,6 +995,9 @@
      * 2026-10-11: "probably on the 'outside' ring for now") */
     ['experience-ecology', 'experience ecology'],
     ['animations',  'animations'],
+    /* every reflexive experience, gathered from each maker's own list (David, 2026-10-18:
+     * "We definitely need a gallery of them") */
+    ['premiere',    'premieres'],
     ['dashboard',   'the beach, live'],
     /* the window as it is compiled — ribbons of what entered each call (David, 2026-10-13: "if only it were included in the go dropdown") */
     ['mindflow/flow', 'semantic flow'],
