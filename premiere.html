@@ -144,6 +144,14 @@ ul.said b{font-weight:500;margin-right:6px}
 .actions .td{margin-top:6px}
 .muted{color:var(--ink-3)}
 #afterPanel{margin-top:0}
+ul.designs{list-style:none;padding:0;margin:4px 0 0;display:grid;gap:14px}
+.design{border:1px solid var(--rule);border-radius:14px;background:var(--surface);padding:16px 18px}
+.design h2{margin:0 0 6px}
+.design h2 a{color:var(--ink);text-decoration:none}
+.design h2 a:hover{text-decoration:underline}
+.design p{margin:0 0 8px;max-width:62ch}
+.design .meta{font-family:var(--ui);font-size:14px;line-height:1.5;color:var(--ink-3);margin:0}
+.design .meta a{color:var(--link)}
 /* the site's law for a write box: its draft is kept and it takes dictation (theme.js keepDraft, dictate) */
 .dwrap{position:relative;display:block}
 .row > .dwrap{flex:1;min-width:0}
@@ -166,6 +174,10 @@ ul.said b{font-weight:500;margin-right:6px}
   <h1 id="xTitle">Opening&hellip;</h1>
   <p class="lede" id="xLede"></p>
 </header>
+
+<section id="list" hidden aria-label="The premieres">
+  <ul class="designs" id="designs"></ul>
+</section>
 
 <section id="enter" hidden aria-label="Come in">
   <p class="clockline" id="clockLine"></p>
@@ -199,7 +211,7 @@ ul.said b{font-weight:500;margin-right:6px}
 </section>
 
 <p class="colophon" id="colophon"></p>
-<p class="home"><a href="/reflexive-charts">Reflexive charts, its kin</a> · <a href="/">happyseaurchin.com</a></p>
+<p class="home"><span id="homeAll"><a href="/premiere">All the premieres</a> · </span><a href="/reflexive-charts">Reflexive charts, its kin</a> · <a href="/">happyseaurchin.com</a></p>
 </div>
 <script src="https://beach.happyseaurchin.com/button/voice.js"></script>
 <script>
@@ -343,8 +355,9 @@ const BK = window.BK; if (!BK) return;
 const $ = id => document.getElementById(id);
 const esc = BK.esc;
 const qs = new URLSearchParams(location.search);
-const NAME = (String(qs.get('x') || (location.pathname.match(/\/premiere\/([A-Za-z0-9][A-Za-z0-9-]*)/) || [])[1] || 'spot-it')
-  .toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64)) || 'spot-it';
+const GIVEN = String(qs.get('x') || (location.pathname.match(/\/premiere\/([A-Za-z0-9][A-Za-z0-9-]*)/) || [])[1] || '')
+  .toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 64);
+const NAME = GIVEN || 'spot-it';   /* with no name given, /premiere lists the designs instead (showList) */
 const FONTSTACK = '"IBM Plex Sans Condensed", "Arial Narrow", Arial, sans-serif';
 const TIMED = { flock: 1, word: 1, choose: 1 };
 const KNOWN = { card: 1, flock: 1, word: 1, choose: 1, guess: 1, room: 1 };
@@ -885,7 +898,7 @@ function reflectGuess(s, all){
   let meDot = '';
   pts.forEach(x => { const cx = X(x.tr.v).toFixed(1), cy = Y(x.g.n).toFixed(1);
     g += '<circle cx="' + cx + '" cy="' + cy + '" r="5.5" fill="var(--green)" stroke="var(--bg)" stroke-width="1.8"><title>' + esc(x.p.h) + ' guessed ' + Math.round(x.g.n) + '%; it was ' + Math.round(x.tr.v) + '%</title></circle>';
-    if (x.p.me) meDot = '<circle cx="' + cx + '" cy="' + cy + '" r="10" fill="none" stroke="var(--violet)" stroke-width="2.2"/><text x="' + (+cx + 14) + '" y="' + (+cy + 4) + '" class="lab me">you</text>'; });
+    if (x.p.me){ const right = +cx > W - 80; meDot = '<circle cx="' + cx + '" cy="' + cy + '" r="10" fill="none" stroke="var(--violet)" stroke-width="2.2"/><text x="' + (right ? +cx - 14 : +cx + 14) + '" y="' + (+cy + 4) + '" text-anchor="' + (right ? 'end' : 'start') + '" class="lab me">you</text>'; } });
   g += meDot + '</svg>';
   const mine = pts.find(x => x.p.me), meP = all.find(p => p.me);
   const meLine = mine ? 'You guessed <b>' + Math.round(mine.g.n) + '%</b>; ' + mine.tr.what + ' is <b>' + Math.round(mine.tr.v) + '%</b>, as the room stands.' : meP ? 'You didn’t guess.' : '';
@@ -1054,7 +1067,38 @@ async function startButton(){
   beginShow(mode, false);
 }
 
+/* ── no name given: the designs the form names at its 8 (function:reflexive-experience, 'the designs
+ * founded on this form so far'), each at its own address, read live; nothing about them is written here ── */
+async function showList(){
+  const intro = 'Short shows of slides you answer as they appear, each ending in the room: everyone’s answers beside your own, in their own names. Each has its own address, so a link to one opens it straight away.';
+  document.title = 'Premieres'; $('kicker').textContent = 'Reflexive experiences'; $('xTitle').textContent = 'Premieres'; $('xLede').textContent = intro;
+  $('homeAll').hidden = true;
+  let form = null, ix = null;
+  try { [form, ix] = await Promise.all([BK.read('function:reflexive-experience'), BK.index(true)]); }
+  catch(e){ $('xLede').textContent = intro + ' The beach can’t be reached just now, so they can’t be listed: try again in a moment.'; return; }
+  const names = [], branch = form && form['8'];
+  if (branch && typeof branch === 'object') for (let d = 1; d <= 9; d++){
+    const m = /^\s*([a-z0-9][a-z0-9-]*)\s*[—–]/i.exec(BK.voice(branch[String(d)]) || '');
+    if (m && names.indexOf(m[1].toLowerCase()) < 0) names.push(m[1].toLowerCase());
+  }
+  const got = (await Promise.all(names.map(n => Promise.all([BK.read('spine:' + n), BK.read('function:' + n)])
+    .then(r => r[0] ? { n, spine: r[0], op: r[1] } : null).catch(() => null)))).filter(Boolean);
+  const me = BK.savedName().replace(/\s+/g, '-');
+  $('designs').innerHTML = got.map(x => {
+    const root = BK.voice(x.spine) || '', c = root.indexOf(':'), split = c > 0 && c < 80, href = '/premiere/' + encodeURIComponent(x.n);
+    const count = ix.blocks.filter(b => b.startsWith(x.n + ':') && b.indexOf(':', x.n.length + 1) < 0).length, clock = clockOf(x.op);
+    const when = clock.kind === 'shared' ? 'a shared premiere, on ' + new Date(clock.at).toLocaleString([], { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'it starts when you do';
+    return '<li class="design"><h2><a href="' + href + '">' + esc(split ? root.slice(0, c).trim() : x.n) + '</a></h2>' +
+      '<p>' + esc(cap(split ? root.slice(c + 1) : root)) + '</p>' +
+      '<p class="meta"><a href="' + href + '">happyseaurchin.com' + esc(href) + '</a> · ' + when + ' · ' +
+      (count ? count + (count === 1 ? ' premiere' : ' premieres') + ' so far' : 'no one yet') + (me && ix.set.has(x.n + ':' + me) ? ', yours among them' : '') + '</p></li>';
+  }).join('') || '<li class="design"><p>No design is named on the beach yet.</p></li>';
+  $('list').hidden = false;
+  $('colophon').innerHTML = 'Read live from the beach: the designs the form at ' + esc('function:reflexive-experience') + ' names at its 8, each two blocks, ' + esc('spine:<name>') + ' and ' + esc('function:<name>') + ', played at its own address. ' +
+    'To make your own on the same pattern, ask Claude to read ' + esc('function:reflexive-experience') + ' on the beach, and found it with you.';
+}
 async function init(){
+  if (!GIVEN) return showList();
   let spine = null, op = null, ix = null;
   try { [spine, op, ix] = await Promise.all([BK.read('spine:' + NAME), BK.read('function:' + NAME), BK.index(true)]); }
   catch(e){ $('xTitle').textContent = 'The beach can’t be reached just now'; $('xLede').textContent = 'This experience is played from the beach, so it needs the beach to answer. Try again in a moment.'; return; }
