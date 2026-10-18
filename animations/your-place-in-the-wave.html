@@ -85,8 +85,6 @@ button:hover{border-color:var(--ink-2)}
 .rw em{font-style:normal;font-weight:400;color:var(--ink-3)}
 .rd p{margin:2px 0 0;font-size:16px;line-height:1.5}
 .mform textarea,.kp textarea{display:block;width:100%;min-height:78px;font-family:var(--display);font-size:16px;line-height:1.45;color:var(--ink);background:var(--surface);border:1px solid var(--rule-2);border-radius:8px;padding:8px 10px;resize:vertical}
-.mvia{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin-top:8px}
-.mvia:empty{display:none}
 .mrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .mrow[hidden]{display:none}
 .mrow input,.kp input[type=text]{flex:1 1 130px;min-width:0;font-family:var(--ui);font-size:16px;color:var(--ink);background:var(--surface);border:1px solid var(--rule-2);border-radius:8px;padding:6px 10px}
@@ -222,8 +220,7 @@ ul.marks span{color:var(--ink-2)}
 <label><input type="radio" name="kpb" value="decade" checked> only the decade</label>
 <label><input type="radio" name="kpb" value="year"> the year</label>
 <label><input type="radio" name="kpb" value="none"> leave it out</label></fieldset>
-<div class="mvia" id="kp-via"></div>
-<div class="mrow" id="kp-row"><input id="kp-who" placeholder="your handle" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your handle"><input id="kp-key" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key"><button type="button" class="go" id="kp-send">Put it on the beach</button></div>
+<div class="mrow" id="kp-row"><input id="kp-who" placeholder="your handle" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your handle"><button type="button" class="go" id="kp-send">Put it on the beach</button></div>
 <p class="mhint" id="kp-hint" aria-live="polite"></p>
 <p class="kp-state" id="kp-state"></p>
 </div>
@@ -300,10 +297,16 @@ const store = {
   set(k, v){ try { localStorage.setItem(k, v); } catch(e){} },
   del(k){ try { localStorage.removeItem(k); } catch(e){} }
 };
-/* the site's own device keys, so a reader who typed theirs on the portal is not asked twice */
-const keyHome = (fam, n) => 'mirror-latch:' + fam + ':' + n;
-const keptKey = (fam, n) => n ? (store.get(keyHome(fam, n)) || store.get('passport-latch:' + n) || '') : '';
-const savedName = () => clean(store.get('venture:who') || store.get('render:who') || '');
+/* THE KEY STAYS WITH THE BROWSER, as on the site's own pages (/now, /walk): kept on this device
+ * under the name /walk, /next and /hands share for a mirror, read beside the other names a key may
+ * already have here, so a reader who typed theirs on another page is not asked twice */
+const keyHome = (fam, n) => 'next-latch:' + fam + ':' + n;
+/* keel's three reflexive families are one reader's, so a key one of them keeps for a handle is tried for the others */
+const SISTERS = ['reflexive-reading', 'murmuration-motif', 'place-in-the-wave'];
+const keptKey = (fam, n) => n ? (store.get(keyHome(fam, n)) || store.get('mirror-latch:' + fam + ':' + n) ||
+  store.get('passport-latch:' + n) || store.get('now-latch:' + n) || SISTERS.map(f => store.get(keyHome(f, n))).find(Boolean) || '') : '';
+/* the name this device signs with (theme.js knownName), which a write under it sets */
+const savedName = () => clean(store.get('render:who') || store.get('venture:who') || '');
 function voice(n){ while (n && typeof n === 'object'){ if (!('_' in n)) return null; n = n._; } return typeof n === 'string' && n.trim() ? n.trim() : null; }
 function at(node, path){ let n = node; for (const d of path){ if (!n || typeof n !== 'object') return undefined; n = n[d]; } return n; }
 const dotted = p => p.length > 1 ? p[0] + '.' + p.slice(1) : p;
@@ -363,20 +366,45 @@ async function keepBox(fam, name, key, tree){
   if (await read(block)) return post({ block, content: tree, secret: key, confirm: true });
   return found(block, key, tree);
 }
+/* A WRITE UNDER THE PERSON'S OWN KEY, where no beach button is on the page: the key this device
+ * keeps, else the one they give the browser's own prompt, as /now and /walk ask for it — once, when
+ * the beach wants it. A key the beach takes is kept on this device and the handle becomes the name
+ * it signs with; a key refused is asked for again, twice at most. act(key) makes the write. */
+const refusedKey = r => !!r && (r.code === 'lock_required' || r.code === 'handle_bound' || r.status === 403);
+const KEPT = 'kept on this device — check the first letter: phones capitalise it';
+function keyQuestion(name, founding, r){
+  if (r && r.code === 'handle_bound') return name + ' has a passport on the beach, so its words go under the key that passport uses. Enter that key (' + KEPT + '):';
+  if (r) return 'That key is not the one ' + name + '’s words are kept under. Enter it again (' + KEPT + '):';
+  if (founding) return 'This puts your words on the beach as ' + name + ', locked to you.\nEnter your key — the one your passport uses, if you have one; with no passport yet, choose one (' + KEPT + '):';
+  return name + '’s words on the beach are locked — enter your key (' + KEPT + '):';
+}
+async function signed(fam, name, act){
+  const founding = !(await read(fam + ':' + name));
+  let k = keptKey(fam, name), r = null, asked = 0;
+  for (;;){
+    if (!k){
+      if (asked++ === 2) return r;
+      const v = prompt(keyQuestion(name, founding, r));
+      if (v === null || !v.trim()) return { ok:false, quiet:true };
+      k = v.trim();
+    }
+    r = await act(k);
+    if (r && r.ok){ store.set(keyHome(fam, name), k); store.set('render:who', name); return r; }
+    if (!refusedKey(r)) return r;
+    k = '';
+  }
+}
+/* THE BEACH BUTTON, WHERE IT IS ON THE PAGE, SIGNS INSTEAD: the page simply asks, the button holds
+ * the request until the person has unlocked it, and they commit it in the button's own window */
 const button = () => (window.beachButton && typeof window.beachButton.request === 'function') ? window.beachButton : null;
 const unknown = r => !!(r && /does not know/i.test(r.error || ''));
-/* the say of pscale_stream_engage, through the button; until it knows 'say', 'who' and 'write' */
+/* a button from before it held requests says it holds no one instead */
+const notUnlocked = r => !!(r && !r.ok && /not unlocked/i.test(r.error || ''));
 async function sayButton(fam, spindle, text){
-  const b = button(); if (!b) return { ok:false, error:'the beach button is not on this page' };
-  let r = await b.request({ kind:'say', field: fam, at: dotted(spindle), text });
-  if (r && r.ok) return r;
-  if (!unknown(r)) return r || { ok:false, error:'the beach button did not answer' };
-  const who = await b.request({ kind:'who' });
-  if (!who || !who.ok) return who || { ok:false, error:'the beach button did not answer' };
-  const block = fam + ':' + who.handle;
-  if (!(await read(block))) return { ok:false, found:true, handle: who.handle };
-  r = await b.request({ kind:'write', block, spindle, content: text });
-  return Object.assign({ handle: who.handle }, r || { ok:false, error:'the beach button did not answer' });
+  const b = button(); if (!b) return { ok:false, unsupported:true };
+  const r = await b.request({ kind:'say', field: fam, at: dotted(spindle), text });
+  if (unknown(r)) return { ok:false, unsupported:true };
+  return r || { ok:false, error:'the beach button did not answer' };
 }
 async function keepButton(fam, tree){
   const b = button(); if (!b) return { ok:false, unsupported:true };
@@ -392,8 +420,10 @@ async function askButton(text){
 }
 function errText(r){
   const code = r && r.code;
-  if (code === 'handle_bound') return 'That handle has a passport here with its own key. Use the key your passport uses, or choose another handle.';
-  if (code === 'lock_required' || (r && r.status === 403)) return 'That handle’s words are kept under another key. If it is yours, check the key (phones capitalise the first letter); if not, choose another handle.';
+  if (code === 'handle_bound') return 'That handle has a passport here with its own key. Try again with the key your passport uses, or choose another handle.';
+  if (code === 'lock_required' || (r && r.status === 403)) return 'That handle’s words are kept under another key. If it is yours, try again with the key you used before; if not, choose another handle.';
+  if (r && /^declined|^covered/.test(r.error || '')) return 'Not written: you let it go in the beach button.';
+  if (notUnlocked(r)) return 'Unlock the beach button first (its circle, bottom right), then try again.';
   return 'Not written: ' + ((r && r.error) || 'the beach did not answer') + '.';
 }
 /* THE SITE'S LAW FOR A WRITE BOX (happyseaurchin-home CLAUDE.md, What NOT to do 4 and 5): it keeps
@@ -455,7 +485,7 @@ function dictate(box){
   return b;
 }
 window.BK = { BEACH, SITE, esc, clean, store, keyHome, keptKey, savedName, voice, at, dotted, read, index, post, wipe, mirrors,
-  hasPage, pageUrl, nameHTML, found, sayBox, keepBox, button, sayButton, keepButton, askButton, errText, keepDraft, dictate };
+  hasPage, pageUrl, nameHTML, found, sayBox, keepBox, signed, button, notUnlocked, sayButton, keepButton, askButton, errText, keepDraft, dictate };
 })();
 </script>
 <script>
@@ -491,8 +521,8 @@ async function loadReadings(force, extra){
   READ = next;
 }
 const GLYPH = '<svg class="mg" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><ellipse cx="8" cy="6" rx="4.3" ry="5"/><path class="h" d="M8 11.1 V15.2"/><path class="gl" d="M5.8 4.3 Q6.7 2.9 8.4 2.8"/></svg>';
-const HINT_BOX = 'Your reading goes into your own mirror on the beach, in your name, and only you can change it. Use the key your passport uses; with no passport yet, invent one. Nothing to join.';
-const HINT_BUTTON = 'The beach button asks you to commit the write, and this page never sees your key.';
+const HINT_BOX = 'Signed with your handle, in your own mirror on the beach, and only you can change it. The first time, your browser asks for your key (the one your passport uses, or one you choose) and keeps it on this device.';
+const HINT_BUTTON = 'The beach button signs it: it shows you the reading where it will stand, you commit it there, and this page never sees your passphrase.';
 function paint(i){
   const m = mirs[i]; if (!m || !m.dataset.built) return;
   const list = READ[i] || [], me = BK.savedName();
@@ -508,69 +538,58 @@ function build(i){
     '<button type="button" class="mbtn" aria-expanded="false" aria-controls="mp' + i + '">' + GLYPH + '<span class="ml">mirror</span><span class="mc"></span></button>' +
     '<div class="mpanel" id="mp' + i + '" hidden><div class="mlist"></div><div class="mform">' +
       '<textarea rows="3" aria-label="your reading of this paragraph" placeholder="What does this bring back for you, or where does it miss?"></textarea>' +
-      '<div class="mvia"></div>' +
       '<div class="mrow"><input class="mwho" placeholder="your handle" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your handle">' +
-      '<input class="mkey" type="password" placeholder="your key" autocomplete="current-password" aria-label="your key">' +
       '<button type="button" class="msend go">Add my reading</button></div>' +
       '<p class="mhint" aria-live="polite"></p></div></div>';
   m.dataset.built = '1'; m.hidden = false;
   const btn = m.querySelector('.mbtn'), panel = m.querySelector('.mpanel'), ta = m.querySelector('textarea'),
-        via = m.querySelector('.mvia'), row = m.querySelector('.mrow'), who = m.querySelector('.mwho'),
-        key = m.querySelector('.mkey'), send = m.querySelector('.msend'), hint = m.querySelector('.mhint');
+        who = m.querySelector('.mwho'), send = m.querySelector('.msend'), hint = m.querySelector('.mhint');
   const clearDraft = BK.keepDraft(ta, FAM + ':' + BK.dotted(spindle)); BK.dictate(ta);
   const say = (cls, t) => { hint.className = 'mhint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
-  const keyHint = () => { const n = BK.clean(who.value); key.placeholder = n && BK.keptKey(FAM, n) ? 'key kept on this device' : 'your key'; };
-  who.addEventListener('input', keyHint);
+  /* the beach button, where it is on the page, signs the reading; with none, the handle does and the
+   * browser keeps the key, as on the site's own pages. A button that cannot say leaves it to the handle. */
+  let useBox = false;
+  const viaButton = () => !!BK.button() && !useBox;
+  const mode = () => { const b = viaButton(); who.hidden = b; say('', b ? HINT_BUTTON : HINT_BOX); };
   function open(){
     const now = panel.hidden; panel.hidden = !now; btn.setAttribute('aria-expanded', now ? 'true' : 'false');
     if (!now) return;
     if (!who.value) who.value = BK.savedName();
-    keyHint();
     const me = BK.savedName(), mine = me && (READ[i] || []).find(r => r.who === me && !r.lens);
     if (mine && !ta.value) ta.value = mine.text;
-    if (BK.button()){
-      via.innerHTML = '<button type="button" class="mbb go">Add through the beach button</button><button type="button" class="mlink">or with a handle and key</button>';
-      row.hidden = true; say('', HINT_BUTTON);
-      via.querySelector('.mlink').onclick = () => { row.hidden = false; via.innerHTML = ''; say('', HINT_BOX); who.focus(); };
-      via.querySelector('.mbb').onclick = () => submit(true);
-    } else { via.innerHTML = ''; row.hidden = false; say('', HINT_BOX); }
+    mode();
     ta.focus();
   }
   btn.addEventListener('click', open);
-  async function submit(viaButton){
+  document.addEventListener('beachbutton:ready', () => { if (!panel.hidden) mode(); });
+  async function submit(){
     const text = ta.value.trim().slice(0, 2000);
     if (!text){ say('err', 'Write your reading first.'); ta.focus(); return; }
-    const goes = m.querySelectorAll('.go'); goes.forEach(g => g.disabled = true);
-    say('', 'putting it on the beach…');
+    const viaB = viaButton();
+    let name = BK.clean(who.value);
+    if (!viaB && (!name || name.length > 32)){ say('err', 'Give your handle: up to 32 letters, digits, - or _. It is how your reading is signed.'); who.focus(); return; }
+    send.disabled = true;
+    say('', viaB ? 'In the beach button now: unlock it if it asks, then commit your reading there.' : 'putting it on the beach…');
     try {
-      let r, name;
-      if (viaButton){
+      let r;
+      if (viaB){
         r = await BK.sayButton(FAM, spindle, text);
-        if (r && r.found){
-          row.hidden = false; via.innerHTML = ''; who.value = r.handle; keyHint();
-          say('', 'Your mirror here is not founded yet, and the beach button cannot found one yet. Give your key here once to found it; after that the button can add your readings.');
-          key.focus(); return;
-        }
+        if (r && r.unsupported){ useBox = true; mode(); who.focus(); return; }
         name = r && r.handle;
+        if (r && r.ok && name) BK.store.set('render:who', name);
       } else {
-        name = BK.clean(who.value);
-        if (!name || name.length > 32){ say('err', 'Give a handle of up to 32 letters, digits, - or _. It is how your reading is signed.'); who.focus(); return; }
-        const k = key.value.trim() || BK.keptKey(FAM, name);
-        if (!k){ say('err', 'Give your key: the one your passport uses or, with no passport yet, one you invent. Phones capitalise the first letter.'); key.focus(); return; }
-        r = await BK.sayBox(FAM, name, k, spindle, text, INTRO(name));
-        if (r.ok) BK.store.set(BK.keyHome(FAM, name), k);
+        r = await BK.signed(FAM, name, k => BK.sayBox(FAM, name, k, spindle, text, INTRO(name)));
+        if (r && r.quiet){ mode(); return; }
       }
       if (!r || !r.ok){ say('err', BK.errText(r)); return; }
-      if (name) BK.store.set('venture:who', name);
-      key.value = '';
       await loadReadings(true, name); mirs.forEach((_, j) => paint(j));
-      clearDraft(); ta.value = ''; keyHint();
+      clearDraft(); ta.value = '';
       say('ok', 'It stands under this paragraph in your name. Writing again here replaces it.');
     } catch(e){ say('err', 'Couldn’t reach the beach: ' + e.message); }
-    finally { goes.forEach(g => g.disabled = false); }
+    finally { send.disabled = false; }
   }
-  send.addEventListener('click', () => submit(false));
-  ta.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(!!BK.button() && row.hidden); });
+  send.addEventListener('click', submit);
+  ta.addEventListener('keydown', e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); });
 }
 (async function(){
   try {
@@ -853,59 +872,57 @@ function keepLines(){
   $('kp-born').hidden=!born;
 }
 const kpHint=(cls,t)=>{ const h=$('kp-hint'); h.className='mhint'+(cls?' '+cls:''); h.textContent=t; };
-let takingDown=false, kpUseBox=false;
+let takingDown=false, kpUseBox=false;   /* kpUseBox: a button that cannot keep leaves it to the handle */
+const kpButton=()=>!!BK.button()&&!kpUseBox&&!takingDown;
 function kpState(){
   const name=LS.get('wave-beach-v1'), st=$('kp-state');
   if(name){ st.innerHTML='On the beach as <b>'+esc(name)+'</b>. Putting it again replaces it. <button type="button" class="mlink" id="kp-down">Take it down</button>'; $('kp-down').onclick=takeDown; }
   else st.innerHTML='';
   $('kp-send').textContent=takingDown?'Take it down':'Put it on the beach';
 }
+/* the beach button, where it is on the page, signs it; with none, the handle does and the browser keeps the key */
 function kpVia(){
-  const via=$('kp-via'), row=$('kp-row');
-  if(BK.button()&&!takingDown&&!kpUseBox){ via.innerHTML='<button type="button" class="go" id="kp-bb">Put it on the beach through the beach button</button><button type="button" class="mlink" id="kp-box">or with a handle and key</button>'; row.hidden=true;
-    $('kp-box').onclick=()=>{ kpUseBox=true; via.innerHTML=''; row.hidden=false; $('kp-who').focus(); }; $('kp-bb').onclick=()=>keep(true); }
-  else { via.innerHTML=''; row.hidden=false; }
+  $('kp-who').hidden=kpButton();
   if(!$('kp-who').value) $('kp-who').value=LS.get('wave-beach-v1')||BK.savedName();
 }
-async function keep(viaButton){
+async function keep(){
   const sendBtns=document.querySelectorAll('#kp .go'); sendBtns.forEach(b=>b.disabled=true);
   try{
     if(takingDown){ await doTakeDown(); return; }
     let r, name;
-    if(viaButton){
-      kpHint('','asking the beach button…');
+    if(kpButton()){
+      kpHint('','In the beach button now: unlock it if it asks, then commit your wave there.');
       r=await BK.keepButton(FAM,myTree(null));
-      if(r&&r.unsupported){ kpUseBox=true; $('kp-via').innerHTML=''; $('kp-row').hidden=false; kpHint('','The beach button cannot put a whole wave on the beach yet. Give your handle and key here instead.'); $('kp-who').focus(); return; }
+      if(r&&r.unsupported){ kpUseBox=true; kpVia(); kpHint('','Give your handle, and put it on the beach again.'); $('kp-who').focus(); return; }
       name=r&&r.handle;
+      if(r&&r.ok&&name) BK.store.set('render:who',name);
     } else {
       name=BK.clean($('kp-who').value);
-      if(!name||name.length>32){ kpHint('err','Give a handle of up to 32 letters, digits, - or _.'); $('kp-who').focus(); return; }
-      const k=$('kp-key').value.trim()||BK.keptKey(FAM,name);
-      if(!k){ kpHint('err','Give your key: the one your passport uses or, with no passport yet, one you invent.'); $('kp-key').focus(); return; }
+      if(!name||name.length>32){ kpHint('err','Give your handle: up to 32 letters, digits, - or _.'); $('kp-who').focus(); return; }
       kpHint('','putting it on the beach…');
-      r=await BK.keepBox(FAM,name,k,myTree(name));
-      if(r.ok) BK.store.set(BK.keyHome(FAM,name),k);
+      r=await BK.signed(FAM,name,k=>BK.keepBox(FAM,name,k,myTree(name)));
+      if(r&&r.quiet){ kpHint('',''); return; }
     }
     if(!r||!r.ok){ kpHint('err',BK.errText(r)); return; }
-    if(name){ LS.set('wave-beach-v1',name); BK.store.set('venture:who',name); }
-    $('kp-key').value=''; kpHint('ok','Your wave is on the beach. Anyone reading this page can now see it beside their own.');
+    if(name) LS.set('wave-beach-v1',name);
+    kpHint('ok','Your wave is on the beach. Anyone reading this page can now see it beside their own.');
     kpState(); await loadPeople(name);
   } catch(e){ kpHint('err','Couldn’t reach the beach: '+e.message); }
   finally{ sendBtns.forEach(b=>b.disabled=false); }
 }
+/* taking it down is a deletion, which the beach button does not make: the key this device keeps, or the browser asks */
 async function doTakeDown(){
   const name=BK.clean($('kp-who').value)||LS.get('wave-beach-v1')||'';
-  const k=$('kp-key').value.trim()||BK.keptKey(FAM,name);
-  if(!name||!k){ kpHint('err','Give the handle and key it was put up with.'); return; }
+  if(!name){ kpHint('err','Give the handle it was put up with.'); $('kp-who').focus(); return; }
   kpHint('','taking it down…');
-  const r=await BK.wipe(FAM+':'+name,k);
-  if(!r.ok){ kpHint('err',BK.errText(r)); return; }
-  LS.del('wave-beach-v1'); takingDown=false; $('kp-key').value=''; PEOPLE=PEOPLE.filter(p=>p.h!==name); drawPeople(); peopleTools();
+  const r=await BK.signed(FAM,name,k=>BK.wipe(FAM+':'+name,k));
+  if(r&&r.quiet){ kpHint('',''); return; }
+  if(!r||!r.ok){ kpHint('err',BK.errText(r)); return; }
+  LS.del('wave-beach-v1'); takingDown=false; PEOPLE=PEOPLE.filter(p=>p.h!==name); drawPeople(); peopleTools();
   kpHint('ok','Taken down. Nothing of your wave stands on the beach now.'); kpState(); kpVia(); await loadPeople();
 }
-function takeDown(){ takingDown=true; $('kp-via').innerHTML=''; $('kp-row').hidden=false; if(!$('kp-who').value) $('kp-who').value=LS.get('wave-beach-v1')||''; kpState();
-  if(BK.keptKey(FAM,$('kp-who').value)) keep(false); else { kpHint('','Give the key it was put up with, then take it down.'); $('kp-key').focus(); } }
-$('kp-send').addEventListener('click',()=>keep(false));
+function takeDown(){ takingDown=true; if(!$('kp-who').value) $('kp-who').value=LS.get('wave-beach-v1')||''; kpState(); kpVia(); keep(); }
+$('kp-send').addEventListener('click',keep);
 
 /* ---------- sharing ---------- */
 const PAL={tv:'#2a78d6',ct:'#2a78d6',pc:'#eb6834',net:'#1baf7a',mob:'#eda100',sp:'#eda100',soc:'#e87ba4',ai:'#008300'};
