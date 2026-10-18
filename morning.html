@@ -737,22 +737,28 @@ async function load(){
 
   const pool = await readBlock('pool:' + VENTURE).catch(() => null);
   POOL_VOICES = [];
-  /* slots past nine sit at two-digit paths (11, 12 …) and older ones inside the
-   * supernest wrap — a digit child with no voice of its own is a container: recurse */
-  (function slots(node){
+  /* THE SLOTS SIT AT THE FLOOR (as /walk reads them): every node at the floor's depth
+   * is a slot and every node above it a container, walked whether voiced or not. A
+   * container's own underscore is the summary of what it holds (block-conventions 3.5),
+   * never a voice, so paying the summary a room owes at 10 hides no slot. */
+  const pfloor = Math.max(1, floorOf(pool));
+  (function slots(node, depth){
     if (!node || typeof node !== 'object') return;
+    if (depth + 1 < pfloor){
+      slots(node['_'], depth + 1);
+      for (const k of childDigits(node)) slots(node[k], depth + 1);
+      return;
+    }
     for (const k of childDigits(node)){
       const s = node[k];
       const t = (typeof s === 'string' ? s : voice(s));
-      if (t){
-        const who = (s && typeof s === 'object' && typeof s['1'] === 'string') ? s['1'] : '';
-        const ts = (s && typeof s === 'object' && typeof s['3'] === 'string') ? s['3'] : '';
-        const at = (s && typeof s === 'object' && typeof s['2'] === 'string' && /^\d+$/.test(s['2'])) ? s['2'] : '';
-        if (who && who.length <= 40 && ts && Number.isFinite(Date.parse(ts))) POOL_VOICES.push({ who, t: t.trim(), ts, at });
-      } else if (s && typeof s === 'object') slots(s);
+      if (!t) continue;
+      const who = (s && typeof s === 'object' && typeof s['1'] === 'string') ? s['1'] : '';
+      const ts = (s && typeof s === 'object' && typeof s['3'] === 'string') ? s['3'] : '';
+      const at = (s && typeof s === 'object' && typeof s['2'] === 'string' && /^\d+$/.test(s['2'])) ? s['2'] : '';
+      if (who && who.length <= 40 && ts && Number.isFinite(Date.parse(ts))) POOL_VOICES.push({ who, t: t.trim(), ts, at });
     }
-    if (node['_'] && typeof node['_'] === 'object') slots(node['_']);
-  })(pool);
+  })(pool, 0);
   POOL_VOICES.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
 
   /* the marker: your own last act — the newest stamp in your mirror or your deck.
