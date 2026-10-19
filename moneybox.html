@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Moneybox — pounds by the month</title>
+<meta name="description" content="One person's pounds for one month: what came in, what came from someone, what went on to someone and what left as costs, whether it was covered, and everyone's row beside it.">
+<meta property="og:title" content="Moneybox — pounds by the month">
+<meta property="og:description" content="Four lines a month in a box only its holder writes. Everyone's row is a reading across boxes, never a pool.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* MONEYBOX — the render of the moneybox family (function:moneybox, landed 2026-10-19; this page is its 1.6).
+     spine:moneybox is the floor-10 clock and never anyone's content; moneybox:<handle> is one person's box,
+     written by them alone. Beneath a month's own zero point stand four lines — 1 in from outside, 2 from a
+     member, 3 forwarded to a member, 4 costs — each holding one entry per counterpart: {_: the sentence,
+     1: pence, 2: the counterpart, 3: the moment}. Every number is derived here and none is stored: the draw
+     D = C + F, the coverage (A + G) / D, and for everyone the boundary sums, a line placed by its counterpart
+     so a forward between two people who keep boxes cancels (function:moneybox 3.4). Mechanical: no LLM.
+     The picture is the controls: on a person's box each of the four tiles opens its line, to add or change.
+     Writes go under the holder's key as /availability makes them, the box founded at the clock's floor.
+     A box is never written at the month itself (function:moneybox 7.2). /moneybox[/<handle>][?at=<month>]. */
+  :root{ --in:#3fb98a; --fwd:#8aa2f4; --leak:#e08a4c; --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace; }
+  :root[data-theme="light"]{ --in:#14845a; --fwd:#3d5bcc; --leak:#bf5c1c; }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--abyss);color:var(--foam);font-family:var(--body);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--liquid);text-underline-offset:3px}
+  .bar{position:sticky;top:0;z-index:20;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:12px 18px;
+    font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px;cursor:pointer}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .wrap{max-width:860px;margin:0 auto;padding:24px 16px 56px}
+
+  .top{display:flex;flex-direction:column;gap:12px;padding-bottom:14px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 6px}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4.4vw,42px);line-height:1.04;margin:0;overflow-wrap:anywhere}
+  .lede{margin:8px 0 0;color:var(--vapour);max-width:62ch}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .plain,.toggle button{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 12px;background:none;color:var(--vapour);border:0;cursor:pointer}
+  .plain{border:1px solid var(--line-strong);border-radius:6px}
+  .toggle{display:inline-flex;border:1px solid var(--line-strong);border-radius:6px;overflow:hidden}
+  .toggle button+button{border-left:1px solid var(--line-strong)}
+  .toggle button[aria-pressed="true"]{background:var(--liquid);color:var(--abyss)}
+  .range{font-family:var(--display);font-weight:700;font-size:19px;min-width:9ch;text-align:center}
+  .msg{color:var(--vapour-dim);font-style:italic;margin:6px 0 10px}
+
+  /* the picture: what came in above the box, what went on below it, each line a tile */
+  .flow{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;margin:8px 0 6px}
+  .tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:14px 16px;border-radius:16px;
+    border:1px solid var(--line-strong);background:var(--card);color:var(--foam);font:inherit;min-height:96px}
+  button.tile{cursor:pointer}
+  button.tile:hover,button.tile:focus-visible{border-color:var(--liquid);outline:none}
+  .tile .nm{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
+  .tile .amt{font-family:var(--display);font-weight:800;font-size:clamp(24px,5vw,34px);line-height:1.1}
+  .tile .rd{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .tile .add{margin-top:auto;font-family:var(--mono);font-size:11px;color:var(--liquid)}
+  .tile.in .amt{color:var(--in)} .tile.fwd .amt{color:var(--fwd)} .tile.leak .amt{color:var(--leak)}
+  .tile.zero .amt{color:var(--vapour-dim)}
+  .tile.span{grid-column:1 / span 2}
+  .arrow{display:flex;justify-content:center;height:46px}
+  .arrow svg{width:40px;height:46px;overflow:visible}
+  .arrow line{stroke-linecap:round}
+  .box{grid-column:1 / span 2;border:2px solid var(--line-strong);border-radius:20px;padding:16px 18px;background:var(--deep);
+    display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 26px}
+  .box .who{flex:1 1 100%;font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
+  .box .big{display:flex;flex-direction:column}
+  .box .big span{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--vapour-dim)}
+  .box .big b{font-family:var(--display);font-weight:800;font-size:clamp(26px,5.4vw,40px);line-height:1.08}
+  .box .big b.ok{color:var(--in)} .box .big b.short{color:var(--leak)} .box .big b.over{color:var(--fwd)}
+  .box .read{flex:1 1 100%;font-family:var(--mono);font-size:12px;color:var(--vapour)}
+  .example .tile .amt,.example .box .big b{opacity:0.62}
+  .caption{margin:4px 0 0;font-style:italic;color:var(--vapour)}
+  .year{margin:10px 0 0;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+
+  /* a line opened: its entries, and the add */
+  .sheet{position:fixed;inset:0;z-index:40;background:rgba(var(--well-rgb),0.62);backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center;padding:12px}
+  .sheet .card{width:100%;max-width:520px;max-height:92vh;overflow:auto;background:var(--deep);border:1px solid var(--line-strong);border-radius:20px 20px 16px 16px;padding:18px 18px 16px}
+  .sheet h3{font-family:var(--display);font-weight:800;font-size:24px;margin:0 0 2px}
+  .sheet .sub{margin:0 0 10px;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  .ents{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:6px}
+  .ents button{width:100%;text-align:left;font:inherit;color:var(--foam);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 12px;cursor:pointer}
+  .ents button[aria-pressed="true"]{border-color:var(--liquid)}
+  .ents .sealed{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);padding:6px 2px}
+  .field{display:flex;flex-direction:column;gap:4px;margin:0 0 10px;font-family:var(--mono);font-size:12px;letter-spacing:0.06em;color:var(--vapour-dim)}
+  .field input{font:inherit;font-family:var(--body);font-size:20px;letter-spacing:0;color:var(--foam);background:var(--abyss);border:1px solid var(--line-strong);border-radius:10px;padding:10px 12px;width:100%}
+  .field input:focus{outline:none;border-color:var(--liquid)}
+  .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .go{flex:1 1 auto;min-height:56px;border:0;border-radius:14px;background:var(--liquid);color:var(--abyss);font-family:var(--display);font-weight:700;font-size:19px;cursor:pointer}
+  .go[disabled]{opacity:0.5;cursor:progress}
+  .ghost{min-height:56px;border:1px solid var(--line-strong);border-radius:14px;background:none;color:var(--vapour);font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:0 16px;cursor:pointer}
+  .err{margin:8px 0 0;font-family:var(--mono);font-size:12px;color:var(--leak)}
+
+  /* everyone's row */
+  .everyone{margin-top:26px;border-top:1px solid var(--line);padding-top:16px}
+  .everyone h2,.how h2{font-family:var(--display);font-weight:800;font-size:22px;margin:0 0 8px}
+  .rows{list-style:none;margin:0;padding:0}
+  .rows li{display:grid;grid-template-columns:minmax(0,1.4fr) repeat(2,minmax(0,1fr)) minmax(0,1.3fr);gap:8px;align-items:baseline;padding:8px 0;border-bottom:1px solid var(--line)}
+  .rows li.head{font-family:var(--mono);font-size:11px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim);padding-top:0}
+  .rows li.all{font-weight:600;border-bottom:0}
+  .rows .n{overflow-wrap:anywhere} .rows .v{font-family:var(--mono);font-size:13px}
+  .rows .s.ok{color:var(--in)} .rows .s.short{color:var(--leak)} .rows .s.over{color:var(--fwd)}
+  .notes{margin:10px 0 0;padding:0;list-style:none;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  .notes li{margin:4px 0}
+  .open{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 0}
+  .open input{font:inherit;font-size:17px;color:var(--foam);background:var(--abyss);border:1px solid var(--line-strong);border-radius:10px;padding:9px 12px;min-width:0;flex:1 1 180px}
+  .open button{min-height:44px}
+
+  .how{margin-top:26px;border-top:1px solid var(--line);padding-top:16px;color:var(--vapour)}
+  .how p{margin:0 0 10px;max-width:66ch}
+  .how b{color:var(--foam)}
+  .foot{margin-top:18px;display:flex;flex-wrap:wrap;gap:14px;font-family:var(--mono);font-size:12px}
+
+  /* the HUD: the picture, the people's own words and the buttons; every other word under 'show words' */
+  .hud .w{display:none!important}
+  @media (max-width:520px){
+    .tile{padding:12px;min-height:86px}
+    .rows li{grid-template-columns:minmax(0,1.2fr) repeat(2,minmax(0,1fr));}
+    .rows li .s{grid-column:1 / -1;font-size:13px}
+  }
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.remove('no-js');
+/* THE HUD, unless this device has asked for the words: the picture and the buttons, as the ring keeps its ring */
+try { if (localStorage.getItem('moneybox:words') !== '1') document.documentElement.classList.add('hud'); } catch(e){ document.documentElement.classList.add('hud'); }</script>
+<div class="bar">
+  <span class="dot"></span>
+  <span class="title"><b>moneybox</b><span class="sub"> · pounds by the month</span></span>
+  <span class="spacer"></span>
+  <button id="btn-words" title="Every word of the moneybox: what the four lines are, how the numbers are made, the two readings and how it lives on the beach. This device remembers the choice">show words</button>
+  <button id="btn-theme" title="light or dark">◐</button>
+</div>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <p class="eyebrow w">Pounds by the month</p>
+      <h1 id="title">Moneybox</h1>
+      <p class="lede w">One person’s pounds for one month, in a box only they write: what came in from outside, what came from someone, what went on to someone, and what left as costs. Every number is read off those four, for one box or for everyone, and nothing is stored.</p>
+    </div>
+    <div class="controls">
+      <button type="button" class="plain" id="prev" aria-label="The month before">‹</button>
+      <span class="range" id="month"></span>
+      <button type="button" class="plain" id="next" aria-label="The month after">›</button>
+      <div class="toggle" role="group" aria-label="The reading" id="reading">
+        <button type="button" id="r-balance" aria-pressed="true">balance · £</button>
+        <button type="button" id="r-limit" aria-pressed="false">limit · credits</button>
+      </div>
+    </div>
+  </header>
+  <p class="msg" id="msg">reading the beach…</p>
+  <section id="stage" aria-live="polite" hidden>
+    <div class="flow" id="flow"></div>
+    <p class="caption" id="caption" hidden></p>
+    <p class="year" id="year" hidden></p>
+  </section>
+  <section class="everyone" id="everyone" aria-label="Everyone" hidden></section>
+  <section class="how w" id="how" aria-label="How the moneybox works"></section>
+  <nav class="foot w" id="foot" aria-label="Where this comes from"></nav>
+</div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-t" hidden>
+  <div class="card">
+    <h3 id="sh-t"></h3>
+    <p class="sub" id="sh-sub"></p>
+    <ul class="ents" id="sh-list"></ul>
+    <form id="sh-form" autocomplete="off">
+      <label class="field">how much, in pounds<input id="f-amt" inputmode="decimal" placeholder="£500" required></label>
+      <label class="field"><span id="l-who">who</span><input id="f-who" list="hands" required></label>
+      <label class="field">for what (optional)<input id="f-words" maxlength="160"></label>
+      <datalist id="hands"></datalist>
+      <div class="row">
+        <button type="submit" class="go" id="sh-go">add</button>
+        <button type="button" class="ghost" id="sh-take" hidden>take it back</button>
+        <button type="button" class="ghost" id="sh-x">close</button>
+      </div>
+      <p class="err" id="sh-err" hidden></p>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+const RENDER = 'https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=';
+const FIELD = 'moneybox';
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const clean = s => String(s || '').trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+const PATH = location.pathname.match(/^\/moneybox\/([^\/?#]+)/) || [];
+const HANDLE = clean(decodeURIComponent(PATH[1] || '') || Q.get('h') || '') || null;
+const ME = (() => { try { return clean(localStorage.getItem('render:who') || ''); } catch(e){ return ''; } })();
+const MO = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DIGITS = ['1','2','3','4','5','6','7','8','9'];
+
+/* ---------- the clock ---------- */
+/* a month on the canonical clock: the year's four digits, its season, the month in the season, four zeros
+   (pscale://sundial) — October 2026 is 2026410000 */
+const addrOf = at => String(at.y).padStart(4, '0') + (Math.floor(at.m0 / 3) + 1) + (at.m0 % 3 + 1) + '0000';
+function monthOf(a){
+  const m = /^(\d{4})([1-4])([1-3])0000$/.exec(a || '');
+  return m ? { y: +m[1], m0: (+m[2] - 1) * 3 + (+m[3] - 1) } : null;
+}
+const today = new Date();
+const S = {
+  at: monthOf(Q.get('at')) || { y: today.getUTCFullYear(), m0: today.getUTCMonth() },
+  reading: 'balance', boxes: {}, names: {}, open: null
+};
+try { const r = localStorage.getItem('moneybox:reading'); if (r === 'balance' || r === 'limit') S.reading = r; } catch(e){}
+
+/* ---------- reading a box ---------- */
+/* each digit a step down, a 0 the underscore — the clock's own zero-slot */
+function walk(node, digits){
+  for (const d of digits){ if (!node || typeof node !== 'object') return undefined; node = node[d === '0' ? '_' : d]; }
+  return node;
+}
+/* the four lines stand beneath the month's own zero point: 2026410000.3 walks the month, its underscore four
+   times, then 3, clear of the month's digits, which are its weeks */
+function linesOf(box, at){
+  const z = walk(walk(box, addrOf(at).slice(0, 6)), '0000');
+  return z && typeof z === 'object' ? z : null;
+}
+/* a line's entries, one per counterpart: an entry sealed gray is counted as sealed and never summed */
+function entriesOf(line){
+  if (!line || typeof line !== 'object') return [];
+  return DIGITS.filter(d => line[d] && typeof line[d] === 'object').map(d => {
+    const e = line[d], sealed = !!(e['9'] && typeof e['9'] === 'object' && e['9']._ === 'gray');
+    let p = e['1']; if (typeof p === 'string' && /^\s*\d+\s*$/.test(p)) p = +p;
+    return { d, node: e, sealed,
+      pence: !sealed && Number.isInteger(p) && p >= 0 ? p : null,
+      cp: sealed ? '' : String(e['2'] == null ? '' : e['2']).trim(),
+      said: sealed ? '' : String(typeof e._ === 'string' ? e._ : '').trim() };
+  });
+}
+function sumsOf(box, at){
+  const L = linesOf(box, at), s = { 1: 0, 2: 0, 3: 0, 4: 0, sealed: 0, lines: {} };
+  for (const k of [1, 2, 3, 4]){
+    const es = entriesOf(L && L[k]); s.lines[k] = es;
+    for (const e of es){ if (e.pence == null) s.sealed++; else s[k] += e.pence; }
+  }
+  s.any = [1, 2, 3, 4].some(k => s.lines[k].length);
+  return s;
+}
+/* the numbers, derived and never written (function:moneybox 3) */
+function numbersOf(A, G, F, C){
+  const D = C + F, R = A + G;
+  return { A, G, F, C, D, R, kappa: D ? R / D : null, lambda: R ? C / R : null, balance: R - F - C, limit: R - F };
+}
+
+/* ---------- everyone: a reading across boxes, never a pool ---------- */
+/* a line is placed by its counterpart (3.4): a line naming someone who keeps a box is a pound passed between
+   people and cancels; a line naming anyone else crosses the boundary. A forward pairs with its receipt by
+   who, whom and how much (6.2); what does not pair is shown, never ruled */
+function fold(at){
+  const hs = Object.keys(S.boxes).filter(h => S.boxes[h]);
+  const inside = cp => !!cp && hs.indexOf(cp.toLowerCase()) >= 0;
+  const out = { rows: [], In: 0, Out: 0, between: 0, sealed: 0, waiting: [], unwritten: [], read: hs.length };
+  const gave = [], got = [];
+  for (const h of hs.sort()){
+    const s = sumsOf(S.boxes[h], at);
+    if (!s.any) continue;
+    out.rows.push({ h: S.names[h] || h, n: numbersOf(s[1], s[2], s[3], s[4]) });
+    out.sealed += s.sealed;
+    for (const k of [1, 2]) for (const e of s.lines[k]) if (e.pence != null){
+      if (inside(e.cp)) got.push({ from: e.cp.toLowerCase(), to: h, p: e.pence }); else out.In += e.pence;
+    }
+    for (const k of [3, 4]) for (const e of s.lines[k]) if (e.pence != null){
+      if (inside(e.cp)){ gave.push({ from: h, to: e.cp.toLowerCase(), p: e.pence }); out.between += e.pence; } else out.Out += e.pence;
+    }
+  }
+  const left = got.slice();
+  for (const g of gave){
+    const i = left.findIndex(x => x.from === g.from && x.to === g.to && x.p === g.p);
+    if (i >= 0) left.splice(i, 1); else out.waiting.push(g);
+  }
+  out.unwritten = left;
+  out.n = numbersOf(out.In, 0, 0, out.Out);
+  return out;
+}
+
+/* ---------- words for the pounds ---------- */
+const pounds = p => (p < 0 ? '−' : '') + '£' + (Math.abs(p) / 100).toLocaleString('en-GB', { minimumFractionDigits: Math.abs(p) % 100 ? 2 : 0, maximumFractionDigits: 2 });
+const credits = p => (p < 0 ? '−' : '') + (Math.abs(p) * 10).toLocaleString('en-GB');
+const fmt = p => S.reading === 'limit' ? credits(p) : pounds(p);
+const unit = () => S.reading === 'limit' ? ' credits' : '';
+const PLAIN = { 1: 'came in', 2: 'from someone', 3: 'to someone', 4: 'costs' };
+const READ = { balance: { 1: 'income', 2: 'income from others', 3: 'spending on people', 4: 'expenses' },
+               limit:   { 1: 'investment credit', 2: 'reward credit', 3: 'shared credit', 4: 'credit usage' } };
+const WHO = { 1: 'from where — a source', 2: 'from whom — their handle', 3: 'to whom — their handle', 4: 'on what — the kind' };
+const HINT = { 1: 'teaching, a backer, a ticket', 2: 'happyseaurchin', 3: 'happyhedgehog', 4: 'Claude, servers, rent' };
+/* the line's own word, written once when the line is born (function:moneybox 2) */
+const WORD = { 1: 'IN — pounds that came in from outside, through me',
+               2: 'RECEIVED — pounds forwarded to me by a member',
+               3: 'FORWARDED — pounds I forwarded to a member, with what',
+               4: 'COSTS — pounds that left to the pound economy' };
+function sentence(k, p, cp, words){
+  const a = pounds(p);
+  const head = k === 1 ? a + ' in' + (cp ? ' from ' + cp : '') : k === 2 ? a + ' from ' + cp : k === 3 ? a + ' to ' + cp : a + (cp ? ' on ' + cp : ' of costs');
+  return words ? head + ' — ' + words : head;
+}
+const wordsOf = said => { const i = said.indexOf(' — '); return i >= 0 ? said.slice(i + 3) : ''; };
+function standing(n){
+  if (!n.D && !n.R) return { t: 'nothing yet', c: '' };
+  if (!n.D) return { t: fmt(n.R) + unit() + ' not yet directed', c: 'over' };
+  if (n.kappa >= 0.995 && n.kappa <= 1.005) return { t: 'covered', c: 'ok' };
+  if (n.kappa > 1) return { t: fmt(n.R - n.D) + unit() + ' not yet directed', c: 'over' };
+  return { t: 'short ' + fmt(n.D - n.R) + unit(), c: 'short' };
+}
+
+/* the example, the law's own (function:moneybox 3.5) — shown until a box has a line of its own */
+const EXAMPLE = numbersOf(100000, 0, 50000, 50000);
+
+/* ---------- drawing ---------- */
+const arrow = (cls, p, max) => {
+  const w = p > 0 ? 3 + 11 * Math.sqrt(p / Math.max(1, max)) : 2;
+  return '<div class="arrow ' + cls + '" aria-hidden="true"><svg viewBox="0 0 40 46"><line x1="20" y1="2" x2="20" y2="' + (40 - w / 2) + '" stroke="var(--' + cls + ')" stroke-width="' + w.toFixed(1) + '"' + (p > 0 ? '' : ' stroke-dasharray="3 5" opacity="0.5"') + '/>' +
+    '<polygon points="' + (20 - w / 2 - 6) + ',' + (38 - w / 2) + ' ' + (20 + w / 2 + 6) + ',' + (38 - w / 2) + ' 20,45" fill="var(--' + cls + ')"' + (p > 0 ? '' : ' opacity="0.5"') + '/></svg></div>';
+};
+function tile(k, p, cls, tap, extra){
+  const inner = '<span class="nm">' + esc(extra && extra.nm || PLAIN[k]) + '</span><span class="amt">' + fmt(p) + '</span>' +
+    '<span class="rd w">' + esc(extra && extra.rd || READ[S.reading][k]) + (S.reading === 'limit' ? ' · credits' : '') + '</span>' +
+    (tap ? '<span class="add">' + (extra && extra.count ? extra.count + ' · tap to add or change' : 'tap to add') + '</span>' : '');
+  const c = 'tile ' + cls + (p ? '' : ' zero') + (extra && extra.span ? ' span' : '');
+  return tap ? '<button type="button" class="' + c + '" data-line="' + k + '" aria-label="' + esc(PLAIN[k]) + ': ' + esc(fmt(p)) + ' — open this line">' + inner + '</button>'
+             : '<div class="' + c + '">' + inner + '</div>';
+}
+function boxFace(who, n){
+  const st = standing(n);
+  const read = S.reading === 'limit'
+    ? 'limit ' + credits(n.limit) + ' credits · ' + credits(n.balance) + ' available'
+    : pounds(n.balance) + ' left to spend';
+  return '<div class="box"><span class="who">' + esc(who) + '</span>' +
+    '<span class="big"><span>needed</span><b>' + fmt(n.D) + '<small class="w">' + unit() + '</small></b></span>' +
+    '<span class="big"><span>' + (n.D ? 'coverage ' + n.kappa.toFixed(2) : 'coverage') + '</span><b class="' + st.c + '">' + esc(st.t) + '</b></span>' +
+    '<span class="read">' + esc(read) + (n.lambda != null ? '<span class="w"> · of what reached ' + (who.indexOf('everyone') === 0 ? 'everyone' : 'them') + ', ' + Math.round(n.lambda * 100) + '% left as costs</span>' : '') + '</span></div>';
+}
+function drawBox(who, n, opt){
+  const max = Math.max(n.A, n.G, n.F, n.C);
+  const tap = !!(opt && opt.tap), c = opt && opt.counts || {};
+  const t = k => ({ count: c[k] ? c[k] + (c[k] === 1 ? ' entry' : ' entries') : '' });
+  return tile(1, n.A, 'in', tap, t(1)) + tile(2, n.G, 'in', tap, t(2)) +
+    arrow('in', n.A, max) + arrow('in', n.G, max) +
+    boxFace(who, n) +
+    arrow('fwd', n.F, max) + arrow('leak', n.C, max) +
+    tile(3, n.F, 'fwd', tap, t(3)) + tile(4, n.C, 'leak', tap, t(4));
+}
+function drawEveryone(f, label){
+  const n = f.n, max = Math.max(n.A, n.C, f.between);
+  return tile(1, n.A, 'in', false, { nm: 'came in from outside', rd: 'from anyone who keeps no box here' }) +
+    tile(2, f.between, 'fwd', false, { nm: 'passed between people', rd: 'cancels inside: one pound, two boxes' }) +
+    arrow('in', n.A, max) + '<div class="arrow" aria-hidden="true"></div>' +
+    boxFace(label, n) +
+    arrow('leak', n.C, max) + '<div class="arrow" aria-hidden="true"></div>' +
+    tile(4, n.C, 'leak', false, { nm: 'left to the world', rd: 'costs, and pounds passed to anyone without a box', span: true });
+}
+const MONTH = () => MO[S.at.m0] + ' ' + S.at.y;
+function draw(){
+  $('month').textContent = MONTH();
+  $('r-balance').setAttribute('aria-pressed', String(S.reading === 'balance'));
+  $('r-limit').setAttribute('aria-pressed', String(S.reading === 'limit'));
+  const flow = $('flow'), cap = $('caption'), year = $('year');
+  cap.hidden = true; year.hidden = true; flow.classList.remove('example');
+  if (HANDLE){
+    const box = S.boxes[HANDLE.toLowerCase()];
+    $('title').textContent = (S.names[HANDLE.toLowerCase()] || HANDLE) + '’s moneybox';
+    if (!box){
+      flow.classList.add('example');
+      flow.innerHTML = drawBox('an example · ' + MONTH(), EXAMPLE, { tap: true });
+      cap.hidden = false;
+      cap.textContent = HANDLE + ' keeps no box yet, so this is an example: David’s October as he put it. £1,000 came in, £500 went on to Julie for her month on the beach, and £500 went on costs, so all that was needed was covered. Tap a line to start your own — the first one founds your box.';
+    } else {
+      const s = sumsOf(box, S.at), n = numbersOf(s[1], s[2], s[3], s[4]);
+      const counts = {}; [1, 2, 3, 4].forEach(k => counts[k] = s.lines[k].length);
+      flow.innerHTML = drawBox((S.names[HANDLE.toLowerCase()] || HANDLE) + ' · ' + MONTH(), n, { tap: true, counts });
+      if (!s.any){ cap.hidden = false; cap.textContent = 'Nothing is written for ' + MONTH() + ' yet. Tap a line to add one.'; }
+      else if (s.sealed){ cap.hidden = false; cap.textContent = s.sealed + (s.sealed === 1 ? ' line is' : ' lines are') + ' sealed, and counted nowhere here.'; }
+      let A = 0, G = 0, F = 0, C = 0;
+      for (let m0 = 0; m0 < 12; m0++){ const y = sumsOf(box, { y: S.at.y, m0 }); A += y[1]; G += y[2]; F += y[3]; C += y[4]; }
+      const yn = numbersOf(A, G, F, C);
+      if (yn.D || yn.R){ year.hidden = false; year.textContent = S.at.y + ' so far: ' + fmt(yn.R) + unit() + ' reached ' + (S.names[HANDLE.toLowerCase()] || HANDLE) + ', ' + fmt(yn.D) + unit() + ' was needed — ' + standing(yn).t + '.'; }
+    }
+  } else {
+    $('title').textContent = 'Moneybox';
+    const f = fold(S.at);
+    if (!f.rows.length){
+      flow.classList.add('example');
+      flow.innerHTML = drawBox('an example · ' + MONTH(), EXAMPLE, {});
+      cap.hidden = false;
+      cap.textContent = 'An example: David’s October as he put it. £1,000 came in, £500 went on to Julie for her month on the beach, and £500 went on costs, so all that was needed was covered. Open your own box below.';
+    } else flow.innerHTML = drawEveryone(f, 'everyone · ' + MONTH());
+  }
+  drawEveryoneRow();
+  $('msg').hidden = true; $('stage').hidden = false;
+}
+function drawEveryoneRow(){
+  const f = fold(S.at), box = $('everyone');
+  let h = '<h2>Everyone, ' + esc(MONTH()) + '</h2>';
+  if (!f.rows.length) h += '<p class="msg">Nobody has written a box for ' + esc(MONTH()) + ' yet.</p>';
+  else {
+    h += '<ul class="rows"><li class="head"><span>who</span><span>reached</span><span>needed</span><span>standing</span></li>' +
+      f.rows.map(r => { const st = standing(r.n); return '<li><span class="n"><a href="/moneybox/' + encodeURIComponent(r.h) + '?at=' + addrOf(S.at) + '">' + esc(r.h) + '</a></span><span class="v">' + fmt(r.n.R) + '</span><span class="v">' + fmt(r.n.D) + '</span><span class="s ' + st.c + '">' + esc(st.t) + '</span></li>'; }).join('') +
+      (function(){ const st = standing(f.n); return '<li class="all"><span class="n">everyone</span><span class="v">' + fmt(f.n.R) + '</span><span class="v">' + fmt(f.n.D) + '</span><span class="s ' + st.c + '">' + esc(st.t) + '</span></li>'; })() +
+      '</ul>';
+    const notes = [];
+    if (f.between) notes.push(fmt(f.between) + unit() + ' passed between people, and cancels: what came in from outside and what left to the world are all that remain.');
+    f.waiting.forEach(g => notes.push(pounds(g.p) + ' from ' + (S.names[g.from] || g.from) + ' to ' + (S.names[g.to] || g.to) + ' stands as a gift: ' + (S.names[g.to] || g.to) + ' has not written it yet.'));
+    f.unwritten.forEach(g => notes.push(pounds(g.p) + ' to ' + (S.names[g.to] || g.to) + ' from ' + (S.names[g.from] || g.from) + ' is written by ' + (S.names[g.to] || g.to) + ' alone: ' + (S.names[g.from] || g.from) + ' has not written it.'));
+    if (f.sealed) notes.push(f.sealed + (f.sealed === 1 ? ' sealed line' : ' sealed lines') + ' not counted.');
+    notes.push('Read ' + f.read + (f.read === 1 ? ' box' : ' boxes') + ' on the beach for ' + MONTH() + '.');
+    h += '<ul class="notes">' + notes.map((t, i) => '<li' + (i === notes.length - 1 ? ' class="w"' : '') + '>' + esc(t) + '</li>').join('') + '</ul>';
+  }
+  if (!HANDLE) h += '<form class="open" id="open"><input id="open-h" placeholder="your handle" value="' + esc(ME) + '" aria-label="Your handle"><button type="submit" class="plain">open my box</button></form>';
+  else h += '<p class="open"><a href="/moneybox?at=' + addrOf(S.at) + '">everyone, as one box</a></p>';
+  box.innerHTML = h; box.hidden = false;
+  const o = $('open');
+  if (o) o.addEventListener('submit', ev => { ev.preventDefault(); const v = clean($('open-h').value); if (v) location.href = '/moneybox/' + encodeURIComponent(v) + '?at=' + addrOf(S.at); });
+}
+
+/* ---------- a line opened ---------- */
+function openLine(k){
+  S.open = { k, d: null };
+  const box = HANDLE && S.boxes[HANDLE.toLowerCase()];
+  const es = box ? entriesOf((linesOf(box, S.at) || {})[k]) : [];
+  $('sh-t').textContent = PLAIN[k];
+  $('sh-sub').textContent = (S.names[(HANDLE || '').toLowerCase()] || HANDLE) + ' · ' + MONTH() + ' · ' + READ[S.reading][k];
+  $('l-who').textContent = WHO[k];
+  $('f-who').placeholder = HINT[k];
+  $('f-who').setAttribute('list', k === 2 || k === 3 ? 'hands' : '');
+  $('hands').innerHTML = Object.keys(S.boxes).filter(h => S.boxes[h] && h !== (HANDLE || '').toLowerCase()).map(h => '<option value="' + esc(S.names[h] || h) + '">').join('');
+  $('sh-list').innerHTML = es.map(e => e.sealed ? '<li class="sealed">a sealed line, readable only with its key</li>'
+    : '<li><button type="button" data-d="' + e.d + '" aria-pressed="false">' + esc(e.said || (pounds(e.pence || 0) + ' · ' + e.cp)) + '</button></li>').join('');
+  setForm(null);
+  $('sheet').hidden = false;
+  setTimeout(() => $('f-amt').focus(), 30);
+}
+function setForm(e){
+  S.open.d = e ? e.d : null;
+  $('f-amt').value = e && e.pence != null ? String(e.pence / 100) : '';
+  $('f-who').value = e ? e.cp : '';
+  $('f-words').value = e ? wordsOf(e.said) : '';
+  $('sh-go').textContent = e ? 'save the change' : 'add';
+  $('sh-take').hidden = !e;
+  $('sh-err').hidden = true;
+  document.querySelectorAll('#sh-list button').forEach(b => b.setAttribute('aria-pressed', String(!!e && b.dataset.d === e.d)));
+}
+function closeLine(){ $('sheet').hidden = true; S.open = null; }
+function fail(t){ const n = $('sh-err'); n.textContent = t; n.hidden = false; }
+function pence(v){
+  const t = String(v || '').replace(/[£,\s]/g, '');
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return null;
+  const p = Math.round(parseFloat(t) * 100);
+  return p > 0 && p < 1e11 ? p : null;
+}
+
+/* ---------- writing, under the holder's own key ---------- */
+async function readBlock(name){
+  const r = await fetch(ORIGIN + '?block=' + encodeURIComponent(name), { headers: { Accept: 'application/json' }, cache: 'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error('the beach answered ' + r.status);
+  return r.json();
+}
+async function post(body){
+  const r = await fetch(ORIGIN, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+  let d = null; try { d = await r.json(); } catch(e){}
+  return { ok: r.ok && !(d && d.error), status: r.status, data: d };
+}
+function keyFor(name){ try { return localStorage.getItem('mirror-latch:' + FIELD + ':' + name) || localStorage.getItem('passport-latch:' + name) || ''; } catch(e){ return ''; } }
+function remember(name, secret){ try { localStorage.setItem('mirror-latch:' + FIELD + ':' + name, secret); localStorage.setItem('render:who', name); } catch(e){} }
+const KEPT = ' (kept on this device; check the first letter — phones capitalise it):';
+const askKey = text => { const v = prompt(text); return v && v.trim() ? v.trim() : ''; };
+const refused = w => !w.ok && (w.status === 403 || !!(w.data && (w.data.code === 'lock_required' || w.data.code === 'handle_bound')));
+/* a write under the holder's key, as /availability and /now make it: the key this device keeps, else asked
+   for; asked once more when refused; kept once a write lands. null when no key was given — nothing is written */
+async function keyed(block, founds, write){
+  let secret = keyFor(HANDLE);
+  const asked = !secret;
+  if (asked) secret = askKey(founds ? founds + ', locked to you.\nEnter your key — the one your passport uses, if you have one' + KEPT : block + ' is latched — enter your key' + KEPT);
+  if (!secret) return null;
+  let w = await write(secret);
+  if (refused(w)){
+    secret = askKey(w.data && w.data.code === 'handle_bound' ? 'The beach binds ' + block + ' to ' + HANDLE + '’s passport key — enter that key' + KEPT
+      : block + ' is latched, and the key ' + (asked ? 'given' : 'this device kept') + ' was refused — enter your key' + KEPT);
+    if (!secret) return null;
+    w = await write(secret);
+  }
+  if (w.ok) remember(HANDLE, secret);
+  return w;
+}
+/* a box is born at the clock's floor, its first line ten underscores deep, as every mirror of a family on the
+   clock is (spine:moneybox stands at floor 10), and locked to its holder; where they keep a passport the beach
+   takes no other key for their name, so the founding is made again proving it */
+const BORN = h => 'MIRROR — ' + h + '’s moneybox (spine:moneybox; the law at function:moneybox): pounds by the month at the clock’s own addresses, four lines beneath each month — 1 in from outside, 2 from a member, 3 forwarded to a member, 4 costs. Sovereign to its holder; nobody else writes here.';
+async function found(block, secret){
+  let root = BORN(HANDLE); for (let i = 0; i < 10; i++) root = { _: root };
+  let w = await post({ block, content: root, new_lock: secret });
+  if (!w.ok && w.data && w.data.code === 'handle_bound') w = await post({ block, content: root, secret, new_lock: secret });
+  return w;
+}
+/* the write a line takes (function:moneybox 7.2): its first entry writes the line whole; a new counterpart takes
+   the next free slot beneath it; a further sum to someone already named is added into their entry; a change
+   rewrites one entry; taking back rewrites the line without it. Never a write at the month itself. */
+function plan(k, p, cp, words, d, take){
+  const M = addrOf(S.at), box = S.boxes[HANDLE.toLowerCase()];
+  const L = box ? linesOf(box, S.at) : null, ln = L && L[k];
+  const es = entriesOf(ln), stamp = new Date().toISOString();
+  if (take){
+    const copy = JSON.parse(JSON.stringify(ln)); delete copy[d];
+    return { spindle: M + '.' + k, content: copy };
+  }
+  if (d){
+    const e = es.find(x => x.d === d);
+    return { spindle: M + '.' + k + d, content: Object.assign({}, e.node, { _: sentence(k, p, cp, words), 1: p, 2: cp, 3: stamp }) };
+  }
+  const same = es.find(e => !e.sealed && e.cp.toLowerCase() === cp.toLowerCase());
+  if (same){
+    const was = wordsOf(same.said), total = same.pence + p;
+    const both = was && words && was !== words ? was + '; ' + words : (words || was);
+    return { spindle: M + '.' + k + same.d, content: Object.assign({}, same.node, { _: sentence(k, total, same.cp, both), 1: total, 3: stamp }), into: same.cp };
+  }
+  const entry = { _: sentence(k, p, cp, words), 1: p, 2: cp, 3: stamp };
+  if (!ln || typeof ln !== 'object') return { spindle: M + '.' + k, content: { _: typeof ln === 'string' && ln.trim() ? ln : WORD[k], 1: entry } };
+  const free = DIGITS.find(x => !(x in ln));
+  if (!free) return { error: 'This line already names nine this month — add into one of them, or write a coarser line (several, with the sum).' };
+  return { spindle: M + '.' + k + free, content: entry };
+}
+async function commit(take){
+  const o = S.open; if (!o || !HANDLE) return;
+  const k = o.k;
+  let p = null, cp = '', words = '';
+  if (!take){
+    p = pence($('f-amt').value);
+    if (p == null) return fail('Write how much in pounds, as 500 or 12.50.');
+    cp = k === 2 || k === 3 ? clean($('f-who').value) : String($('f-who').value || '').trim().replace(/\s+/g, ' ').slice(0, 60);
+    if (!cp) return fail(k === 2 || k === 3 ? 'Name the person by their handle.' : 'Say where it came from or what it went on.');
+    words = String($('f-words').value || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+  }
+  const pl = plan(k, p, cp, words, o.d, take);
+  if (pl.error) return fail(pl.error);
+  const block = FIELD + ':' + HANDLE, exists = !!S.boxes[HANDLE.toLowerCase()];
+  $('sh-go').disabled = true;
+  try {
+    const w = await keyed(block, exists ? '' : 'Your first line founds ' + block, async secret => {
+      if (!exists){
+        const b = await found(block, secret);
+        if (!b.ok && !(b.data && b.data.code === 'confirm_required')) return b;
+      }
+      return post({ block, spindle: pl.spindle, content: pl.content, secret });
+    });
+    if (!w) return fail('Nothing written — no key was given.');
+    if (!w.ok) return fail('The beach refused it (' + w.status + ')' + (w.data && w.data.error ? ' — ' + w.data.error : '') + '.');
+    S.boxes[HANDLE.toLowerCase()] = await readBlock(block);
+    S.names[HANDLE.toLowerCase()] = S.names[HANDLE.toLowerCase()] || HANDLE;
+    closeLine(); draw();
+  } catch(e){ fail('The beach could not be reached: ' + (e && e.message || e)); }
+  finally { $('sh-go').disabled = false; }
+}
+
+/* ---------- the words ---------- */
+function drawHow(){
+  $('how').innerHTML = '<h2>How it works</h2>' +
+    '<p><b>Four lines a month.</b> What came in from outside through you — an invoice paid, a ticket bought, a backer’s transfer, a stipend. What came from someone who keeps a box. What you passed on to someone, with what. And what left as costs — Claude, servers, food, rent — one sum or several, as you like.</p>' +
+    '<p><b>Two numbers.</b> What you needed: your costs and what you passed on. And whether what reached you covered it. Coverage 1.00 sustains the month; above it, pounds are not yet directed; below it, the month spent what an earlier one brought, and the year beneath the picture shows which.</p>' +
+    '<p><b>Everyone is a reading, never a pool.</b> A pound passed from one box to another is one pound written twice, once by each of you, so between people it cancels. Only what came in from outside and what left to the world remain, and growth is a new box whose costs are covered.</p>' +
+    '<p><b>Two readings of the same pounds.</b> Balance subtracts what you used from what you had: what is left to spend. Limit, in Onen’s credits (£1 is 1,000), is what you were entrusted to direct, and what is not yet directed. The pounds are the same; the reading changes what you do next.</p>' +
+    '<p><b>Writing it.</b> On your own box, tap a line: say how much, who or what, and for what if you like. The first time, the browser asks for your key, and this device keeps it. A second sum to the same person this month is added into theirs; a line names nine people a month. Or tell your own AI, with the beach connector — “in my moneybox, £500 to happyhedgehog for her October” — and the law on the beach tells it how.</p>' +
+    '<p><b>Public, at the grain you choose.</b> A box holds amounts, handles and sentences, never account numbers. One sum for your costs is enough.</p>';
+  $('foot').innerHTML = '<a href="' + RENDER + 'function:moneybox">the law · function:moneybox</a>' +
+    '<a href="' + RENDER + 'spine:moneybox">the months · spine:moneybox</a>' +
+    (HANDLE ? '<a href="' + RENDER + 'moneybox:' + encodeURIComponent(HANDLE) + '">this box on the beach</a>' : '');
+}
+
+/* ---------- the controls ---------- */
+function setAt(at){
+  S.at = at;
+  const q = new URLSearchParams(location.search); q.set('at', addrOf(at));
+  try { history.replaceState(null, '', location.pathname + '?' + q.toString()); } catch(e){}
+  draw();
+}
+$('prev').addEventListener('click', () => setAt(S.at.m0 ? { y: S.at.y, m0: S.at.m0 - 1 } : { y: S.at.y - 1, m0: 11 }));
+$('next').addEventListener('click', () => setAt(S.at.m0 < 11 ? { y: S.at.y, m0: S.at.m0 + 1 } : { y: S.at.y + 1, m0: 0 }));
+['balance', 'limit'].forEach(r => $('r-' + r).addEventListener('click', () => { S.reading = r; try { localStorage.setItem('moneybox:reading', r); } catch(e){} draw(); }));
+$('flow').addEventListener('click', ev => { const t = ev.target.closest('button.tile'); if (t && HANDLE) openLine(+t.dataset.line); });
+$('sh-list').addEventListener('click', ev => {
+  const b = ev.target.closest('button[data-d]'); if (!b || !S.open) return;
+  const box = S.boxes[HANDLE.toLowerCase()];
+  const e = entriesOf((linesOf(box, S.at) || {})[S.open.k]).find(x => x.d === b.dataset.d);
+  setForm(S.open.d === b.dataset.d ? null : e);
+});
+$('sh-form').addEventListener('submit', ev => { ev.preventDefault(); commit(false); });
+$('sh-take').addEventListener('click', () => { if (S.open && S.open.d && confirm('Take this line back?')) commit(true); });
+$('sh-x').addEventListener('click', closeLine);
+$('sheet').addEventListener('click', ev => { if (ev.target === $('sheet')) closeLine(); });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('sheet').hidden) closeLine(); });
+const drawWords = () => { $('btn-words').textContent = document.documentElement.classList.contains('hud') ? 'show words' : 'hide words'; };
+$('btn-words').addEventListener('click', () => {
+  const hud = document.documentElement.classList.toggle('hud');
+  try { localStorage.setItem('moneybox:words', hud ? '0' : '1'); } catch(e){}
+  drawWords();
+});
+drawWords();
+
+/* ---------- reading the beach ---------- */
+async function load(){
+  drawHow();
+  let names = [];
+  try {
+    const r = await fetch(ORIGIN, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    const idx = r.ok ? await r.json() : null;
+    names = ((idx && idx.blocks) || []).filter(n => /^moneybox:[A-Za-z0-9_-]{1,32}$/.test(n)).map(n => n.slice(FIELD.length + 1));
+  } catch(e){}
+  if (HANDLE && !names.some(n => n.toLowerCase() === HANDLE.toLowerCase())) names.push(HANDLE);
+  const blocks = await Promise.all(names.map(n => readBlock(FIELD + ':' + n).catch(() => null)));
+  names.forEach((n, i) => { S.names[n.toLowerCase()] = n; S.boxes[n.toLowerCase()] = blocks[i] && typeof blocks[i] === 'object' ? blocks[i] : null; });
+  draw();
+}
+load().catch(e => { $('msg').textContent = 'The beach could not be read: ' + (e && e.message || e); });
+if (window.siteDoors) siteDoors({ handle: HANDLE, here: 'moneybox', site: true });
+})();
+</script>
+</body>
+</html>

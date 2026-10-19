@@ -948,6 +948,10 @@
      * (David, 2026-10-10, availability.1: "an /availability o-page … a traditional
      * display with blocked calendar") */
     ['availability', 'availability', 'carry'],
+    /* a person's pounds by the month, their box beside everyone's row; the page stands without a handle
+     * (everyone, as one box) and opens on theirs with one (David, 2026-10-19, moneybox.1: "should there be
+     * /moneybox/happyseaurchin o-pages for each individual user too?") */
+    ['moneybox',     'moneybox', 'optional'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
     ['the ledger',   'ledger',   'handle']
@@ -1001,6 +1005,7 @@
     /* a meeting's State Stack, live: phones set their stacks, one screen draws the room (task:weft 33, 2026-10-14) */
     ['stack',       'the state stack'],
     ['availability','availability'],
+    ['moneybox',    'moneybox'],
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
