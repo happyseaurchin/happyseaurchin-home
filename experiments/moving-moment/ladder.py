@@ -220,14 +220,17 @@ def analyse(name, times):
     res = {'agent': name, 'writes': len(times), 'gaps': describe(gaps),
            'span': [when(times[0][0]), when(times[-1][0])],
            'rungs': comps, 'cuts_s': cuts}
+    if cuts:
+        res['by_rung'] = split(gaps, cuts)['by_rung']  # each rung's own median, read off the gaps it holds
     if session_cut:
         within, between = gaps[gaps < session_cut], gaps[gaps >= session_cut]
         res['session_cut_s'] = session_cut
         res['within_session'] = describe(within)
         res['between_sessions'] = describe(between)
     if len(comps) != 3:  # the call / turn / session reading, for comparison
-        comps3, cuts3, _, _ = fit(log_gaps, k=3)
+        comps3, cuts3, model3, order3 = fit(log_gaps, k=3)
         res['three_rungs'] = {'rungs': comps3, 'cuts_s': cuts3, **split(gaps, cuts3)}
+        res['_model3'] = (model3, order3)
     res['_log_gaps'] = log_gaps.tolist()
     res['_model'] = (model, order)
     return res
@@ -252,30 +255,35 @@ def plot(results, split, path):
     bins = np.linspace(-1, 6, 57)
 
     ax = axes[0]
-    ax.set_ylim(0, 3)
-    ax.set_yticks([0.9, 2.1])
-    ax.set_yticklabels(['machine\n(measured)', 'human\n(the document)'], fontsize=8)
-    for i, (s_, label) in enumerate(HUMAN):
-        ax.plot(math.log10(s_), 2.1, 'o', color=ref, ms=4)
-        ax.text(math.log10(s_), 2.35 + 0.3 * (i % 2), label, fontsize=7, color=ref, ha='center')
-    machine = [(0.03, 'token (nominal)'), (keel['rungs'][0]['median_s'], 'call'),
-               (split['machine_turn']['median_s'], "machine's turn"),
-               (split['person_turn']['median_s'], "person's turn"),
-               (weft['rungs'][-1]['median_s'], 'between sessions')]
-    for i, (s_, label) in enumerate(machine):
-        ax.plot(math.log10(s_), 0.9, 'o', color=ink, ms=4)
-        ax.text(math.log10(s_), 0.25 + 0.3 * (i % 2), f'{label} {human(s_)}', fontsize=7, color=ink, ha='center')
+    ax.set_ylim(0, 3.4)
+    rows = [(2.7, 'human\n(the document)', ref, HUMAN)]
+    k3 = keel['three_rungs']['by_rung'] if 'three_rungs' in keel else keel['by_rung']
+    w3 = weft['by_rung']
+    rows.append((1.6, 'keel\n(measured)', ink, [(0.03, 'token (nominal)'), (k3[0]['median_s'], 'call'),
+                                                (k3[1]['median_s'], 'turn'), (k3[-1]['median_s'], 'session')]))
+    rows.append((0.5, 'weft\n(measured)', ink, [(w3[0]['median_s'], 'call'),
+                                               (split['machine_turn']['median_s'], "machine's turn"),
+                                               (split['person_turn']['median_s'], "person's turn"),
+                                               (w3[-1]['median_s'], 'session')]))
+    ax.set_yticks([y for y, _, _, _ in rows])
+    ax.set_yticklabels([label for _, label, _, _ in rows], fontsize=8)
+    for y, _, colour, rungs in rows:
+        for i, (s_, label) in enumerate(rungs):
+            ax.plot(math.log10(s_), y, 'o', color=colour, ms=4)
+            text = label if colour == ref else f'{label} {human(s_)}'
+            ax.text(math.log10(s_), y + 0.22 + 0.25 * (i % 2), text, fontsize=7, color=colour, ha='center')
     ax.set_title('Two ladders on one clock: rungs half a decade apart, against rungs one to three decades apart',
                  fontsize=9)
 
     def mixture(ax, r, title):
         lg = np.array(r['_log_gaps'])
         ax.hist(lg, bins=bins, color=hist, edgecolor='white')
-        model, order = r['_model']
+        three = '_model3' in r  # show the call / turn / session reading
+        model, order = r['_model3'] if three else r['_model']
         xs = np.linspace(lo, hi, 600).reshape(-1, 1)
         ax.plot(xs, np.exp(model.score_samples(xs)) * len(lg) * (bins[1] - bins[0]), color=ink, lw=1.2)
         top = ax.get_ylim()[1]
-        for c in r['rungs']:
+        for c in (r['three_rungs']['by_rung'] if three else r['by_rung']):
             ax.axvline(math.log10(c['median_s']), color=ink, lw=0.8, ls=':')
             ax.text(math.log10(c['median_s']), top * 0.93, ' ' + human(c['median_s']), fontsize=8, color=ink)
         ax.set_ylabel(f"{title}\n{r['gaps']['n']} gaps", fontsize=8)
