@@ -948,6 +948,10 @@
      * (David, 2026-10-10, availability.1: "an /availability o-page … a traditional
      * display with blocked calendar") */
     ['availability', 'availability', 'carry'],
+    /* a person's pounds by the month, their box beside everyone's row; the page stands without a handle
+     * (everyone, as one box) and opens on theirs with one (David, 2026-10-19, moneybox.1: "should there be
+     * /moneybox/happyseaurchin o-pages for each individual user too?") */
+    ['moneybox',     'moneybox', 'optional'],
     /* the reflexive experiences this hand has had and made, first, then every premiere —
      * a premiere's address is its design's name, so the handle rides the query (David,
      * 2026-10-18: "it should be in the go dropdown list under the user's handle in order
@@ -965,7 +969,7 @@
     ['across',           'across',       'handle'],
     ['earth',            'earth',        'optional']
   ];
-  /* off until chosen — the eleven that remain are what a newcomer meets */
+  /* off until chosen — every other door is what a newcomer meets */
   var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, 'https://mirror.onen.ai/':1 };
   /* a page renamed keeps the lists that named it */
   var DOOR_ALIAS = { shell:'passport', self:'passport' };
@@ -1009,6 +1013,7 @@
     /* a meeting's State Stack, live: phones set their stacks, one screen draws the room (task:weft 33, 2026-10-14) */
     ['stack',       'the state stack'],
     ['availability','availability'],
+    ['moneybox',    'moneybox'],
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
