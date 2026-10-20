@@ -191,9 +191,17 @@
  * view that hides its own edge is a lie rather than a view (sed:beach-venture-cast).
  * Nothing is hidden on the beach and nothing is gated; every voice stands where it stood.
  * Never out of scope: the page's own hand (a /now/<handle> is that hand's) and the name
- * this device signs with. A group that seats nobody holds everyone. No scope until one is
+ * this device signs with. A group that seats nobody holds everyone. No group until one is
  * chosen, and offered only on a page that lists voices; once a person's organic web can
- * be read (open-commons 3.1), that is the default to come.
+ * be read (open-commons 3.1), that is the default to come. The choice of no group is
+ * called SCOPE: EVERYONE, never 'no scope' (David, 2026-10-20, the card on his timer:
+ * "'no scope' is just ugly").
+ *
+ * THE SCOPE WHERE THE VOICES ARE (David, 2026-10-20: "add scope dropdown to the pop ups on
+ * /now and /walk so that a user can scope the voices … whenever there's a bunch of voices,
+ * we want the voices to be below generally, and easily scope-able"). A page lays
+ * siteScope.pick(out) above the voices it governs: one dropdown, everyone and the groups
+ * that seat somebody, and more… for the chooser. Choosing there is choosing under options.
  *
  * WHERE A SCOPE IS HELD (David, 2026-10-13: "yes build both — lists branch 5 and fold the
  * cast in"). Who is in a scope stands in the group's own seats and nowhere else. Which
@@ -202,7 +210,7 @@
  * first of the scopes they read through at lists:<handle> branch 5 — rank is depth, so it
  * follows the person to every device and their own AI can read it, as the row at 3 does;
  * what this device last chose (localStorage, for a reader the device knows no name for);
- * else no scope. 'make this my default' writes branch 5 under the passport's key.
+ * else everyone. 'make this my default' writes branch 5 under the passport's key.
  *
  * A page opts in once with siteScope.watch(redraw, { owner }), asks siteScope.keep(handle)
  * of each voice as it draws (or siteScope.sift(list, handleOf) for the kept and the count
@@ -217,9 +225,9 @@
   function low(s){ return String(s == null ? '' : s).toLowerCase(); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function clean(v){ return low(v).replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, ''); }
-  /* the scope this window looks through: its own choice ('-' is no scope chosen here), else the
+  /* the scope this window looks through: its own choice ('-' is everyone, chosen here), else the
    * person's default, else what this device last chose — one made under the first name,
-   * voices, carries over — else none */
+   * voices, carries over — else everyone ('') */
   function chosen(){
     var w = null; try { w = sessionStorage.getItem(KEY); } catch(e){}
     if (w !== null) return w === '-' ? '' : clean(w);
@@ -284,7 +292,7 @@
     (list || []).forEach(function(x){ if (keep(handleOf ? handleOf(x) : x)) kept.push(x); else aside++; });
     return { kept: kept, aside: aside };
   }
-  /* the line that says what the scope left out — empty when there is no scope */
+  /* the line that says what the scope left out — empty when the scope is everyone */
   function note(out){
     var g = chosen(); if (!g) return '';
     var ch = ' · <button type="button" data-scope>change</button>';
@@ -292,9 +300,41 @@
     if (!seats.length) return '<p class="sc-note">sed:' + esc(g) + ' seats nobody yet, so the scope holds everyone' + ch + '</p>';
     return '<p class="sc-note">scope sed:' + esc(g) + ' — ' + (out ? out + (out === 1 ? ' voice' : ' voices') + ' out of scope' : 'every voice here is in scope') + ch + '</p>';
   }
+  /* THE DROPDOWN, laid above a list of voices: everyone, then the groups that seat somebody in
+   * the chooser's own order (read once, the first time a dropdown is laid, and filled in where it
+   * stands), the window's own choice wherever it is not among them, and more… for the chooser.
+   * `out` is how many the scope left out, or the page's own line about what was set aside. */
+  var groupsP = null;
+  function options(){
+    var g = chosen(), seen = {}, h = '';
+    var add = function(n){ if (seen[n]) return; seen[n] = 1; h += '<option value="' + esc(n) + '"' + (n === g ? ' selected' : '') + '>scope: ' + esc(n || 'everyone') + '</option>'; };
+    add('');
+    (groups ? groups.map(function(x){ return x.name; }) : personal || []).forEach(add);
+    if (g) add(g);
+    return h + (groups ? '' : '<option disabled>reading the groups…</option>') + '<option value="*">more…</option>';
+  }
+  function pick(out){
+    var g = chosen();
+    style();
+    var refill = function(){ [].forEach.call(document.querySelectorAll('select[data-scope-pick]'), function(s){ s.innerHTML = options(); }); };
+    if (!groupsP) groupsP = listGroups().then(refill, function(){ groups = groups || []; refill(); });
+    var line = typeof out === 'string' ? out : !g ? '' : !seats ? 'reading its seats…'
+      : !seats.length ? 'it seats nobody yet, so it holds everyone'
+      : out ? out + (out === 1 ? ' voice' : ' voices') + ' out of scope' : 'every voice here is in scope';
+    return '<p class="sc-pick"><select data-scope-pick' + (g ? ' class="on"' : '') + ' aria-label="scope: whose voices to show">' +
+      options() + '</select>' + (line ? '<span>' + line + '</span>' : '') + '</p>';
+  }
 
   var CSS = '.sc-note{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);margin:6px 0}' +
     '.sc-note button{background:none;border:0;padding:0;font:inherit;letter-spacing:inherit;color:var(--liquid);cursor:pointer;text-decoration:underline;text-underline-offset:3px}' +
+    '.sc-pick{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:2px 0;font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);line-height:1.5}' +
+    /* as wide as the choice it shows, where the browser can size a box to its content */
+    '.sc-pick select{font:inherit;letter-spacing:inherit;color:var(--vapour);background:rgb(var(--well-rgb));border:1px solid var(--line);border-radius:6px;padding:4px 6px;cursor:pointer;max-width:100%;field-sizing:content}' +
+    '.sc-pick select.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}' +
+    '.sc-pick select:hover{border-color:var(--liquid)}' +
+    '.sc-pick option{background:rgb(var(--well-rgb));color:var(--foam)}' +
+    /* a phone zooms the page into any box under 16px when it is tapped */
+    '@media (pointer:coarse){.sc-pick select{font-size:16px}}' +
     '.sc{border:1px solid var(--line-strong);border-radius:12px;background:rgb(var(--well-rgb));color:var(--foam);padding:0;' +
       'width:min(420px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 12px 40px rgba(0,0,0,0.4)}' +
     '.sc::backdrop{background:rgba(0,0,0,0.5)}' +
@@ -328,7 +368,7 @@
   function label(){
     var b = document.getElementById('btn-scope'); if (!b) return;
     var g = chosen();
-    b.textContent = g ? 'scope: ' + g : 'no scope';
+    b.textContent = 'scope: ' + (g || 'everyone');
   }
   function offer(){
     if (document.getElementById('btn-scope')) return;
@@ -343,7 +383,7 @@
     label();
   }
 
-  /* the chooser: no scope, or a group that seats somebody — the groups this device's
+  /* the chooser: everyone, or a group that seats somebody — the groups this device's
    * name sits in first — or any group by its name */
   function set(g){
     try { sessionStorage.setItem(KEY, g || '-'); } catch(e){}
@@ -351,8 +391,8 @@
     settle(); redraw(); if (card && card.open) card.close();
   }
   /* the person's default: branch 5 of their lists, written whole under the passport's key —
-   * this scope first and the rest after it, or the list emptied for no scope */
-  var SCOPES_SAYS = "The scopes this hand reads through, the one it reads through first — each a standing group, sed:<group>, whose seated people's walks every page shows while the scope is on (happyseaurchin.com: scope, under options); a voice out of scope is left out and counted, never hidden. RANK IS DEPTH, as in the lists beside this: 5.1 is the default, taken up wherever this hand's name is on the device, and 5.11 the next, offered first in the chooser. Empty, no scope. Who is in a scope stands in that group's own seats, never here, and a window may look through another scope for itself without touching this list. Once this hand's organic web can be read (open-commons 3.1), an empty list means that instead.";
+   * this scope first and the rest after it, or the list emptied for everyone */
+  var SCOPES_SAYS = "The scopes this hand reads through, the one it reads through first — each a standing group, sed:<group>, whose seated people's walks every page shows while the scope is on (happyseaurchin.com: scope, under options); a voice out of scope is left out and counted, never hidden. RANK IS DEPTH, as in the lists beside this: 5.1 is the default, taken up wherever this hand's name is on the device, and 5.11 the next, offered first in the chooser. Empty, scope: everyone. Who is in a scope stands in that group's own seats, never here, and a window may look through another scope for itself without touching this list. Once this hand's organic web can be read (open-commons 3.1), an empty list means that instead.";
   var said = '';   /* what the last keep said, shown in the footer it redraws */
   function makeDefault(g){
     var h = meRaw(), say = card && card.querySelector('.sc__said');
@@ -360,7 +400,7 @@
     var names = g ? [g].concat((personal || []).filter(function(x){ return x !== g; })) : [];
     if (say) say.textContent = 'keeping it in lists:' + h + '…';
     window.siteLists.save(h, 5, SCOPES_SAYS, names.map(function(x){ return 'sed:' + x; })).then(function(w){
-      if (w && w.ok){ personal = names; said = g ? 'sed:' + g + ' is your default now, wherever your name is on the device.' : 'No scope is your default now.'; settle(); redraw(); fill(); }
+      if (w && w.ok){ personal = names; said = (g ? 'sed:' + g : 'Everyone') + ' is your default now, wherever your name is on the device.'; settle(); redraw(); fill(); }
       else if (say) say.textContent = w && w.quiet ? 'Nothing kept.' : 'The beach refused it (' + ((w && w.status) || '?') + ').';
     });
   }
@@ -380,7 +420,7 @@
   }
   function fill(){
     var g = chosen(), list = card.querySelector('.sc__list');
-    var row = function(name, line){ return '<button type="button" class="sc__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'no scope') + '</b><span>' + line + '</span></button>'; };
+    var row = function(name, line){ return '<button type="button" class="sc__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'everyone') + '</b><span>' + line + '</span></button>'; };
     list.innerHTML = row('', 'every walk, as the beach has it') + '<p class="sc__wait">reading the groups on the beach…</p>';
     var def = function(){ return (personal && personal[0]) || ''; };
     listGroups().then(function(gs){
@@ -395,11 +435,10 @@
     foot.hidden = !h;
     if (!h) return;
     (personaP || Promise.resolve()).then(function(){
-      var d = def(), act = '';
-      if (g && g !== d) act = '<button type="button" data-make="' + esc(g) + '">make sed:' + esc(g) + ' my default</button>';
-      else if (!g && d) act = '<button type="button" data-make="">make no scope my default</button>';
-      foot.innerHTML = '<p class="sc__p">Your default, kept in your lists so it follows you to every device: <b>' + (d ? 'sed:' + esc(d) : 'no scope') + '</b>.' +
-        (g === d ? ' This window is looking through it.' : ' This window is looking through ' + (g ? 'sed:' + esc(g) : 'no scope') + '.') + '</p>' +
+      var d = def(), act = '', called = function(x){ return x ? 'sed:' + esc(x) : 'everyone'; };
+      if (g !== d) act = '<button type="button" data-make="' + esc(g) + '">make ' + called(g) + ' my default</button>';
+      foot.innerHTML = '<p class="sc__p">Your default, kept in your lists so it follows you to every device: <b>' + called(d) + '</b>.' +
+        (g === d ? ' This window is set to it.' : ' This window is set to ' + called(g) + '.') + '</p>' +
         (act ? '<p class="sc__acts">' + act + '</p>' : '') + '<p class="sc__said">' + esc(said) + '</p>';
       said = '';
     });
@@ -435,6 +474,13 @@
     if (card.showModal) card.showModal(); else card.setAttribute('open', '');
   }
   document.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('[data-scope]')) choose(); });
+  /* a dropdown's choice is the choice under options; more… opens the chooser and leaves it as it was */
+  document.addEventListener('change', function(e){
+    var s = e.target;
+    if (!s || !s.matches || !s.matches('select[data-scope-pick]')) return;
+    if (s.value === '*'){ s.value = chosen(); choose(); return; }
+    set(s.value);
+  });
   window.addEventListener('storage', function(e){ if (e.key === KEY || e.key === OLD){ load(); redraw(); } });
 
   window.siteScope = {
@@ -445,7 +491,7 @@
       if (fn && watchers.indexOf(fn) < 0) watchers.push(fn);
       style(); offer(); load();
     },
-    keep: keep, sift: sift, note: note, active: active,
+    keep: keep, sift: sift, note: note, pick: pick, active: active,
     name: chosen, choose: choose,
     /* for a page that reads as it draws: whether the scope is settled (none, or its seats
      * read), and a promise of that — draw once it holds, and again only when it changes */
