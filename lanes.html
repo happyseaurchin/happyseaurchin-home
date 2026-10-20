@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lanes — the work, as threads through the days</title>
+<meta name="description" content="Every exploration a mind runs, as a thread through the days: each turn a bead, and under it what the turn made — pull requests, pages, documents, apps — each a link to see it. Read live from the mind's own record on the beach.">
+<meta property="og:title" content="Lanes — the work, as threads through the days">
+<meta property="og:description" content="Each exploration a thread, each turn a bead, and what it made a link. Read live from the beach.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* LANES — a mind's record drawn as threads through the days (David, 2026-10-20, lane beach-venture.weft:
+     "a simple visual for the lanes/sessions we are operating with; and allows others to attach theirs").
+     Nothing is stored here and nothing is written. Each hand in the address keeps its own record on the
+     beach — weft's pile at watch:weft, anyone else's history:<handle> — an accumulator whose entries open
+     with the lane's name and take its later turns beneath them. The page reads the newest containers of
+     each record, groups the entries by lane, draws each day as a strip of 24 hours with a thread per lane
+     and a bead per turn, and lifts out of the words what a turn made: pull requests (their state asked of
+     GitHub), pages, documents, apps, the session, and the part of a path a card names. Above each day
+     stands the line one person wrote in their own now for that day, so the work sits beside what they
+     set out to do. /lanes/<hand>[+<hand>…][?days=<handle>]; ?h= works too. */
+  :root{ --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace;
+    --l0:#33C2D2; --l1:#4FD1B0; --l2:#7FCB86; --l3:#E58BB0; --l4:#9C8CF0; --l5:#F08A5D; --l6:#5FA8F5; --l7:#C9D86A; }
+  :root[data-theme="light"]{ --l0:#1B8B99; --l1:#1E8F74; --l2:#3F9A4A; --l3:#C2547F; --l4:#6A57D6; --l5:#C85A2A; --l6:#2C72C7; --l7:#7F8F1C; }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--abyss);color:var(--foam);font-family:var(--body);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--liquid);text-underline-offset:3px}
+  button{font:inherit}
+  .bar{position:sticky;top:0;z-index:20;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:12px 18px;
+    font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px;cursor:pointer}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .wrap{max-width:980px;margin:0 auto;padding:24px 16px 64px}
+  html.hud .w{display:none!important}
+
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 6px}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4.4vw,42px);line-height:1.04;margin:0;overflow-wrap:anywhere}
+  .lede{margin:10px 0 0;color:var(--vapour);max-width:66ch}
+  .hands{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:16px 0 0}
+  .hand{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;letter-spacing:0.06em;
+    border:1px solid var(--line-strong);border-radius:999px;padding:6px 6px 6px 12px;color:var(--foam);background:rgba(var(--wash-rgb),0.03)}
+  .hand .x{background:none;border:0;color:var(--vapour-dim);cursor:pointer;padding:0 6px;font-size:14px;line-height:1}
+  .hand .x:hover{color:var(--foam)}
+  .hand.kind{padding-right:12px;color:var(--vapour-dim)}
+  .hand.kind b{color:var(--foam);font-weight:400}
+  .hand.add{padding:6px 12px;color:var(--vapour-dim);cursor:pointer;background:none}
+  .hand.add:hover{color:var(--foam);border-color:var(--foam)}
+  .hand input{background:none;border:0;outline:none;color:var(--foam);font-family:var(--mono);font-size:12px;width:10ch}
+  .msg{color:var(--vapour-dim);font-style:italic;margin:18px 0 0}
+
+  h2{font-family:var(--display);font-weight:700;font-size:20px;margin:34px 0 10px;display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  h2 .tag{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim)}
+
+  /* yours to pick up */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+  .tile{display:flex;flex-direction:column;gap:4px;text-align:left;padding:12px 14px;border-radius:14px;border:1px solid var(--line-strong);
+    background:var(--card);color:var(--foam);text-decoration:none;cursor:pointer;min-height:84px}
+  .tile:hover,.tile:focus-visible{border-color:var(--solid);outline:none}
+  .tile .k{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--solid)}
+  .tile .t{font-size:15.5px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .tile .m{margin-top:auto;font-family:var(--mono);font-size:11px;color:var(--vapour-dim);display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .tile .m i{width:8px;height:8px;border-radius:50%;background:var(--c);display:inline-block}
+  .tile .wt{font-size:14px;color:var(--vapour);line-height:1.4}
+  .tile.live{border-color:rgba(var(--liquid-rgb),0.6)}
+  .tile.live .k{color:var(--liquid)}
+
+  /* a day: one strip of 24 hours, a thread per lane */
+  .day{margin:30px 0 0;padding:16px 0 0;border-top:1px solid var(--line)}
+  .day h2{margin:0 0 6px}
+  .intent{margin:0 0 12px;color:var(--vapour);font-size:15.5px;line-height:1.45;cursor:pointer;
+    border-left:2px solid rgba(var(--solid-rgb),0.6);padding:2px 0 2px 10px}
+  .intent b{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:0.08em;color:var(--solid);margin-right:6px}
+  .intent.clamp{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  html.hud .intent.clamp{-webkit-line-clamp:1}
+  .grid{--name:200px;display:grid;grid-template-columns:var(--name) 1fr;column-gap:14px}
+  .axis{grid-column:2;position:relative;height:16px;font-family:var(--mono);font-size:10px;color:var(--vapour-dim)}
+  .axis span{position:absolute;top:0;transform:translateX(-50%)}
+  .axis span:first-child{transform:none} .axis span:last-child{transform:translateX(-100%)}
+  .lane{display:contents}
+  .lane .name{grid-column:1;align-self:start;display:flex;align-items:center;gap:8px;min-width:0;background:none;border:0;padding:6px 0 0;
+    color:var(--foam);cursor:pointer;text-align:left;font-family:var(--mono);font-size:13px}
+  .lane .name .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lane .name:hover .nm{text-decoration:underline;text-underline-offset:3px}
+  .lane .name i.sw{flex:none;width:10px;height:10px;border-radius:50%;background:var(--c)}
+  .lane .name .who{flex:none;font-size:10px;color:var(--vapour-dim);letter-spacing:0.06em}
+  .lane .name .st{flex:none;font-size:10px;letter-spacing:0.08em;text-transform:uppercase;padding:1px 6px;border-radius:999px;border:1px solid}
+  .st.live{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+  .st.waits{color:var(--solid);border-color:rgba(var(--solid-rgb),0.5)}
+  .track{grid-column:2;position:relative;height:30px;margin-top:2px;border-radius:6px;
+    background:repeating-linear-gradient(90deg, rgba(var(--vapour-rgb),0.10) 0 1px, transparent 1px calc(100% / 4))}
+  .track .span{position:absolute;top:14px;height:2px;border-radius:2px;background:var(--c);opacity:0.55}
+  .track .span.from{border-top-left-radius:0;border-bottom-left-radius:0}
+  .track .span.into{border-top-right-radius:0;border-bottom-right-radius:0}
+  .track .now{position:absolute;top:0;bottom:0;width:1px;background:rgba(var(--liquid-rgb),0.6)}
+  .bead{position:absolute;top:8px;width:14px;height:14px;margin-left:-7px;padding:0;border:2px solid var(--c);border-radius:50%;
+    background:var(--abyss);cursor:pointer}
+  .bead.made{background:var(--c)}
+  .bead.page{border-radius:3px;transform:rotate(45deg);width:12px;height:12px;top:9px;margin-left:-6px}
+  .bead.open{box-shadow:0 0 0 3px rgba(var(--solid-rgb),0.85)}
+  .bead.live{animation:pulse 1.8s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(var(--liquid-rgb),0.55)}50%{box-shadow:0 0 0 7px rgba(var(--liquid-rgb),0)}}
+  .bead:hover,.bead:focus-visible{outline:2px solid var(--foam);outline-offset:2px}
+  .lane.routine .name{color:var(--vapour-dim)}
+  .lane.routine .track{height:22px}
+  .lane.routine .bead{top:4px;width:10px;height:10px;margin-left:-5px}
+  .lane.routine .span{top:9px}
+  .said{grid-column:2;margin:2px 0 0;font-size:14px;color:var(--vapour-dim);line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .chips{grid-column:2;display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 14px}
+  .lane.routine .chips{margin-bottom:8px}
+  .chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:11.5px;line-height:1;padding:6px 9px;border-radius:999px;
+    border:1px solid var(--line-strong);color:var(--vapour);text-decoration:none;background:rgba(var(--wash-rgb),0.02);white-space:nowrap;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .chip:hover{border-color:var(--foam);color:var(--foam)}
+  .chip .g{font-size:10px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
+  .chip.pr.merged{border-color:rgba(var(--bud-rgb),0.55)} .chip.pr.merged .s{color:var(--bud)}
+  .chip.pr.open{border-color:rgba(var(--solid-rgb),0.7)} .chip.pr.open .s{color:var(--solid)}
+  .chip.pr.closed{text-decoration:line-through;color:var(--vapour-dim)}
+  .chip.part{border-style:dashed;border-color:rgba(var(--bud-rgb),0.6)}
+  .chip.session{border-color:rgba(var(--liquid-rgb),0.6);color:var(--liquid)}
+  .chip.more{cursor:pointer;color:var(--vapour-dim)}
+  .more-days{margin:28px 0 0;display:flex;gap:10px;align-items:center}
+  .plain{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;padding:9px 12px;background:none;color:var(--vapour);
+    border:1px solid var(--line-strong);border-radius:6px;cursor:pointer}
+  .plain:hover{color:var(--foam);border-color:var(--foam)}
+  .foot{margin:44px 0 0;color:var(--vapour-dim);font-size:15px;max-width:70ch}
+  .foot code{font-family:var(--mono);font-size:12.5px;color:var(--vapour)}
+
+  /* the lane's own story: a drawer, opened to consult */
+  .pop-back{position:fixed;inset:0;z-index:30;background:rgba(var(--well-rgb),0.66);display:flex;justify-content:flex-end}
+  .pop{width:min(560px,100%);height:100%;overflow:auto;background:var(--deep);border-left:1px solid var(--line-strong);padding:18px 18px 48px;position:relative}
+  .pop .x{position:sticky;top:0;float:right;background:var(--deep);border:1px solid var(--line-strong);border-radius:6px;color:var(--vapour);
+    font-family:var(--mono);font-size:13px;padding:6px 10px;cursor:pointer;z-index:1}
+  .pop h3{font-family:var(--display);font-weight:800;font-size:26px;line-height:1.1;margin:4px 0 6px;display:flex;align-items:center;gap:10px;overflow-wrap:anywhere}
+  .pop h3 i{flex:none;width:14px;height:14px;border-radius:50%;background:var(--c)}
+  .pop .meta{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:0 0 12px;line-height:1.7}
+  .pop h4{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:22px 0 8px}
+  .pop .acts{display:flex;flex-wrap:wrap;gap:8px}
+  .pop .made{list-style:none;margin:0;padding:0}
+  .pop .made li{padding:7px 0;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:baseline}
+  .pop .made li .g{flex:none;width:62px;font-family:var(--mono);font-size:10.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
+  .pop .made li a{overflow-wrap:anywhere}
+  .pop .made li .s{flex:none;margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .pop .made li .s.merged{color:var(--bud)} .pop .made li .s.open{color:var(--solid)}
+  .pop .waits{border-left:2px solid var(--solid);padding:2px 0 2px 12px;color:var(--vapour);font-size:15.5px}
+  .turn{padding:10px 0;border-bottom:1px solid var(--line)}
+  .turn .tm{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:0 0 4px;display:flex;gap:8px;align-items:center}
+  .turn .tm i{width:8px;height:8px;border-radius:50%;background:var(--c)}
+  .turn p{margin:0;font-size:15px;line-height:1.5;color:var(--vapour);white-space:pre-wrap;overflow-wrap:anywhere}
+  .turn.clamp p{display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;cursor:pointer}
+  .turn.hit{background:rgba(var(--liquid-rgb),0.07);border-radius:8px;padding:10px}
+  .blocks{display:flex;flex-wrap:wrap;gap:6px}
+  .blocks a{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);border:1px solid var(--line);border-radius:4px;padding:3px 6px;text-decoration:none}
+  .blocks a:hover{color:var(--foam);border-color:var(--foam)}
+
+  .tiles .tile.extra{display:none} .tiles.all .tile.extra{display:flex}
+  #pick-all{margin:10px 0 0}
+  @media (max-width:640px){
+    .tile{min-height:0;padding:10px 12px}
+    .tile .t{-webkit-line-clamp:1}
+    .grid{grid-template-columns:1fr}
+    .axis,.track,.said,.chips{grid-column:1}
+    .lane .name{padding-top:10px}
+    .axis{margin-top:4px}
+  }
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.remove('no-js');
+/* THE HUD, unless this device has asked for the words: the threads, the beads and the links */
+try { if (localStorage.getItem('lanes:words') !== '1') document.documentElement.classList.add('hud'); } catch(e){ document.documentElement.classList.add('hud'); }</script>
+<div class="bar">
+  <span class="dot"></span>
+  <span class="title"><b>lanes</b><span class="sub" id="barsub"></span></span>
+  <span class="spacer"></span>
+  <button id="btn-words" title="The words: what each lane said at each turn, what it waits on, and how this page reads. This device remembers the choice">show words</button>
+  <button id="btn-theme" title="light or dark">◐</button>
+</div>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Lanes</p>
+    <h1 id="title">Lanes</h1>
+    <p class="lede w" id="lede">Each exploration is a thread through the days. A bead is one turn of the work; the links under it are what that turn made — pull requests, pages, documents, apps — and tapping a lane opens its whole story, with the session it ran in when the record names it.</p>
+    <div class="hands" id="hands"></div>
+  </header>
+  <p class="msg" id="msg">reading the beach…</p>
+  <section id="pick" hidden>
+    <h2>Yours to pick up <span class="tag" id="pick-n"></span></h2>
+    <div class="tiles" id="tiles"></div>
+    <button class="plain" id="pick-all" type="button" hidden></button>
+  </section>
+  <section id="days"></section>
+  <div class="more-days" id="more" hidden><button class="plain" id="earlier" type="button">earlier days</button><span class="tag" id="more-note" style="font-family:var(--mono);font-size:11px;color:var(--vapour-dim)"></span></div>
+  <div class="foot w" id="foot"></div>
+</div>
+<div class="pop-back hidden" id="pop" hidden><div class="pop" role="dialog" aria-modal="true" aria-labelledby="pop-title" id="pop-in"></div></div>
+<script>
+(function(){
+'use strict';
+const ORIGIN = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+const SITE = 'https://happyseaurchin.com';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const kept = { get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+               set(k, v){ try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch(e){} } };
+const clean = v => String(v || '').trim().replace(/^@/, '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 40);
+
+/* ---------- whose lanes: the hands in the address, and whose days ---------- */
+function handsFromUrl(){
+  const m = location.pathname.match(/\/lanes\/([^\/]+)\/?$/);
+  const raw = m ? m[1] : (new URLSearchParams(location.search).get('h') || '');
+  const hs = raw.split(/\+|,|%2B|%2C|\s/i).map(s => { try { return clean(decodeURIComponent(s)); } catch(e){ return ''; } }).filter(Boolean);
+  return hs.length ? [...new Set(hs)] : ['weft'];
+}
+function daysFromUrl(){
+  const q = new URLSearchParams(location.search).get('days');
+  if (q !== null){ kept.set('lanes:days', clean(q) || '-'); return clean(q); }
+  const k = kept.get('lanes:days');
+  if (k) return k === '-' ? '' : clean(k);
+  return clean(kept.get('render:who'));
+}
+let HANDS = handsFromUrl();
+let DAYS = daysFromUrl();
+function address(){
+  const q = new URLSearchParams(location.search); q.delete('h');
+  if (DAYS) q.set('days', DAYS); else q.delete('days');
+  if (/^\/lanes(?:\/|$)/.test(location.pathname)){ const qs = q.toString(); return '/lanes/' + HANDS.map(encodeURIComponent).join('+') + (qs ? '?' + qs : ''); }
+  q.set('h', HANDS.join('+'));
+  return location.pathname + '?' + q.toString();
+}
+
+/* ---------- reading the beach ---------- */
+async function beach(params){
+  const url = ORIGIN + (params ? '?' + new URLSearchParams(params) : '');
+  let last;
+  for (let i = 0; i < 2; i++){
+    try {
+      const r = await fetch(url, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error('the beach answered ' + r.status);
+      return await r.json();
+    } catch(e){ last = e; if (!i) await sleep(700); }
+  }
+  throw last;
+}
+let INDEX = null;
+async function index(){
+  if (!INDEX){ const j = await beach(null); INDEX = new Set(((j && j.blocks) || []).map(b => typeof b === 'string' ? b : b && b.name).filter(Boolean)); }
+  return INDEX;
+}
+/* a hand's record: weft keeps its lanes in its pile, everyone else in their history */
+async function recordOf(h){
+  const ix = await index();
+  if (ix.has('watch:' + h)) return 'watch:' + h;
+  if (ix.has('history:' + h)) return 'history:' + h;
+  return null;
+}
+/* the newest container: walk down by the largest digit, one rung at a time, to the node holding entries */
+async function headOf(block){
+  const probe = await beach({ block, pscale: '9' });
+  const F = probe && probe.floor;
+  if (!F || F < 2) return { F: F || 1, prefix: '' };
+  let prefix = '';
+  for (let d = 1; d <= F - 1; d++){
+    const j = d === 1 ? await beach({ block, pscale: String(F - 1) })
+                      : await beach({ block, spindle: prefix.padEnd(F, '0'), pscale: String(F - d) });
+    const list = (j && (d === 1 ? j.entries : j.descent)) || [];
+    const ds = list.map(e => String(e.address).slice(-1)).filter(c => /[1-9]/.test(c)).map(Number);
+    prefix += ds.length ? String(Math.max(...ds)) : '0';
+  }
+  return { F, prefix };
+}
+/* the container before: entries sit at zero-free slots, so a container's address has no zero after its first digit */
+function prevPrefix(p){
+  if (!p) return null;
+  let n = parseInt(p, 10);
+  while (--n > 0){ const s = String(n).padStart(p.length, '0'); if (!s.replace(/^0+/, '').includes('0')) return s; }
+  return /^0+$/.test(p) ? null : '0'.repeat(p.length);
+}
+async function readContainer(block, F, prefix){
+  const node = F < 2 ? await beach({ block }) : await beach({ block, spindle: prefix + '0' });
+  if (!node || typeof node !== 'object') return [];
+  const out = [];
+  for (let k = 1; k <= 9; k++){
+    const e = node[String(k)];
+    if (e == null) continue;
+    out.push({ addr: (prefix + k).replace(/^0+/, '') || String(k), node: e });
+  }
+  return out;
+}
+
+/* ---------- reading an entry: its lane, its turns, what each turn made ---------- */
+const ISO = /(20\d\d-\d\d-\d\dT\d\d:\d\d(?::\d\d(?:\.\d+)?)?Z)/;
+const textOf = v => { while (v && typeof v === 'object') v = v._; return typeof v === 'string' ? v : ''; };
+function stampOf(v){
+  if (v && typeof v === 'object' && typeof v['3'] === 'string'){ const m = v['3'].match(ISO); if (m) return Date.parse(m[1]); }
+  const t = textOf(v);
+  const m = t.match(/^\s*\[(20\d\d-\d\d-\d\dT[^\]]+Z)\]/);
+  return m ? Date.parse(m[1]) : null;
+}
+function turnsOf(entry){
+  const turns = [{ slot: '', text: textOf(entry), at: stampOf(entry) }];
+  if (entry && typeof entry === 'object'){
+    for (const k of ['1', '2', '4', '5', '6', '7', '8', '9']){
+      const c = entry[k]; if (c == null) continue;
+      const t = textOf(c);
+      if (!t || (typeof c === 'string' && t.length < 120)) continue;   /* a mark's own short fields, not a turn */
+      turns.push({ slot: k, text: t, at: stampOf(c) });
+    }
+  }
+  let last = turns[0].at;
+  turns.forEach(t => { if (t.at == null) t.at = last; else last = t.at; });
+  if (turns[0].at == null){ const first = turns.find(t => t.at != null); turns.forEach(t => { if (t.at == null) t.at = first ? first.at : null; }); }
+  return turns.filter(t => t.at != null);
+}
+/* weft opens each entry with the lane's name: 'need-offer.1 (…', 'cards.again (…', 'animations lane, …' */
+const LANE_RX = /^\s*([A-Za-z][\w-]*(?:\.[\w-]+)*)(\s+(?:lane|wake)\b)?/;
+function laneOf(text, hand){
+  const m = text.match(LANE_RX);
+  if (m){
+    const tok = m[1], after = text.slice(m[0].length);
+    if (m[2] && /wake/.test(m[2])) return tok.toLowerCase() + ' wake';
+    if (m[2] || (/[.\-\d]/.test(tok) && /^\s*(?:\(|,|:|—|–|-\s|$)/.test(after))) return tok;
+  }
+  const s = text.replace(/^\s*\[(?:event\s*·\s*)?/, '');
+  const w = s.match(/^([^,\]\(]*?\bproject(?: chat)?)\b/i)
+        || text.match(/\bthe ([A-Z][\w.-]*(?: [\w.-]+){0,2}? project(?: chat)?)\b/)
+        || text.match(/\bin (?:the )?((?:claude\.ai )?[\w.-]+(?: [\w.-]+){0,2}? [Pp]roject(?: [\w-]+)?|Cowork|Claude Code(?: desktop)?)\b/);
+  return w ? w[1].trim() : hand;
+}
+const ROUTINE = /clock-woken|scheduled (?:wake|pass|morning|evening|sweep)|\bmorning sweep\b|\bevening settle\b|\bmorning glance\b|nobody present|no hand present|auto-mode scheduled/i;
+
+const REPO = {
+  'happyseaurchin-home': 'happyseaurchin/happyseaurchin-home', 'bsp-mcp-server': 'pscale-commons/bsp-mcp-server', 'bsp-mcp': 'pscale-commons/bsp-mcp-server',
+  'xstream-bsp': 'happyseaurchin/xstream-bsp', 'xstream': 'happyseaurchin/xstream-bsp', 'pscale-beach-happyseaurchin': 'happyseaurchin/pscale-beach-happyseaurchin',
+  'pscale-beach': 'pscale-commons/pscale-beach', 'deploys': 'happyseaurchin/pscale-beach-happyseaurchin', 'deploy': 'happyseaurchin/pscale-beach-happyseaurchin',
+  'ticketing-agent': 'pscale-commons/ticketing-agent', 'community-recovery': 'pscale-commons/community-recovery'
+};
+const SHORT = { 'happyseaurchin/happyseaurchin-home': 'site', 'pscale-commons/bsp-mcp-server': 'bsp-mcp', 'happyseaurchin/xstream-bsp': 'mirror',
+  'pscale-commons/pscale-beach': 'beach', 'happyseaurchin/pscale-beach-happyseaurchin': 'deploy', 'pscale-commons/ticketing-agent': 'tickets',
+  'pscale-commons/community-recovery': 'recovery' };
+const PR_RX = /\b(happyseaurchin-home|bsp-mcp-server|bsp-mcp|xstream-bsp|xstream|pscale-beach-happyseaurchin|pscale-beach|ticketing-agent|community-recovery|deploys?)\s+(?:PRs?\s+)?#(\d{1,5})((?:\s*(?:,|and|&)\s*#\d{1,5}|\s*[–-]\s*#?\d{1,5})*)/g;
+const URL_RX = /(?:\bhttps?:\/\/|\bclaude:\/\/)[^\s'"<>()\[\]{}]+|\b(?:[a-z0-9-]+\.)*(?:happyseaurchin\.com|onen\.ai|idiothuman\.com)\/[^\s'"<>()\[\]{},;]*/gi;
+const PATH_RX = /(?:^|[\s(])(\/[a-z][a-z0-9-]{2,30}(?:\/[A-Za-z0-9<>_.-]+)*(?:\?[\w=&%+.-]+)?)(?=$|[\s),.;:'’!?])/g;
+const PATH_SKIP = /^\/(?:reflection|mcp|v1|api|well-known|users|tmp|private|dev|etc|bin)\b/i;
+const PROPOSAL_RX = /\bproposals\/(20\d\d-\d\d-\d\d-[\w-]+?)(\.md|\/)?(?=$|[\s,;)'’.:])/g;
+const PART_RX = /\b5\s*=\s*([a-z][\w-]*-path)\s+(\d[\d.]*\d|\d)/g;
+const BLOCK_RX = /(^|[\s(`'‘"“])([a-z][a-z0-9-]*(?::[A-Za-z0-9][\w-]*)+)/g;
+const trimEnd = s => s.replace(/[.,;:!?'’)]+$/, '');
+
+function kindOfUrl(u){
+  if (/^claude:\/\//i.test(u) || /claude\.ai\/code\/session_/i.test(u)) return 'session';
+  if (/claude\.ai\/(?:code\/)?(?:artifact|public\/artifacts)\//i.test(u)) return 'app';
+  if (/github\.com\/[^\/]+\/[^\/]+\/pull\/\d+/i.test(u)) return 'pr';
+  if (/github\.com\//i.test(u)) return 'doc';
+  if (/mirror\.onen\.ai/i.test(u)) return 'app';
+  if (/happyseaurchin\.com\/read\b/i.test(u)) return 'doc';
+  if (/happyseaurchin\.com\/animations\b/i.test(u)) return 'film';
+  return 'page';
+}
+function labelOfUrl(u){
+  const s = u.replace(/^https?:\/\//, '').replace(/^claude:\/\/claude\.ai\/epitaxy\//, '');
+  if (/claude\.ai\/code\/session_/.test(u) || /^claude:\/\//.test(u)) return 'the session';
+  if (/claude\.ai\/(?:code\/)?(?:artifact|public\/artifacts)\//.test(u)) return 'claude.ai artifact';
+  return s.replace(/^(?:www\.)?happyseaurchin\.com/, '').replace(/\/$/, '') || s;
+}
+function madeIn(text){
+  const out = [];
+  let m;
+  PR_RX.lastIndex = 0;
+  while ((m = PR_RX.exec(text))){
+    const repo = REPO[m[1]]; if (!repo) continue;
+    const nums = [+m[2]];
+    const tail = m[3] || '';
+    const re = /([–-])?\s*#?(\d{1,5})/g; let t;
+    while ((t = re.exec(tail))){
+      const n = +t[2];
+      if (t[1] && n > nums[nums.length - 1] && n - nums[nums.length - 1] <= 8){ for (let i = nums[nums.length - 1] + 1; i <= n; i++) nums.push(i); }
+      else if (!t[1]) nums.push(n);
+    }
+    nums.forEach(n => out.push({ kind: 'pr', repo, n, url: 'https://github.com/' + repo + '/pull/' + n, key: repo + '#' + n }));
+  }
+  URL_RX.lastIndex = 0;
+  while ((m = URL_RX.exec(text))){
+    let u = trimEnd(m[0]);
+    if (!/^[a-z]+:\/\//i.test(u)) u = 'https://' + u;
+    if (/^https?:\/\/(?:beach\.)?happyseaurchin\.com\/?$/i.test(u) || /\.well-known\//.test(u)) continue;
+    const pr = u.match(/github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/i);
+    if (pr){ out.push({ kind: 'pr', repo: pr[1], n: +pr[2], url: u, key: pr[1] + '#' + pr[2] }); continue; }
+    out.push({ kind: kindOfUrl(u), url: u, label: labelOfUrl(u), key: u });
+  }
+  PATH_RX.lastIndex = 0;
+  while ((m = PATH_RX.exec(text))){
+    let p = trimEnd(m[1]).replace(/\/<[^>]*>.*$/, '').replace(/<[^>]*>/g, '');
+    if (!p || p === '/' || PATH_SKIP.test(p) || /\.(?:ts|js|json|md|py|html|css|jpg|png)$/i.test(p)) continue;
+    const u = /^\/w\//.test(p) ? 'https://beach.happyseaurchin.com' + p : SITE + p;
+    out.push({ kind: /^\/animations\b/.test(p) ? 'film' : /^\/read\b/.test(p) ? 'doc' : 'page', url: u, label: /^\/w\//.test(p) ? 'beach' + p : p, key: u });
+  }
+  PROPOSAL_RX.lastIndex = 0;
+  while ((m = PROPOSAL_RX.exec(text))){
+    const name = m[1], isDir = m[2] === '/';
+    const u = 'https://github.com/pscale-commons/bsp-mcp-server/' + (isDir ? 'tree' : 'blob') + '/main/proposals/' + name + (isDir ? '' : '.md');
+    out.push({ kind: 'doc', url: u, label: 'proposal: ' + name.replace(/^20\d\d-\d\d-\d\d-/, '').replace(/-/g, ' '), key: 'proposal:' + name });
+  }
+  PART_RX.lastIndex = 0;
+  while ((m = PART_RX.exec(text))){
+    const fam = m[1], part = m[2];
+    out.push({ kind: 'part', fam, part, url: SITE + '/path/' + fam.replace(/-path$/, ''), key: fam + ' ' + part });
+  }
+  return out;
+}
+function blocksIn(text){
+  const seen = new Set(), out = [];
+  let m; BLOCK_RX.lastIndex = 0;
+  while ((m = BLOCK_RX.exec(text))){
+    const b = m[2];
+    if (/^(?:https?|claude|mailto|ccr|e\.g|i\.e)$/.test(b.split(':')[0])) continue;
+    const parts = b.split(':');
+    let name = null;
+    for (let i = parts.length; i >= 2; i--){ const n = parts.slice(0, i).join(':'); if (INDEX && INDEX.has(n)){ name = n; break; } }
+    if (!name || seen.has(name)) continue;
+    seen.add(name); out.push(name);
+  }
+  return out;
+}
+function waitsIn(text){
+  const m = text.match(/\bWAITS?(?: ON [A-Z][\w' ]*?)?:\s*([\s\S]*?)(?=\s+(?:CARD|NOTED|NOT DONE|DONE|VERIFIED|LANDED|MERGED|BUILT|READ|FOUND|TESTED|ANSWERED|RAISED|OPEN|NEXT|STILL OPEN)\b[^a-z]{0,3}:|$)/);
+  if (!m) return '';
+  return m[1].trim().replace(/\s+/g, ' ').slice(0, 420);
+}
+
+/* ---------- the lanes, gathered across hands ---------- */
+const S = { hands: {}, lanes: new Map(), gh: {}, parts: {}, days: {}, live: 40 * 60e3 };
+const PALETTE = 8;
+function hue(name){ let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0; return 'var(--l' + (h % PALETTE) + ')'; }
+function addEntry(hand, block, e){
+  const turns = turnsOf(e.node);
+  if (!turns.length) return;
+  const lane = laneOf(turns[0].text, hand);
+  const key = hand + '·' + lane;
+  let L = S.lanes.get(key);
+  if (!L){ L = { key, hand, block, name: lane, color: hue(lane), turns: [], entries: [], routine: false }; S.lanes.set(key, L); }
+  if (!L.entries.includes(e.addr)) L.entries.push(e.addr);
+  if (ROUTINE.test(turns[0].text)) L.routine = true;
+  turns.forEach(t => {
+    if (L.turns.some(x => x.entry === e.addr && x.slot === t.slot)) return;
+    L.turns.push({ entry: e.addr, slot: t.slot, text: t.text, at: t.at, made: madeIn(t.text) });
+  });
+  L.turns.sort((a, b) => a.at - b.at);
+}
+async function loadHand(h){
+  const H = S.hands[h] || (S.hands[h] = { block: null, F: 0, next: null, read: 0, oldest: Infinity, done: false, missing: false });
+  if (!H.block){
+    H.block = await recordOf(h);
+    if (!H.block){ H.missing = true; H.done = true; return; }
+    const head = await headOf(H.block);
+    H.F = head.F; H.next = head.prefix;
+  }
+}
+async function readMore(h, until){
+  const H = S.hands[h]; if (!H || H.done) return;
+  let guard = 0;
+  do {
+    if (H.next == null){ H.done = true; break; }
+    const entries = await readContainer(H.block, H.F, H.next);
+    entries.forEach(e => addEntry(h, H.block, e));
+    entries.forEach(e => { const t = stampOf(e.node); if (t != null && t < H.oldest) H.oldest = t; });
+    H.read++;
+    H.next = H.F < 2 ? null : prevPrefix(H.next);
+  } while (++guard < 6 && H.oldest > until);
+}
+
+/* what GitHub says about the pull requests the lanes name: open, merged or closed, and the session a cloud lane names in it */
+async function askGitHub(){
+  /* the mirror and the deploy clone are private, so GitHub will not say their state to a page; their chips stand without it */
+  const PRIVATE = new Set(['happyseaurchin/xstream-bsp', 'happyseaurchin/pscale-beach-happyseaurchin']);
+  const repos = new Set(['happyseaurchin/happyseaurchin-home', 'pscale-commons/bsp-mcp-server', 'pscale-commons/pscale-beach']);
+  S.lanes.forEach(L => L.turns.forEach(t => t.made.forEach(o => { if (o.kind === 'pr') repos.add(o.repo); })));
+  const want = [...repos].filter(r => !S.gh[r] && !PRIVATE.has(r));
+  await Promise.all(want.map(async repo => {
+    const ck = 'lanes:gh:' + repo;
+    try { const c = JSON.parse(sessionStorage.getItem(ck) || 'null'); if (c && Date.now() - c.t < 10 * 60e3){ S.gh[repo] = c.m; return; } } catch(e){}
+    try {
+      const r = await fetch('https://api.github.com/repos/' + repo + '/pulls?state=all&per_page=100&sort=updated&direction=desc', { headers: { Accept: 'application/vnd.github+json' } });
+      if (!r.ok){ S.gh[repo] = {}; return; }
+      const list = await r.json(), m = {};
+      (Array.isArray(list) ? list : []).forEach(p => {
+        const sess = (p.body || '').match(/https:\/\/claude\.ai\/code\/session_[A-Za-z0-9]+/);
+        m[p.number] = { state: p.merged_at ? 'merged' : p.state, title: p.title, at: Date.parse(p.updated_at), session: sess ? sess[0] : null };
+      });
+      S.gh[repo] = m;
+      try { sessionStorage.setItem(ck, JSON.stringify({ t: Date.now(), m })); } catch(e){}
+    } catch(e){ S.gh[repo] = {}; }
+  }));
+}
+const prOf = o => (S.gh[o.repo] || {})[o.n] || null;
+
+/* an address in the words may name a page that was planned and never built: on the site itself, ask once, and drop the ones that are not there */
+const DEAD = new Set();
+async function askPages(){
+  if (location.origin !== SITE) return;
+  const urls = new Set();
+  S.lanes.forEach(L => L.turns.forEach(t => t.made.forEach(o => { if (o.kind !== 'pr' && o.url.indexOf(SITE + '/') === 0) urls.add(o.url); })));
+  let known = {};
+  try { known = JSON.parse(sessionStorage.getItem('lanes:pages') || '{}'); } catch(e){}
+  await Promise.all([...urls].filter(u => !(u in known)).map(async u => {
+    try { const r = await fetch(u.replace(SITE, ''), { method: 'HEAD', cache: 'no-store' }); known[u] = r.status !== 404; } catch(e){ known[u] = true; }
+  }));
+  Object.keys(known).forEach(u => { if (!known[u]) DEAD.add(u); });
+  try { sessionStorage.setItem('lanes:pages', JSON.stringify(known)); } catch(e){}
+}
+const alive = o => !DEAD.has(o.url);
+
+/* the name of a path's part, read from its spine once per path */
+async function askParts(){
+  const fams = new Set();
+  S.lanes.forEach(L => L.turns.forEach(t => t.made.forEach(o => { if (o.kind === 'part') fams.add(o.fam); })));
+  await Promise.all([...fams].filter(f => !S.parts[f]).map(async f => {
+    S.parts[f] = {};
+    try {
+      const sp = await beach({ block: 'spine:' + f });
+      if (sp && typeof sp === 'object') for (let k = 1; k <= 9; k++){
+        const n = sp[String(k)]; const t = textOf(n);
+        if (t) S.parts[f][String(k)] = t.split(/\s+[—–-]\s+|[.:;(]/)[0].trim().replace(/^the\s+/i, 'the ').slice(0, 48);
+      }
+    } catch(e){}
+  }));
+}
+
+/* the line a person wrote in their own now for a day — the sundial's day address, read as a point */
+function dayAddr(d){
+  const y = d.getFullYear(), m0 = d.getMonth(), dd = d.getDate();
+  return (String(y) + (Math.floor(m0 / 3) + 1) + ((m0 % 3) + 1) + (Math.floor((dd - 1) / 7) + 1) + (((dd - 1) % 7) + 1)).padEnd(10, '0');
+}
+async function askDay(dayKey, d){
+  if (!DAYS) return null;
+  const ck = DAYS + '@' + dayKey;
+  if (ck in S.days) return S.days[ck];
+  S.days[ck] = null;
+  try { const j = await beach({ block: 'now:' + DAYS, spindle: dayAddr(d), pscale: '2' }); S.days[ck] = j && typeof j.content === 'string' ? j.content : null; } catch(e){}
+  return S.days[ck];
+}
+
+/* ---------- drawing ---------- */
+const WD = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const dayKeyOf = t => { const d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+const hm = t => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const dateLabel = t => { const d = new Date(t); return d.getDate() + ' ' + MN[d.getMonth()].slice(0, 3) + ' ' + hm(t); };
+function ago(t){
+  const s = Math.round((Date.now() - t) / 1000);
+  if (s < 90) return 'just now';
+  const m = Math.round(s / 60); if (m < 60) return m + ' min ago';
+  const h = Math.round(m / 60); if (h < 36) return h + ' h ago';
+  return Math.round(h / 24) + ' days ago';
+}
+/* a wake on the clock only reports what stands open; the lanes that named a pull request first are the ones it waits in */
+function laneState(L){
+  const last = L.turns[L.turns.length - 1];
+  const live = Date.now() - last.at < S.live;
+  const open = [];
+  const seen = new Set();
+  if (!L.routine) L.turns.forEach(t => t.made.forEach(o => { if (o.kind === 'pr' && !seen.has(o.key)){ seen.add(o.key); const p = prOf(o); if (p && p.state === 'open') open.push(o); } }));
+  const waits = L.routine ? '' : waitsIn(last.text);
+  return { live, open, waits, last };
+}
+function firstNamer(){
+  const m = new Map();
+  S.lanes.forEach(L => { if (L.routine) return; L.turns.forEach(t => t.made.forEach(o => { if (o.kind !== 'pr') return; const f = m.get(o.key); if (!f || t.at < f.at) m.set(o.key, { at: t.at, L }); })); });
+  return m;
+}
+/* the lane's own session is the one its first account names; any other session in its words is one it speaks of */
+function sessionsOf(L){
+  const own = L.turns.length ? L.turns[0].made.find(o => o.kind === 'session') : null;
+  return own ? [own.url] : [];
+}
+function chipHtml(o, compact){
+  if (o.kind === 'pr'){
+    const p = prOf(o), st = p ? p.state : '';
+    const mark = st === 'merged' ? '✓' : st === 'open' ? 'open' : st === 'closed' ? 'closed' : '';
+    return `<a class="chip pr ${st}" href="${esc(o.url)}" target="_blank" rel="noopener" title="${esc((p && p.title) || (o.repo + ' #' + o.n))}"><span class="g">${esc(SHORT[o.repo] || o.repo.split('/')[1])}</span>#${o.n}${mark ? ` <span class="s">${mark}</span>` : ''}</a>`;
+  }
+  if (o.kind === 'part'){
+    const nm = (S.parts[o.fam] || {})[o.part.split('.')[0]] || '';
+    return `<a class="chip part" href="${esc(o.url)}" target="_blank" rel="noopener" title="the card names part ${esc(o.part)} of ${esc(o.fam)}${nm ? (o.part.includes('.') ? ', in ' : ', ') + esc(nm) : ''}"><span class="g">part</span>${esc(o.part)}${nm && !compact ? ' · ' + esc(nm) : ''}</a>`;
+  }
+  const g = { page: 'page', app: 'app', doc: 'doc', film: 'film', session: '▶', link: 'link' }[o.kind] || o.kind;
+  const label = o.kind === 'session' ? 'session' : o.label;
+  return `<a class="chip ${o.kind}" href="${esc(o.url)}"${o.kind === 'session' && /^claude:/.test(o.url) ? '' : ' target="_blank" rel="noopener"'} title="${esc(o.url)}"><span class="g">${esc(g)}</span>${esc(label)}</a>`;
+}
+const RANK = { pr: 0, page: 1, app: 1, film: 1, doc: 2, part: 3, session: 4, link: 5 };
+function draw(){
+  const lanes = [...S.lanes.values()].filter(L => L.turns.length);
+  /* yours to pick up: the open pull requests the lanes name, the lanes speaking now, the lanes that wait */
+  const tiles = [], used = new Set(), namer = firstNamer();
+  lanes.slice().sort((a, b) => b.turns[b.turns.length - 1].at - a.turns[a.turns.length - 1].at).forEach(L => {
+    if (L.routine) return;
+    const st = laneState(L);
+    const recent = Date.now() - st.last.at < 4 * 864e5;
+    if (st.live || (st.waits && recent)) tiles.push(`<button class="tile${st.live ? ' live' : ''}" type="button" data-open="${esc(L.key)}" style="--c:${L.color}"><span class="k">${st.live ? 'speaking now' : 'waits on you'}</span><span class="t">${esc(L.name)}</span>${st.waits ? `<span class="wt w">${esc(st.waits)}</span>` : ''}<span class="m"><i></i>${esc(L.hand)} · ${esc(ago(st.last.at))}</span></button>`);
+  });
+  [...namer.entries()].sort((a, b) => b[1].at - a[1].at).forEach(([k, f]) => {
+    const o = f.L.turns.flatMap(t => t.made).find(x => x.key === k);
+    const p = o && prOf(o);
+    if (!p || p.state !== 'open' || used.has(k)) return;
+    used.add(k);
+    tiles.push(`<a class="tile" href="${esc(o.url)}" target="_blank" rel="noopener" style="--c:${f.L.color}"><span class="k">open · ${esc(SHORT[o.repo] || o.repo)} #${o.n}</span><span class="t">${esc(p.title)}</span><span class="m"><i></i>${esc(f.L.name)} · ${esc(f.L.hand)}${p.session ? ' · made in a cloud session' : ''}</span></a>`);
+  });
+  /* and every other pull request still open in these repositories, touched in the last fortnight, whose lane is further back */
+  Object.keys(S.gh).forEach(repo => Object.entries(S.gh[repo] || {}).forEach(([n, p]) => {
+    const k = repo + '#' + n;
+    if (used.has(k) || p.state !== 'open' || Date.now() - p.at > 14 * 864e5) return;
+    used.add(k);
+    tiles.push(`<a class="tile" href="https://github.com/${esc(repo)}/pull/${esc(n)}" target="_blank" rel="noopener" style="--c:var(--vapour-dim)"><span class="k">open · ${esc(SHORT[repo] || repo)} #${esc(n)}</span><span class="t">${esc(p.title)}</span><span class="m"><i></i>its lane is further back${p.session ? ' · made in a cloud session' : ''}</span></a>`);
+  }));
+  $('pick').hidden = !tiles.length;
+  /* six stand at once; the rest wait behind one button, so the days are never pushed off the first screen */
+  $('tiles').innerHTML = tiles.map((h, i) => i < 6 ? h : h.replace(/^<(a|button) class="tile/, '<$1 class="tile extra')).join('');
+  $('pick-all').hidden = tiles.length <= 6 || $('tiles').classList.contains('all');
+  $('pick-all').textContent = 'all ' + tiles.length;
+  $('pick-n').textContent = tiles.length ? tiles.length + (tiles.length === 1 ? ' thing' : ' things') : '';
+
+  /* the days, newest first: a strip of 24 hours, one row per lane that turned that day */
+  const byDay = new Map();
+  lanes.forEach(L => L.turns.forEach(t => {
+    const k = dayKeyOf(t.at);
+    if (!byDay.has(k)) byDay.set(k, new Map());
+    const m = byDay.get(k); if (!m.has(L.key)) m.set(L.key, []); m.get(L.key).push(t);
+  }));
+  const keys = [...byDay.keys()].sort().reverse();
+  const today = dayKeyOf(Date.now());
+  const yest = dayKeyOf(Date.now() - 864e5);
+  $('days').innerHTML = keys.map(k => {
+    const [y, mo, d] = k.split('-').map(Number);
+    const date = new Date(y, mo - 1, d);
+    const start = date.getTime(), span = new Date(y, mo - 1, d + 1).getTime() - start;
+    const pct = t => Math.max(0, Math.min(100, (t - start) / span * 100));
+    const rows = [...byDay.get(k).entries()].map(([lk, ts]) => ({ L: S.lanes.get(lk), ts }))
+      .sort((a, b) => (a.L.routine - b.L.routine) || (b.ts[b.ts.length - 1].at - a.ts[a.ts.length - 1].at));
+    const intent = S.days[DAYS + '@' + k];
+    const nowLine = k === today ? `<i class="now" style="left:${pct(Date.now()).toFixed(2)}%"></i>` : '';
+    return `<section class="day" data-day="${k}">
+      <h2>${WD[date.getDay()]} ${d} ${MN[mo - 1]} <span class="tag">${k === today ? 'today' : k === yest ? 'yesterday' : ''}</span></h2>
+      ${intent ? `<p class="intent clamp" title="tap for the whole line"><b>${esc(DAYS)}</b>${esc(intent)}</p>` : ''}
+      <div class="grid">
+        <div class="axis"><span>00</span><span style="left:25%">06</span><span style="left:50%">12</span><span style="left:75%">18</span><span style="left:100%">24</span></div>
+        ${rows.map(({ L, ts }) => {
+          const st = laneState(L);
+          /* a thread runs on from the day before, or into the next, only when its turns there are near (never a wake on the clock) */
+          const before = L.turns.filter(t => t.at < start).pop(), after = L.turns.find(t => t.at >= start + span);
+          const from = !L.routine && !!before && ts[0].at - before.at < 30 * 36e5;
+          const into = !L.routine && !!after && after.at - ts[ts.length - 1].at < 30 * 36e5;
+          const a = from ? 0 : pct(ts[0].at), b = into ? 100 : pct(ts[ts.length - 1].at);
+          const lastTurn = L.turns[L.turns.length - 1];
+          const beads = ts.map(t => {
+            const prs = t.made.filter(o => o.kind === 'pr');
+            const open = prs.some(o => { const p = prOf(o); return p && p.state === 'open'; });
+            const page = !prs.length && t.made.some(o => /page|app|film|doc/.test(o.kind));
+            const made = prs.length || page;
+            const live = t === lastTurn && st.live;
+            return `<button class="bead${made ? ' made' : ''}${page ? ' page' : ''}${open ? ' open' : ''}${live ? ' live' : ''}" type="button" style="left:${pct(t.at).toFixed(2)}%" data-open="${esc(L.key)}" data-turn="${esc(t.entry + '.' + t.slot)}" title="${esc(hm(t.at) + ' — ' + t.text.slice(0, 140))}" aria-label="${esc(L.name + ' at ' + hm(t.at))}"></button>`;
+          }).join('');
+          const seen = new Set();
+          const made = [];
+          ts.forEach(t => t.made.forEach(o => { if (o.kind === 'session' || seen.has(o.key) || !alive(o)) return; seen.add(o.key); made.push(o); }));
+          made.sort((p, q) => RANK[p.kind] - RANK[q.kind]);
+          const cap = L.routine ? 3 : 7;
+          const chips = made.slice(0, cap).map(o => chipHtml(o, true)).join('') + (made.length > cap ? `<button class="chip more" type="button" data-open="${esc(L.key)}">+${made.length - cap} more</button>` : '');
+          const mine = st.open.some(o => { const f = namer.get(o.key); return f && f.L === L; });
+          const tag = st.live ? '<span class="st live">now</span>' : ((mine || st.waits) && Date.now() - st.last.at < 4 * 864e5) ? '<span class="st waits">waits</span>' : '';
+          return `<div class="lane${L.routine ? ' routine' : ''}" style="--c:${L.color}">
+            <button class="name" type="button" data-open="${esc(L.key)}" title="${esc(L.name)} — open its story"><i class="sw"></i><span class="nm">${esc(L.name)}</span>${HANDS.length > 1 && L.name !== L.hand ? `<span class="who">${esc(L.hand)}</span>` : ''}${tag}</button>
+            <div class="track"><i class="span${from ? ' from' : ''}${into ? ' into' : ''}" style="left:${a.toFixed(2)}%;width:${Math.max(0.6, b - a).toFixed(2)}%"></i>${nowLine}${beads}</div>
+            <p class="said w">${esc(firstSentence(ts[ts.length - 1].text))}</p>
+            ${chips ? `<div class="chips">${chips}</div>` : '<div class="chips"></div>'}
+          </div>`;
+        }).join('')}
+      </div>
+    </section>`;
+  }).join('') || (Object.values(S.hands).every(H => H.missing) ? '' : '<p class="msg">No turns in these days.</p>');
+
+  const missing = HANDS.filter(h => S.hands[h] && S.hands[h].missing);
+  $('msg').hidden = !missing.length;
+  if (missing.length) $('msg').textContent = missing.map(h => h + ' keeps no record yet — neither watch:' + h + ' nor history:' + h + ' stands at the beach').join(' · ');
+  const anyMore = HANDS.some(h => S.hands[h] && !S.hands[h].done);
+  $('more').hidden = !anyMore;
+}
+function firstSentence(t){
+  const s = t.replace(/\s+/g, ' ').replace(/^[^—–]{0,160}?[—–]\s+/, '');
+  const m = s.match(/^(.{20,240}?[.!?])(?=\s|$)/);
+  return (m ? m[1] : s.slice(0, 240)).trim();
+}
+
+/* the lane's story, in the drawer */
+function openLane(key, turnRef){
+  const L = S.lanes.get(key); if (!L) return;
+  const st = laneState(L);
+  const made = new Map();
+  L.turns.forEach(t => t.made.forEach(o => { if (!made.has(o.key)) made.set(o.key, o); }));
+  const sessions = sessionsOf(L);
+  const list = [...made.values()].filter(o => alive(o) && !(o.kind === 'session' && sessions.includes(o.url))).map(o => o.kind === 'session' ? Object.assign({}, o, { label: 'a session its words name' }) : o).sort((p, q) => RANK[p.kind] - RANK[q.kind]);
+  const prSessions = [...new Set(list.filter(o => o.kind === 'pr').map(o => prOf(o)).filter(p => p && p.session).map(p => p.session))];
+  const blocks = blocksIn(L.turns.map(t => t.text).join(' '));
+  const row = o => {
+    if (o.kind === 'pr'){
+      const p = prOf(o), s = p ? p.state : '';
+      return `<li><span class="g">${esc(SHORT[o.repo] || 'pr')} #${o.n}</span><a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(p ? p.title : o.repo + ' #' + o.n)}</a><span class="s ${s}">${esc(s)}</span></li>`;
+    }
+    if (o.kind === 'part'){ const nm = (S.parts[o.fam] || {})[o.part.split('.')[0]] || ''; return `<li><span class="g">part</span><a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.fam)} ${esc(o.part)}${nm ? (o.part.includes('.') ? ' — in ' : ' — ') + esc(nm) : ''}</a></li>`; }
+    return `<li><span class="g">${esc(o.kind)}</span><a href="${esc(o.url)}" target="_blank" rel="noopener">${esc(o.label || o.url)}</a></li>`;
+  };
+  const first = L.turns[0], last = L.turns[L.turns.length - 1];
+  const rec = L.entries.slice().sort((a, b) => +a - +b);
+  $('pop-in').innerHTML = `<button class="x" type="button" id="pop-x" aria-label="close">close ×</button>
+    <p class="eyebrow">${esc(L.hand)} · ${L.routine ? 'a wake on the clock' : 'a lane'}</p>
+    <h3 id="pop-title" style="--c:${L.color}"><i></i>${esc(L.name)}</h3>
+    <p class="meta">${esc(dateLabel(first.at))} → ${esc(dateLabel(last.at))} · ${L.turns.length} turn${L.turns.length === 1 ? '' : 's'}${st.live ? ' · speaking now' : ''}<br>the record: ${rec.map(a => `<a href="${SITE}/render?block=${encodeURIComponent(L.block)}&spindle=${encodeURIComponent(a)}" target="_blank" rel="noopener">${esc(L.block)} ${esc(a)}</a>`).join(' · ')}</p>
+    <div class="acts">${sessions.map(u => `<a class="chip session" href="${esc(u)}"${/^claude:/.test(u) ? '' : ' target="_blank" rel="noopener"'}><span class="g">▶</span>open the session</a>`).join('')}${!sessions.length ? prSessions.map(u => `<a class="chip session" href="${esc(u)}" target="_blank" rel="noopener"><span class="g">▶</span>the session that made its pull request</a>`).join('') : ''}</div>
+    ${st.waits ? `<h4>Waits</h4><p class="waits">${esc(st.waits)}</p>` : ''}
+    <h4>Made</h4>${list.length ? `<ul class="made">${list.map(row).join('')}</ul>` : '<p class="meta">Nothing this page can link was named in its words.</p>'}
+    ${blocks.length ? `<h4>Blocks it touched</h4><div class="blocks">${blocks.slice(0, 40).map(b => `<a href="${SITE}/render?block=${encodeURIComponent(b)}" target="_blank" rel="noopener">${esc(b)}</a>`).join('')}</div>` : ''}
+    <h4>Turns, newest first</h4>
+    ${L.turns.slice().reverse().map(t => `<div class="turn clamp${turnRef && turnRef === t.entry + '.' + t.slot ? ' hit' : ''}" data-ref="${esc(t.entry + '.' + t.slot)}" style="--c:${L.color}"><p class="tm"><i></i>${esc(dateLabel(t.at))} · ${esc(L.block)} ${esc(t.entry + (t.slot ? '.' + t.slot : ''))}</p><p>${esc(t.text)}</p></div>`).join('')}`;
+  const pop = $('pop'); pop.hidden = false; pop.classList.remove('hidden');
+  $('pop-x').addEventListener('click', closeLane);
+  $('pop-in').querySelectorAll('.turn.clamp p:not(.tm)').forEach(p => p.addEventListener('click', () => p.parentElement.classList.toggle('clamp')));
+  const hit = $('pop-in').querySelector('.turn.hit');
+  if (hit) setTimeout(() => hit.scrollIntoView({ block: 'center' }), 30); else $('pop-in').scrollTop = 0;
+}
+function closeLane(){ const pop = $('pop'); pop.hidden = true; pop.classList.add('hidden'); }
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('[data-open]');
+  if (t && !t.matches('a')){ ev.preventDefault(); openLane(t.dataset.open, t.dataset.turn || null); return; }
+  const it = ev.target.closest('.intent'); if (it) it.classList.toggle('clamp');
+});
+$('pop').addEventListener('click', ev => { if (ev.target === $('pop')) closeLane(); });
+$('pick-all').addEventListener('click', () => { $('tiles').classList.add('all'); $('pick-all').hidden = true; });
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape' && !$('pop').hidden) closeLane(); });
+
+/* the hands in the address, and whose days head each day — chosen here, kept in the address */
+function drawHands(){
+  const chips = HANDS.map(h => `<span class="hand">${esc(h)}${HANDS.length > 1 ? `<button class="x" type="button" data-drop="${esc(h)}" aria-label="take ${esc(h)} off">×</button>` : ''}</span>`).join('');
+  const offer = ['weft', 'keel', 'neptune', 'happyseaurchin'].filter(h => !HANDS.includes(h)).slice(0, 2);
+  $('hands').innerHTML = chips
+    + offer.map(h => `<button class="hand add" type="button" data-add="${esc(h)}" title="lay ${esc(h)}'s lanes beside these">+ ${esc(h)}</button>`).join('')
+    + `<span class="hand add" id="add-any"><input id="add-in" placeholder="+ a hand" aria-label="add a hand by name" autocomplete="off" autocapitalize="off" spellcheck="false"></span>`
+    + `<span class="hand kind" title="the line this person wrote in their own now for each day stands above it — tap to change">days: <b id="days-who" contenteditable="true" spellcheck="false">${esc(DAYS || 'nobody')}</b></span>`;
+  const sub = HANDS.join(' + ');
+  $('barsub').textContent = ' · ' + sub;
+  $('title').textContent = HANDS.length === 1 ? HANDS[0] + '\u2019s lanes' : HANDS.slice(0, -1).join(', ') + ' & ' + HANDS[HANDS.length - 1] + '\u2019s lanes';
+  document.title = 'Lanes — ' + sub;
+  $('hands').querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => setHands(HANDS.concat(b.dataset.add))));
+  $('hands').querySelectorAll('[data-drop]').forEach(b => b.addEventListener('click', () => setHands(HANDS.filter(h => h !== b.dataset.drop))));
+  $('add-in').addEventListener('keydown', ev => { if (ev.key === 'Enter'){ const h = clean(ev.target.value); if (h) setHands(HANDS.concat(h)); } });
+  const who = $('days-who');
+  who.addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.preventDefault(); who.blur(); } });
+  who.addEventListener('blur', () => { const v = clean(who.textContent === 'nobody' ? '' : who.textContent); if (v !== DAYS){ DAYS = v; kept.set('lanes:days', v || '-'); history.replaceState(null, '', address()); refill(); } else who.textContent = DAYS || 'nobody'; });
+}
+function setHands(hs){
+  HANDS = [...new Set(hs.map(clean).filter(Boolean))];
+  if (!HANDS.length) HANDS = ['weft'];
+  history.replaceState(null, '', address());
+  drawHands();
+  $('msg').hidden = false; $('msg').textContent = 'reading the beach…';
+  start().catch(fail);
+}
+function drawFoot(){
+  $('foot').innerHTML = `<p>Read live, every time, from each hand's own record on the beach — weft's pile at <code>watch:weft</code>, anyone else's <code>history:&lt;handle&gt;</code> — and nothing is kept here. An entry that opens with a lane's name (<code>need-offer.1 (…) — …</code>) gathers with the others of that name, and the turns appended beneath it are its beads; an entry with no lane name stands in the thread of the project it names, or of its hand. What a turn made is read out of its own words: a repository and a number (<code>happyseaurchin-home #489</code>) is a pull request, whose state GitHub is asked for; an address on the site is a page; <code>proposals/…</code> is a document; a claude.ai link is an app or a session; and <code>5 = beach-venture-path 6</code> on a card is the part of a path the work advanced.</p>
+  <p>To lay your own lanes beside these, keep your record as an accumulator at <code>history:&lt;you&gt;</code> (or a pile at <code>watch:&lt;you&gt;</code>), open each entry with the lane's name, append each turn beneath it, and name what you made in the words — then add your handle to the address: <code>/lanes/weft+&lt;you&gt;</code>. To open a session from here, name its link in the lane's words.</p>`;
+}
+
+/* ---------- loading ---------- */
+let RUN = 0;
+async function start(){
+  const run = ++RUN;
+  S.lanes.clear(); S.hands = {};
+  const week = Date.now() - 6 * 864e5;
+  await index();
+  await Promise.all(HANDS.map(async h => { await loadHand(h); await readMore(h, week); }));
+  if (run !== RUN) return;
+  $('msg').hidden = true;
+  draw();
+  await Promise.all([askGitHub(), askParts(), askPages()]);
+  if (run !== RUN) return;
+  draw();
+  await refill(run);
+}
+async function refill(run){
+  run = run || RUN;
+  const days = new Set();
+  S.lanes.forEach(L => L.turns.forEach(t => days.add(dayKeyOf(t.at))));
+  await Promise.all([...days].map(k => { const [y, m, d] = k.split('-').map(Number); return askDay(k, new Date(y, m - 1, d)); }));
+  if (run !== RUN) return;
+  draw();
+}
+$('earlier').addEventListener('click', async () => {
+  const b = $('earlier'); b.disabled = true; $('more-note').textContent = 'reading…';
+  try {
+    const oldest = Math.min(...[...S.lanes.values()].flatMap(L => L.turns.map(t => t.at)));
+    await Promise.all(HANDS.map(h => readMore(h, (isFinite(oldest) ? oldest : Date.now()) - 4 * 864e5)));
+    await Promise.all([askGitHub(), askParts(), askPages()]);
+    draw(); await refill();
+  } catch(e){ $('more-note').textContent = 'could not read: ' + (e && e.message || e); }
+  b.disabled = false; $('more-note').textContent = '';
+});
+const drawWords = () => { $('btn-words').textContent = document.documentElement.classList.contains('hud') ? 'show words' : 'hide words'; };
+$('btn-words').addEventListener('click', () => {
+  const hud = document.documentElement.classList.toggle('hud');
+  kept.set('lanes:words', hud ? '0' : '1');
+  drawWords();
+});
+function fail(e){ $('msg').hidden = false; $('msg').textContent = 'The beach could not be read: ' + (e && e.message || e); }
+drawWords(); drawHands(); drawFoot();
+start().catch(fail);
+if (window.siteDoors) siteDoors({ handle: HANDS[0], here: 'lanes' });
+})();
+</script>
+</body>
+</html>
