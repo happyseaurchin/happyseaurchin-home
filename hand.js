@@ -142,13 +142,19 @@ function entryOf(c, patch, inProjectHand){
 /* ── the pile law (function:ahead 1, ratified 2026-09-01) ──
  * A rung is bounded and written at its slots, never appended: a free digit
  * first, then the lowest RETIRED slot — an emptied one, a legacy DONE/DROP
- * line, or a card done or put down before today; today's stand until the
- * sweep. Nine is the shape of a node, so a full rung refuses plainly. */
+ * line, a card let go, or a card done before today. Nine is the shape of a
+ * node, so nine live cards refuse plainly.
+ * A CARD LET GO FREES ITS PLACE AT ONCE (David, 2026-10-20: five cards showing
+ * in his now, 'today 9/9', no room to add — the cards he had just let go were
+ * holding their places until the next day). It stands where it was, under
+ * done today with its undo, until a new card needs the place. A card DONE
+ * today still holds its own: one still in the pile is one whose landing has
+ * not happened, and it is never written over (function:ahead 4). */
 function reusable(n){
   if (typeof n === 'string') return !n.trim() || /^(DONE|DROP)\b/.test(n.trim());
   if (!isEntry(n)) return false;
-  if (!n._.trim()) return true;
-  return (n['4'] === 'done' || n['4'] === 'drop') && String(n['3'] || '').slice(0, 10) !== new Date().toISOString().slice(0, 10);
+  if (!n._.trim() || n['4'] === 'drop') return true;
+  return n['4'] === 'done' && String(n['3'] || '').slice(0, 10) !== new Date().toISOString().slice(0, 10);
 }
 /* every slot a card may take, in the order a landing takes them */
 function slotsFree(node){
@@ -157,7 +163,8 @@ function slotsFree(node){
   for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))) free.push(String(d));
   return free.concat(digs.filter(d => reusable(node[d])));
 }
-/* how many of a rung's nine stand taken */
+/* how many of a rung's nine stand taken — its live cards, the ones a person
+ * sees in the row */
 const taken = node => 9 - slotsFree(node).length;
 
 /* ── the key ── one per holder, as every hand door has kept it, the
