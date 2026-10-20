@@ -177,7 +177,14 @@ ul.designs{list-style:none;padding:0;margin:4px 0 0;display:grid;gap:14px}
 #designs h3{margin:26px 0 10px}
 #designs h3:first-child{margin-top:4px}
 #designs .none{font-family:var(--ui);font-size:15px;color:var(--ink-3);margin:0}
-.design{border:1px solid var(--rule);border-radius:14px;background:var(--surface);padding:16px 18px}
+.design{border:1px solid var(--rule);border-radius:14px;background:var(--surface);padding:16px 18px;overflow:hidden}
+/* a card's still: its design's first slide as the stage first shows it */
+.design .still{display:block;position:relative;aspect-ratio:16/9;margin:-16px -18px 14px;background:linear-gradient(180deg,var(--sky) 0 74%,var(--sky2) 74%);border-bottom:1px solid var(--rule)}
+.design .still canvas,.design .still img{display:block;width:100%;height:100%;object-fit:cover}
+.design .still .ask{position:absolute;inset:0;display:grid;place-items:center;padding:16px}
+.design .still .ask span{font-family:var(--ui);font-size:17px;color:var(--ink-3);background:var(--bg);border:1px solid var(--rule-2);border-radius:8px;padding:9px 12px;width:min(78%,340px)}
+.design .still .ask span::after{content:"";display:inline-block;width:2px;height:1.05em;margin-left:3px;vertical-align:-3px;background:var(--ink-2)}
+.design .still .name{position:absolute;inset:0;display:grid;place-items:center;padding:16px;font-family:var(--display);font-size:clamp(26px,6vw,40px);line-height:1.1;color:var(--bird);text-align:center;text-wrap:balance}
 .design h2{margin:0 0 6px}
 .design h2 a{color:var(--ink);text-decoration:none}
 .design h2 a:hover{text-decoration:underline}
@@ -566,8 +573,8 @@ function flush(addr){
 }
 
 /* ── the flock: deterministic from the design's name and the clock, so screens on one clock agree ── */
-function makeFlock(canvas, slide){
-  const W = 640, H = 360, ctx = canvas.getContext('2d'), R = rngOf(hashStr(NAME + ':' + slide.addr));
+function makeFlock(canvas, slide, seed){
+  const W = 640, H = 360, ctx = canvas.getContext('2d'), R = rngOf(hashStr((seed || NAME) + ':' + slide.addr));
   const word = String(slide.p[1] || 'YOU').slice(0, 14);
   const win = /^\s*(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)/.exec(slide.p[2] || '');
   const a = win ? +win[1] : 5, b = win ? Math.max(+win[2], a + 1) : Math.max(a + 5, (slide.secs || 30) * 0.75);
@@ -1123,6 +1130,25 @@ const namesIn = b => { const out = []; if (b && typeof b === 'object') for (let 
   const x = /^\s*([a-z0-9][a-z0-9-]*)\s*[—–]/i.exec(BK.voice(b[String(d)]) || ''), n = x && x[1].toLowerCase();
   if (n && out.indexOf(n) < 0) out.push(n); } return out; };
 const dayOf = iso => { const t = Date.parse(iso || ''); return isNaN(t) ? '' : new Date(t).toLocaleDateString([], { day: 'numeric', month: 'long', year: 'numeric' }); };
+/* A CARD'S STILL IS ITS DESIGN'S OPENING, NEVER ITS ANSWER: the first slide as the stage first shows it,
+ * drawn from the design itself, so nothing more is asked of a maker. A flock swirls at dusk and is never
+ * drawn formed, which would give away what it makes; a word slide shows its empty box under its question,
+ * never the word it shows, whose first answer a person should meet fresh; otherwise the picture the maker
+ * set at the first slide's 8, else its title on the dusk sky (David, 2026-10-18: a gallery of them) */
+const STILLS = {};
+function stillHTML(x){
+  const s = slidesOf(x.spine)[0]; if (!s) return '';
+  STILLS[x.n] = s;
+  if (s.kind === 'flock') return '<canvas data-flock="' + esc(x.n) + '"></canvas>';
+  if (s.kind === 'word') return '<span class="ask"><span>' + esc(s.p[2] || 'The first word that comes') + '</span></span>';
+  if (s.pic) return '<img src="' + esc(s.pic) + '" alt="" loading="lazy">';
+  return '<span class="name">' + esc(s.title || x.n) + '</span>';
+}
+function paintStills(){
+  document.querySelectorAll('#designs canvas[data-flock]').forEach(cv => { const s = STILLS[cv.dataset.flock]; if (s) makeFlock(cv, s, cv.dataset.flock).draw(6, -1); });
+}
+/* the flock reads its colours as it is drawn, so a change of light or dark draws the stills again */
+new MutationObserver(() => { if (!$('list').hidden) paintStills(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 async function showList(who){
   const intro = 'Short shows of slides you answer as they appear, each ending in the room: everyone’s answers beside your own, in their own names. Each has its own address, so a link to one opens it straight away, and anyone can make one.';
   const title = who ? who + '’s premieres' : 'Premieres';
@@ -1152,7 +1178,7 @@ async function showList(who){
     const root = BK.voice(x.spine) || '', c = root.indexOf(':'), split = c > 0 && c < 80, href = '/premiere/' + encodeURIComponent(x.n);
     const count = ix.blocks.filter(b => b.startsWith(x.n + ':') && b.indexOf(':', x.n.length + 1) < 0).length, clock = clockOf(x.op);
     const when = clock.kind === 'shared' ? 'a shared premiere, on ' + new Date(clock.at).toLocaleString([], { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : 'it starts when you do';
-    return '<li class="design"><h2><a href="' + href + '">' + esc(split ? root.slice(0, c).trim() : x.n) + '</a></h2>' +
+    return '<li class="design"><a class="still" href="' + href + '" tabindex="-1" aria-hidden="true">' + stillHTML(x) + '</a><h2><a href="' + href + '">' + esc(split ? root.slice(0, c).trim() : x.n) + '</a></h2>' +
       '<p>' + esc(cap(split ? root.slice(c + 1) : root)) + '</p>' +
       '<p class="meta"><a href="' + href + '">happyseaurchin.com' + esc(href) + '</a> · ' + (line ? line + ' · ' : '') + when + ' · ' +
       (count ? count + (count === 1 ? ' premiere' : ' premieres') + ' so far' : 'no one yet') + (me && ix.set.has(x.n + ':' + me) ? ', yours among them' : '') + ' · listed by ' + BK.nameHTML(x.by) + '</p></li>';
@@ -1163,6 +1189,7 @@ async function showList(who){
       group('Made', got.filter(x => made.indexOf(x.n) >= 0), 'None in ' + esc(who) + '’s list yet.') : '') +
     group(who ? 'Every premiere' : '', got, 'No design is listed on the beach yet.');
   $('list').hidden = false;
+  paintStills();
   $('colophon').innerHTML = 'Read live from the beach. Nobody holds this list: each maker names the designs they have made in their own, ' + esc('premieres:<handle>') + ', and this page gathers every one. Each design is two blocks, ' + esc('spine:<name>') + ' and ' + esc('function:<name>') + ', played at its own address. ' +
     'To make your own on the same pattern, ask Claude to read ' + esc('function:reflexive-experience') + ' on the beach and found it with you: it names it in your list, and it shows here.';
 }
