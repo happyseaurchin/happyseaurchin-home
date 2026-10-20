@@ -577,10 +577,10 @@ function firstNamer(){
   S.lanes.forEach(L => { if (L.routine) return; L.turns.forEach(t => t.made.forEach(o => { if (o.kind !== 'pr') return; const f = m.get(o.key); if (!f || t.at < f.at) m.set(o.key, { at: t.at, L }); })); });
   return m;
 }
+/* the lane's own session is the one its first account names; any other session in its words is one it speaks of */
 function sessionsOf(L){
-  const out = []; const seen = new Set();
-  L.turns.forEach(t => t.made.forEach(o => { if (o.kind === 'session' && !seen.has(o.url)){ seen.add(o.url); out.push(o.url); } }));
-  return out;
+  const own = L.turns.length ? L.turns[0].made.find(o => o.kind === 'session') : null;
+  return own ? [own.url] : [];
 }
 function chipHtml(o, compact){
   if (o.kind === 'pr'){
@@ -705,8 +705,8 @@ function openLane(key, turnRef){
   const st = laneState(L);
   const made = new Map();
   L.turns.forEach(t => t.made.forEach(o => { if (!made.has(o.key)) made.set(o.key, o); }));
-  const list = [...made.values()].filter(o => o.kind !== 'session' && alive(o)).sort((p, q) => RANK[p.kind] - RANK[q.kind]);
   const sessions = sessionsOf(L);
+  const list = [...made.values()].filter(o => alive(o) && !(o.kind === 'session' && sessions.includes(o.url))).map(o => o.kind === 'session' ? Object.assign({}, o, { label: 'a session its words name' }) : o).sort((p, q) => RANK[p.kind] - RANK[q.kind]);
   const prSessions = [...new Set(list.filter(o => o.kind === 'pr').map(o => prOf(o)).filter(p => p && p.session).map(p => p.session))];
   const blocks = blocksIn(L.turns.map(t => t.text).join(' '));
   const row = o => {
