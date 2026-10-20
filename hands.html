@@ -121,9 +121,6 @@
   .dcard .rung{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--vapour-dim);text-transform:none;letter-spacing:0.04em}
   .dcard.deal{border-style:dashed}
   .rowhead .sub{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);width:100%;margin:2px 0 0}
-  /* a project's rungs, counted in its own row — nine to a rung in each project */
-  .rowhead .rungs{font-family:var(--mono);font-size:11px;color:var(--vapour)}
-  .rowhead .rungs .full{color:var(--solid)}
   /* ⇄ — the card's other rung and other project, chosen in place */
   .mv{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:9px}
   .dcard.fam .mv{border-color:hsl(var(--fam-h) var(--fam-s) var(--fam-line-l))}
@@ -162,7 +159,7 @@
 <div id="app" class="hidden">
   <div class="masthead">
     <h1>What you're holding, <span class="cool">and what's being dealt</span>.</h1>
-    <p>Your cards, a row for each project — your now first. Write your own or deal one from a project, and take up the ones you mean to do: those gather in the hand at the top, which is the hand you flick. A project holds up to nine cards for each rung: today, this week, and so on.</p>
+    <p>Your cards, a row for each project — your now first. Write your own or deal one from a project, and take up the ones you mean to do: those gather in the hand at the top, which is the hand you flick. A project holds up to nine cards for each rung: today, this week, and so on. A card you put down frees its place at once.</p>
   </div>
   <div id="rows"></div>
   <div class="foot">
@@ -633,18 +630,19 @@ function cardEl(c, opts){
     + '<button class="x" data-act="drop">✕</button></div></div>';
 }
 /* ⇄ OPENS IN PLACE, where the card's acts were. The rungs need no heading —
- * 'today' and 'this week' say themselves — and each carries its count of nine
- * in this card's own project, the count a full rung keeps. Then the projects
- * this hand has, headed 'aligned to' (David, 2026-10-12). The card's own rung
- * and project stand marked; a full rung cannot be chosen and says why. */
+ * 'today' and 'this week' say themselves. Then the projects this hand has,
+ * headed 'aligned to' (David, 2026-10-12). The card's own rung and project
+ * stand marked. NO COUNT: a rung says 'full' only when nine of this project's
+ * cards stand there, and only then refuses (David, 2026-10-20: 'not a bunch of
+ * numbers that don't make sense'). */
 function openMove(el, c){
   if (el.querySelector('.mv')) return;
   const rungs = PILES.map(p => {
-    const here = p.d === String(c.pile), n = rungTaken(c.project, p.d), full = !here && n >= 9;
+    const here = p.d === String(c.pile), full = !here && rungTaken(c.project, p.d) >= 9;
     /* the card's own place carries no act — choosing it is staying */
     return '<button ' + (here ? 'class="here" aria-pressed="true"' : 'data-act="pile" data-to="' + p.d + '"')
-      + (full ? ' disabled title="nine already — move or let one go there first"' : '') + '>'
-      + esc(p.label) + '<span class="n">' + n + '/9</span></button>';
+      + (full ? ' disabled title="nine cards already — move or let one go there first"' : '') + '>'
+      + esc(p.label) + (full ? '<span class="n">full</span>' : '') + '</button>';
   }).join('');
   const aims = DECKS.map(d => {
     const here = c.project === d;
@@ -657,14 +655,6 @@ function openMove(el, c){
     + '<div class="mv__lab">aligned to</div><div class="mv__opts">' + aims + '</div>'
     + '<button class="mv__x" data-act="move-close">close</button>';
   el.querySelector('.acts').replaceWith(panel);
-}
-/* A PROJECT'S RUNGS, COUNTED IN ITS OWN ROW — nine to a rung in each project,
- * so the number beside 'today' is one a person can check against the cards in
- * the row (David, 2026-10-12: 'If they see a bunch of cards with numbers, they
- * can do arithmetic'). Only the rungs that hold anything are said. */
-function rungsSaid(project){
-  return PILES.map(p => ({ p, n: rungTaken(project, p.d) })).filter(x => x.n)
-    .map(x => '<span' + (x.n >= 9 ? ' class="full"' : '') + '>' + esc(x.p.label) + ' ' + x.n + '/9</span>').join(' · ');
 }
 /* THE BLANK CARD — write one of your own, in this row's project, for today. A
  * card you write carries no 5, which is the whole difference between writing
@@ -688,7 +678,6 @@ function rowHead(name, count, opts){
     + (opts.hue !== undefined ? ' style="--fam-h:' + opts.hue + '"' : '') + '></span>'
     + '<span class="name">' + esc(name) + '</span>'
     + '<span class="n">' + esc(count) + '</span>'
-    + (opts.rungs ? '<span class="rungs">' + opts.rungs + '</span>' : '')
     + '<div class="links">' + (opts.links || '') + '</div>'
     + (opts.sub ? '<p class="sub">' + opts.sub + '</p>' : '')
     + '</div>';
@@ -719,13 +708,13 @@ function render(){
     : '<div class="empty-row">nothing taken up yet — ＋ hand on any card below puts it here</div>');
 
   /* ── ONE ROW PER PROJECT — your now first, then the projects you chose: each
-   * row is your hand in that project, ahead:<project>:<handle>, with its rungs
-   * counted beside its name and a blank card to write straight into it. ── */
+   * row is your hand in that project, ahead:<project>:<handle>, with how many
+   * cards it holds beside its name — the cards in the row, never the places
+   * they take (David, 2026-10-20) — and a blank card to write straight into it. ── */
   for (const d of DECKS){
     const cards = CARDS.filter(c => c.project === d);
     out.push(rowHead(deckName(d), cards.length ? cards.length + (cards.length === 1 ? ' card' : ' cards') : 'empty', {
       hue: famHue(d),
-      rungs: rungsSaid(d),
       links: '<a href="' + deckHref(d) + '">' + (d === 'now' ? 'your now' : 'the walk') + ' →</a>'
         + (cards.length ? ' ' + flick('?aim=' + encodeURIComponent(d)) : '')
         + ' <button data-deal="' + esc(d) + '">deal one →</button>' }));
@@ -738,22 +727,24 @@ function render(){
     out.push('<div class="carousel">' + ASKS.map(askCardEl).join('') + '</div>');
   }
 
-  /* ── STILL HOLDING A SLOT — what closed today and is still in the hand.
+  /* ── STILL IN THE HAND — what closed today and has not left it.
    * A FINISHED CARD NO LONGER BELONGS HERE. It leaves the pile at the moment it
    * closes and stands as a card in its family's timeline, at the beat it closed
    * in (next.html landCard) — which is where the walk shows it, and where
    * another hand can confirm it. So this row has stopped being the day's record
    * and become the honest remainder: DROPS, which retire in place and claim
-   * nothing (function:ahead:4 — 'nothing clears itself'), and any DONE whose
-   * landing could not happen — no mirror there yet, a refused latch, a day whose
-   * beats were full. On most days it will be empty, and that is the change
-   * working rather than the row broken. ── */
+   * nothing (function:ahead:4 — 'nothing clears itself'), their places free at
+   * once (hand.js reusable, 2026-10-20) so each stands here only until a new
+   * card needs its place; and any DONE whose landing could not happen — no
+   * mirror there yet, a refused latch, a day whose beats were full — which keeps
+   * its place until the sweep. On most days it will be empty, and that is the
+   * change working rather than the row broken. ── */
   const today = new Date().toISOString().slice(0, 10);
   const doneToday = ALLCARDS.filter(c => (c.state === 'done' || c.state === 'drop')
     && String(c.ts || '').slice(0, 10) === today);
   if (doneToday.length){
     out.push(rowHead('done today', doneToday.length + (doneToday.length === 1 ? ' card' : ' cards'), {
-      sub: 'Put down since midnight, or finished and unable to land — these still hold slots, and the sweep frees them tomorrow. A card that closed cleanly is not here: it is standing in its family’s timeline at the beat it closed in, where it can be confirmed.' }));
+      sub: 'Put down since midnight, or finished and unable to land. A card you put down has already given up its place: it waits here, ↩ to bring it back, until a new card needs the place. One finished and unable to land keeps its place until tomorrow. A card that closed cleanly is not here: it is standing in its family’s timeline at the beat it closed in, where it can be confirmed.' }));
     out.push('<div class="carousel">' + doneToday.map(c =>
       '<div class="dcard" style="opacity:0.55" data-key="' + esc(c.key) + '"><span class="aim"><span class="pile">' + (c.state === 'done' ? 'done' : 'put down') + '</span>'
       + '<span class="st">aligned to ' + esc(deckName(c.project)) + '</span></span>'

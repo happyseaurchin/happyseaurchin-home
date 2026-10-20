@@ -10,8 +10,9 @@
  * the project every handle has, ahead:now:<handle>, at rung 2. Moving it to
  * another rung or aligning it to a project is the hand's own act, ⇄ at /hands
  * (the pile sheet's ruling of 2026-09-17: you put things in here; moving stays
- * in the hand). A rung holds nine in each project, so the count beside the box
- * is one a person can check by looking at their now's cards today.
+ * in the hand). A rung holds nine in each project; the box says 'full' only
+ * when nine of the holder's now's cards stand at today, and says no count
+ * otherwise (David, 2026-10-20: 'not a bunch of numbers that don't make sense').
  * ───────────────────────────────────────────────────────────────────────────── */
 (function(){
 'use strict';
@@ -89,18 +90,18 @@ function build(){
   document.body.appendChild(card);
 }
 
-/* the count beside the box: how many of today's nine this holder's now has
- * taken — read on opening, so a full rung is said before anything is typed */
+/* a full rung beside the box — read on opening, so it is said before anything
+ * is typed; a rung with room says nothing */
 async function look(landed){
   if (!H) return;
   const at = H;
   try {
     const block = await H_.read(H_.name(PROJECT, at));
     if (at !== H) return;
-    const n = H_.taken(block && block[RUNG]);
-    $('.mc__where').textContent = WHERE + ' · ' + n + ' of 9' + (n >= 9 && landed ? ', full now' : '');
-    if (n >= 9 && !landed) sayFull();
-  } catch(e){ /* the count is a courtesy; the landing reads for itself */ }
+    const full = H_.taken(block && block[RUNG]) >= 9;
+    $('.mc__where').textContent = WHERE + (full ? ' · full' + (landed ? ' now' : '') : '');
+    if (full && !landed) sayFull();
+  } catch(e){ /* the look is a courtesy; the landing reads for itself */ }
 }
 
 async function mint(){
