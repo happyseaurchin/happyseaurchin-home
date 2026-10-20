@@ -569,10 +569,10 @@ const S = { mode:'design', sel:'', total:null, run:null, nums:false, view:'' };
 function restore(){
   try {
     const s = JSON.parse(localStorage.getItem(key()) || 'null');
-    if (s){ S.run = s.run || null; S.total = s.total || null; S.nums = !!s.nums; if (S.run && !S.run.end) S.mode = 'run'; }
+    if (s){ S.run = s.run || null; S.total = s.total || null; S.nums = !!s.nums; S.left = s.left || 0; if (S.run && !S.run.end) S.mode = 'run'; }
   } catch(e){}
 }
-function save(){ try { localStorage.setItem(key(), JSON.stringify({ run:S.run, total:S.total, nums:S.nums })); } catch(e){} }
+function save(){ try { localStorage.setItem(key(), JSON.stringify({ run:S.run, total:S.total, nums:S.nums, left:S.left || 0 })); } catch(e){} }
 function setSel(a){
   S.sel = a || '';
   try { history.replaceState(null, '', location.pathname + location.search + (S.sel ? '#' + S.sel : '')); } catch(e){}
@@ -921,7 +921,7 @@ function runBox(){
   let h = '<section class="run" aria-label="Run the meeting">';
   if (!r){
     return h + '<div class="runline"><span class="clock">' + clock(len() * 60000) + '</span><span class="runsub">ready, ' + M.ring.length + ' phases, ' + M.steps.length + ' parts</span></div>' +
-      '<p class="note">Start when the meeting starts. Mark each change of part as it happens, and the outer ring records how long each one actually took against the plan.</p>' +
+      '<p class="note">Start when the meeting starts. Mark each change of part as it happens, and the outer ring records how long each one actually took against the plan.' + (SHARED() ? ' Starting shares this clock with everyone who has the meeting open: their pages follow it, and you move it on.' : '') + '</p>' +
       (M.source ? '' : '<p class="note">A run kept here stands beside this meeting. For a meeting of your own, with its own link, its own people and its own record, <button type="button" class="btn ghost" style="padding:3px 8px" data-make="1">duplicate it</button> first, under your own key.</p>') +
       '<p class="note" style="margin-top:8px"><a href="' + stackLink(null) + '" target="_blank" rel="noopener">The State Stack ↗</a>, one room for everyone at the meeting — <a href="/animations/the-state-stack" target="_blank" rel="noopener">explained ↗</a></p>' +
       '<div class="runbtns"><button type="button" class="btn" data-run="start">Start the meeting</button></div></section>';
@@ -938,8 +938,8 @@ function runBox(){
          '<span class="runlabel">Was it done?</span><div class="met" role="group" aria-label="Was it done">' +
          ['yes', 'partly', 'no'].map(v => '<button type="button" data-met="' + v + '" aria-pressed="' + (note.met === v) + '">' + cap(v) + '</button>').join('') + '</div>' +
          '<label class="runlabel" for="rnote">What happened in ' + esc(p.title) + '</label><textarea id="rnote" data-note="' + p.idx + '">' + esc(note.text || '') + '</textarea>' +
-         '<div class="runbtns"><button type="button" class="btn" data-run="next">' + esc(nextLabel) + '</button>' +
-         '<button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard run</button></div>';
+         '<div class="runbtns">' + (r.followed ? '<span class="runsub">following ' + esc(r.followed) + '’s clock</span><button type="button" class="btn warn" data-run="leave">Leave</button>'
+           : '<button type="button" class="btn" data-run="next">' + esc(nextLabel) + '</button><button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard run</button>') + '</div>';
     return h + '</section>';
   }
   h += '<div class="runline"><span class="clock">' + clock(ri.elapsed * 60000) + '</span><span class="runsub">taken, of ' + clock(r.total * 60000) + ' planned · began ' +
@@ -1001,11 +1001,12 @@ function hudRun(){
     const next = !nx ? 'Finish' : (nx.p !== p ? nx.p.title : (nx.q ? nx.q.title : nx.p.title)) + ' →';
     return '<section class="run hud-run" aria-label="Run the meeting"><span class="clock" id="rclock">' + clock(ri.elapsed * 60000) + '</span>' + tools +
       '<p class="hud-now">' + esc(p.title) + (st.q ? ' · ' + esc(st.q.title) : '') + ' <span id="rphase">' + fmt((ri.now - ri.curStart) / 60000) + '</span></p>' +
-      '<button type="button" class="hud-go" data-run="next">' + esc(next) + '</button>' +
+      (r.followed ? '<p class="hud-now"><span>following ' + esc(r.followed) + '’s clock</span></p>' : '<button type="button" class="hud-go" data-run="next">' + esc(next) + '</button>') +
       '<div class="met" role="group" aria-label="Was it done">' + ['yes', 'partly', 'no'].map(v => '<button type="button" data-met="' + v + '" aria-pressed="' + (note.met === v) + '">' + cap(v) + '</button>').join('') + '</div>' +
       '<div class="say"><button type="button" class="say-btn" id="h-note" aria-pressed="false">' + MIC + '<span class="say-t">' + (note.text ? 'say more' : 'what happened') + '</span></button>' +
       '<textarea id="rnote" class="say-text" data-note="' + p.idx + '" aria-label="what happened in ' + esc(p.title) + '">' + esc(note.text || '') + '</textarea></div>' +
-      '<div class="runbtns"><button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard</button></div></section>';
+      '<div class="runbtns">' + (r.followed ? '<button type="button" class="btn warn" data-run="leave">Leave</button>'
+        : '<button type="button" class="btn ghost" data-run="end">End now</button><button type="button" class="btn warn" data-run="reset">Discard</button>') + '</div></section>';
   }
   return '<section class="run hud-run" aria-label="The run, ended"><span class="clock">' + clock(ri.elapsed * 60000) + '</span>' + tools + '<p class="hud-now"><span>of ' + clock(r.total * 60000) + '</span></p>' +
     (r.kept ? '<p class="hint ok">kept ✓</p>' : SNAP ? '' : '<div class="box" style="margin-top:10px"><div class="row"><input id="k-who" placeholder="your name" spellcheck="false" autocapitalize="off" autocomplete="username" aria-label="your name">' +
@@ -1118,21 +1119,84 @@ panel.addEventListener('click', ev => {
   if (!r) return;
   const act = r.getAttribute('data-run');
   if (act === 'start'){
-    const run = S.run = { start: Date.now(), marks: [], notes: {}, end: null, total: len() }; S.view = ''; setSel(M.steps[0].addr);
+    const run = S.run = { start: Date.now(), marks: [], notes: {}, end: null, total: len(), mine: true }; S.view = ''; setSel(M.steps[0].addr);
+    stageRun(run);
     /* a State Stack already opened for this sitting is the run's own: the room's screen and the run's link stay one room */
     if (fixedBeat()) run.room = fixedBeat();
     else if (!SNAP) openRoom(run.start).then(b => { if (b && S.run === run){ run.room = b; save(); render(); } });
   }
   else if (act === 'next'){ S.run.marks.push(Date.now()); if (S.run.marks.length >= M.steps.length) S.run.end = Date.now(); else setSel(M.steps[S.run.marks.length].addr); }
   else if (act === 'end'){ S.run.marks.push(Date.now()); S.run.end = Date.now(); }
-  else if (act === 'reset'){ S.run = null; }
+  else if (act === 'reset'){ if (S.run && S.run.followed) S.left = S.run.start; else if (S.run && !S.run.end) stageRun(null); S.run = null; }
+  else if (act === 'leave'){ if (S.run) S.left = S.run.start; S.run = null; S.mode = 'design'; }
   else if (act === 'copy'){ copyRecord(); return; }
   else if (act === 'keep'){ keepRun(); return; }
+  if (S.run && !S.run.followed && (act === 'next' || act === 'end')) stageRun(S.run);
   save(); render(); tickControl();
 });
 panel.addEventListener('input', ev => {
   if (ev.target.id === 'rnote' && S.run){ const i = ev.target.getAttribute('data-note'); (S.run.notes[i] = S.run.notes[i] || {}).text = ev.target.value; save(); }
 });
+
+/* ---------- ONE CLOCK FOR A MEETING (David, 2026-10-20) ----------
+   The first Start stages the run in the meeting room's liquid, liquid:pool:<name> — the revisable layer, one slot per
+   hand, never the record — as one line: 'RUN — began <instant>; planned <minutes> min; marks <seconds from the start, at
+   each change of part>; ended <seconds>'. Each Next and End revises it, and Discard withdraws it. Every ring open on the
+   meeting follows the earliest run still going: the same clock, the same part, its own notes; only the hand that started
+   it moves it on. Keeping stays solid and each hand's own (function:meeting 5). A design's run stays on its device, a
+   rehearsal, and a snapshot of the page shares nothing. */
+const SHARED = () => !SNAP && !IS_DESIGN;
+const LIQ = () => 'liquid:pool:' + FAMILY;
+const runLine = r => 'RUN — began ' + new Date(r.start).toISOString() + '; planned ' + num(r.total) + ' min; marks ' +
+  (r.marks.map(t => Math.round((t - r.start) / 1000)).join(',') || 'none') + (r.end ? '; ended ' + Math.round((r.end - r.start) / 1000) : '') +
+  ' — the meeting’s clock, happyseaurchin.com/ring/' + FAMILY;
+function liveOf(text){
+  const m = /^RUN — began (\S+); planned ([\d.]+) min; marks ([\d,]+|none)(?:; ended (\d+))?/.exec(String(text || ''));
+  const start = m ? Date.parse(m[1]) : NaN;
+  if (!m || !isFinite(start)) return null;
+  return { start, total: +m[2], marks: m[3] === 'none' ? [] : m[3].split(',').map(x => start + (+x) * 1000), end: m[4] ? start + (+m[4]) * 1000 : null };
+}
+async function stageRun(r){
+  if (!SHARED()) return;
+  const who = whoHere() || HANDLE || 'someone', now = new Date().toISOString();
+  try {
+    const fresh = await readBlock(LIQ()).catch(() => undefined);
+    if (fresh === undefined) return;
+    const slot = { '_': r ? runLine(r) : '', '1': who, '2': '', '3': now, '4': 'author', '6': now };
+    if (!fresh){
+      if (!r) return;
+      await post({ block: LIQ(), content: { '_': 'Liquid pre-commit buffer for ' + LIQ() + ' (block-conventions:4.5) — one slot per author, overwriting; the social mirror of pending intentions before commit. A meeting running stands here as its runner’s RUN line, the clock every page on the meeting follows.', '1': slot } });
+      return;
+    }
+    const mine = digits(fresh).find(d => String((fresh[d] && fresh[d]['1']) || '').toLowerCase() === who.toLowerCase()) || '123456789'.split('').find(d => !(d in fresh));
+    if (mine) await post({ block: LIQ(), spindle: mine, content: slot });
+  } catch(e){}
+}
+let clockTimer = null;
+async function pollClock(){
+  clearTimeout(clockTimer);
+  if (!M || !SHARED()) return;
+  if (!document.hidden){
+    const liq = await readBlock(LIQ()).catch(() => null), now = Date.now();
+    const runs = liq ? digits(liq).map(d => ({ who: String((liq[d] && liq[d]['1']) || ''), run: liveOf(voiceOf(liq[d])) })).filter(x => x.run) : [];
+    const going = runs.filter(x => x.run.start !== S.left && (x.run.end ? now - x.run.end < 30 * 60000 : now - x.run.start < (x.run.total + 90) * 60000))
+      .sort((a, b) => a.run.start - b.run.start)[0];
+    const was = S.run, own = was && !was.followed && !was.end;
+    if (!own){
+      if (going && !(was && !was.followed && was.start >= going.run.start)){
+        const same = was && was.followed && was.start === going.run.start;
+        const r = { start: going.run.start, marks: going.run.marks, end: going.run.end, total: going.run.total, followed: going.who,
+          notes: same ? was.notes : {}, room: same ? was.room : '', kept: same ? was.kept : undefined };
+        const moved = !same || was.marks.length !== r.marks.length || was.end !== r.end;
+        S.run = r;
+        if (!same){ S.mode = 'run'; S.view = ''; r.room = fixedBeat() || await openRoom(r.start).catch(() => ''); }
+        if (moved){ if (!r.end && r.marks.length < M.steps.length) setSel(M.steps[r.marks.length].addr); save(); render(); tickControl(); }
+      } else if (was && was.followed && !was.end && !going){ S.run = null; save(); render(); tickControl(); }
+    }
+  }
+  clockTimer = setTimeout(pollClock, (S.run && !S.run.end) || S.mode === 'run' ? 4000 : 20000);
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) pollClock(); });
 
 /* ---------- a reading: one line in the reader's own mirror, <family>:<name>, at the address it answers ---------- */
 async function addReading(){
@@ -1564,7 +1628,7 @@ function start(){
   const h = decodeURIComponent((location.hash || '').slice(1));
   if (/^[1-9](\.[1-9])?$/.test(h) && find(h).addr === h) S.sel = h;
   if (S.mode === 'run' && S.run && !S.run.end){ const ri = runInfo(); if (ri.cur >= 0) setSel(M.steps[ri.cur].addr); }
-  drawHow(); render(); tickControl();
+  drawHow(); render(); tickControl(); pollClock();
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { widths = {}; drawRing(); });
   if (window.nameLinks) nameLinks(document.body, { blocks: IX.blocks });
 }
