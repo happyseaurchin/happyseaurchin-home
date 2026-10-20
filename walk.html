@@ -324,6 +324,8 @@
   .vrow .mlink{flex:none}
   .silent{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
   .mirrorbox{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+  /* the box that heads the voices draws its line beneath it, between your words and theirs */
+  .sheet__body > .mirrorbox:first-child{border-top:none;padding-top:0;border-bottom:1px solid var(--line);padding-bottom:12px}
   .mirrorbox textarea{width:100%;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:8px;
     color:var(--foam);font-family:var(--body);font-size:0.95rem;padding:9px 11px;resize:vertical;min-height:52px}
   .mirrorbox .row{display:flex;gap:8px;align-items:center}
@@ -1017,7 +1019,19 @@ function lensed(vs){
   if (!cast && !group) return { shown: vs, aside: [], by: '' };
   const shown = [], aside = [];
   vs.forEach(v => ((!cast || CAST.has(v.who)) && (!group || VL.keep(v.who)) ? shown : aside).push(v));
-  return { shown, aside, by: [cast ? 'the formal lens' : '', group ? 'the scope sed:' + VL.name() : ''].filter(Boolean).join(' and ') };
+  return { shown, aside, cast, by: [cast ? 'the formal lens' : '', group ? 'the scope sed:' + VL.name() : ''].filter(Boolean).join(' and ') };
+}
+/* THE SCOPE ABOVE THE VOICES IT GOVERNS, wherever a point holds more than one voice or a scope
+ * is chosen (theme.js siteScope.pick). SAYS SO, ALWAYS — the family's own law: a fold that drops
+ * a voice says so, the names riding with the count, so what the lens set aside stays knowable
+ * from inside the view rather than only by turning the lens off. The dropdown names the scope,
+ * so the line names only the formal lens. */
+function scopeLine(lens){
+  const n = lens.aside.length, VL = window.siteScope;
+  const said = n ? n + (n === 1 ? ' voice' : ' voices') + ' set aside' + (lens.cast ? ' by ' + esc(lens.by) : '') + ': ' +
+    esc(lens.aside.map(v => whoName(v.who)).join(', ')) + ' · still standing at this point' : '';
+  if (VL && (lens.shown.length + n > 1 || VL.name())) return VL.pick(said || 0);
+  return said ? '<span class="silent">' + said + '</span>' : '';
 }
 /* what stands attached to an address: each hand's words there, plus placed gathering voices */
 function voicesAt(addr){
@@ -2260,6 +2274,17 @@ function paintSheet(){
     b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(wireAddr(addr)) +
       ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
+    /* YOUR BOX FIRST, THE VOICES BENEATH IT (David, 2026-10-20: "place the text entry at the
+     * top of voice so user can just add their voice immediately without having to scroll
+     * through a dross of voices"), and the scope between them, chosen where the voices are.
+     * Only this pane: the spine's line and the cards keep their order. */
+    if (HANDLE && SEL.level === 'ce')
+      b.push('<div class="mirrorbox"><span class="hint">the century shares its wire address with the millennium (sundial 3.4), so a mirror write here would land a rung up — voice this stretch at /now, which holds the coarse rungs the safe way</span></div>');
+    else if (HANDLE)
+      b.push(sayBoxHtml(addr));
+    else
+      b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
+    b.push(scopeLine(lens));
     b.push(vs.length
       ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
           /* a reading opens THE POINT, where it stands among the others. It
@@ -2270,19 +2295,6 @@ function paintSheet(){
            * row carries none either: the header's mirror ↗ already goes there. */
           (!v.room && v.who !== HANDLE ? '<a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a>' : '') + '</div>').join('')
       : '<span class="silent">' + (lens.aside.length ? 'no member has written here yet' : 'nobody has written here yet') + '</span>');
-    /* SAYS SO, ALWAYS — the family's own law: a fold that drops a voice says so.
-     * The names ride with the count, so what the lens set aside stays knowable
-     * from inside the view rather than only by turning the lens off. */
-    if (lens.aside.length)
-      b.push('<span class="silent">' + lens.aside.length + (lens.aside.length === 1 ? ' voice' : ' voices') +
-        ' set aside by ' + esc(lens.by) + ' — ' + esc(lens.aside.map(v => whoName(v.who)).join(', ')) +
-        ' · still standing at this point</span>');
-    if (HANDLE && SEL.level === 'ce')
-      b.push('<div class="mirrorbox"><span class="hint">the century shares its wire address with the millennium (sundial 3.4), so a mirror write here would land a rung up — voice this stretch at /now, which holds the coarse rungs the safe way</span></div>');
-    else if (HANDLE)
-      b.push(sayBoxHtml(addr));
-    else
-      b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
   } else {
     /* WHERE IT STANDS, SAID WHOLE — the fold's line heads the cards it was folded from
      * (function:path 2; David, 2026-10-06: "it seems related to cards") */
@@ -2893,7 +2905,7 @@ async function gStandHere(walk, words){
 function paintGroundSheet(){
   const tabs = $('sh-tabs'); tabs.classList.remove('hidden');
   const walk = G_SHEET_WALK || SEL.gpath, node = gNode(SPINE, walk), t = gSem(node);
-  const vs = lensed(voicesAt(walk)).shown;
+  const lens = lensed(voicesAt(walk)), vs = lens.shown;
   if (SHEET.pane === 'cards') SHEET.pane = 'text';
   $('sh-where').textContent = gLabel(walk);
   $('sh-mirror').textContent = 'mirror ↗'; $('sh-mirror').classList.remove('hidden'); $('sh-mirror').href = gMirrorUrl(walk);
@@ -2926,9 +2938,7 @@ function paintGroundSheet(){
     }
     b.push('<span class="silent work">spatial:' + esc(GROUND.world) + ' · ' + esc(gFull(walk)) + '</span>');
   } else {
-    b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + esc(v.t) + '</span></div>').join('')
-      : '<span class="silent">nobody has spoken here yet</span>');
+    /* your box first, the scope, then the voices — as on every point of the walk */
     if (HANDLE && t)
       b.push('<div class="mirrorbox"><div class="sub">your voice here</div>' +
         '<textarea id="gv-text" placeholder="what this place is to you — who is here, what it is like"></textarea>' +
@@ -2937,6 +2947,10 @@ function paintGroundSheet(){
       b.push('<span class="silent">undecided ground has no voice — speak at the decided rung above or below</span>');
     else
       b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
+    b.push(scopeLine(lens));
+    b.push(vs.length
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + esc(v.t) + '</span></div>').join('')
+      : '<span class="silent">nobody has spoken here yet</span>');
   }
   $('sh-body').innerHTML = b.join('');
   const mas = document.getElementById('mir-as');
