@@ -957,6 +957,10 @@
      * 2026-10-18: "it should be in the go dropdown list under the user's handle in order
      * to navigate to the user's premieres") */
     ['premieres',    'premiere', 'carry'],
+    /* the hand's record drawn as threads through the days, each turn's pull requests, pages, documents and
+     * apps a link; /lanes/<hand>+<hand> lays several side by side (David, 2026-10-20: "a simple visual for
+     * the lanes/sessions we are operating with; and allows others to attach theirs") */
+    ['lanes',        'lanes',    'handle'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
     ['the ledger',   'ledger',   'handle']
@@ -970,7 +974,7 @@
     ['earth',            'earth',        'optional']
   ];
   /* off until chosen — every other door is what a newcomer meets */
-  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, 'https://mirror.onen.ai/':1 };
+  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, lanes:1, 'https://mirror.onen.ai/':1 };
   /* a page renamed keeps the lists that named it */
   var DOOR_ALIAS = { shell:'passport', self:'passport' };
   /* who you do it with: the door in, and the live surface where people actually
