@@ -118,6 +118,10 @@ button:disabled{opacity:.5;cursor:default}
 .sbar{display:flex;justify-content:space-between;align-items:baseline;gap:12px;font-family:var(--ui);font-size:14px;letter-spacing:.03em;color:var(--ink-3);margin:0 0 8px}
 .sbar b{font-weight:500;color:var(--ink)}
 #sClock{font-variant-numeric:tabular-nums}
+/* a timed slide on a person's own clock, at zero: Next pulses, and the person decides when to go on */
+#nextBtn.pulse{animation:nextPulse 1.4s ease-in-out infinite}
+@keyframes nextPulse{0%,100%{box-shadow:0 0 0 0 rgba(208,102,26,.55)}50%{box-shadow:0 0 0 10px rgba(208,102,26,0)}}
+@media (prefers-reduced-motion: reduce){#nextBtn.pulse{animation:none;outline:2px solid var(--spark);outline-offset:3px}}
 .stage{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--rule);background:var(--sky)}
 .stage canvas{display:block;width:100%;height:auto;aspect-ratio:16/9}
 .stage .count{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--display);font-size:clamp(48px,12vw,88px);color:var(--bird);pointer-events:none}
@@ -647,8 +651,10 @@ function beforeLine(s, t, verb){
 function countdownDiv(stage){ const ov = document.createElement('div'); ov.className = 'count'; ov.setAttribute('aria-hidden', 'true'); stage.appendChild(ov); return ov; }
 function picHTML(s){ return s.pic ? '<img class="pic" alt="" src="' + esc(s.pic) + '">' : ''; }
 function liveHTML(s, label){ return quietOf(s) ? '' : '<div class="live"><span>' + label + '</span><b id="liveN">0</b></div>'; }
+/* every slide on a person's own clock carries Next, a timed one too: its seconds count down and never move the
+ * person on (David, 2026-10-20, after his own premiere of the Brighton room cut him off mid-thought) */
 function nextButton(s){
-  if (RUN.mode === 'shared' || dur(s, false)) return '';
+  if (RUN.mode === 'shared') return '';
   return '<button type="button" class="go" id="nextBtn">' + (RUN.idx < SLIDES.length - 1 ? 'Next' : 'Finish') + '</button>';
 }
 function wireNext(){ const b = $('nextBtn'); if (b) b.onclick = advance; }
@@ -702,7 +708,7 @@ const BUILD = {
       if ((now() - RUN.slideStart) < 0) return;
       RUN.st.locked = true; answer(s.addr, $('gr').value + '%');
       $('gr').disabled = true; $('glock').remove(); hint('gh', 'ok', 'Locked: ' + $('gr').value + '%.');
-      if (RUN.mode !== 'shared' && !dur(s, false)) setTimeout(advance, 600);
+      if (RUN.mode !== 'shared') setTimeout(advance, 600);   /* locking is the person's own move on */
     };
     wireNext();
   },
@@ -728,7 +734,12 @@ const FRAME = {
 };
 const LEAVE = {
   flock(s){ const inp = $('fw'); if (RUN.st.mine != null && inp && !RUN.st.said && inp.value.trim()){ answer(s.addr, fmtS(RUN.st.mine) + ' — ' + inp.value.trim()); RUN.st.clear(); } },
-  word(s){ const inp = $('ww'); if (RUN.st.mine == null && inp && inp.value.trim()){ answer(s.addr, fmtS(dur(s, RUN.mode === 'shared') || 0) + ' — ' + inp.value.trim()); RUN.st.clear(); } },
+  /* words typed and never said are kept at the second the person left with them: their own, on their own clock,
+   * where Next now ends every slide; the slide's last, on a shared one. Never the slide's length, which on a
+   * slide with no seconds put anyone who tapped Next without Say first in the room, at 0.0s */
+  word(s){ const inp = $('ww'); if (RUN.st.mine == null && inp && inp.value.trim()){
+    const d = dur(s, RUN.mode === 'shared'), t = Math.round(Math.max(0, now() - RUN.slideStart) / 100) / 10;
+    answer(s.addr, fmtS(RUN.mode === 'shared' && d ? Math.min(t, d) : t) + ' — ' + inp.value.trim()); RUN.st.clear(); } },
   guess(s){ if (RUN.st.touched && !RUN.st.locked) answer(s.addr, $('gr').value + '%'); }
 };
 function overlay(ts){
@@ -823,14 +834,16 @@ function tick(){
     if (!atRoomEnd && !RUN.ended && t >= tl[0] && i !== RUN.idx) enterSlide(i, tl[i]);
     if (!RUN.ended && RUN.idx === last && SLIDES[last].kind !== 'room' && t >= tl[last] + dur(SLIDES[last], true) * 1000) endShow();
   } else if (!RUN.ended){
+    /* a person's own clock never moves them on: when a timed slide's seconds run out, its Next pulses, once */
     const s = SLIDES[RUN.idx], d = s ? dur(s, false) : 0;
-    if (s && d && t - RUN.slideStart >= d * 1000){ if (RUN.idx < last) enterSlide(RUN.idx + 1, t); else endShow(); }
+    if (s && d && !RUN.st.timeUp && t - RUN.slideStart >= d * 1000){ RUN.st.timeUp = true; const nb = $('nextBtn'); if (nb) nb.classList.add('pulse'); }
   }
   if (!RUN.ended){
     const s = SLIDES[RUN.idx];
     if (s){
+      /* the slide's seconds: counted up against the whole on a shared clock, counted down on a person's own */
       const ts = (t - RUN.slideStart) / 1000, d = dur(s, RUN.mode === 'shared'), clk = $('sClock');
-      const txt = ts < 0 ? 'starts in ' + clockDown(-ts) : (d && s.kind !== 'room' ? clockUp(ts) + ' / ' + clockUp(d) : '');
+      const txt = ts < 0 ? 'starts in ' + clockDown(-ts) : !d || s.kind === 'room' ? '' : RUN.mode === 'shared' ? clockUp(ts) + ' / ' + clockUp(d) : clockDown(Math.max(0, d - ts));
       if (clk.textContent !== txt) clk.textContent = txt;
       if (FRAME[s.kind]) FRAME[s.kind](s, ts, t);
     }
