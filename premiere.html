@@ -173,6 +173,9 @@ ul.said b{font-weight:500;margin-right:6px}
 .words{display:grid;gap:6px;width:100%;margin-top:6px}
 .words label{font-size:15px;color:var(--ink-2)}
 .keep{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:6px}
+/* a card's paste line, for the person's own AI, with the button that copies it */
+.paste{display:flex;flex-direction:column;align-items:flex-start;gap:8px;width:100%;max-width:62ch}
+.paste .pline{margin:0;width:100%;font-family:var(--ui);font-size:15px;line-height:1.45;background:var(--surface);border:1px solid var(--rule-2);border-radius:8px;padding:10px 12px;overflow-wrap:anywhere;user-select:all;-webkit-user-select:all}
 /* the name and key made for a newcomer, said once at the end */
 .made{border:1px solid var(--violet);border-radius:12px;padding:12px 16px;max-width:62ch;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
 .made h3{margin:0}
@@ -675,11 +678,24 @@ function nextButton(s){
   return '<button type="button" class="go" id="nextBtn">' + (RUN.idx < SLIDES.length - 1 ? 'Next' : 'Finish') + '</button>';
 }
 function wireNext(){ const b = $('nextBtn'); if (b) b.onclick = advance; }
+/* A CARD'S PASTE LINE, at its 1 (the form's 4.1): a line for the person to paste into their own AI, shown with a
+ * button that copies it, a '…' at its end becoming their own handle (keel, 2026-10-20: a long address is fiddly to
+ * long-press on a phone) */
+const pasteLine = s => { const l = String(s.p[1] || '').trim(); return l && ME.h ? l.replace(/(…|\.\.\.)\s*$/, ME.h) : l; };
+async function copyLine(line){
+  let ok = false; try { await navigator.clipboard.writeText(line); ok = true; } catch(e){}
+  if (!ok){ const el = $('pasteLine'); if (el){ const r = document.createRange(); r.selectNodeContents(el); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); } }
+  hint('pasteHint', ok ? 'ok' : '', ok ? 'Copied: paste it into your own AI.' : 'Selected: copy it, then paste it into your own AI.');
+}
 const BUILD = {
   card(s, stage, panel){
     if (s.pic) stage.innerHTML = picHTML(s); else stage.hidden = true;
     RUN.st.ov = countdownDiv(stage);
-    panel.innerHTML = '<p class="body">' + esc(s.body) + '</p>' + (KNOWN[s.kind] ? '' : '<p class="note">(A kind of slide this page doesn’t know yet: ' + esc(s.kind) + '.)</p>') + nextButton(s);
+    const line = pasteLine(s);
+    panel.innerHTML = '<p class="body">' + esc(s.body) + '</p>' +
+      (line ? '<div class="paste"><p class="pline" id="pasteLine">' + esc(line) + '</p><button type="button" class="go" id="pasteCopy">Copy the line</button><p class="hint" id="pasteHint" aria-live="polite"></p></div>' : '') +
+      (KNOWN[s.kind] ? '' : '<p class="note">(A kind of slide this page doesn’t know yet: ' + esc(s.kind) + '.)</p>') + nextButton(s);
+    if (line) $('pasteCopy').onclick = () => copyLine(line);
     wireNext();
   },
   flock(s, stage, panel){
