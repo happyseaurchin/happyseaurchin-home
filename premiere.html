@@ -173,6 +173,11 @@ ul.said b{font-weight:500;margin-right:6px}
 .words{display:grid;gap:6px;width:100%;margin-top:6px}
 .words label{font-size:15px;color:var(--ink-2)}
 .keep{display:flex;flex-direction:column;align-items:flex-start;gap:4px;margin-top:6px}
+/* the name and key made for a newcomer, said once at the end */
+.made{border:1px solid var(--violet);border-radius:12px;padding:12px 16px;max-width:62ch;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.made h3{margin:0}
+.made p{margin:0}
+.made code{font-family:var(--mono);font-size:15px;background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:1px 6px;overflow-wrap:anywhere}
 .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .actions .td{margin-top:6px}
 .muted{color:var(--ink-3)}
@@ -218,18 +223,12 @@ ul.designs{list-style:none;padding:0;margin:4px 0 0;display:grid;gap:14px}
 
 <section id="enter" hidden aria-label="Come in">
   <p class="clockline" id="clockLine"></p>
-  <div id="entryButton" hidden>
-    <button type="button" class="go big" id="useButton">Start with the beach button</button>
-    <p class="note">The beach button keeps your handle and passphrase in the beach&rsquo;s own window, so this page never sees them. New here? Unlock it with a handle and a passphrase you make up, and keep the passphrase.</p>
+  <div class="who">
+    <label>Your handle <input id="who" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="the name your answers go under"></label>
   </div>
-  <div id="entryBox">
-    <div class="who">
-      <label>Your handle <input id="who" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="the name your answers go under"></label>
-    </div>
-    <p class="note" id="boxNote">Your answers are signed with your handle, in your own mirror on the beach, and only you can change them. New here? Make up a handle. The first time, your browser asks for your key (the one your passport uses, or one you choose and keep) and keeps it on this device: it proves these answers are yours, here and whenever you ask Claude about them.</p>
-    <button type="button" class="go big" id="start">Start my premiere</button>
-    <button type="button" class="mlink" id="turnOn">or use the beach button</button>
-  </div>
+  <p class="note" id="boxNote"></p>
+  <button type="button" class="go big" id="start">Start my premiere</button>
+  <button type="button" class="mlink" id="turnOn">or use the beach button</button>
   <p class="hint" id="enterHint" aria-live="polite"></p>
 </section>
 
@@ -302,6 +301,23 @@ async function mirrors(fam, force, extra){
   (extra || []).forEach(h => { if (h && hands.indexOf(h) < 0) hands.push(h); });   /* just written: the index may not list it yet */
   const got = await Promise.all(hands.map(h => read(fam + ':' + h).then(b => ({ h, b, ts: ix.touched[fam + ':' + h] || '' })).catch(() => ({ h, b: null }))));
   return got.filter(m => m.b);
+}
+/* THE ROOM AS A CROWD SHARES IT: every mirror of a family in one read the site keeps a few seconds for
+ * everyone (api/mirrors), since a room of n read from here costs each phone n reads at every look, and a
+ * crowd arriving together costs the beach n². The handles in `own`, just written, are read here fresh.
+ * Where the site's read cannot be had (a page served elsewhere, a moment it does not answer), the beach
+ * is read straight, as before, and the fold is left for the caller to read: { people, born, fold? } */
+async function room(fam, own, force){
+  let got = null;
+  try { const r = await fetch('/api/mirrors?family=' + encodeURIComponent(fam), { headers:{ Accept:'application/json' } }); if (r.ok) got = await r.json(); } catch(e){}
+  if (!got || !got.mirrors){
+    const people = await mirrors(fam, force, own), born = {};
+    people.forEach(m => { const t = IX && IX.born[fam + ':' + m.h]; if (t) born[m.h] = t; });
+    return { people, born };
+  }
+  const ms = Object.assign({}, got.mirrors);
+  await Promise.all((own || []).filter(Boolean).map(h => read(fam + ':' + h).then(b => { if (b) ms[h] = b; }).catch(() => {})));
+  return { people: Object.keys(ms).map(h => ({ h, b: ms[h], ts: (got.touched || {})[h] || '' })), born: got.born || {}, fold: got.fold || null };
 }
 /* a name becomes a link only where it stands: the person's own page, never their mirror or passport */
 const hasPage = h => !!(IX && (IX.set.has('passport:' + h) || IX.set.has('now:' + h) || IX.set.has('pool:' + h)));
@@ -376,7 +392,7 @@ function dictate(box){
   box.addEventListener('input', e => { if (rec && e.isTrusted) stop(); });   /* typing while it listens ends the listening */
   return b;
 }
-window.BK = { BEACH, SITE, esc, clean, store, savedName, voice, at, dotted, read, index, mirrors,
+window.BK = { BEACH, SITE, esc, clean, store, savedName, voice, at, dotted, read, index, mirrors, room,
   hasPage, pageUrl, nameHTML, errText, keepDraft, dictate };
 })();
 </script>
@@ -512,13 +528,14 @@ function personOf(h, b){
   return { h, first, when, ans, any: Object.keys(ans).length > 0 };
 }
 async function loadRoom(force){
-  let ix, ms;
+  let rm;
   for (let i = 0; ; i++){
-    try { ix = await BK.index(force || i > 0); ms = await BK.mirrors(NAME, false, ME.h ? [ME.h] : null); break; }
+    try { rm = await BK.room(NAME, ME.h ? [ME.h] : null, force || i > 0); break; }
     catch(e){ if (i >= 1) throw e; await new Promise(r => setTimeout(r, 1200)); }
   }
-  BORN = ix.born || BORN;
-  PEOPLE = ms.map(m => personOf(m.h, m.b));
+  Object.keys(rm.born).forEach(h => { BORN[NAME + ':' + h] = rm.born[h]; });
+  if ('fold' in rm) FOLD = rm.fold; else if (force) await loadFold();
+  PEOPLE = rm.people.map(m => personOf(m.h, m.b));
   const mine = PEOPLE.find(p => p.h === ME.h);
   if (mine && mine.any) STORED = mine;
   return PEOPLE;
@@ -822,8 +839,8 @@ function endShow(){
   RUN.ended = true;
   $('stage').hidden = true; $('strip').style.display = 'none';
   $('sNum').innerHTML = '<b>' + SLIDES.length + '</b> of ' + SLIDES.length + ' · the end'; $('sClock').textContent = '';
-  $('panel').innerHTML = '<p class="body">That’s the end of it.' + (RUN.dry ? ' Nothing was written this time.' : '') + '</p><div id="keepBox"></div><div class="actions" id="roomActions"></div><p class="hint" id="roomHint" aria-live="polite"></p>';
-  paintKeep(); paintActions($('roomActions'), 'roomHint');
+  $('panel').innerHTML = '<p class="body">That’s the end of it.' + (RUN.dry ? ' Nothing was written this time.' : '') + '</p><div id="madeEnd"></div><div id="keepBox"></div><div class="actions" id="roomActions"></div><p class="hint" id="roomHint" aria-live="polite"></p>';
+  paintMade($('madeEnd'), 'roomHint'); paintKeep(); paintActions($('roomActions'), 'roomHint');
 }
 function tick(){
   if (!RUN || $('show').hidden) return;
@@ -998,6 +1015,27 @@ async function keepNow(){
   if (r.name && r.name !== ME.h) ME.h = r.name;
   kept();
 }
+/* the name and key made here for a newcomer (startBox), said once: at the end of the show, or, where the show
+ * was left before its end, the next time this device opens on the room, and kept on the page for that visit.
+ * The key stays kept on the device, and is never shown again */
+let SAID = null;
+function paintMade(el, hintId){
+  const h = ME.h, block = NAME + ':' + h;
+  let key = SAID && SAID.h === h ? SAID.key : null;
+  if (!key && h && (key = BK.store.get('made-key:' + block))){
+    BK.store.del('made-key:' + block);
+    if (BK.store.get('next-latch:' + block) === key) SAID = { h, key }; else key = null;   /* else the name went under a key of the person's own */
+  }
+  if (!el || !key) return;
+  el.innerHTML = '<div class="made"><h3>Your name and key</h3>' +
+    '<p>Your answers stand on the beach as <code>' + esc(h) + '</code>, under the key <code>' + esc(key) + '</code>. This phone keeps both, so coming back here needs nothing. This is the only time the page shows the key: keep it to reach your answers from another device.</p>' +
+    '<p>To take this to Claude, give it your handle. To let it write here as you, add the beach connector (<a href="/connect" target="_blank" rel="noopener">happyseaurchin.com/connect</a>) and give it the key as well.</p>' +
+    '<button type="button">Copy both</button></div>';
+  el.querySelector('button').onclick = async () => {
+    let ok = false; try { await navigator.clipboard.writeText('handle: ' + h + '\nkey: ' + key); ok = true; } catch(e){}
+    hint(hintId, ok ? 'ok' : '', ok ? 'Copied: your handle and your key.' : 'Your handle is ' + h + ' and your key is ' + key + '.');
+  };
+}
 function kept(){
   RUN.kept = true; hint('roomHint', 'ok', 'Kept on the beach, in your name.');
   loadRoom(true).catch(() => {}).then(() => { const s = SLIDES[RUN.idx]; if (s && s.kind === 'room') paintRoomSlide(s); else paintKeep(); });
@@ -1021,7 +1059,7 @@ function paintActions(el, hintId){
     (mine ? '<button type="button" id="aAgain">Watch it again</button><button type="button" id="aDown">Take my answers down</button>' : '') +
     '<button type="button" class="mlink" id="aNot">Not ' + esc(ME.h || 'you') + '?</button>';
   $('aShare').onclick = () => shareIt(hintId, !!mine);
-  $('aLook').onclick = () => { hint(hintId, '', 'Reading the room again…'); loadFold().then(() => loadRoom(true)).then(() => { hint(hintId, '', ''); repaintRoom(); }).catch(e => hint(hintId, 'err', 'Couldn’t reach the beach: ' + e.message)); };
+  $('aLook').onclick = () => { hint(hintId, '', 'Reading the room again…'); loadRoom(true).then(() => { hint(hintId, '', ''); repaintRoom(); }).catch(e => hint(hintId, 'err', 'Couldn’t reach the beach: ' + e.message)); };
   if ($('aAgain')) $('aAgain').onclick = () => { if (!STORED) STORED = PEOPLE.find(p => p.h === ME.h) || STORED; beginShow('relative', true); };
   if ($('aDown')) $('aDown').onclick = () => takeDown(hintId);
   $('aNot').onclick = () => { BK.store.del('render:who'); BK.store.del('venture:who'); ME = { h: '', route: '', first: 0 }; STORED = null; RUN = null; $('who').value = ''; showEntry(); };
@@ -1048,17 +1086,18 @@ function showAfter(msg){
   const rooms = SLIDES.filter(s => s.kind === 'room');
   let h = rooms.length ? rooms.map(s => '<div class="room">' + (rooms.length > 1 ? '<h3>' + esc(s.title || 'The room') + '</h3>' : '') + roomHTML(s) + '</div>').join('') :
     '<ul class="said">' + SLIDES.filter(s => STORED && STORED.ans[s.addr]).map(s => { const a = STORED.ans[s.addr]; return '<li><b>' + esc(s.title || 'Slide ' + s.addr) + '</b> ' + esc(a.t != null ? fmtS(a.t) + (a.words ? ' — ' + a.words : '') : a.n != null ? Math.round(a.n) + '%' : a.words) + '</li>'; }).join('') + '</ul>';
-  $('afterPanel').innerHTML = h + '<div class="actions" id="afterActions"></div>';
-  paintActions($('afterActions'), 'afterHint');
+  $('afterPanel').innerHTML = '<div id="madeAfter"></div>' + h + '<div class="actions" id="afterActions"></div>';
+  paintMade($('madeAfter'), 'afterHint'); paintActions($('afterActions'), 'afterHint');
 }
+/* THE BOX FIRST, for everyone (David, 2026-10-20): the beach button is the quiet second route beneath it,
+ * turned on from here where it is off, and starting the show from here where the person already has it */
 function renderEntry(){
-  const viaButton = beachVoice.button.shown(), m = modeNow(), before = CLOCK.kind === 'shared' && now() < CLOCK.at;
-  $('entryButton').hidden = !viaButton; $('entryBox').hidden = viaButton;
-  if (!$('who').value) $('who').value = BK.savedName();
+  const m = modeNow(), before = CLOCK.kind === 'shared' && now() < CLOCK.at;
+  if (!$('who').value) $('who').value = BK.savedName() || proposal();
   const label = before ? 'I’m here' : m === 'shared' ? 'Join the premiere' : 'Start my premiere';
   if ($('start').textContent !== label) $('start').textContent = label;
-  const bl = before ? 'I’m here, through the beach button' : m === 'shared' ? 'Join through the beach button' : 'Start with the beach button';
-  if ($('useButton').textContent !== bl) $('useButton').textContent = bl;
+  const bl = !beachVoice.button.shown() ? 'or use the beach button' : before ? 'or say I’m here through the beach button' : m === 'shared' ? 'or join through the beach button' : 'or start with the beach button';
+  if ($('turnOn').textContent !== bl) $('turnOn').textContent = bl;
 }
 function entryTick(){
   clearTimeout(entryTimer);
@@ -1074,33 +1113,67 @@ function entryTick(){
   }
 }
 function showEntry(){ RUN = null; clearInterval(pollT); show('enter'); renderEntry(); entryTick(); nameCheck(); }
-const NOTE_NEW = 'Your answers are signed with your handle, in your own mirror on the beach, and only you can change them. New here? Make up a handle. The first time, your browser asks for your key (the one your passport uses, or one you choose and keep) and keeps it on this device: it proves these answers are yours, here and whenever you ask Claude about them.';
+/* A NAME MADE FOR A NEWCOMER (keel, 2026-10-20, for the Brighton room at FLIRT 2026): a stranger who scans a
+ * code in a corridor finds a handle already proposed, a starling and four digits no block on the beach is
+ * named for, so one tap starts the show. Kept or typed over, a name new to the beach is given its key here,
+ * kept on this device where the beach's voice looks for it first (next-latch:<block>), so nobody is asked
+ * to choose a key, and nobody reuses a password as one; the browser asks only for the key of a name already
+ * on the beach, which has one. The end of the show says the name and the key, once (paintMade). */
+let HERE = null, PROPOSED = '';
+const TAKEN = new Set();
+const onBeach = h => TAKEN.has(h) || !!(HERE && (HERE.set.has('passport:' + h) || HERE.blocks.some(b => b.endsWith(':' + h))));
+function rnd(n){ const a = new Uint32Array(1); try { crypto.getRandomValues(a); } catch(e){ a[0] = Math.floor(Math.random() * 4294967296); } return a[0] % n; }
+function proposal(){
+  if (PROPOSED && !onBeach(PROPOSED)) return PROPOSED;
+  for (let i = 0; i < 40; i++){ const h = 'starling-' + (1000 + rnd(9000)); if (!onBeach(h)) return PROPOSED = h; }
+  return PROPOSED = 'starling-' + (10000 + rnd(90000));
+}
+const WORDS = ('amber anchor apple arch aspen autumn badger bay beach beacon bell berry birch bluff boat bough brass breeze ' +
+  'brick brook cabin calm canal candle canyon cape cedar chalk cherry cliff cloud clover coast cobalt comet copper coral cove ' +
+  'crane crest dawn delta dew dune dusk eagle east echo elm ember fern ferry field finch flame flint flock foam forest fossil ' +
+  'fox frost gale garden garnet glade glow granite grove gull harbour hazel heath heron hill hollow honey indigo inlet iris ' +
+  'island ivory ivy jade jetty juniper kelp kestrel kite lagoon lake lantern larch lark laurel leaf ledge lemon lily linen ' +
+  'lotus maple marble marsh meadow mint mist moon moss north oak ocean olive opal orbit orchid otter owl palm pearl pebble ' +
+  'pepper pier pine plover plum pond poppy prism quartz rain raven reed reef ridge river robin rose rowan saffron sage sail ' +
+  'salt sand shell shore silver sky slate snow sorrel south spark spray spruce star stone storm stream summit swallow swan ' +
+  'tern thistle thorn tide timber topaz tower trail tulip valley velvet violet wave west wharf willow wind winter wren yarrow').split(' ');
+const makeKey = () => [0, 1, 2].map(() => WORDS[rnd(WORDS.length)]).join('-') + '-' + (10 + rnd(90));
+const NOTE_MADE = 'A name made up for you: keep it, or type your own. This phone makes a key that keeps your answers yours, and the end of the show tells you both.';
+const NOTE_NEW = 'A name new to the beach. This phone makes a key that keeps your answers yours, and the end of the show tells you both.';
 async function nameCheck(){
   const h = handleOf($('who').value), note = $('boxNote');
-  if (!h){ note.textContent = NOTE_NEW; return; }
+  if (!h){ note.textContent = 'Type a name for your answers, or leave the box empty and one is made up for you.'; return; }
+  if (h === PROPOSED){ note.textContent = NOTE_MADE; return; }
   try {
-    const ix = await BK.index();
+    const ix = HERE = await BK.index();
     if (ix.set.has('passport:' + h)) note.textContent = 'That name has a passport on the beach: when your browser asks for a key, give the one that passport uses.';
     else if (ix.blocks.some(b => b.endsWith(':' + h))) note.textContent = 'That name is already on the beach. If it’s yours, give your usual key when your browser asks; if not, choose another.';
     else note.textContent = NOTE_NEW;
   } catch(e){}
 }
-/* the box: a handle here, and the key through the browser's own prompt (the beach's voice), as the site's
- * pages and keel's charts take it; tested before the show by founding or opening the mirror */
+/* the box: a handle here, and its key (made here for a name new to the beach, else the one this device keeps
+ * or the browser asks for: the beach's voice), as the site's pages and keel's charts take it; tested before
+ * the show by founding or opening the mirror. The box signs even where the person has the beach button on the
+ * page: it is put away for this visit, their setting standing as it is, so the voice writes under this handle */
 async function startBox(){
-  if (beachVoice.button.shown()) return startButton();   /* the button came while the box stood: it signs */
-  const h = handleOf($('who').value);
-  if (!h){ hint('enterHint', 'err', 'Give a handle: up to 32 letters, digits, - or _. Your answers go under it.'); $('who').focus(); return; }
+  let h = handleOf($('who').value);
+  if (!h){ h = proposal(); $('who').value = h; }
+  if (beachVoice.button.shown() && window.beachButton) window.beachButton.hide();
   $('start').disabled = true; hint('enterHint', '', 'Opening your premiere…');
   try {
-    const block = NAME + ':' + h, cur = await BK.read(block), mode = modeNow(), firstAt = now();
+    let block = NAME + ':' + h, cur = await BK.read(block);
+    /* a proposed name taken since it was proposed: another, without asking, since the person did not choose it */
+    for (let i = 0; cur && h === PROPOSED && i < 5; i++){ TAKEN.add(h); h = proposal(); $('who').value = h; block = NAME + ':' + h; cur = await BK.read(block); }
+    const mode = modeNow(), firstAt = now();
     if (cur){
       const p = personOf(h, cur);
       if (p.any){ ME = { h, route: 'box', first: p.first }; STORED = p; BK.store.set('render:who', h); await loadRoom(true);
         return showAfter('You’ve had your premiere of this one, on ' + dateStr(p.first) + '. Here is the room as it stands.'); }
     }
+    if (!cur && !onBeach(h) && !BK.store.get('next-latch:' + block)){ const k = makeKey(); BK.store.set('next-latch:' + block, k); BK.store.set('made-key:' + block, k); }
     const w = await beachVoice.keep({ field: NAME, content: { _: introFor(h, mode, firstAt) }, name: h });
     if (!w || !w.ok){ hint('enterHint', w && w.quiet ? '' : 'err', w && w.quiet ? '' : errText(w)); return; }
+    if (h === PROPOSED){ TAKEN.add(h); PROPOSED = ''; }   /* the next newcomer on this device is proposed another */
     ME = { h, route: 'box', first: firstAt }; STORED = null; hint('enterHint', '', '');
     beginShow(mode, false);
   } catch(e){ hint('enterHint', 'err', 'Couldn’t reach the beach: ' + e.message); }
@@ -1189,7 +1262,7 @@ async function init(){
   try { [spine, op, ix] = await Promise.all([BK.read('spine:' + NAME), BK.read('function:' + NAME), BK.index(true)]); }
   catch(e){ $('xTitle').textContent = 'The beach can’t be reached just now'; $('xLede').textContent = 'This experience is played from the beach, so it needs the beach to answer. Try again in a moment.'; return; }
   if (ix && ix.now && ix.now.iso){ const s = Date.parse(ix.now.iso); if (!isNaN(s)) OFFSET = s + 500 - Date.now(); }
-  BORN = (ix && ix.born) || {};
+  BORN = (ix && ix.born) || {}; HERE = ix;
   if (!spine){
     $('xTitle').textContent = 'No experience called “' + NAME + '” stands on the beach';
     $('xLede').textContent = 'Check the name in the link, or make this one: ask Claude to read function:reflexive-experience on the beach and found it with you.';
@@ -1213,8 +1286,11 @@ async function init(){
 }
 
 $('start').addEventListener('click', startBox);
-$('useButton').addEventListener('click', startButton);
-$('turnOn').addEventListener('click', () => beachVoice.button.set(true));   /* the person's choice, kept in their settings */
+/* the quiet second route: the button turned on where it is off (the person's choice, kept in their settings),
+ * or the show started through it where it already stands */
+$('turnOn').addEventListener('click', () => { if (beachVoice.button.shown()) startButton(); else beachVoice.button.set(true); });
+/* typing replaces a proposed name (after the tap, which on a phone places the caret) */
+$('who').addEventListener('focus', () => { const w = $('who'); if (w.value === PROPOSED) setTimeout(() => w.setSelectionRange(0, w.value.length), 0); });
 $('who').addEventListener('input', debounce(nameCheck, 450));
 $('who').addEventListener('keydown', e => { if (e.key === 'Enter') startBox(); });
 window.addEventListener('resize', () => { if (RUN && RUN.st && RUN.st.flock) RUN.st.flock.fit(); });
