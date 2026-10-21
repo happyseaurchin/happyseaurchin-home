@@ -175,7 +175,16 @@
   .when input{flex:1;min-width:0;accent-color:var(--solid)}
   .stage{position:relative;border-radius:18px;border:1px solid var(--line);overflow:hidden;
     background:radial-gradient(70% 60% at 36% 66%, rgba(var(--bud-rgb),0.07), transparent 70%), rgba(var(--wash-rgb),0.015)}
-  .stage svg{display:block;width:100%;height:min(80vh,124vw);touch-action:pan-y;user-select:none;-webkit-user-select:none}
+  .stage svg{display:block;width:100%;height:min(86vh,980px);touch-action:pan-y;user-select:none;-webkit-user-select:none}
+  .fruit .hb{fill:transparent;pointer-events:all}
+  .fruit a,.fruit .ft-title,.fruit .ft-more{cursor:pointer}
+  .lab.line{font-family:var(--mono);fill:var(--vapour)}
+  .lab.sess{font-family:var(--mono);fill:var(--liquid)}
+  .lab.more{font-family:var(--mono);fill:var(--vapour-dim)}
+  .fruit a:hover .lab,.fruit .ft-title:hover .lab,.fruit .ft-more:hover .lab{fill:var(--liquid);text-decoration:underline}
+  .stage.focus .fruit:not(.on){opacity:0.32}
+  .dot{stroke:none} .dot.pr{fill:var(--vapour)} .dot.pr.merged{fill:var(--solid)} .dot.pr.open{fill:none;stroke:var(--solid);stroke-width:1.5}
+  .dot.page,.dot.film{fill:var(--liquid)} .dot.doc{fill:var(--l4)} .dot.app{fill:var(--l3)} .dot.part{fill:none;stroke:var(--foam);stroke-width:1.2}
   .stage.pointing{cursor:pointer}
   .stem{fill:var(--solid);opacity:0.92}
   .tick{stroke:var(--abyss);stroke-linecap:round;opacity:0.7}
@@ -192,8 +201,7 @@
   .leaf.pr.open{fill:rgba(var(--solid-rgb),0.12);stroke:var(--solid)}
   .leaf.page,.leaf.film{fill:var(--liquid)} .leaf.doc{fill:var(--l4)} .leaf.app{fill:var(--l3)} .leaf.part{fill:none;stroke:var(--foam)}
   .stage.focus .lanegrp:not(.on){opacity:0.32}
-  .stage.focus .lab:not(.on){opacity:0.32}
-  .lab{pointer-events:none;paint-order:stroke;stroke:var(--abyss);stroke-linejoin:round}
+    .lab{pointer-events:none;paint-order:stroke;stroke:var(--abyss);stroke-linejoin:round}
   .lab.title{font-family:var(--mono);fill:var(--foam)}
   .lab.leaf{font-family:var(--mono);fill:var(--vapour)}
   .lab.date{font-family:var(--mono);fill:var(--solid);letter-spacing:0.06em}
@@ -367,20 +375,25 @@ function stampOf(v){
   const m = t.match(/^\s*\[(20\d\d-\d\d-\d\dT[^\]]+Z)\]/);
   return m ? Date.parse(m[1]) : null;
 }
+const SESSION_LINE = /^\s*the session:\s*(claude:\/\/\S+|https:\/\/claude\.ai\/(?:code\/session_\w+|chat\/[\w-]+|project\/[\w-]+))[\s\S]{0,200}$/i;
 function turnsOf(entry){
-  const turns = [{ slot: '', text: textOf(entry), at: stampOf(entry) }];
+  const turns = [{ slot: '', text: textOf(entry), at: stampOf(entry) }], sessions = [];
   if (entry && typeof entry === 'object'){
     for (const k of ['1', '2', '4', '5', '6', '7', '8', '9']){
       const c = entry[k]; if (c == null) continue;
       const t = textOf(c);
-      if (!t || (typeof c === 'string' && t.length < 120)) continue;   /* a mark's own short fields, not a turn */
+      if (!t) continue;
+      const sl = t.match(SESSION_LINE); if (sl){ sessions.push(sl[1].replace(/[.,;:)]+$/, '')); continue; }   /* a line naming the lane's session is not a turn */
+      if (typeof c === 'string' && t.length < 120) continue;   /* a mark's own short fields, not a turn */
       turns.push({ slot: k, text: t, at: stampOf(c) });
     }
   }
   let last = turns[0].at;
   turns.forEach(t => { if (t.at == null) t.at = last; else last = t.at; });
   if (turns[0].at == null){ const first = turns.find(t => t.at != null); turns.forEach(t => { if (t.at == null) t.at = first ? first.at : null; }); }
-  return turns.filter(t => t.at != null);
+  const out = turns.filter(t => t.at != null);
+  out.sessions = sessions;
+  return out;
 }
 /* weft opens each entry with the lane's name: 'need-offer.1 (…', 'cards.again (…', 'animations lane, …' */
 const LANE_RX = /^\s*([A-Za-z][\w-]*(?:\.[\w-]+)*)(\s+(?:lane|wake)\b)?/;
@@ -388,14 +401,16 @@ function laneOf(text, hand){
   const m = text.match(LANE_RX);
   if (m){
     const tok = m[1], after = text.slice(m[0].length);
-    if (m[2] && /wake/.test(m[2])) return tok.toLowerCase() + ' wake';
-    if (m[2] || (/[.\-\d]/.test(tok) && /^\s*(?:\(|,|:|—|–|-\s|$)/.test(after))) return tok;
+    if (m[2] && /wake/.test(m[2])) return { name: tok.toLowerCase() + ' wake', named: true };
+    if (m[2] || (/[.\-\d]/.test(tok) && /^\s*(?:\(|,|:|—|–|-\s|$)/.test(after))) return { name: tok, named: true };
   }
   const s = text.replace(/^\s*\[(?:event\s*·\s*)?/, '');
   const w = s.match(/^([^,\]\(]*?\bproject(?: chat)?)\b/i)
         || text.match(/\bthe ([A-Z][\w.-]*(?: [\w.-]+){0,2}? project(?: chat)?)\b/)
         || text.match(/\bin (?:the )?((?:claude\.ai )?[\w.-]+(?: [\w.-]+){0,2}? [Pp]roject(?: [\w-]+)?|Cowork|Claude Code(?: desktop)?)\b/);
-  return w ? w[1].trim() : hand;
+  const head = s.replace(/^[^\]]*\]\s*/, '').match(/\b([A-Z][A-Z'’\-]{1,}(?:\s+[A-Z][A-Z'’\-]{1,}){1,5})\b/);
+  if (head) return { name: head[1].toLowerCase().slice(0, 40), named: false };
+  return { name: w ? w[1].trim() : hand, named: false };
 }
 const ROUTINE = /clock-woken|scheduled (?:wake|pass|morning|evening|sweep)|\bmorning sweep\b|\bevening settle\b|\bmorning glance\b|nobody present|no hand present|auto-mode scheduled/i;
 
@@ -418,7 +433,7 @@ const BLOCK_RX = /(^|[\s(`'‘"“])([a-z][a-z0-9-]*(?::[A-Za-z0-9][\w-]*)+)/g;
 const trimEnd = s => s.replace(/[.,;:!?'’)]+$/, '');
 
 function kindOfUrl(u){
-  if (/^claude:\/\//i.test(u) || /claude\.ai\/code\/session_/i.test(u)) return 'session';
+  if (/^claude:\/\//i.test(u) || /claude\.ai\/(?:code\/session_|chat\/|project\/)/i.test(u)) return 'session';
   if (/claude\.ai\/(?:code\/)?(?:artifact|public\/artifacts)\//i.test(u)) return 'app';
   if (/github\.com\/[^\/]+\/[^\/]+\/pull\/\d+/i.test(u)) return 'pr';
   if (/github\.com\//i.test(u)) return 'doc';
@@ -429,7 +444,7 @@ function kindOfUrl(u){
 }
 function labelOfUrl(u){
   const s = u.replace(/^https?:\/\//, '').replace(/^claude:\/\/claude\.ai\/epitaxy\//, '');
-  if (/claude\.ai\/code\/session_/.test(u) || /^claude:\/\//.test(u)) return 'the session';
+  if (/claude\.ai\/(?:code\/session_|chat\/|project\/)/.test(u) || /^claude:\/\//.test(u)) return 'the session';
   if (/claude\.ai\/(?:code\/)?(?:artifact|public\/artifacts)\//.test(u)) return 'claude.ai artifact';
   return s.replace(/^(?:www\.)?happyseaurchin\.com/, '').replace(/\/$/, '') || s;
 }
@@ -451,16 +466,19 @@ function madeIn(text){
   }
   URL_RX.lastIndex = 0;
   while ((m = URL_RX.exec(text))){
-    let u = trimEnd(m[0]);
+    let u = trimEnd(m[0]).replace(/[?&][\w-]+=$/, '');
     if (!/^[a-z]+:\/\//i.test(u)) u = 'https://' + u;
-    if (/^https?:\/\/(?:beach\.)?happyseaurchin\.com\/?$/i.test(u) || /\.well-known\//.test(u)) continue;
+    if (/^https?:\/\/(?:beach\.)?happyseaurchin\.com\/?$/i.test(u) || /\.well-known\/|\/api\/|…|\.\.\./.test(u)) continue;
     const pr = u.match(/github\.com\/([^\/]+\/[^\/]+)\/pull\/(\d+)/i);
     if (pr){ out.push({ kind: 'pr', repo: pr[1], n: +pr[2], url: u, key: pr[1] + '#' + pr[2] }); continue; }
     out.push({ kind: kindOfUrl(u), url: u, label: labelOfUrl(u), key: u });
   }
+  /* a cloud session named by its bare id ('session_01N8…') is the same session as its address */
+  const BARE = /(^|[^\/\w])(session_[A-Za-z0-9]{16,})\b/g;
+  while ((m = BARE.exec(text))){ const u = 'https://claude.ai/code/' + m[2]; out.push({ kind: 'session', url: u, label: 'the session', key: u }); }
   PATH_RX.lastIndex = 0;
   while ((m = PATH_RX.exec(text))){
-    let p = trimEnd(m[1]).replace(/\/<[^>]*>.*$/, '').replace(/<[^>]*>/g, '');
+    let p = trimEnd(m[1]).replace(/\/<[^>]*>.*$/, '').replace(/<[^>]*>/g, '').replace(/[?&][\w-]+=$/, '');
     if (!p || p === '/' || PATH_SKIP.test(p) || /\.(?:ts|js|json|md|py|html|css|jpg|png)$/i.test(p)) continue;
     const u = /^\/w\//.test(p) ? 'https://beach.happyseaurchin.com' + p : SITE + p;
     out.push({ kind: /^\/animations\b/.test(p) ? 'film' : /^\/read\b/.test(p) ? 'doc' : 'page', url: u, label: /^\/w\//.test(p) ? 'beach' + p : p, key: u });
@@ -505,10 +523,13 @@ function hue(name){ let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(
 function addEntry(hand, block, e){
   const turns = turnsOf(e.node);
   if (!turns.length) return;
-  const lane = laneOf(turns[0].text, hand);
-  const key = hand + '·' + lane;
+  /* an entry that opens with a lane's name gathers with its namesakes; one that does not (a sitting in keel's chats,
+     a pass of a person's own project) is a lane of its own, sprouting when it was written */
+  const ln = laneOf(turns[0].text, hand);
+  const key = hand + '·' + ln.name + (ln.named ? '' : '·' + e.addr);
   let L = S.lanes.get(key);
-  if (!L){ L = { key, hand, block, name: lane, color: hue(lane), turns: [], entries: [], routine: false }; S.lanes.set(key, L); }
+  if (!L){ L = { key, hand, block, name: ln.name, color: hue(ln.name), turns: [], entries: [], routine: false, sessionLinks: [] }; S.lanes.set(key, L); }
+  if (turns.sessions && turns.sessions.length) turns.sessions.forEach(u => { if (!L.sessionLinks.includes(u)) L.sessionLinks.push(u); });
   if (!L.entries.includes(e.addr)) L.entries.push(e.addr);
   if (ROUTINE.test(turns[0].text)) L.routine = true;
   turns.forEach(t => {
@@ -638,10 +659,22 @@ function firstNamer(){
   S.lanes.forEach(L => { if (L.routine) return; L.turns.forEach(t => t.made.forEach(o => { if (o.kind !== 'pr') return; const f = m.get(o.key); if (!f || t.at < f.at) m.set(o.key, { at: t.at, L }); })); });
   return m;
 }
-/* the lane's own session is the one its first account names; any other session in its words is one it speaks of */
+/* the lane's own session: the one its first account names, else one a line beneath it names as 'the session: …';
+   any other session in its words is one it speaks of */
+const SESSION_AT = /\bthe session:\s*(claude:\/\/[^\s'"<>()\[\]{}]+|https:\/\/claude\.ai\/(?:code\/session_[A-Za-z0-9]+|chat\/[\w-]+|project\/[\w-]+))/i;
 function sessionsOf(L){
   const own = L.turns.length ? L.turns[0].made.find(o => o.kind === 'session') : null;
-  return own ? [own.url] : [];
+  if (own) return [own.url];
+  if (L.sessionLinks && L.sessionLinks.length) return [L.sessionLinks[0]];
+  for (const t of L.turns){ const m = t.text.match(SESSION_AT); if (m) return [m[1].replace(/[.,;:]+$/, '')]; }
+  return [];
+}
+/* and failing that, for a lane run in a cloud seat, the session its first pull request names in its own description */
+function sessionFor(L, namer){
+  const own = sessionsOf(L)[0]; if (own) return own;
+  namer = namer || firstNamer();
+  for (const t of L.turns) for (const o of t.made){ if (o.kind !== 'pr') continue; const f = namer.get(o.key), p = prOf(o); if (f && f.L === L && p && p.session) return p.session; }
+  return null;
 }
 function chipHtml(o, compact){
   if (o.kind === 'pr'){
@@ -840,41 +873,35 @@ function drawFoot(){
 }
 
 /* ---------- the fern ----------
-   Every lane sprouts at the top of a logarithmic spiral, the newest first, and the next to sprout pushes it one
-   step clockwise: ten steps carry a lane from the top, round the right, to the bottom, and by then it is half the
-   size, so the older lanes coil inward, smaller each turn, like the curl of a fern (David, 2026-10-20: "a
-   logarithmic spiral with origination … the most latest sprouted at the top … by halfway those sessions/branches
-   are half the size"). A lane's place is its rank by when it BEGAN — never by when it was last touched — and
-   nothing else, so it stands where it stood last time until a newer lane pushes it on; nothing is simulated. Its
-   frond grows with its turns, each turn a knot, and what a turn made hangs off it as a leaf coloured by kind. The
-   curl is self-similar, so turning it back is one rotation and one enlargement about its eye: an older lane rises
-   to the top at the size the newest had, and the labels are laid in the frame's own units so they stay upright. */
-const STEP = Math.PI / 10, SHRINK = Math.pow(0.5, 1 / 10), R0 = 1000;
-const F = { s: 0, aim: 0, order: [], hits: [], labels: [], labelEls: [], scale: 0.4, m: 1, raf: 0, loading: false, hover: null,
-  view: 'fern', titles: kept.get('lanes:titles') !== '0', links: kept.get('lanes:links') === '1', wakes: kept.get('lanes:wakes') === '1' };
+   Every lane sprouts at the top of a golden spiral, the newest first, and the next to sprout pushes it one step
+   clockwise: five steps carry a lane from the top, round the right, to the bottom, and each quarter turn makes it
+   smaller by the golden ratio, so the newest lanes fill the screen and the older ones curl away into the lower-left
+   corner (David, 2026-10-20: "a logarithmic spiral with origination … the most latest sprouted at the top";
+   2026-10-21: "the most recent branches taking up most of the screen so I can actually make use of them, and the
+   spiral zooming off into the distance in the corner"). A lane's place is its rank by when it BEGAN and nothing
+   else, so it stands where it stood last time until a newer lane pushes it on; nothing is simulated, and the frame
+   comes from the screen alone. Each turn is a knot on the lane's frond and what a turn made hangs off it as a leaf;
+   the big fronds end in their fruit — the lane's name, the session it ran in, and what it made, each line a real
+   link — so today's work can be opened, and shown, from where it grows. Turning the curl back is one rotation and
+   one enlargement about its eye: an older lane rises to the top at the size the newest had. */
+const PHI = (1 + Math.sqrt(5)) / 2;
+const STEP = Math.PI / 5;                                   /* five lanes from the top, round the right, to the bottom */
+const SHRINK = Math.pow(PHI, -STEP / (Math.PI / 2));        /* the golden spiral: a quarter turn in, smaller by φ */
+const DEG = STEP * 180 / Math.PI;
+const F = { s: 0, aim: 0, order: [], hits: [], fruits: [], dates: [], raf: 0, loading: false, hover: null,
+  view: 'fern', W: 0, H: 0, E: { x: 0, y: 0 }, R0: 300, lam: 0.82, narrow: false,
+  titles: kept.get('lanes:titles') !== '0', links: kept.get('lanes:links') !== '0', wakes: kept.get('lanes:wakes') === '1' };
 { const v = new URLSearchParams(location.search).get('view'); F.view = (v === 'threads' || v === 'fern') ? v : (kept.get('lanes:view') === 'threads' ? 'threads' : 'fern'); }
-const spiral = r => { const a = -Math.PI / 2 + r * STEP, k = Math.pow(SHRINK, r); return { x: R0 * k * Math.cos(a), y: R0 * k * Math.sin(a), a, k }; };
+const spiral = r => { const a = -Math.PI / 2 + r * STEP, k = Math.pow(SHRINK, r); return { x: F.R0 * k * Math.cos(a), y: F.R0 * k * Math.sin(a), a, k }; };
 const f1 = n => String(Math.round(n * 10) / 10);
 const bez = (B, Q, T, t) => ({ x: (1 - t) * (1 - t) * B.x + 2 * (1 - t) * t * Q.x + t * t * T.x, y: (1 - t) * (1 - t) * B.y + 2 * (1 - t) * t * Q.y + t * t * T.y });
 const bezDir = (B, Q, T, t) => { const x = 2 * (1 - t) * (Q.x - B.x) + 2 * t * (T.x - Q.x), y = 2 * (1 - t) * (Q.y - B.y) + 2 * t * (T.y - Q.y), n = Math.hypot(x, y) || 1; return { x: x / n, y: y / n }; };
 const handHue = h => h === 'weft' ? 'var(--bud)' : h === 'keel' ? 'var(--l6)' : hue(h);
 const OUT_RANK = { pr: 0, app: 1, doc: 2, film: 3, page: 4, part: 5 };
-const LONGEST = 220 + 46 * 8;
-const frondLen = (k, n) => k * (220 + 46 * Math.min(n, 8));
+const FRUIT_RANK = { app: 0, film: 1, page: 2, doc: 3, pr: 4, part: 5 };   /* what can be visited and shown comes first */
+const frondLen = (k, n) => F.R0 * k * F.lam * (0.72 + 0.28 * Math.min(n, 8) / 8);
 const dayShort = t => { const d = new Date(t); return WD[d.getDay()].slice(0, 3) + ' ' + d.getDate(); };
 const dayLong = t => { const d = new Date(t); return WD[d.getDay()].slice(0, 3) + ' ' + d.getDate() + ' ' + MN[d.getMonth()].slice(0, 3); };
-/* the frame is the envelope of the curl's first turn at its longest — fixed, never fitted to the data, so nothing shifts between visits */
-const FRAME = (() => {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-  const take = (x, y) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); };
-  for (let r = -0.9; r <= 20; r += 0.25){
-    const p = spiral(r), ux = Math.cos(p.a), uy = Math.sin(p.a), len = p.k * LONGEST;
-    take(p.x, p.y);
-    if (r >= 0) take(p.x + ux * len - uy * len * 0.16, p.y + uy * len + ux * len * 0.16);
-  }
-  x0 -= 140; x1 += 400; y0 -= 95; y1 += 70;
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
-})();
 function leafPath(bx, by, dx, dy, len, wid){
   const ex = bx + dx * len, ey = by + dy * len, mx = bx + dx * len * 0.45, my = by + dy * len * 0.45, nx = -dy * wid, ny = dx * wid;
   return `M${f1(bx)} ${f1(by)}Q${f1(mx + nx)} ${f1(my + ny)} ${f1(ex)} ${f1(ey)}Q${f1(mx - nx)} ${f1(my - ny)} ${f1(bx)} ${f1(by)}Z`;
@@ -886,36 +913,69 @@ function shortOf(o){
   if (o.kind === 'app') return 'app';
   return String(o.label || '').replace(/^beach/, '').slice(0, 22);
 }
+/* one line of a fruit: what it is, in words a person can show someone */
+function fruitText(o){
+  if (o.kind === 'pr'){ const p = prOf(o); return '#' + o.n + (p ? ' ' + p.title : ' ' + (SHORT[o.repo] || o.repo)); }
+  if (o.kind === 'part'){ const nm = (S.parts[o.fam] || {})[o.part.split('.')[0]] || ''; return 'part ' + o.part + (nm ? ' · ' + nm : ''); }
+  if (o.kind === 'doc') return String(o.label || o.url);
+  if (o.kind === 'app' && /claude\.ai/.test(o.url)) return 'claude.ai artifact';
+  try {
+    const u = new URL(o.url), w = u.searchParams.get('world');
+    const where = (u.host === 'happyseaurchin.com' ? '' : u.host) + (u.pathname === '/' ? '' : u.pathname);
+    if (w) return (where || u.host) + ' · ' + w.replace(/\/$/, '').split('/').pop();
+    if (u.host === 'happyseaurchin.com') return u.pathname + (u.search ? u.search : '');
+    return where || u.host;
+  } catch(e){ return String(o.label || o.url); }
+}
 function fernOrder(){
   return [...S.lanes.values()].filter(L => L.turns.length && (F.wakes || !L.routine))
     .sort((a, b) => (b.turns[0].at - a.turns[0].at) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
 }
+/* the frame comes from the screen alone: the outer turn and its fronds fill the height, the eye keeps to the lower
+   left, and the room to the right is left for the fruit; a narrow screen keeps only the height it needs */
+function layout(){
+  const svg = $('fern-svg');
+  svg.style.height = '';
+  const box = svg.getBoundingClientRect();
+  const W = Math.max(300, Math.round(box.width)), Hc = Math.max(360, Math.round(box.height));
+  const narrow = W < 600, lam = narrow ? 0.98 : 1.15;
+  const padT = narrow ? 30 : 40, padB = 12, padL = 10, roomL = narrow ? 6 : 36, roomR = narrow ? W * 0.42 : Math.min(320, W * 0.3);
+  let x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+  for (let r = -0.9; r <= 10; r += 0.1){
+    const a = -Math.PI / 2 + r * STEP, k = Math.pow(SHRINK, r), ux = Math.cos(a), uy = Math.sin(a), L = r >= 0 ? lam * k : 0;
+    const bx = k * ux, by = k * uy, tx = bx + L * ux - L * 0.16 * uy, ty = by + L * uy + L * 0.16 * ux;
+    x0 = Math.min(x0, bx, tx); x1 = Math.max(x1, bx, tx); y0 = Math.min(y0, by, ty); y1 = Math.max(y1, by, ty);
+  }
+  const byH = (Hc - padT - padB) / (y1 - y0), byW = (W - padL - roomL - roomR) / (x1 - x0);
+  const R0 = Math.min(byH, byW);
+  const H = byW < byH ? Math.round((y1 - y0) * R0 + padT + padB) : Hc;
+  if (H !== Hc) svg.style.height = H + 'px';
+  F.W = W; F.H = H; F.R0 = R0; F.lam = lam; F.narrow = narrow;
+  F.E = { x: padL + roomL - x0 * R0, y: padT - y0 * R0 };
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+}
 function buildFern(){
   const svg = $('fern-svg'); if (!svg || F.view !== 'fern') return;
-  const order = F.order = fernOrder(), n = order.length;
-  svg.setAttribute('viewBox', `${f1(FRAME.x)} ${f1(FRAME.y)} ${f1(FRAME.w)} ${f1(FRAME.h)}`);
-  const box = svg.getBoundingClientRect();
-  F.scale = Math.min(box.width / FRAME.w, box.height / FRAME.h) || 0.4;
-  const m = F.m = Math.max(1, Math.min(2.6, 0.42 / F.scale));
-  F.narrow = F.scale < 0.3;
-  const parts = [], labels = [], hits = [];
-  /* the stem: a golden ribbon along the spiral, tapering to the bud where the next lane will sprout, thinning into the curl */
-  /* laid a rank at a time, so the stretch beside a lane fades with it when the curl is turned back past the top */
-  for (let j = -1; j <= n + 6; j++){
+  layout();
+  const order = F.order = fernOrder(), n = order.length, namer = firstNamer(), narrow = F.narrow;
+  const parts = [], hits = [], fruits = [], dates = [];
+  const sw = narrow ? 4.6 : 6.2;
+  /* the stem: a golden ribbon along the spiral, laid a rank at a time so the stretch beside a lane fades with it */
+  for (let j = -1; j <= n + 10; j++){
     const outer = [], inner = [];
-    for (let r = Math.max(-0.9, j - 0.53); r <= j + 0.53; r += 0.06){
-      const p = spiral(r), ux = Math.cos(p.a), uy = Math.sin(p.a), w = 10 * p.k * m * Math.min(1, (r + 0.9) / 0.7);
+    for (let r = Math.max(-0.9, j - 0.53); r <= j + 0.53; r += 0.05){
+      const p = spiral(r), ux = Math.cos(p.a), uy = Math.sin(p.a), w = sw * p.k * Math.min(1, (r + 0.9) / 0.7);
       outer.push(f1(p.x + ux * w) + ' ' + f1(p.y + uy * w)); inner.push(f1(p.x - ux * w) + ' ' + f1(p.y - uy * w));
     }
     if (outer.length > 1) parts.push(`<path class="stem seg" data-r="${Math.max(0, j)}" d="M${outer.join('L')}L${inner.reverse().join('L')}Z"/>`);
   }
-  /* where a day turns, a notch across the stem and the day's name inside the curl */
+  /* where a day turns, a notch across the stem, and the day's name inside the curl */
   for (let j = 0; j < n; j++){
     const d1 = dayKeyOf(order[j].turns[0].at);
     if (j > 0 && dayKeyOf(order[j - 1].turns[0].at) === d1) continue;
-    const r = j - 0.5, p = spiral(r), ux = Math.cos(p.a), uy = Math.sin(p.a), w = 12 * p.k * m;
-    if (j > 0) parts.push(`<line class="tick" data-r="${j}" x1="${f1(p.x - ux * w)}" y1="${f1(p.y - uy * w)}" x2="${f1(p.x + ux * w)}" y2="${f1(p.y + uy * w)}" stroke-width="${f1(2.6 * p.k * m)}"/>`);
-    labels.push({ kind: 'date', r: j, wx: p.x - ux * 42 * p.k * m, wy: p.y - uy * 42 * p.k * m, ang: p.a + Math.PI, text: j === 0 && d1 === dayKeyOf(Date.now()) ? 'today' : dayShort(order[j].turns[0].at), px: F.narrow ? 10 : 11.5, exp: 0.45, min: 7.5 });
+    const r = j - 0.5, p = spiral(r), ux = Math.cos(p.a), uy = Math.sin(p.a), w = sw * p.k;
+    if (j > 0) parts.push(`<line class="tick" data-r="${j}" x1="${f1(p.x - ux * w)}" y1="${f1(p.y - uy * w)}" x2="${f1(p.x + ux * w)}" y2="${f1(p.y + uy * w)}" stroke-width="${f1(Math.max(1, 0.28 * sw * p.k))}"/>`);
+    dates.push({ r: j, wx: p.x - ux * 3.6 * sw * p.k, wy: p.y - uy * 3.6 * sw * p.k, text: j === 0 && d1 === dayKeyOf(Date.now()) ? 'today' : dayShort(order[j].turns[0].at) });
   }
   /* the fronds, newest first, each a curve outward from its place on the stem */
   order.forEach((Ln, j) => {
@@ -925,8 +985,9 @@ function buildFern(){
     const st = laneState(Ln), live = st.live && !Ln.routine;
     const hit = { key: Ln.key, r: j, pts: [] };
     const vis = nT <= 12 ? Ln.turns : Array.from({ length: 12 }, (_, i) => Ln.turns[Math.round(i * (nT - 1) / 11)]);
+    const g0 = narrow ? 0.8 : 1;
     let g = `<g class="lanegrp${Ln.routine ? ' wake' : ''}" data-r="${j}" data-key="${esc(Ln.key)}" style="--c:${handHue(Ln.hand)}">`;
-    g += `<path class="frond" d="M${f1(B.x)} ${f1(B.y)}Q${f1(Q.x)} ${f1(Q.y)} ${f1(T.x)} ${f1(T.y)}" stroke-width="${f1(6 * k * m)}"/>`;
+    g += `<path class="frond" d="M${f1(B.x)} ${f1(B.y)}Q${f1(Q.x)} ${f1(Q.y)} ${f1(T.x)} ${f1(T.y)}" stroke-width="${f1(Math.max(0.6, 3.8 * k * g0))}"/>`;
     [0.3, 0.55, 0.8, 1].forEach(t => { const c = bez(B, Q, T, t); hit.pts.push({ x: c.x, y: c.y, kind: 'frond' }); });
     const seen = new Set();
     vis.forEach((t, i) => {
@@ -937,69 +998,117 @@ function buildFern(){
       fresh.slice(0, 5).forEach((o, q) => {
         const side = (i + q) % 2 ? 1 : -1, ang = side * (0.9 + q * 0.2);
         const dx = d.x * Math.cos(ang) - d.y * Math.sin(ang), dy = d.x * Math.sin(ang) + d.y * Math.cos(ang);
-        const ll = (o.kind === 'pr' ? 82 : 64) * k * (1 - q * 0.08) * Math.min(m, 1.6), ww = 19 * k * Math.min(m, 1.8);
-        const bx = c.x + dx * 6 * k * m, by = c.y + dy * 6 * k * m;
+        const ll = (o.kind === 'pr' ? 38 : 31) * k * g0 * (1 - q * 0.08), ww = 9.5 * k * g0;
+        const bx = c.x + dx * 3 * k, by = c.y + dy * 3 * k;
         const pr = o.kind === 'pr' ? prOf(o) : null;
-        g += `<path class="leaf ${o.kind}${pr ? ' ' + pr.state : ''}" d="${leafPath(bx, by, dx, dy, ll, ww)}" stroke-width="${f1(2.2 * k * m)}"/>`;
+        g += `<path class="leaf ${o.kind}${pr ? ' ' + pr.state : ''}" d="${leafPath(bx, by, dx, dy, ll, ww)}" stroke-width="${f1(1.2 * k)}"/>`;
         hit.pts.push({ x: bx + dx * ll * 0.6, y: by + dy * ll * 0.6, kind: 'leaf', out: o.key, turn: t.entry + '.' + t.slot });
-        labels.push({ kind: 'leaf', r: j, key: Ln.key, wx: bx + dx * (ll + 7 * k), wy: by + dy * (ll + 7 * k), ang: Math.atan2(dy, dx), text: shortOf(o), px: F.narrow ? 10.5 : 11.5, exp: 0.6, min: 10 });
       });
       const made = t.made.some(o => o.kind !== 'session');
       const open = t.made.some(o => { const q2 = o.kind === 'pr' ? prOf(o) : null; return !!q2 && q2.state === 'open'; });
-      g += `<circle class="knot${made ? ' made' : ''}${open ? ' open' : ''}" cx="${f1(c.x)}" cy="${f1(c.y)}" r="${f1((made ? 7.5 : 5) * k * m)}" stroke-width="${f1(2 * k * m)}"/>`;
+      g += `<circle class="knot${made ? ' made' : ''}${open ? ' open' : ''}" cx="${f1(c.x)}" cy="${f1(c.y)}" r="${f1((made ? 6 : 4.2) * k * g0)}" stroke-width="${f1(1.5 * k)}"/>`;
       hit.pts.push({ x: c.x, y: c.y, kind: 'knot', turn: t.entry + '.' + t.slot });
-      if (live && i === vis.length - 1) g += `<circle class="halo" cx="${f1(c.x)}" cy="${f1(c.y)}" r="${f1(9 * k * m)}" stroke-width="${f1(2.2 * k * m)}"/>`;
+      if (live && i === vis.length - 1) g += `<circle class="halo" cx="${f1(c.x)}" cy="${f1(c.y)}" r="${f1(6 * k * g0)}" stroke-width="${f1(1.6 * k)}"/>`;
     });
     parts.push(g + '</g>');
-    const cut = F.narrow ? 15 : 22;
-    const lx = T.x + ux * 16 * k * m, ly = T.y + uy * 16 * k * m;
-    labels.push({ kind: 'title', r: j, key: Ln.key, wx: lx, wy: ly, ang: p.a + 0.16, text: Ln.name.length > cut ? Ln.name.slice(0, cut - 1) + '…' : Ln.name, px: F.narrow ? 11.5 : 14.5, exp: 0.55, min: 8.5 });
-    hit.pts.push({ x: lx, y: ly, kind: 'title' });
+    /* the fruit at the frond's end: the lane's name, the session it ran in, and what it made, newest kinds first */
+    const out = [], seen2 = new Set();
+    Ln.turns.slice().reverse().forEach(t => t.made.forEach(o => { if (o.kind === 'session' || seen2.has(o.key) || !alive(o)) return; seen2.add(o.key); out.push(o); }));
+    out.sort((a, b) => (FRUIT_RANK[a.kind] ?? 9) - (FRUIT_RANK[b.kind] ?? 9));
+    fruits.push({ r: j, key: Ln.key, name: Ln.name, wx: T.x + ux * 7 * k, wy: T.y + uy * 7 * k, ang: p.a + 0.16,
+      sess: sessionFor(Ln, namer), lines: out.map(o => { const q3 = o.kind === 'pr' ? prOf(o) : null; return { text: fruitText(o), href: o.url, kind: o.kind, state: q3 ? q3.state : '' }; }) });
     hits.push(hit);
   });
-  svg.innerHTML = `<g id="fern-world">${parts.join('')}</g><g id="fern-labels">${labels.map(l => `<text class="lab ${l.kind}">${esc(l.text)}</text>`).join('')}</g>`;
-  F.labels = labels; F.hits = hits;
-  F.labelEls = [...$('fern-labels').children];
+  /* the fruit and the dates are laid in the frame's own units, above the curl, so they stay upright at any turn */
+  const fruitSvg = fruits.map((fr, i) => {
+    const lines = fr.lines.map((l, q) => `<a class="ft-line" data-q="${q}" href="${esc(l.href)}" target="_blank" rel="noopener"><rect class="hb"/><circle class="dot ${l.kind} ${l.state}" r="3.2"/><text class="lab line"></text></a>`).join('');
+    const sess = fr.sess ? `<a class="ft-sess" href="${esc(fr.sess)}"${/^claude:/.test(fr.sess) ? '' : ' target="_blank" rel="noopener"'}><rect class="hb"/><text class="lab sess">▶ session</text></a>` : '';
+    return `<g class="fruit" data-i="${i}"><g class="ft-title" data-key="${esc(fr.key)}"><rect class="hb"/><text class="lab title">${esc(fr.name)}</text></g>${sess}${lines}<g class="ft-more" data-key="${esc(fr.key)}"><rect class="hb"/><text class="lab more"></text></g></g>`;
+  }).join('');
+  svg.innerHTML = `<g transform="translate(${f1(F.E.x)} ${f1(F.E.y)})"><g id="fern-world">${parts.join('')}</g></g>`
+    + `<g id="fern-dates">${dates.map(d => `<text class="lab date">${esc(d.text)}</text>`).join('')}</g><g id="fern-fruit">${fruitSvg}</g>`;
+  F.hits = hits; F.fruits = fruits; F.dates = dates;
+  F.dateEls = [...$('fern-dates').children];
+  F.fruitEls = [...$('fern-fruit').children];
   F.groups = [...$('fern-world').querySelectorAll('.lanegrp, .seg, .tick')];
   $('fern-s').max = String(Math.max(0, n - 3));
   if (F.s > n - 3) F.s = F.aim = Math.max(0, n - 3);
   frame();
 }
-/* a point of the curl, where it stands now that the curl has been turned back by s */
+/* a point of the curl, where it stands on the screen now that the curl has been turned back by s */
 function toView(x, y){
-  const t = -F.s * STEP, z = Math.pow(2, F.s / 10), c = Math.cos(t), sn = Math.sin(t);
-  return { x: (x * c - y * sn) * z, y: (x * sn + y * c) * z };
+  const t = -F.s * STEP, z = Math.pow(SHRINK, -F.s), c = Math.cos(t), sn = Math.sin(t);
+  return { x: F.E.x + (x * c - y * sn) * z, y: F.E.y + (x * sn + y * c) * z };
+}
+const CH = 0.6;   /* the monospaced type's advance, as a share of its size */
+function cut(text, px, room){ const max = Math.floor(room / (CH * px)); return text.length <= max ? text : max <= 2 ? '' : text.slice(0, max - 1) + '…'; }
+function place(a, text, px, x, y, anchor, room, dot){
+  const tx = a.querySelector('text'), rb = a.querySelector('.hb'), dt = a.querySelector('.dot');
+  const shown = cut(text, px, room - (dot ? px : 0));
+  if (!shown){ a.setAttribute('display', 'none'); return 0; }
+  a.removeAttribute('display');
+  const w = shown.length * CH * px, gap = dot ? px * 0.95 : 0;
+  const x0 = anchor === 'end' ? x - w - gap : x;
+  if (dt){ dt.setAttribute('cx', f1(anchor === 'end' ? x - 3 : x + 3)); dt.setAttribute('cy', f1(y - px * 0.32)); }
+  tx.setAttribute('x', f1(anchor === 'end' ? x - gap : x + gap)); tx.setAttribute('y', f1(y));
+  tx.setAttribute('font-size', f1(px)); tx.setAttribute('text-anchor', anchor);
+  if (tx.textContent !== shown) tx.textContent = shown;
+  rb.setAttribute('x', f1(x0 - 3)); rb.setAttribute('y', f1(y - px * 1.05)); rb.setAttribute('width', f1(w + gap + 6)); rb.setAttribute('height', f1(px * 1.45));
+  return w + gap;
 }
 function frame(){
   const world = $('fern-world'); if (!world) return;
-  const s = F.s;
-  world.setAttribute('transform', `rotate(${(-s * 18).toFixed(2)}) scale(${Math.pow(2, s / 10).toFixed(5)})`);
+  const s = F.s, narrow = F.narrow;
+  world.setAttribute('transform', `rotate(${(-s * DEG).toFixed(2)}) scale(${Math.pow(SHRINK, -s).toFixed(5)})`);
   F.groups.forEach(g => {
     const e = +g.dataset.r - s;
-    g.style.display = (e < -1.7 || e > 90) ? 'none' : '';
+    g.style.display = (e < -1.7 || e > 60) ? 'none' : '';
     g.style.opacity = e < -0.5 ? Math.max(0, (e + 1.7) / 1.2).toFixed(2) : '';
-    g.classList.toggle('on', !!F.hover && F.hover === g.dataset.key);
+    if (g.dataset.key) g.classList.toggle('on', !!F.hover && F.hover === g.dataset.key);
   });
-  const sc = F.scale || 0.4;
-  F.labels.forEach((l, i) => {
-    const el = F.labelEls[i], e = l.r - s;
-    const wanted = l.kind === 'title' ? F.titles : l.kind === 'leaf' ? F.links : true;
-    const px = l.px * Math.pow(SHRINK, e * l.exp);
-    if (!wanted || e < -0.9 || px < l.min){ el.setAttribute('display', 'none'); return; }
-    const v = toView(l.wx, l.wy), ae = l.ang - s * STEP, cx = Math.cos(ae), cy = Math.sin(ae);
+  F.dates.forEach((d, i) => {
+    const el = F.dateEls[i], e = d.r - s, px = (narrow ? 10 : 11.5) * Math.pow(SHRINK, e * 0.4);
+    if (e < -0.9 || px < 8.5){ el.setAttribute('display', 'none'); return; }
+    const v = toView(d.wx, d.wy);
     el.removeAttribute('display');
-    el.setAttribute('x', f1(v.x)); el.setAttribute('y', f1(v.y));
-    el.setAttribute('font-size', f1(px / sc));
-    el.setAttribute('stroke-width', f1(3 / sc));
-    const anchor = l.kind === 'date' ? 'middle' : cx > 0.38 ? 'start' : cx < -0.38 ? 'end' : 'middle';
-    el.setAttribute('text-anchor', anchor);
-    /* a name that would run off the frame is cut to fit it, in the frame's own units (the type is monospaced) */
-    const ch = 0.6 * px / sc, room = anchor === 'start' ? FRAME.x + FRAME.w - 6 / sc - v.x : anchor === 'end' ? v.x - FRAME.x - 6 / sc : Infinity;
-    const fit = room === Infinity || l.text.length * ch <= room ? l.text : l.text.slice(0, Math.max(3, Math.floor(room / ch) - 1)) + '…';
-    if (el.textContent !== fit) el.textContent = fit;
-    el.setAttribute('dominant-baseline', l.kind === 'date' ? 'middle' : cy < -0.55 ? 'auto' : cy > 0.55 ? 'hanging' : 'middle');
+    el.setAttribute('x', f1(v.x)); el.setAttribute('y', f1(v.y)); el.setAttribute('font-size', f1(px));
+    el.setAttribute('text-anchor', 'middle'); el.setAttribute('dominant-baseline', 'middle');
     el.style.opacity = e < 0 ? Math.max(0, 1 + e / 0.9).toFixed(2) : '';
-    el.classList.toggle('on', !!F.hover && l.key === F.hover);
+  });
+  const W = F.W, H = F.H;
+  F.fruits.forEach((fr, i) => {
+    const g = F.fruitEls[i], e = fr.r - s;
+    const tpx = (narrow ? 14.5 : 18) * Math.pow(SHRINK, e * 0.55), lpx = (narrow ? 12 : 14) * Math.pow(SHRINK, e * 0.5);
+    if (e < -0.9 || e > 14 || tpx < 9.5){ g.setAttribute('display', 'none'); return; }
+    g.removeAttribute('display');
+    g.style.opacity = e < 0 ? Math.max(0, 1 + e / 0.9).toFixed(2) : '';
+    g.classList.toggle('on', !!F.hover && F.hover === fr.key);
+    const v = toView(fr.wx, fr.wy), ae = fr.ang - s * STEP, cx = Math.cos(ae), cy = Math.sin(ae);
+    const anchor = cx < -0.38 ? 'end' : 'start';
+    const room = anchor === 'start' ? W - 6 - v.x : v.x - 6;
+    const cap = !F.links || lpx < (narrow ? 9 : 10) ? 0 : e < 0.6 ? (narrow ? 4 : 7) : e < 1.6 ? (narrow ? 3 : 5) : e < 2.6 ? (narrow ? 2 : 3) : 0;
+    const nLines = Math.min(fr.lines.length, cap), more = fr.lines.length - nLines;
+    const lh = lpx * 1.5, tH = tpx * 1.5;
+    const height = (F.titles ? tH : 0) + (fr.sess ? lh : 0) + nLines * lh + (more > 0 && cap ? lh : 0);
+    /* where the column starts: beside the tip, above it when the frond points down, the title at the tip when it points up */
+    let y = cy > 0.55 ? v.y + tpx * 1.2 : cy < -0.55 ? v.y - tpx * 0.2 : v.y + tpx * 0.35;
+    const x = anchor === 'start' ? v.x + (cy < -0.55 ? 4 : 2) : v.x - 2;
+    if (y + height - tpx > H - 6) y = Math.max(tpx + 4, H - 6 - height + tpx);
+    const kids = g.children;
+    /* the title, then the session, then what it made, then how many more */
+    const title = kids[0];
+    if (F.titles || cap){ place(title, fr.name, tpx, x, y, anchor, room, false); y += tH; } else title.setAttribute('display', 'none');
+    let k2 = 1;
+    if (fr.sess){
+      const se = kids[k2++];
+      if (cap || e < 1.6){ place(se, '▶ session', lpx, x, y, anchor, room, false); y += lh; } else se.setAttribute('display', 'none');
+    }
+    fr.lines.forEach((l, q) => {
+      const a = kids[k2 + q];
+      if (q < nLines){ place(a, l.text, lpx, x, y, anchor, room, true); y += lh; } else a.setAttribute('display', 'none');
+    });
+    const mo = kids[kids.length - 1];
+    if (more > 0 && cap) place(mo, '+' + more + ' more — the story', lpx * 0.92, x, y, anchor, room, false); else mo.setAttribute('display', 'none');
   });
   $('fern-stage').classList.toggle('focus', !!F.hover);
   const sl = $('fern-s'); if (Math.abs(+sl.value - s) > 0.02) sl.value = String(s);
@@ -1015,7 +1124,7 @@ function glide(){
 }
 /* turning the curl back to its oldest loaded lanes reads the record further back, a container at a time */
 async function olderIfNear(){
-  if (F.loading || F.view !== 'fern' || F.s < F.order.length - 26) return;
+  if (F.loading || F.view !== 'fern' || F.s < F.order.length - 16) return;
   if (!HANDS.some(h => S.hands[h] && !S.hands[h].done)) return;
   F.loading = true;
   try {
@@ -1026,19 +1135,17 @@ async function olderIfNear(){
   } catch(e){}
   F.loading = false;
 }
-/* the nearest thing to a finger: the curl is too fine to tap by its shapes, so every tap asks what stands closest */
+/* the nearest thing to a finger: the curl is too fine to tap by its shapes, so a tap asks what stands closest */
 function nearest(ev){
   const svg = $('fern-svg'), ctm = svg.getScreenCTM(); if (!ctm) return null;
   const pt = svg.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY;
   const at = pt.matrixTransform(ctm.inverse());
-  const sc = F.scale || 0.4;
   let best = null;
   F.hits.forEach(h => {
-    const e = h.r - F.s; if (e < -0.6 || e > 60) return;
+    const e = h.r - F.s; if (e < -0.6 || e > 40) return;
     h.pts.forEach(q => {
-      if (q.kind === 'title' && !F.titles) return;
-      const v = toView(q.x, q.y), dpx = Math.hypot(v.x - at.x, v.y - at.y) * sc;
-      const reach = q.kind === 'leaf' ? 16 : q.kind === 'knot' ? 18 : q.kind === 'title' ? 28 : 22;
+      const v = toView(q.x, q.y), dpx = Math.hypot(v.x - at.x, v.y - at.y);
+      const reach = q.kind === 'leaf' ? 16 : q.kind === 'knot' ? 18 : 22;
       const score = dpx - (q.kind === 'leaf' ? 6 : 0);
       if (dpx <= reach && (!best || score < best.score)) best = { h, q, score };
     });
@@ -1053,24 +1160,23 @@ function fernPop(best, ev){
     const o = L.turns.flatMap(t => t.made).find(x => x.key === q.out); if (!o) return;
     const p = o.kind === 'pr' ? prOf(o) : null;
     const kind = { pr: 'pull request', page: 'page', film: 'animation', doc: 'document', app: 'app', part: 'part of a path' }[o.kind] || o.kind;
-    const nm = o.kind === 'part' ? (S.parts[o.fam] || {})[o.part.split('.')[0]] : '';
     pop.innerHTML = `<button class="x" type="button" aria-label="close">×</button>
       <p class="eyebrow">${esc(kind)}${o.kind === 'pr' ? ' · ' + esc(SHORT[o.repo] || o.repo) + ' #' + o.n : ''}${p ? ' · ' + esc(p.state) : ''}</p>
-      <p class="t">${esc(p ? p.title : o.kind === 'part' ? o.fam + ' ' + o.part + (nm ? ' — ' + nm : '') : (o.label || o.url))}</p>
+      <p class="t">${esc(fruitText(o))}</p>
       <p class="meta">from ${esc(L.name)} · ${esc(L.hand)}</p>
       <div class="acts"><a class="chip" href="${esc(o.url)}" target="_blank" rel="noopener">open ↗</a><button class="chip" type="button" data-open="${esc(L.key)}" data-turn="${esc(q.turn)}">the lane's story</button></div>`;
   } else {
-    const st = laneState(L), sess = sessionsOf(L);
+    const st = laneState(L), sess = sessionFor(L);
     const made = [], seen = new Set();
     L.turns.forEach(t => t.made.forEach(o => { if (o.kind === 'session' || seen.has(o.key) || !alive(o)) return; seen.add(o.key); made.push(o); }));
-    made.sort((a, b) => RANK[a.kind] - RANK[b.kind]);
+    made.sort((a, b) => (FRUIT_RANK[a.kind] ?? 9) - (FRUIT_RANK[b.kind] ?? 9));
     pop.innerHTML = `<button class="x" type="button" aria-label="close">×</button>
       <p class="eyebrow">${esc(L.hand)} · began ${esc(dateLabel(L.turns[0].at))}</p>
       <h4><i></i>${esc(L.name)}</h4>
       <p class="meta">${L.turns.length} turn${L.turns.length === 1 ? '' : 's'} · last ${esc(ago(st.last.at))}${st.live ? ' · speaking now' : ''}${L.routine ? ' · a wake on the clock' : ''}</p>
       ${st.waits ? `<p class="waits">${esc(st.waits.length > 160 ? st.waits.slice(0, 159) + '…' : st.waits)}</p>` : ''}
-      ${made.length ? `<div class="chips">${made.slice(0, 6).map(o => chipHtml(o, true)).join('')}${made.length > 6 ? `<span class="chip more">+${made.length - 6}</span>` : ''}</div>` : ''}
-      <div class="acts"><button class="chip" type="button" data-open="${esc(L.key)}"${q.turn ? ` data-turn="${esc(q.turn)}"` : ''}>the story</button>${sess.map(u => `<a class="chip session" href="${esc(u)}"${/^claude:/.test(u) ? '' : ' target="_blank" rel="noopener"'}><span class="g">▶</span>the session</a>`).join('')}</div>`;
+      ${made.length ? `<div class="chips">${made.slice(0, 8).map(o => chipHtml(o, true)).join('')}${made.length > 8 ? `<span class="chip more">+${made.length - 8}</span>` : ''}</div>` : ''}
+      <div class="acts"><button class="chip" type="button" data-open="${esc(L.key)}"${q.turn ? ` data-turn="${esc(q.turn)}"` : ''}>the story</button>${sess ? `<a class="chip session" href="${esc(sess)}"${/^claude:/.test(sess) ? '' : ' target="_blank" rel="noopener"'}><span class="g">▶</span>the session</a>` : ''}</div>`;
   }
   pop.hidden = false;
   const stage = $('fern-stage').getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
@@ -1099,11 +1205,17 @@ document.querySelectorAll('[data-tog]').forEach(b => {
 $('fern-s').addEventListener('input', ev => { cancelAnimationFrame(F.raf); F.s = F.aim = +ev.target.value; $('fern-pop').hidden = true; frame(); });
 $('fern-now').addEventListener('click', () => { F.aim = 0; $('fern-pop').hidden = true; glide(); });
 $('fern-stage').addEventListener('wheel', ev => {
-  const max = +$('fern-s').max, next = Math.max(0, Math.min(max, F.s + ev.deltaY * 0.012));
+  const max = +$('fern-s').max, next = Math.max(0, Math.min(max, F.s + ev.deltaY * 0.008));
   if (Math.abs(next - F.s) < 1e-6) return;   /* at either end the page scrolls as it always does */
   ev.preventDefault(); cancelAnimationFrame(F.raf); F.s = F.aim = next; $('fern-pop').hidden = true; frame();
 }, { passive: false });
 $('fern-svg').addEventListener('click', ev => {
+  if (ev.target.closest('a')) return;   /* a link on the fruit goes where it says */
+  const tg = ev.target.closest('.ft-title, .ft-more');
+  if (tg){
+    if (tg.classList.contains('ft-more')){ openLane(tg.dataset.key); return; }
+    fernPop({ h: { key: tg.dataset.key }, q: { kind: 'title' } }, ev); return;
+  }
   const best = nearest(ev);
   if (!best){ $('fern-pop').hidden = true; return; }
   fernPop(best, ev);
@@ -1113,14 +1225,15 @@ $('fern-svg').addEventListener('pointermove', ev => {
   if (ev.pointerType !== 'mouse') return;
   cancelAnimationFrame(hoverRaf);
   hoverRaf = requestAnimationFrame(() => {
-    const best = nearest(ev), key = best ? best.h.key : null;
+    const fr = ev.target.closest && ev.target.closest('.fruit');
+    const best = fr ? null : nearest(ev), key = fr ? F.fruits[+fr.dataset.i].key : best ? best.h.key : null;
     $('fern-stage').classList.toggle('pointing', !!best);
     if (key !== F.hover){ F.hover = key; frame(); }
   });
 });
 $('fern-svg').addEventListener('pointerleave', () => { if (F.hover){ F.hover = null; frame(); } });
-let resizeT = 0;
-window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { if (F.view === 'fern') buildFern(); }, 160); });
+let resizeT = 0, lastW = 0;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(() => { const w = $('fern-stage').clientWidth; if (F.view === 'fern' && w !== lastW){ lastW = w; buildFern(); } }, 160); });
 document.addEventListener('keydown', ev => { if (ev.key === 'Escape') $('fern-pop').hidden = true; });
 
 /* ---------- loading ---------- */
