@@ -1052,6 +1052,9 @@
     /* every reflexive experience, gathered from each maker's own list (David, 2026-10-18:
      * "We definitely need a gallery of them") */
     ['premiere',    'premieres'],
+    /* every proposal on the beach, each drawn from its own blocks, and the form that makes one
+     * (function:proposal, 2026-10-22: "build the proposal-package") */
+    ['proposal',    'proposals'],
     ['dashboard',   'the beach, live'],
     /* the window as it is compiled — ribbons of what entered each call (David, 2026-10-13: "if only it were included in the go dropdown") */
     ['mindflow/flow', 'semantic flow'],
