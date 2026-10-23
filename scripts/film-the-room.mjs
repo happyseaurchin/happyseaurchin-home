@@ -275,6 +275,17 @@ async function placeOf(origin, room) {
     return lines.slice(-2).join(' ').slice(0, 600);
   } catch { return ''; }
 }
+// the look: the world's register, read where it stands — the table's own copy first, else the scenario's, at the
+// surface the keeper's placing names for the place — and read whole: its opening sentence, then every part beneath it
+function styleOf(s) { return s && typeof s === 'object' ? [(voiceOf(s) || '').split(/(?<=[.!?…])\s/)[0], ...digitKeys(s).map(d => voiceOf(s[d]) || '')].filter(Boolean).join(' ') : ''; }
+async function lookAt(origin) {
+  try {
+    const keeper = await readBlock(origin, 'keeper:scene');
+    const ref = starRef(keeper && (typeof keeper['3'] === 'string' ? keeper['3'] : voiceOf(keeper['3'])));
+    const name = ref && ref.block.startsWith('spatial:') ? 'style:' + ref.block.slice('spatial:'.length) : 'style:' + (ARGS.world || '');
+    return styleOf((await readBlock(origin, name)) || (ref ? await readBlock(ref.origin, name) : null)) || null;
+  } catch { return null; }
+}
 // who is in the moment: the speaker, the handles it wove, and every character named in its text
 function castOf(beat, handles) {
   const named = new Set([beat.who, ...String(beat.woven || '').split(/[,\s]+/)].filter(Boolean));
@@ -285,13 +296,14 @@ function castOf(beat, handles) {
 // beneath are the words every seat uses verbatim — 6.1 the look when a world has none, 6.2 the line
 // that binds a face to its reference, 6.3 what a still never carries. This script only assembles,
 // in the order the recipe states; the text below is the fallback if the beach cannot be read.
-const RECIPE = { look: DEFAULT_STYLE, bind: 'Each person shown must have the face of their reference photograph, exactly, in period dress.', never: 'No text or lettering, no modern objects, nothing overtly fantastical.' };
+const RECIPE = { look: DEFAULT_STYLE, bind: 'Each person shown must have the face of their reference photograph, exactly, in period dress.', never: 'No text or lettering, no modern objects, nothing overtly fantastical.', place: 'The last reference image is this same place as pictured before; keep its look, its light and its things.' };
 async function readRecipe() {
   try {
     const w = await readBlock(APEX, 'ways:stills'), six = w && w['6'];
     if (!six || typeof six !== 'object') return;
-    const l = voiceOf(six['1']), b = voiceOf(six['2']), n = voiceOf(six['3']);
+    const l = voiceOf(six['1']), b = voiceOf(six['2']), n = voiceOf(six['3']), pl = voiceOf(six['5']);
     if (l) RECIPE.look = l; if (b) RECIPE.bind = b; if (n) RECIPE.never = n;
+    const m = pl && pl.match(/—\s*(The last reference image[^.]*\.[^.]*\.)/); if (m) RECIPE.place = m[1];
   } catch { /* the fallback stands */ }
 }
 function composeShot(beat, cast, looks, style, place) {
@@ -300,7 +312,7 @@ function composeShot(beat, cast, looks, style, place) {
     beat.text.length > 1100 ? beat.text.slice(0, 1100) + '…' : beat.text,
     place ? `The place — ${place}` : '',
     cast.length ? `In frame — ${who}.` : '',
-    `The picture is ${style}`,
+    `The look — ${style}`,
     cast.length ? RECIPE.bind : '',
     RECIPE.never,
   ].filter(Boolean).join(' ');
@@ -575,7 +587,7 @@ async function verbWatch(origin) {
   const one = String(ARGS.room || 'all').trim();
   const every = Math.max(8, Number(ARGS.every) || 20) * 1000, wantClip = !!ARGS.clips, seconds = Number(ARGS.seconds) || 6;
   await readRecipe();
-  const style = ARGS.style || process.env.STYLE || (await readBlock(origin, 'style:' + (ARGS.world || '')).then(s => voiceOf(s)).catch(() => null)) || RECIPE.look;
+  const style = ARGS.style || process.env.STYLE || (await lookAt(origin)) || RECIPE.look;
   const stateFile = path.join(WORK, 'watched.json');
   const state = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : { done: [] };
   const places = {};
