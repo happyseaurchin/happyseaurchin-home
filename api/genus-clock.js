@@ -2,7 +2,15 @@
  * /api/genus-clock — the beach-crab clock for genus-one instances (rung 0 of
  * the beach-crab ladder: cron-driven, no LLM resident, one clean pulse).
  *
- * Twice a day (vercel.json crons) this route lends one BARE wake to an
+ * UNSCHEDULED since 2026-10-23, at David's word: nobody had reached egg-one
+ * since mid-September, yet the 20-hour purpose tick woke it every day to
+ * re-check a quiet room on his key, so vercel.json no longer names this route
+ * and it runs only when called (Bearer CRON_SECRET; ?force=1 skips the gate).
+ * Before scheduling it again, mind the echo: the seat's room posts carry no
+ * author, so the doorbell (bsp-mcp genus-one/waker.py) hears each one as an
+ * unattributed voice and wakes the instance a second time.
+ *
+ * When scheduled, twice a day, this route lends one BARE wake to an
  * instance, cleanly contained: pscale_genus at bsp.hermitcrab.me composes
  * the instance's OWN context window (its recipe over its reflexive current —
  * byte-parity with the kernel); ONE fresh Anthropic API call IS the pulse —
