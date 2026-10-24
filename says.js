@@ -6,21 +6,21 @@
  * kind of kit"). A page loads it after theme.js, whose keepDraft and dictate every write box carries:
  *
  *   <script src="/says.js"></script>
- *   <script>beachSays.timed({ family, scenes, player, controls, stage })</script>
+ *   <script>beachSays.timed({ family, scenes, player, controls })</script>
  *
- * THE TIMED KIND, for a film that plays scene after scene. A row under the film's controls holds two
- * buttons. 'Comment' opens the comment window for the scene now showing, and pauses the film while it is
- * open: press it at any moment in a scene and the comment belongs to that scene. 'Pause for comments' is
- * the toggle: while it is on (it starts on, and each device remembers the choice), the film stops at the
- * end of each scene and offers 'Add a comment', 'Keep watching' and 'Watch without pauses'. The window
- * holds the person's own last comment on that scene, ready to change, and everyone else's beneath it.
+ * THE TIMED KIND, for a film that plays scene after scene. One button under the film's controls,
+ * 'Comment on this scene', opens the comment window for the scene now showing, at any moment, playing or
+ * paused: the comment belongs to that scene. The film waits while the window is open and goes on when it
+ * closes. It never stops by itself at a scene's end to ask (David, 24 Oct: "too confusing … no auto stop
+ * for comments"): a person pauses when they want, or comments as it plays. The window holds the comment
+ * the person has already made on that scene, so commenting again starts from it and the new words take
+ * its place, and everyone else's are beneath it.
  *   family    the family's name: spine:<family> must stand on the beach, its scenes down 1
  *   scenes    the scenes' names, in order; scene i says at 1, 1.1, 1.11 … (i ones after the point)
  *   player    the film's side, a few calls the page gives: current() the scene showing, playing(),
- *             play(), pause(), onEnd(fn) where fn(i) is asked as scene i ends while playing and returns
- *             false to hold the film there, and onChange(fn) where fn(i) hears each change of scene
- *   controls  the row the comment row follows; stage, the box the pause at a scene's end covers
- *   buttonClass, toggleClass   the page's own classes for a button and a toggle, so the row wears its look
+ *             play(), pause(), and onChange(fn) where fn(i) hears each change of scene
+ *   controls  the row the comment button follows
+ *   buttonClass   the page's own class for a button, so the comment button wears its look
  *   unit, noun   'scene' and 'comment' unless the page says otherwise; room, a pool to link at the end
  * Colours come from the page's own --paper, --panel, --ink, --ink-2, --rule; it sets --says-accent for
  * the kit's one colour of its own, and --says-* to change any other.
@@ -172,23 +172,7 @@
     '.says-open i{flex:none;width:8px;height:8px;border-radius:50%;background:var(--says-accent);box-shadow:0 0 8px var(--says-accent-glow)}',
     '.says-open .says-n{font-variant-numeric:tabular-nums;color:var(--says-ink-2)}',
     '.says-open.said i{background:transparent;box-shadow:none;border:2px solid var(--says-accent);box-sizing:border-box;width:10px;height:10px}',
-    /* the pause at a scene's end, over the film */
-    '.says-hold{position:absolute;inset:0;z-index:6;display:flex;align-items:center;justify-content:center;padding:14px;box-sizing:border-box;',
-    'background:color-mix(in srgb,var(--says-paper) 60%,transparent);-webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);animation:says-fade .45s ease both}',
-    '.says-hold[hidden]{display:none!important}',
-    '.says-hold-in{display:flex;flex-direction:column;align-items:center;gap:13px;text-align:center;max-width:100%}',
-    '.says-of{margin:0;font:500 11px/1.3 var(--says-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--says-ink-2)}',
-    '.says-bubble{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;margin:0 0 6px;padding:12px 22px 13px 17px;border-radius:999px;',
-    'border:1px solid var(--says-accent-soft);background:var(--says-panel);color:var(--says-ink);font:500 clamp(1.05rem,2.1vw,1.35rem)/1.1 var(--says-display);',
-    'box-shadow:0 16px 44px -24px var(--says-accent-glow);animation:says-float 3.8s ease-in-out infinite}',
-    '.says-bubble::before,.says-bubble::after{content:"";position:absolute;border-radius:50%;border:1px solid var(--says-accent-soft);background:var(--says-panel)}',
-    '.says-bubble::before{width:10px;height:10px;left:16px;bottom:-14px}.says-bubble::after{width:5px;height:5px;left:9px;bottom:-22px}',
-    '.says-bubble i{flex:none;width:7px;height:7px;border-radius:50%;background:var(--says-accent);box-shadow:0 0 10px var(--says-accent)}',
-    '.says-bubble:hover{border-color:var(--says-accent)}',
-    '.says-bubble:focus-visible,.says-link:focus-visible,.says-on:focus-visible,.says-x:focus-visible,.says-send:focus-visible{outline:2px solid var(--says-accent);outline-offset:2px}',
-    '.says-link{border:0;background:none;padding:3px 2px;margin:0;cursor:pointer;font:500 11.5px/1.3 var(--says-mono);letter-spacing:.05em;color:var(--says-ink-2);',
-    'text-decoration:underline;text-decoration-color:var(--says-rule);text-underline-offset:4px}',
-    '.says-link:hover{color:var(--says-ink);text-decoration-color:var(--says-ink-2)}',
+    '.says-open:focus-visible,.says-on:focus-visible,.says-x:focus-visible,.says-send:focus-visible{outline:2px solid var(--says-accent);outline-offset:2px}',
     '.says-on{border:1px solid var(--says-rule);background:var(--says-panel);color:var(--says-ink);border-radius:999px;padding:0 17px;min-height:38px;cursor:pointer;font:500 14px/1 var(--says-text)}',
     '.says-on:hover{border-color:var(--says-ink-2)}',
     /* the window */
@@ -240,12 +224,10 @@
     '.says-card .dictate.on{color:var(--says-accent);border-color:var(--says-accent-soft);animation:says-pulse 1.6s ease-in-out infinite}',
     '.says-card .dictate[hidden]{display:none}',
     '@media (max-width:560px){.says-panel{width:100%;max-width:100%;max-height:92vh;margin:auto 0 0;border-radius:18px 18px 0 0;border-bottom:0}',
-    '.says-card{padding:16px 16px calc(20px + env(safe-area-inset-bottom,0px))}.says-bubble{padding:11px 19px 12px 15px}}',
+    '.says-card{padding:16px 16px calc(20px + env(safe-area-inset-bottom,0px))}}',
     '@keyframes says-in{from{opacity:0;transform:translateY(14px) scale(.97)}to{opacity:1;transform:none}}',
-    '@keyframes says-fade{from{opacity:0}to{opacity:1}}',
-    '@keyframes says-float{50%{transform:translateY(-4px)}}',
     '@keyframes says-pulse{0%,100%{box-shadow:0 0 0 0 var(--says-accent-soft)}50%{box-shadow:0 0 0 7px transparent}}',
-    '@media (prefers-reduced-motion:reduce){.says-bubble,.says-panel,.says-hold{animation:none!important}.says-card .dictate.on{animation:none;box-shadow:0 0 0 3px var(--says-accent-ring)}}'
+    '@media (prefers-reduced-motion:reduce){.says-panel{animation:none!important}.says-card .dictate.on{animation:none;box-shadow:0 0 0 3px var(--says-accent-ring)}}'
   ].join('\n');
   var styled = false;
   function style() {
@@ -393,28 +375,13 @@
     var f = family(cfg.family), p = cfg.player, names = cfg.scenes || [], n = names.length;
     var unit = cfg.unit || 'scene', noun = cfg.noun || 'comment';
     var Unit = unit.charAt(0).toUpperCase() + unit.slice(1);
-    var KEY = 'says:pause:' + cfg.family;
-    var pausing = store.get(KEY) !== 'off';
-    var held = -1;   /* the scene whose end the film is holding at */
 
     var row = document.createElement('div');
     row.className = 'says-bar';
-    row.innerHTML =
-      '<button type="button" class="' + esc(cfg.buttonClass || '') + ' says-open"><i aria-hidden="true"></i><span>' + esc(noun.charAt(0).toUpperCase() + noun.slice(1)) + '</span><span class="says-n"></span></button>' +
-      '<span class="says-sp"></span>' +
-      '<button type="button" class="' + esc(cfg.toggleClass || '') + ' says-tog" aria-pressed="' + pausing + '" title="Stop at the end of each ' + esc(unit) + ' to ask for a ' + esc(noun) + '">Pause for ' + esc(noun) + 's</button>';
+    row.innerHTML = '<button type="button" class="' + esc(cfg.buttonClass || '') + ' says-open"><i aria-hidden="true"></i>' +
+      '<span>' + esc(noun.charAt(0).toUpperCase() + noun.slice(1)) + ' on this ' + esc(unit) + '</span><span class="says-n"></span></button>';
     cfg.controls.parentNode.insertBefore(row, cfg.controls.nextSibling);
-    var openBtn = row.querySelector('.says-open'), togBtn = row.querySelector('.says-tog');
-
-    var hold = document.createElement('div');
-    hold.className = 'says-hold'; hold.hidden = true;
-    hold.setAttribute('role', 'group');
-    hold.innerHTML = '<div class="says-hold-in"><p class="says-of"></p>' +
-      '<button type="button" class="says-bubble"><i aria-hidden="true"></i><span></span></button>' +
-      '<button type="button" class="says-link says-see"></button>' +
-      '<button type="button" class="says-on says-onward"></button>' +
-      '<button type="button" class="says-link says-nopause">Watch without pauses</button></div>';
-    cfg.stage.appendChild(hold);
+    var openBtn = row.querySelector('.says-open');
 
     function label(i) { return names[i] || (Unit + ' ' + (i + 1)); }
     function of(i) { return Unit + ' ' + (i + 1) + ' of ' + n; }
@@ -424,64 +391,26 @@
       openBtn.classList.toggle('said', !!mine);
       openBtn.setAttribute('aria-label', (mine ? 'Change your ' : 'Add a ') + noun + ' on ' + unit + ' ' + (i + 1) + ', ' + label(i) + (all ? '; ' + all + ' so far' : ''));
     }
-    function paintHold() {
-      if (held < 0) return;
-      var at = address(held), mine = f.mine(at), others = f.at(at).filter(function (s) { return s.who !== ME; }).length;
-      hold.setAttribute('aria-label', of(held) + ', ' + label(held) + ', has ended');
-      hold.querySelector('.says-of').textContent = of(held) + ' · ' + label(held);
-      hold.querySelector('.says-bubble span').textContent = mine ? 'Change your ' + noun : 'Add a ' + noun;
-      var see = hold.querySelector('.says-see');
-      see.textContent = 'See everyone else’s ' + noun + 's' + (others ? ' · ' + others : '');
-      hold.querySelector('.says-onward').textContent = held === n - 1 ? 'Watch again ›' : 'Keep watching ›';
-    }
-    painters.push(function () { paintRow(); paintHold(); });
-    f.onRead(function () { paintRow(); paintHold(); });
+    painters.push(paintRow);
+    f.onRead(paintRow);
 
-    function showHold(i) { held = i; paintHold(); hold.hidden = false; if (!f.fresh(60000)) f.read(); }
-    function hideHold() { hold.hidden = true; }
-    function setPausing(on) {
-      pausing = on; store.set(KEY, on ? 'on' : 'off');
-      togBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      if (!on) hideHold();
-    }
-
-    /* the window at the scene showing; from the pause at its end, or from the row at any moment in it */
-    function open(toList) {
+    /* the window at the scene showing; the film waits while it is open, and goes on if it was playing */
+    openBtn.addEventListener('click', function () {
       if (win && win.el.open) return;
-      var i = p.current(), fromHold = !hold.hidden && held === i, wasPlaying = p.playing();
+      var i = p.current(), wasPlaying = p.playing();
       if (wasPlaying) p.pause();
       openWindow({
-        f: f, at: address(i), label: label(i), of: of(i), noun: noun, toList: toList, room: cfg.room,
+        f: f, at: address(i), label: label(i), of: of(i), noun: noun, room: cfg.room,
         ask: ['Your ' + noun + ' on this ' + unit, 'What struck you, a question, what you’d change, or what it brings to mind, in your own words.'],
-        onwardLabel: fromHold || wasPlaying ? (i === n - 1 && fromHold ? 'Watch again ›' : 'Keep watching ›') : 'Close',
-        closed: function (onward) {
-          paintRow(); paintHold();
-          /* the film goes on as it was: playing on where it was playing, from the pause where it was held */
-          if (wasPlaying || (fromHold && onward)) p.play();
-        }
+        onwardLabel: wasPlaying ? 'Keep watching ›' : 'Close',
+        closed: function () { paintRow(); if (wasPlaying) p.play(); }
       });
-    }
-    openBtn.addEventListener('click', function () { open(false); });
-    togBtn.addEventListener('click', function () { setPausing(!pausing); });
-    hold.querySelector('.says-bubble').addEventListener('click', function () { open(false); });
-    hold.querySelector('.says-see').addEventListener('click', function () { open(true); });
-    hold.querySelector('.says-onward').addEventListener('click', function () { p.play(); });
-    hold.querySelector('.says-nopause').addEventListener('click', function () { setPausing(false); p.play(); });
-
-    /* the film asks at each scene's end: hold it there once, for a comment, while pauses are on */
-    p.onEnd(function (i) {
-      if (!pausing || held === i) return true;
-      showHold(i);
-      return false;
     });
-    p.onChange(function (i) {
-      if (held !== i) { held = -1; hideHold(); }
-      paintRow();
-    });
+    p.onChange(paintRow);
     paintRow();
     f.read();
     voice().then(function (v) { if (v.onButton) v.onButton(function () { if (win && win.cur) paintAs(); }); });
-    return { family: f, open: open, pausing: function () { return pausing; } };
+    return { family: f };
   }
 
   window.beachSays = { timed: timed, family: family, address: address, voice: voice };
