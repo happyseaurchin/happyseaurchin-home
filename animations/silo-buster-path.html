@@ -11,6 +11,7 @@
 <link rel="canonical" href="https://happyseaurchin.com/animations/silo-buster-path">
 <link rel="icon" href="/assets/torus.png" type="image/png">
 <script>if(window.self!==window.top)document.documentElement.classList.add('framed');</script>
+<script src="/theme.js"></script>
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 </head>
 <body>
@@ -239,7 +240,20 @@ body.no-example .ex { display: none; }
   .btn.primary { min-width: 70px; }
   .ctrl { gap: 6px; flex-wrap: nowrap; }
 }
+/* the comments (says.js): the kit's one colour is the A state's green; ◐ keeps the light or the dark (theme.js) */
+:root { --says-accent: var(--a-ink); }
+#btn-theme { position: absolute; z-index: 7; top: 14px; right: max(14px, env(safe-area-inset-right, 0px)); width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--rule); background: var(--panel); color: var(--ink); font-size: 17px; line-height: 1; cursor: pointer; }
+#btn-theme:hover { border-color: var(--ink-2); }
+.framed #btn-theme { display: none; }
+.says-bar .says-open { font-weight: 600; }
+@media (max-width: 380px) {
+  .ctrl .btn { padding: 0 8px; }
+  .ctrl .tog { gap: 6px; }
+  #prev, #next { min-width: 36px; }
+  .ctrl .btn.primary { min-width: 62px; }
+}
 </style>
+<button id="btn-theme" type="button" title="light or dark" aria-label="switch between the light and dark register">◐</button>
 <div class="wrap">
   <header class="top">
     <p class="kick">Silo Buster</p>
@@ -267,6 +281,7 @@ body.no-example .ex { display: none; }
     <div class="ex" id="c-ex"><span class="ex-tag">Example · Hollin &amp; Grey</span><p id="c-ex-text"></p></div>
   </section>
   <p class="foot">Hollin &amp; Grey, its people and every figure are invented to show the shape; James and David are the two who go in. Arrow keys step through the scenes and the space bar plays them. Example and Words take the invented company and the narration away, down to the bare structure.</p>
+  <p class="foot">Comment adds yours on the scene showing, and Pause for comments stops the film at the end of each scene to ask. Each comment stands under its sayer’s handle, in their own mirror on the beach, silo-buster-path:&lt;handle&gt;, at that scene’s place on <a href="https://happyseaurchin.com/walk/silo-buster-path">spine:silo-buster-path</a>.</p>
 </div>
 <script>
 (() => {
@@ -1608,6 +1623,7 @@ SC.push({
 });
 /* ---------- strip, caption, controls, loop ---------- */
 let cur = 0, sceneT = 0, playing = false, frozen = false, stripPts = [], stripW = 600;
+let sceneEnd = null, sceneChange = null;   /* the comments (says.js): told as a scene ends while playing, and may hold it there; and of each change */
 const playBtn = $('#play'), prevBtn = $('#prev'), nextBtn = $('#next');
 
 function buildStrip() {
@@ -1649,6 +1665,7 @@ function caption() {
 function go(i, t0) {
   cur = clamp(i, 0, SC.length - 1); sceneT = t0 || 0;
   caption(); buildStrip();
+  if (sceneChange) sceneChange(cur);
 }
 function setPlaying(on) {
   playing = on;
@@ -1697,7 +1714,8 @@ function measure() {
 function frame(dt, snapNow) {
   clock += dt; sceneT += dt; frameNo++;
   if (playing && sceneT > SC[cur].dur) {
-    if (cur < SC.length - 1) go(cur + 1); else setPlaying(false);
+    if (sceneEnd && sceneEnd(cur) === false) setPlaying(false);
+    else if (cur < SC.length - 1) go(cur + 1); else setPlaying(false);
   }
   wander();
   resetTargets();
@@ -1731,12 +1749,32 @@ window.__sb = {
   n: SC.length,
   show(i, t) { frozen = true; go(i); ov.classList.add('snap'); const st = 1 / 30; for (let k = 0; k < Math.ceil(t / st); k++) frame(st); frame(0, false); },
   set(ex, words) { setEx(!!ex); setWords(!!words); },
-  thaw() { frozen = false; ov.classList.remove('snap'); }
+  thaw() { frozen = false; ov.classList.remove('snap'); },
+  /* the film's side of the comments (says.js) */
+  scenes: SC.map(s => s.kick),
+  current: () => cur,
+  playing: () => playing,
+  play() { if (!playing) playBtn.click(); },
+  pause() { if (playing) setPlaying(false); },
+  onEnd(fn) { sceneEnd = fn; },
+  onChange(fn) { sceneChange = fn; }
 };
 boot();
 })();
 </script>
 
 <style>.home{max-width:760px;margin:40px auto 48px;padding:0 18px;font-size:13px;opacity:.8}.home a{color:inherit;text-underline-offset:2px}.framed .home{display:none}</style>
-<p class="home"><a href="/animations">All the animations</a></p>
+<p class="home" id="create-your-own"><a href="/animations">All the animations</a></p>
+<script src="/says.js"></script>
+<script>
+/* comments on each scene, through the kit: one window per scene, and a pause at each scene's end while Pause for comments is on */
+beachSays.timed({
+  family: 'silo-buster-path',
+  scenes: window.__sb.scenes,
+  player: window.__sb,
+  controls: document.querySelector('.ctrl'),
+  stage: document.getElementById('stagebox'),
+  buttonClass: 'btn', toggleClass: 'btn tog'
+});
+</script>
 </body></html>
