@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Aperture</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Source+Sans+3:wght@400;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column; a ladder of ancestors above a single focus panel; the depth dial pinned in the top bar.
+   The meter under the dial is the point of the page: how much of the block is in view. */
+:root{
+  --ground:#eef1f0; --panel:#ffffff; --ink:#1c2321; --muted:#66716d; --hair:#d6ddda;
+  --accent:#0f6e63; --accent-ink:#ffffff; --tint:#e3efec; --leaf:#8a6d2f;
+  --display:"Newsreader",Georgia,"Times New Roman",serif;
+  --body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --ground:#10161a; --panel:#182027; --ink:#e6ebe9; --muted:#8e9a95; --hair:#273239;
+  --accent:#5fd0c0; --accent-ink:#0b1b18; --tint:#1d2c2c; --leaf:#d2b06a; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --ground:#10161a; --panel:#182027; --ink:#e6ebe9; --muted:#8e9a95; --hair:#273239;
+  --accent:#5fd0c0; --accent-ink:#0b1b18; --tint:#1d2c2c; --leaf:#d2b06a; color-scheme:dark }
+
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:16px/1.5 var(--body);
+  padding-left:16px;padding-right:16px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:0}
+*{box-sizing:border-box}
+.wrap{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:14px;padding-block:14px 32px;min-width:0}
+
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px}
+.name{font-family:var(--display);font-size:1.35rem;font-weight:500;letter-spacing:.01em;margin:0}
+.name small{font-family:var(--body);font-size:.8rem;color:var(--muted);font-weight:400;margin-left:.5em}
+.dial{display:flex;align-items:center;gap:8px;margin-left:auto}
+.dial span{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--hair);border-radius:999px;overflow:hidden;background:var(--panel)}
+.seg button{border:0;background:transparent;color:var(--ink);font:600 .9rem var(--mono);padding:6px 13px;cursor:pointer;min-width:38px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.seg button:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+.meter{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;font-family:var(--mono);font-size:.8rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.meter b{color:var(--ink);font-weight:500}
+.meter .track{flex:1 1 140px;height:4px;background:var(--hair);border-radius:2px;overflow:hidden;align-self:center;min-width:80px}
+.meter .fill{height:100%;background:var(--accent);width:0;transition:width .25s}
+@media (prefers-reduced-motion:reduce){.meter .fill{transition:none}}
+
+.ladder{display:flex;flex-direction:column;gap:2px;min-width:0}
+.rung{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:baseline;border:0;background:transparent;color:var(--muted);text-align:left;padding:4px 6px;border-radius:6px;cursor:pointer;font:inherit;min-width:0}
+.rung:hover,.rung:focus-visible{background:var(--tint);color:var(--ink);outline:none}
+.rung .addr{font-family:var(--mono);font-size:.74rem;color:var(--muted);white-space:nowrap}
+.rung .line{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:.95rem}
+
+.focus{background:var(--panel);border:1px solid var(--hair);border-radius:10px;padding:18px 20px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.focus .addr{display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+.focus .addr .depth{padding:1px 8px;border:1px solid var(--hair);border-radius:999px}
+.focus .addr .kind{color:var(--leaf)}
+.voice{font-family:var(--display);font-size:1.12rem;line-height:1.5;margin:0;text-wrap:pretty}
+.voice.big{font-size:clamp(1.3rem,2.6vw,1.65rem);line-height:1.4}
+
+.ring{display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--hair);padding-top:10px}
+.ring .label{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 4px}
+.row{display:grid;grid-template-columns:auto 1fr;gap:10px;align-items:baseline;border:0;background:transparent;color:var(--ink);text-align:left;padding:6px 8px;border-radius:6px;cursor:pointer;font:inherit;width:100%;min-width:0}
+.row:hover,.row:focus-visible{background:var(--tint);outline:none}
+.row .digit{font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:500;white-space:nowrap;min-width:2ch}
+.row .digit.leaf{color:var(--leaf)}
+.row .text{min-width:0;overflow-wrap:anywhere}
+.nest{margin-left:14px;padding-left:10px;border-left:2px solid var(--hair);display:flex;flex-direction:column;gap:2px}
+
+.load{border-top:1px solid var(--hair);padding-top:10px;color:var(--muted);font-size:.9rem}
+.load summary{cursor:pointer;color:var(--ink)}
+.load textarea{width:100%;min-height:120px;margin-top:8px;font:.8rem/1.4 var(--mono);color:var(--ink);background:var(--panel);border:1px solid var(--hair);border-radius:8px;padding:10px;resize:vertical}
+.load .actions{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap}
+.load button{border:1px solid var(--hair);background:var(--panel);color:var(--ink);font:600 .9rem var(--body);padding:6px 14px;border-radius:999px;cursor:pointer}
+.load button:focus-visible{outline:2px solid var(--accent)}
+.load .err{color:#b23a3a}
+.hint{color:var(--muted);font-size:.85rem;margin:0}
+.which{display:flex;gap:6px;margin:6px 0 2px}.which input{flex:1;min-width:0;font:15px var(--mono);padding:8px 10px;border:1px solid var(--hair);border-radius:8px;background:var(--panel);color:var(--ink)}.which button{font:600 15px var(--body);padding:8px 14px;border:0;border-radius:8px;background:var(--accent);color:var(--accent-ink)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="bar">
+    <h1 class="name" id="blockname">vision <small>a pscale block</small>
+  <form class="which" onsubmit="return false"><input id="which" type="text" placeholder="block name, e.g. stash:keel" autocapitalize="none" autocomplete="off" spellcheck="false"><button type="button" id="gobtn">Read</button></form></h1>
+    <div class="dial" role="group" aria-label="Depth shown beneath the focus">
+      <span>depth</span>
+      <div class="seg" id="seg">
+        <button type="button" data-p="0" aria-pressed="true">0</button>
+        <button type="button" data-p="1">1</button>
+        <button type="button" data-p="2">2</button>
+        <button type="button" data-p="3">3</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="meter" aria-live="polite">
+    <span>in view <b id="mv">0</b> chars</span>
+    <div class="track"><div class="fill" id="fill"></div></div>
+    <span>of <b id="mt">0</b> · <b id="mp">0%</b></span>
+  </div>
+
+  <nav class="ladder" id="ladder" aria-label="Ancestors"></nav>
+
+  <section class="focus" id="focus" aria-live="polite"></section>
+
+  <details class="load">
+    <summary>Load another block</summary>
+    <p class="hint">Paste a pscale block as JSON: an object whose keys are "_" (the voicing) and digits "1" to "9" (children, each a string or another object).</p>
+    <textarea id="src" aria-label="Block JSON"></textarea>
+    <div class="actions">
+      <button type="button" id="loadbtn">Load</button>
+      <button type="button" id="resetbtn">Back to vision</button>
+      <span class="err" id="err"></span>
+    </div>
+  </details>
+</div>
+
+<script>
+(function(){
+  var BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach?block=';
+  var qs = new URLSearchParams(location.search), wanted = (qs.get('block') || '').trim();
+  var vision = null, block = null, name = wanted || '';
+  var focus = [];   // array of digit strings
+  var P = 0;
+
+  function voice(n){ if (typeof n === 'string') return n; var u = n['_']; while (u && typeof u === 'object') u = u['_']; return u || ''; }
+  function kids(n){ if (typeof n !== 'object' || n === null) return []; return Object.keys(n).filter(function(k){return /^[1-9]$/.test(k)}).sort(); }
+  function get(path){ var n = block; for (var i=0;i<path.length;i++){ if (!n || typeof n!=='object' || !(path[i] in n)) return null; n = n[path[i]]; } return n; }
+  function opening(t, lim){ lim = lim||140; var seps=['. ',' — ']; for (var i=0;i<seps.length;i++){ var j=t.indexOf(seps[i]); if (j>0 && j<lim) return t.slice(0, j+(seps[i]==='. '?1:0)).trim(); } return t.length>lim ? t.slice(0,lim).replace(/\s+\S*$/,'')+'…' : t; }
+  function total(n){ var s = voice(n).length; if (typeof n==='object'&&n){ kids(n).forEach(function(k){ s += total(n[k]); }); } return s; }
+  function addr(path){ return path.length ? path.join('.') : 'root'; }
+  var inView = 0;
+  function esc(s){ return s.replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function renderSubtree(n, path, depthLeft){
+    // rows for the children of n, showing opening lines; nest while depthLeft > 1
+    var ks = kids(n); if (!ks.length) return '';
+    var h = '';
+    ks.forEach(function(k){
+      var c = n[k], p = path.concat([k]), leaf = (typeof c === 'string');
+      var line = opening(voice(c)); inView += line.length;
+      h += '<button type="button" class="row" data-path="'+p.join('.')+'">'
+         + '<span class="digit'+(leaf?' leaf':'')+'">'+(leaf?'¶':'')+k+'</span>'
+         + '<span class="text">'+esc(line)+'</span></button>';
+      if (!leaf && depthLeft > 1) { var sub = renderSubtree(c, p, depthLeft-1); if (sub) h += '<div class="nest">'+sub+'</div>'; }
+    });
+    return h;
+  }
+
+  function render(){
+    inView = 0;
+    var n = get(focus); if (n === null) { focus = []; n = block; }
+    var leaf = (typeof n === 'string');
+    // ladder
+    var L = '';
+    for (var i=0;i<focus.length;i++){
+      var a = focus.slice(0,i), an = get(a), line = opening(voice(an)); inView += line.length;
+      L += '<button type="button" class="rung" data-path="'+a.join('.')+'"><span class="addr">'+(a.length?'p'+a.length+' · '+a.join('.'):'p0 · root')+'</span><span class="line">'+esc(line)+'</span></button>';
+    }
+    document.getElementById('ladder').innerHTML = L;
+    // focus
+    var v = voice(n); inView += v.length;
+    var F = '<div class="addr"><span>'+esc(addr(focus))+'</span><span class="depth">p'+focus.length+'</span>'+(leaf?'<span class="kind">¶ leaf</span>':'<span>'+kids(n).length+' beneath</span>')+'</div>';
+    F += '<p class="voice'+(P===0?' big':'')+'">'+esc(v)+'</p>';
+    if (!leaf && P > 0) {
+      var sub = renderSubtree(n, focus, P);
+      if (sub) F += '<div class="ring"><p class="label">'+(P===1?'ring':'to depth '+P)+'</p>'+sub+'</div>';
+      else F += '<div class="ring"><p class="label">ring</p><p class="hint">nothing beneath this position</p></div>';
+    }
+    document.getElementById('focus').innerHTML = F;
+    // meter
+    var T = total(block), pct = T ? Math.round(1000*inView/T)/10 : 0;
+    document.getElementById('mv').textContent = inView.toLocaleString();
+    document.getElementById('mt').textContent = T.toLocaleString();
+    document.getElementById('mp').textContent = pct + '%';
+    document.getElementById('fill').style.width = Math.min(100, pct) + '%';
+    document.getElementById('blockname').innerHTML = esc(name) + ' <small>a pscale block · ' + countPositions(block) + ' positions</small>';
+  }
+  function countPositions(n){ var c = 1; if (typeof n==='object'&&n) kids(n).forEach(function(k){ c += countPositions(n[k]); }); return c; }
+
+  document.getElementById('seg').addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b) return;
+    P = +b.dataset.p;
+    Array.prototype.forEach.call(this.querySelectorAll('button'), function(x){ x.setAttribute('aria-pressed', x===b ? 'true' : 'false'); });
+    render();
+  });
+  document.body.addEventListener('click', function(e){
+    var b = e.target.closest('[data-path]'); if (!b) return;
+    focus = b.dataset.path ? b.dataset.path.split('.') : [];
+    render();
+    document.getElementById('focus').scrollIntoView({block:'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'});
+  });
+  document.getElementById('loadbtn').addEventListener('click', function(){
+    var err = document.getElementById('err'); err.textContent = '';
+    try {
+      var obj = JSON.parse(document.getElementById('src').value);
+      if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('The block must be a JSON object.');
+      block = obj; name = 'pasted'; focus = []; render();
+    } catch (ex) { err.textContent = 'Could not load: ' + ex.message; }
+  });
+  document.getElementById('resetbtn').addEventListener('click', function(){ if (wanted) load(wanted); });
+  function load(nm){
+    var err = document.getElementById('err'); err.textContent = '';
+    document.getElementById('blockname').innerHTML = esc(nm) + ' <small>reading from the beach…</small>';
+    fetch(BEACH + encodeURIComponent(nm)).then(function(r){ if (!r.ok) throw new Error('the beach answered ' + r.status); return r.json(); })
+      .then(function(obj){ if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw new Error('not a block'); vision = obj; block = obj; name = nm; focus = []; var h = (location.hash || '').replace(/^#/, ''); if (/^[1-9](\.[1-9])*$/.test(h)) focus = h.split('.'); document.title = 'zoom · ' + nm; history.replaceState(null, '', '?block=' + encodeURIComponent(nm) + location.hash); render(); })
+      .catch(function(ex){ err.textContent = 'Could not read ' + nm + ': ' + ex.message; document.getElementById('blockname').innerHTML = esc(nm) + ' <small>not read</small>'; });
+  }
+  document.getElementById('gobtn').addEventListener('click', function(){ var nm = document.getElementById('which').value.trim(); if (nm) { wanted = nm; load(nm); } });
+  document.getElementById('which').addEventListener('keydown', function(e){ if (e.key === 'Enter') document.getElementById('gobtn').click(); });
+
+  // open at #1.2.3 when the link carries an address
+  if (wanted) { document.getElementById('which').value = wanted; load(wanted); }
+  else { document.getElementById('blockname').innerHTML = 'zoom <small>name a block on the beach, or paste one</small>'; document.getElementById('focus').innerHTML = '<p class="hint">Any block on beach.happyseaurchin.com, read at the depth you choose: type its name above (stash:keel, spine:threads, history:weft…) and press Read, or open the paste drawer. The dial sets how deep you look; the meter says how much of the block is in view.</p>'; }
+})();
+</script>
+
+</body>
+</html>
