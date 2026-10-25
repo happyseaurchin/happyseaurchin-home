@@ -737,7 +737,7 @@ html.skin-standard .skin-banner { display: block; }
       <button type="button" class="btn quiet" data-skin-toggle>See the standard look</button>
     </div>
     <details class="room" style="max-width:41rem;border-top:1px solid var(--rule)"><summary><h3>Sources</h3></summary><div class="in src">
-      <p><a href="/explain?block=function:proposal">function:proposal</a> <a href="/explain?block=function:document">function:document</a> <a href="/threads">threads</a> <a href="/proposal">every proposal</a> <a href="/explain?block=lists:happyseaurchin">lists:happyseaurchin</a></p>
+      <p><a href="/explain?block=function:proposal">function:proposal</a> <a href="/explain?block=function:document">function:document</a> <a href="/threads">threads</a> <a href="/proposal">every proposal</a> <a href="/explain?block=proposals">proposals</a> <a href="/explain?block=lists:happyseaurchin">lists:happyseaurchin</a></p>
       <p>Outside the beach: Wolff's law of bone remodelling (1892); Ballerini and colleagues, Interaction ruling animal collective behavior depends on topological rather than metric distance (PNAS, 2008); Freire, Pedagogy of the Oppressed (1968).</p>
     </div></details>
     <p id="create-your-own"><a href="/">happyseaurchin.com</a></p>
@@ -772,12 +772,13 @@ html.skin-standard .skin-banner { display: block; }
   }
 
   /* ══ THE HERO: the proposals as the list stands, and as David arranged them ══════════════════════════════
-     They are the proposal form's own list (function:proposal 8), read live where the beach answers and a copy
-     of it as it stood on 24 October where it doesn't. David's arrangement is from his words that morning: the
-     character sheets inside visual consistency, inside the Onen RPG, inside the game arcade; the rest loose. */
+     They are the beach's list of proposals (the block proposals, read at any floor as it grows), read live where
+     the beach answers and a copy of it as it stood on 24 October where it doesn't. David's arrangement is from his
+     words that morning: the character sheets inside visual consistency, inside the Onen RPG, inside the game arcade;
+     the rest loose. */
   var LABELS = { 'game-arcade': 'Game arcade', 'passing-it-on': 'Passing it on', 'character-sheets': 'Character sheets',
     'tronic-glass': 'TRONIC glass', 'threads': 'Threads', 'visual-consistency': 'Visual consistency', 'onen-rpg': 'Onen RPG', 'y-ray': 'Y-ray',
-    'leros-on-the-commons': 'LEROs on the Commons' };
+    'leros-on-the-commons': 'LEROs on the Commons', 'the-string': 'The String' };
   var COUNT = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
   /* the list's words arrive from the beach, so they are escaped before they are set as markup */
   function escH(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -844,8 +845,9 @@ html.skin-standard .skin-banner { display: block; }
     function measure() {
       var w = svg.getBoundingClientRect().width || 600;
       narrow = w < 440;
-      /* on a phone the proposals not yet placed stand in rows of three under the rings, and the film grows a row for each row past the first */
-      W = narrow ? 360 : 600; H = narrow ? 470 + 58 * Math.max(0, Math.ceil(looseCount() / 3) - 1) : 440;
+      /* on a phone the proposals not yet placed stand in rows of three under the rings, and the film grows a row for each row past the first;
+         on a wide film they stand in one column beside the rings, and past six the film grows to hold it */
+      W = narrow ? 360 : 600; H = narrow ? 470 + 58 * Math.max(0, Math.ceil(looseCount() / 3) - 1) : Math.max(440, 192 + 46 * (looseCount() - 1));
       svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
     }
     function blank() { return { x: W / 2, y: H / 2, r: 0, o: 0, lx: W / 2, ly: H / 2, ls: 13, la: 0, anchor: 'middle', wo: 0, ho: 0, wx: W / 2, wy: H / 2, wa: 'middle', wn: 30, wm: 2, wt: 'short' }; }
@@ -858,7 +860,7 @@ html.skin-standard .skin-banner { display: block; }
         order.forEach(function (id, i) {
           var y = top + i * gap, tx = x + r + 14;
           T[id] = { x: x, y: y, r: r, o: 1, lx: tx, ly: y + 5, ls: narrow ? 16 : 18, la: 1, anchor: 'start', wo: 1, ho: 0,
-            wx: tx, wy: y + 24, wa: 'start', wn: narrow ? 34 : 62, wm: 2, wt: 'short' };
+            wx: tx, wy: y + 24, wa: 'start', wn: narrow ? 34 : 62, wm: gap < 56 ? 1 : 2, wt: 'short' };
         });
         var oy = top + n * gap;
         T['onen-rpg'] = { x: x, y: oy, r: 0, o: 0, lx: x + 26, ly: oy, ls: 14, la: 0, anchor: 'start', wo: 0, ho: 0, wx: x + 26, wy: oy, wa: 'start', wn: 30, wm: 2, wt: 'short' };
@@ -1222,6 +1224,19 @@ html.skin-standard .skin-banner { display: block; }
 
   function voiceOf(n) { while (n && typeof n === 'object') { if (!('_' in n)) return ''; n = n._; } return typeof n === 'string' ? n.trim() : ''; }
   function textOf(n) { return typeof n === 'string' ? n.trim() : voiceOf(n); }
+  /* an accumulator's lines in the order they were added, at any floor: beneath the floor a node's _ holds the
+     nine before it (an object) or their summary (a line, never an entry); at the floor every digit is a line */
+  function listed(b) {
+    var floor = 1, n = b, out = [];
+    while (n && typeof n === 'object' && n._ && typeof n._ === 'object') { floor++; n = n._; }
+    (function walk(n, depth) {
+      if (depth === floor) { var t = textOf(n); if (t) out.push(t); return; }
+      if (!n || typeof n !== 'object') return;
+      if (n._ && typeof n._ === 'object') walk(n._, depth + 1);
+      for (var d = 1; d <= 9; d++) if (n[String(d)] != null) walk(n[String(d)], depth + 1);
+    })(b, 0);
+    return out;
+  }
   function nodeAt(b, addr) { if (addr === 'root') return b; var n = b, ds = String(addr).replace('.', '').split(''); for (var i = 0; i < ds.length; i++) { if (!n || typeof n !== 'object') return undefined; n = n[ds[i]]; } return n; }
   function readBlock(name) {
     return fetch(BEACH + '?block=' + encodeURIComponent(name), { headers: { Accept: 'application/json' }, cache: 'no-store' }).then(function (r) {
@@ -1285,20 +1300,17 @@ html.skin-standard .skin-banner { display: block; }
     var ph = law ? textOf(law['7']) : '';
     if (/^phase:\s*project/i.test(ph)) $('phaseLine').textContent = 'A project from keel for David, from 24 October 2026';
   }
-  /* the hero's proposals, read live from the proposal form's own list at its 8: '<name> — what · <page>' */
-  function paintProposals(law) {
-    var list = law && law['8'];
+  /* the hero's proposals, read live from the beach's list of them, one line each: '<name> — what · <page>' */
+  function paintProposals(list) {
     if (!list || typeof list !== 'object' || !window.yrayHero) return;
     var out = [];
-    for (var d = 1; d <= 9; d++) {
-      var t = textOf(list[String(d)]);
-      if (!t) continue;
+    listed(list).forEach(function (t) {
       var m = /^([a-z0-9-]+)\s+—\s+([^·]*?)(?:;[^·]*)?\s*(?:·\s*(\S+))?\s*$/.exec(t);
-      if (!m) continue;
+      if (!m) return;
       var href = m[3] ? (m[3].indexOf('http') === 0 ? m[3] : 'https://' + m[3]) : '/proposal/' + m[1];
       href = href.replace(/^https:\/\/happyseaurchin\.com/, '');
       out.push({ id: m[1], what: m[2].trim(), href: href || ('/proposal/' + m[1]) });
-    }
+    });
     if (out.length) window.yrayHero.setProposals(out);
   }
 
@@ -1487,7 +1499,7 @@ html.skin-standard .skin-banner { display: block; }
   document.querySelectorAll('.decide').forEach(wireDecision);
   paintAs();
   paintWay();
-  readBlock('function:proposal').then(paintProposals, function () {});
+  readBlock('proposals').then(paintProposals, function () {});
   readBlock('spine:' + FAM).then(function (sp) {
     STANDING = !!sp;
     if (!sp) { $('standsNote').textContent = 'Seven decisions, open once this proposal stands on the beach. Read them now; the answers follow.'; paintAnswers(); paintTalk(); return; }
