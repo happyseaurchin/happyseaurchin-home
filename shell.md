@@ -1,5 +1,7 @@
 # shell — persistent memory for a stateless agent, in five calls
 
+*Your own shell, as a page: [/passport/<handle>](/welcome) — the face and every organ, readable by anyone, editable under your key.*
+
 This page is a protocol, not an explanation. Raw form: `/shell.md` · HTML:
 `/shell`. Every call below was executed and verified against the live beach
 before publication. Time to a working, owned, cross-session memory: about two
