@@ -265,6 +265,19 @@
   function textOf(n) { return typeof n === 'string' ? n.trim() : voiceOf(n); }
   function nodeAt(b, addr) { var n = b, ds = String(addr).replace('.', '').split(''); for (var i = 0; i < ds.length; i++) { if (!n || typeof n !== 'object') return undefined; n = n[ds[i]]; } return n; }
   function under(addr, k) { return addr + (addr.indexOf('.') < 0 ? '.' : '') + k; }
+  /* an accumulator's lines in the order they were added, at any floor: beneath the floor a node's _ holds the
+     nine before it (an object) or their summary (a line, never an entry); at the floor every digit is a line */
+  function listed(b) {
+    var floor = 1, n = b, out = [];
+    while (n && typeof n === 'object' && n._ && typeof n._ === 'object') { floor++; n = n._; }
+    (function walk(n, depth) {
+      if (depth === floor) { var t = textOf(n); if (t) out.push(t); return; }
+      if (!n || typeof n !== 'object') return;
+      if (n._ && typeof n._ === 'object') walk(n._, depth + 1);
+      for (var d = 1; d <= 9; d++) if (n[String(d)] != null) walk(n[String(d)], depth + 1);
+    })(b, 0);
+    return out;
+  }
   function readBlock(name) {
     return fetch(BEACH + '?block=' + encodeURIComponent(name), { headers: { Accept: 'application/json' }, cache: 'no-store' }).then(function (r) {
       if (r.status === 404) return null;
@@ -482,6 +495,14 @@
      own decision on a cord of its own beside it, each thread a cord rising with a knot for every rung tied
      and an open ring for the next, a step's state as lit bars at the top of its cord. Each cord ends after
      its last knot, so its length is what stands there. ── */
+  /* a name's width in the band's own type (.q-name), measured where the page has a canvas */
+  var meter = null;
+  function nameW(t) {
+    if (meter === null) {
+      try { meter = document.createElement('canvas').getContext('2d'); meter.font = '700 12.5px ' + (getComputedStyle(document.documentElement).getPropertyValue('--display').trim() || 'sans-serif'); } catch (e) { meter = false; }
+    }
+    return meter ? meter.measureText(t).width : t.length * 8;
+  }
   function quipuSVG(groups, opts) {
     var W = opts.w, multi = groups.length > 1, HH = '\u0000H';
     var anyThread = groups.some(function (g) { return g.loose.length || g.steps.some(function (s) { return s.threads.length; }); });
@@ -492,9 +513,9 @@
     var unit = usable / total, x0 = padL, out = [], names = [];
     /* a bundle's name under it, broken at its hyphens where the bundle is narrower than the name */
     function fitName(name, width) {
-      var cw = 7, parts = name.replace(/-/g, '-\n').split('\n'), lines = [], cur = '';
-      if (name.length * cw <= width) return [name];
-      parts.forEach(function (p) { if (cur && (cur + p).length * cw > width) { lines.push(cur); cur = p; } else cur += p; });
+      var parts = name.replace(/-/g, '-\n').split('\n'), lines = [], cur = '';
+      if (nameW(name) <= width) return [name];
+      parts.forEach(function (p) { if (cur && nameW(cur + p) > width) { lines.push(cur); cur = p; } else cur += p; });
       if (cur) lines.push(cur);
       return lines;
     }
@@ -552,14 +573,24 @@
         out.push(cell.join(''));
       });
       g.loose.forEach(function (th, t) { out.push(threadCord(Math.round(gx + col * g.steps.length + 10 + t * 14), th)); });
-      if (multi) { names.push({ x: gx + gw / 2, lines: fitName(g.short, gw) }); out.push('\u0000N' + (names.length - 1) + '</a>'); }
+      if (multi) { names.push({ x: gx + gw / 2, room: gw + gapG, name: g.short }); out.push('\u0000N' + (names.length - 1) + '</a>'); }
       x0 = gx + gw + gapG + g.loose.length * 14;
     });
-    var most = 1; names.forEach(function (n) { most = Math.max(most, n.lines.length); });
-    var H = Math.max(opts.h || 0, Math.round(maxY + (multi ? 30 + 13 * (most - 1) : 8)));
+    /* the names stand in as few rows as keep them clear of each other: each in the first row where it clears the name
+       before it, inside the drawing. One row while they fit their bundles, as they always have; more as the list grows */
+    var end = [];
+    names.forEach(function (n) {
+      n.lines = fitName(n.name, Math.max(n.room - 6, 64));
+      var w = Math.max.apply(null, n.lines.map(nameW)), x = Math.max(w / 2 + 2, Math.min(W - w / 2 - 2, n.x)), r = 0;
+      while (r < end.length && x - w / 2 < end[r] + 8) r++;
+      end[r] = x + w / 2; n.row = r; n.cx = Math.round(x);
+    });
+    var rows = Math.max(1, end.length), most = 1; names.forEach(function (n) { most = Math.max(most, n.lines.length); });
+    var drop = 13 * most + 4;
+    var H = Math.max(opts.h || 0, Math.round(maxY + (multi ? 30 + 13 * (most - 1) + drop * (rows - 1) : 8)));
     var svg = out.join('').replace(/\u0000N(\d+)/g, function (all, i) {
-      var n = names[+i], y0 = H - 10 - 13 * (most - 1);
-      return '<text class="q-name" x="' + n.x + '" y="' + y0 + '" text-anchor="middle">' + n.lines.map(function (l, k) { return '<tspan x="' + n.x + '" dy="' + (k ? 13 : 0) + '">' + esc(l) + '</tspan>'; }).join('') + '</text>';
+      var n = names[+i], y0 = H - 10 - 13 * (most - 1) - drop * (rows - 1 - n.row);
+      return '<text class="q-name" x="' + n.cx + '" y="' + y0 + '" text-anchor="middle">' + n.lines.map(function (l, k) { return '<tspan x="' + n.cx + '" dy="' + (k ? 13 : 0) + '">' + esc(l) + '</tspan>'; }).join('') + '</text>';
     });
     return ('<svg viewBox="0 0 ' + W + ' ' + H + '" role="group" aria-label="' + esc(opts.label) + '">' + svg + '</svg>').split(HH).join(String(H));
   }
@@ -879,25 +910,26 @@
     };
   }
 
-  /* ════════ the index: every proposal the form lists, and the form itself ════════ */
+  /* ════════ the index: every proposal on the beach's list, and the form itself ════════ */
   function indexPage() {
     document.title = 'Proposals';
-    readBlock('function:proposal').then(function (form) {
+    Promise.all([readBlock('function:proposal'), readBlock('proposals')]).then(function (two) {
+      var form = two[0], list = two[1];
       if (!form) { $('bandText').innerHTML = '<div class="eyebrow">Proposals</div><h1>Proposals</h1><p class="lede">The proposal form couldn’t be found on the beach just now.</p>'; return; }
       learnCase(JSON.stringify(form));
-      var shelf = [], ex = form['8'];
-      if (ex && typeof ex === 'object') for (var d = 1; d <= 9; d++) {
-        var t = textOf(ex[String(d)]); if (!t) continue;
+      var shelf = [];
+      listed(list).forEach(function (t) {
         var m = /^\s*([a-z0-9][a-z0-9-]*)\s*—\s*([\s\S]*?)(?:\s*·\s*(\S+))?\s*$/i.exec(t);
         if (m) shelf.push({ name: m[1].toLowerCase(), what: m[2].trim(), page: m[3] ? (/^https?:/.test(m[3]) ? m[3] : 'https://' + m[3]) : '' });
-      }
+      });
       $('bandText').innerHTML = '<div class="eyebrow">The proposal form · on the beach</div>' +
         '<h1><a href="/proposal">Proposals</a></h1>' +
         '<p class="lede">A proposal kept on the beach grows into its project’s page. It starts as a few steps with a decision at each, answered by anyone in their own words; as the decisions stand and the work begins, threads tie each piece of work to it, so one address carries the proposal and then the project.</p>' +
         '<p class="sub">Every one is drawn live from its own blocks. Any AI with the beach connected can set one up from the form alone.</p>' +
         '<div class="actions"><a class="btn primary" href="#shelf">See them</a><a class="btn line" href="#make">Make one with your AI</a><a class="btn line" href="/explain?block=function:proposal">Read the form</a></div>';
       var sections = [];
-      sections.push('<section id="shelf"><div class="addr">live from the beach · the form’s own list, at <b>function:proposal 8</b></div><h2>The proposals</h2>' +
+      sections.push('<section id="shelf"><div class="addr">live from the beach · the list, at <b>proposals</b></div><h2>The proposals</h2>' +
+        (shelf.length ? '' : '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>') +
         '<div class="cards">' + shelf.map(function (s) {
           return '<article class="card" id="c-' + esc(s.name) + '"><h3 class="nm"><a href="/proposal/' + esc(s.name) + '">' + esc(s.name) + '</a></h3>' +
             '<p>' + esc(cap(s.what)) + '</p><p class="stat" data-stat="' + esc(s.name) + '">reading…</p>' +
@@ -919,7 +951,7 @@
       $('main').innerHTML = sections.join('');
       $('makeLine').value = 'Read function:proposal on https://beach.happyseaurchin.com, then function:document and function:thread, and help me set up a proposal on the beach, following its MAKING ONE at 7. The topic: <what you want to propose>. Who decides: <names>. Tell me what you are about to make before you write anything, and write it under my own key.';
       $('copyMake').addEventListener('click', copier('makeLine', 'copiedMake'));
-      $('foot').innerHTML = '<p>The list is the form’s own, kept at function:proposal 8 by each proposal’s keeper when it is shared; every card and every cord above is read live from that proposal’s own blocks. The form: <a href="/explain?block=function:proposal">function:proposal</a>, on <a href="/explain?block=function:document">the document form</a> and <a href="/explain?block=function:thread">the thread</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
+      $('foot').innerHTML = '<p>The list is its own block on the beach, <a href="/explain?block=proposals">proposals</a>: a line for each proposal, added by its keeper when it is shared, and it grows as they come. Every card and every cord above is read live from that proposal’s own blocks. The form: <a href="/explain?block=function:proposal">function:proposal</a>, on <a href="/explain?block=function:document">the document form</a> and <a href="/explain?block=function:thread">the thread</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
       var groups = shelf.map(function (s) { return { name: s.name, short: s.name, href: '/proposal/' + s.name, title: s.name + ' · ' + s.what, steps: [], loose: [] }; });
       function redraw() {
         $('quipu').innerHTML = quipuSVG(groups.filter(function (g) { return g.steps.length; }).length ? groups : groups.map(function (g) { g.steps = [{ id: '', title: '', word: '', level: -1, main: null, rooms: [], threads: [] }]; return g; }),
