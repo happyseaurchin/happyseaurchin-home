@@ -569,6 +569,8 @@ async function writeBlock(body){
   return { ok: r.ok, status: r.status, data: d };
 }
 const lockRequired = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+/* a founding's key refused: a latch stands, or the passport binds the name to its own key (handle_bound) */
+const keyRefused = w => lockRequired(w) || (!w.ok && !!w.data && w.data.code === 'handle_bound');
 /* the same latch the deck page stores, so a key entered once serves both pages */
 const latchKey = () => 'next-latch:' + FIELD + ':' + HANDLE;
 
@@ -902,9 +904,10 @@ const ORD = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n 
 let toastT = null;
 function toast(msg, err){
   let el = document.querySelector('.toast');
-  if (!el){ el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
+  if (!el){ el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); el.addEventListener('click', () => el.remove()); }
   el.textContent = msg; el.classList.toggle('err', !!err);
-  clearTimeout(toastT); toastT = setTimeout(() => el.remove(), 4200);
+  /* a refusal stays long enough to read, a second for every twelve characters, and a tap clears it */
+  clearTimeout(toastT); toastT = setTimeout(() => el.remove(), err ? Math.max(4200, String(msg).length * 80) : 4200);
 }
 function showState(title, body){
   $('app').classList.add('hidden');
@@ -1170,7 +1173,16 @@ async function ensureVentureMirror(){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     latch = v.trim();
   }
-  const w = await writeBlock({ block: name, content: root, new_lock: latch });
+  let w = await writeBlock({ block: name, content: root, new_lock: latch });
+  /* A KEPT KEY CAN BE STALE — a roll changes the passport's key while this device
+   * keeps the old one, and the founding is refused. Ask once for the key that works,
+   * as lists does (theme.js saveBranch), and keep it in the old one's place. */
+  if (keyRefused(w)){
+    const v = prompt('That key was refused — enter the key your passport uses (kept on this device; check the first letter — phones capitalise it):');
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    latch = v.trim();
+    w = await writeBlock({ block: name, content: root, new_lock: latch });
+  }
   if (w.ok){ localStorage.setItem(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
   return w;
 }
@@ -1402,11 +1414,11 @@ async function joinFamily(){
   const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
   if (!mine){
     const born = await ensureVentureMirror();
-    if (!born.ok){ if (go) go.disabled = false; if (!born.quiet) toast('the mirror could not be founded' + (born.data && (born.data.error || born.data.code) ? ' — ' + (born.data.error || born.data.code) : '')); return; }
+    if (!born.ok){ if (go) go.disabled = false; if (!born.quiet) toast('the mirror could not be founded' + (born.data && (born.data.error || born.data.code) ? ' — ' + (born.data.error || born.data.code) : ''), true); return; }
   }
   const w = await siteRelation.write('https://beach.happyseaurchin.com', HANDLE, VENTURE, line).catch(() => null);
   if (go) go.disabled = false;
-  if (!w || !w.ok){ if (!(w && w.quiet)) toast('the line could not be written' + (w && w.data && (w.data.error || w.data.code) ? ' — ' + (w.data.error || w.data.code) : '')); return; }
+  if (!w || !w.ok){ if (!(w && w.quiet)) toast('the line could not be written' + (w && w.data && (w.data.error || w.data.code) ? ' — ' + (w.data.error || w.data.code) : ''), true); return; }
   toast(line ? 'listed — ' + line : 'listed');
   location.reload();
 }
@@ -2854,7 +2866,13 @@ async function gSave(kind, walk, text){
       : 'MIRROR — ' + HANDLE + "'s own map of the real, at spatial:" + GROUND.world + "'s self-same addresses: the places " + HANDLE + ' has added — a house, a road, a room — only where voiced, revisable forever. Sovereign; the keeper\'s pass folds them into the map and replies.';
     for (let i = 0; i < GROUND.floor; i++) root = { '_': root };
     reach(root, walk)['_'] = text;
-    const w = await writeBlock({ block: name, content: root, new_lock: latch });
+    let w = await writeBlock({ block: name, content: root, new_lock: latch });
+    if (keyRefused(w)){
+      const v = prompt('That key was refused — enter the key your passport uses (kept on this device; check the first letter — phones capitalise it):');
+      if (v === null || !v.trim()) return 'nothing written';
+      latch = v.trim();
+      w = await writeBlock({ block: name, content: root, new_lock: latch });
+    }
     if (!w.ok) return 'the block could not be born (' + w.status + ')';
     localStorage.setItem(latchKeyG, latch);
     toast(name + ' born, latched to ' + HANDLE);
