@@ -163,6 +163,19 @@
   .pop .made li a{overflow-wrap:anywhere}
   .pop .made li .s{flex:none;margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
   .pop .made li .s.merged{color:var(--bud)} .pop .made li .s.open{color:var(--solid)}
+  /* your word to the bee: four words and a line, into bee:<you> at the lane's address */
+  .st.word{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+  .pop .word{border:1px solid var(--line-strong);border-radius:12px;padding:12px;background:rgba(var(--wash-rgb),0.03)}
+  .pop .word .words{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 10px}
+  .pop .word .words button{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;padding:8px 12px;background:none;color:var(--vapour);border:1px solid var(--line-strong);border-radius:6px;cursor:pointer}
+  .pop .word .words button.on{color:var(--solid);border-color:var(--solid)}
+  .pop .word textarea{width:100%;min-height:64px;font:inherit;font-size:15px;line-height:1.45;background:var(--card);color:var(--foam);border:1px solid var(--line-strong);border-radius:8px;padding:9px 10px;resize:vertical}
+  .pop .word .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 0}
+  .pop .word .row input{font-family:var(--mono);font-size:12px;padding:8px 10px;background:var(--card);color:var(--foam);border:1px solid var(--line-strong);border-radius:6px;width:14ch}
+  .pop .word .note{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .pop .word .stands{margin:0 0 10px;font-size:15px;line-height:1.45}
+  .pop .word .stands b{font-family:var(--mono);font-weight:400;font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--liquid);margin-right:6px}
+  .pop .word .stands .bee b{color:var(--bud)}
   .pop .waits{border-left:2px solid var(--solid);padding:2px 0 2px 12px;color:var(--vapour);font-size:15.5px}
   .turn{padding:10px 0;border-bottom:1px solid var(--line)}
   .turn .tm{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin:0 0 4px;display:flex;gap:8px;align-items:center}
@@ -554,8 +567,58 @@ function beeReads(){
 const laneKey = n => String(n || '').toLowerCase().replace(/\s+/g, '-');
 function lastRead(L, R){ const a = (R || beeReads()).get(laneKey(L.name)) || []; const mine = a.filter(v => v.hand === L.hand); const u = mine.length ? mine : a; return u.length ? u[u.length - 1] : null; }
 
+/* your word to the bee, and its answer: bee:<you> and bee:weft on the beach, each a line at a lane's address, which is
+   the lane's first entry in the pile (function:bee). A mirror born at floor 1 holds 732 as 7 → 3 → 2, so the words are
+   read by walking the digits. */
+const WORD_RX = /^(GO|CHANGE|NOT YET|STOP)\b/i;
+function wordsOf(tree){
+  const m = new Map();
+  (function walk(n, p){ if (!n || typeof n !== 'object') return; Object.keys(n).forEach(k => { if (!/^[1-9]$/.test(k)) return; const v = n[k], a = p + k;
+    if (typeof v === 'string'){ if (v.trim()) m.set(a, v); } else if (v && typeof v === 'object'){ if (typeof v._ === 'string' && v._.trim()) m.set(a, v._); walk(v, a); } }); })(tree, '');
+  return m;
+}
+async function loadWords(){
+  const me = clean(kept.get('render:who')) || DAYS || '';
+  S.words.me = me;
+  const [mine, bee] = await Promise.all([me ? beach({ block: 'bee:' + me }).catch(() => null) : null, beach({ block: 'bee:weft' }).catch(() => null)]);
+  S.words.mine = mine && typeof mine === 'object' ? wordsOf(mine) : new Map();
+  S.words.bee = bee && typeof bee === 'object' ? wordsOf(bee) : new Map();
+}
+const laneAddr = L => (L.entries || []).slice().sort((a, b) => +a - +b)[0] || '';
+function wordHtml(L){
+  const addr = laneAddr(L); if (!addr || L.routine) return '';
+  const mine = S.words.mine.get(addr), bee = S.words.bee.get(addr);
+  const stands = (mine ? `<p class="stands"><b>${esc(S.words.me)}</b>${esc(mine)}</p>` : '') + (bee ? `<p class="stands bee"><b>the bee</b>${esc(bee)}</p>` : '');
+  return `<h4>Your word to the bee</h4><div class="word" data-addr="${esc(addr)}">${stands}
+    <div class="words">${['GO', 'CHANGE', 'NOT YET', 'STOP'].map(w => `<button type="button" data-word="${w}">${w}</button>`).join('')}</div>
+    <textarea rows="2" placeholder="a line, if you like"></textarea>
+    <div class="row"><input class="who" placeholder="your handle" value="${esc(S.words.me)}"><button class="plain send" type="button">say it</button><span class="note"></span></div>
+    <p class="meta">Lands in bee:&lt;you&gt; at ${esc(addr)} on the beach, under your key; the bee reads it at its next pass and answers beside it. GO: carry on, open, merge under the rule. CHANGE: carry on, and your line goes to the lane. NOT YET: hold. STOP: archive the lane.</p></div>`;
+}
+function wireWord(root, L){
+  const box = root.querySelector('.word'); if (!box) return;
+  const ta = box.querySelector('textarea'), note = box.querySelector('.note'), who = box.querySelector('.who');
+  if (window.keepDraft) try { keepDraft(ta, 'bee:' + box.dataset.addr); } catch(e){}
+  if (window.dictate) try { window.dictate(ta); } catch(e){}
+  box.querySelectorAll('.words button').forEach(b => b.addEventListener('click', () => { const on = b.classList.contains('on'); box.querySelectorAll('.words button').forEach(x => x.classList.remove('on')); if (!on) b.classList.add('on'); }));
+  box.querySelector('.send').addEventListener('click', async () => {
+    const w = box.querySelector('.words button.on'), line = ta.value.trim(), name = clean(who.value);
+    const text = (w ? w.dataset.word : '') + (w && line ? ' — ' : '') + line;
+    if (!text){ note.textContent = 'a word or a line first'; return; }
+    if (!name){ note.textContent = 'your handle first'; return; }
+    note.textContent = 'saying…';
+    try {
+      const v = await (window.siteVoice ? window.siteVoice() : Promise.reject(new Error('no voice')));
+      const r = await v.say({ field: 'bee', at: box.dataset.addr, text, name });
+      if (r && r.ok){ note.textContent = 'said'; kept.set('render:who', name); S.words.me = name; S.words.mine.set(box.dataset.addr, text); ta.value = ''; if (window.keepDraft) try { keepDraft(ta, 'bee:' + box.dataset.addr)(); } catch(e){} draw(); openLane(L.key); }
+      else note.textContent = (r && r.error) || 'not said';
+    } catch(e){ note.textContent = 'the beach could not be reached'; }
+  });
+}
+
 /* ---------- the lanes, gathered across hands ---------- */
 const S = { hands: {}, lanes: new Map(), gh: {}, parts: {}, days: {}, live: 40 * 60e3 };
+S.words = { me: '', mine: new Map(), bee: new Map() };   /* your word to the bee, and its answer (above) */
 const PALETTE = 8;
 function hue(name){ let h = 0; for (const c of name) h = (h * 31 + c.charCodeAt(0)) >>> 0; return 'var(--l' + (h % PALETTE) + ')'; }
 function addEntry(hand, block, e){
@@ -843,6 +906,8 @@ function draw(){
           const marks = reads.map(v => `<i class="visit${v.state ? ' ' + esc(v.state) : ''}" style="left:${pct(v.at).toFixed(2)}%" data-at="${v.at}" data-pass="${esc(v.pass)}" title="${esc('the bee, ' + hm(v.at) + (v.state ? ' — ' + v.state.replace(/-/g, ' ') : '') + (v.note ? ' — ' + v.note.slice(0, 160) : ''))}"></i>`).join('');
           const bv = L.bee ? null : lastRead(L, R);
           const beeTag = bv && Date.now() - bv.at < 7 * 864e5 ? `<span class="st bee ${esc(bv.state)}" title="${esc('the bee read it ' + ago(bv.at) + (bv.note ? ' — ' + bv.note.slice(0, 160) : ''))}">bee · ${esc((bv.state || 'read').replace(/-/g, ' '))}</span>` : '';
+          const mw = S.words.mine.get(laneAddr(L));
+          const wordTag = mw ? `<span class="st word" title="${esc(mw.slice(0, 160))}">${esc(S.words.me)} · ${esc((mw.match(WORD_RX) || ['word'])[0].toLowerCase())}</span>` : '';
           const seen = new Set();
           const made = [];
           ts.forEach(t => t.made.forEach(o => { if (o.kind === 'session' || seen.has(o.key) || !alive(o)) return; seen.add(o.key); made.push(o); }));
@@ -852,7 +917,7 @@ function draw(){
           const mine = st.open.some(o => { const f = namer.get(o.key); return f && f.L === L; });
           const tag = st.live ? '<span class="st live">now</span>' : ((mine || st.waits) && Date.now() - st.last.at < 4 * 864e5) ? '<span class="st waits">waits</span>' : '';
           return `<div class="lane${L.routine ? ' routine' : ''}" style="--c:${L.color}">
-            <button class="name" type="button" data-open="${esc(L.key)}" title="${esc(L.name)} — open its story"><i class="sw"></i><span class="nm">${esc(L.name)}</span>${HANDS.length > 1 && L.name !== L.hand ? `<span class="who">${esc(L.hand)}</span>` : ''}${tag}${beeTag}</button>
+            <button class="name" type="button" data-open="${esc(L.key)}" title="${esc(L.name)} — open its story"><i class="sw"></i><span class="nm">${esc(L.name)}</span>${HANDS.length > 1 && L.name !== L.hand ? `<span class="who">${esc(L.hand)}</span>` : ''}${tag}${beeTag}${wordTag}</button>
             <div class="track"><i class="span${from ? ' from' : ''}${into ? ' into' : ''}" style="left:${a.toFixed(2)}%;width:${Math.max(0.6, b - a).toFixed(2)}%"></i>${nowLine}${beads}${marks}</div>
             <p class="said w">${esc(firstSentence(ts.length ? ts[ts.length - 1].text : reads.length ? 'the bee: ' + (reads[reads.length - 1].note || reads[reads.length - 1].state) : ''))}</p>
             ${chips ? `<div class="chips">${chips}</div>` : '<div class="chips"></div>'}
@@ -901,6 +966,7 @@ function openLane(key, turnRef){
     <h3 id="pop-title" style="--c:${L.color}"><i></i>${esc(L.name)}</h3>
     <p class="meta">${esc(dateLabel(first.at))} → ${esc(dateLabel(last.at))} · ${L.turns.length} turn${L.turns.length === 1 ? '' : 's'}${st.live ? ' · speaking now' : ''}<br>the record: ${rec.map(a => `<a href="${SITE}/render?block=${encodeURIComponent(L.block)}&spindle=${encodeURIComponent(a)}" target="_blank" rel="noopener">${esc(L.block)} ${esc(a)}</a>`).join(' · ')}</p>
     <div class="acts">${sessions.map(u => `<a class="chip session" href="${esc(u)}"${/^claude:/.test(u) ? '' : ' target="_blank" rel="noopener"'}><span class="g">▶</span>open the session</a>`).join('')}${!sessions.length ? prSessions.map(u => `<a class="chip session" href="${esc(u)}" target="_blank" rel="noopener"><span class="g">▶</span>the session that made its pull request</a>`).join('') : ''}</div>
+    ${wordHtml(L)}
     ${st.waits ? `<h4>Waits</h4><p class="waits">${esc(st.waits)}</p>` : ''}
     <h4>Made</h4>${list.length ? `<ul class="made">${list.map(row).join('')}</ul>` : '<p class="meta">Nothing this page can link was named in its words.</p>'}
     ${blocks.length ? `<h4>Blocks it touched</h4><div class="blocks">${blocks.slice(0, 40).map(b => `<a href="${SITE}/render?block=${encodeURIComponent(b)}" target="_blank" rel="noopener">${esc(b)}</a>`).join('')}</div>` : ''}
@@ -909,6 +975,7 @@ function openLane(key, turnRef){
     ${L.turns.slice().reverse().map(t => `<div class="turn clamp${turnRef && turnRef === t.entry + '.' + t.slot ? ' hit' : ''}" data-ref="${esc(t.entry + '.' + t.slot)}" style="--c:${L.color}"><p class="tm"><i></i>${esc(dateLabel(t.at))} · ${esc(L.block)} ${esc(t.entry + (t.slot ? '.' + t.slot : ''))}</p><p>${esc(t.text)}</p></div>`).join('')}`;
   const pop = $('pop'); pop.hidden = false; pop.classList.remove('hidden');
   $('pop-x').addEventListener('click', closeLane);
+  wireWord($('pop-in'), L);
   $('pop-in').querySelectorAll('.turn.clamp p:not(.tm)').forEach(p => p.addEventListener('click', () => p.parentElement.classList.toggle('clamp')));
   const hit = $('pop-in').querySelector('.turn.hit');
   if (hit) setTimeout(() => hit.scrollIntoView({ block: 'center' }), 30); else $('pop-in').scrollTop = 0;
@@ -951,7 +1018,7 @@ function setHands(hs){
   start().catch(fail);
 }
 function drawFoot(){
-  $('foot').innerHTML = `<p>Read live, every time, from each hand's own record on the beach — weft's pile at <code>watch:weft</code>, anyone else's <code>history:&lt;handle&gt;</code> — and nothing is kept here. An entry that opens with a lane's name (<code>need-offer.1 (…) — …</code>) gathers with the others of that name, and the turns appended beneath it are its beads; an entry with no lane name stands in the thread of the project it names, or of its hand. What a turn made is read out of its own words: a repository and a number (<code>happyseaurchin-home #489</code>) is a pull request, whose state GitHub is asked for; an address on the site is a page; <code>proposals/…</code> is a document; a claude.ai link is an app or a session; and <code>5 = beach-venture-path 6</code> on a card is the part of a path the work advanced. A lane whose name opens with <code>bee</code> is the bee, the session that reads the other lanes: each line of one of its turns that opens with <code>→ &lt;lane&gt; · STATE: &lt;word&gt;</code> is one read of that lane, drawn on the lane's thread as a small diamond and in its name as a pill, and the bee's flight through a day is the dotted line from its bead down through the lanes it read.</p>
+  $('foot').innerHTML = `<p>Read live, every time, from each hand's own record on the beach — weft's pile at <code>watch:weft</code>, anyone else's <code>history:&lt;handle&gt;</code> — and nothing is kept here. An entry that opens with a lane's name (<code>need-offer.1 (…) — …</code>) gathers with the others of that name, and the turns appended beneath it are its beads; an entry with no lane name stands in the thread of the project it names, or of its hand. What a turn made is read out of its own words: a repository and a number (<code>happyseaurchin-home #489</code>) is a pull request, whose state GitHub is asked for; an address on the site is a page; <code>proposals/…</code> is a document; a claude.ai link is an app or a session; and <code>5 = beach-venture-path 6</code> on a card is the part of a path the work advanced. A lane whose name opens with <code>bee</code> is the bee, the session that reads the other lanes: each line of one of its turns that opens with <code>→ &lt;lane&gt; · STATE: &lt;word&gt;</code> is one read of that lane, drawn on the lane's thread as a small diamond and in its name as a pill, and the bee's flight through a day is the dotted line from its bead down through the lanes it read. Tap a lane and you can give the bee your word about it, GO, CHANGE, NOT YET or STOP, with a line: it lands in your own mirror on the beach, <code>bee:&lt;you&gt;</code>, at the lane's address, under your key, and the bee reads it at its next pass and answers beside it (<code>bee:weft</code>).</p>
   <p>To lay your own lanes beside these, keep your record as an accumulator at <code>history:&lt;you&gt;</code> (or a pile at <code>watch:&lt;you&gt;</code>), open each entry with the lane's name, append each turn beneath it, and name what you made in the words — then add your handle to the address: <code>/lanes/weft+&lt;you&gt;</code>. To open a session from here, name its link in the lane's words.</p>`;
 }
 
@@ -1328,6 +1395,7 @@ async function start(){
   const week = Date.now() - 6 * 864e5;
   await index();
   await Promise.all(HANDS.map(async h => { await loadHand(h); await readMore(h, week); }));
+  await loadWords().catch(() => {});
   if (run !== RUN) return;
   $('msg').hidden = true;
   draw();
