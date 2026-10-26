@@ -1,0 +1,1883 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pscale Native</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Would a model trained on text printed with pscale's addresses read and run blocks more naturally? One small fine-tuning experiment, five decisions answered in the open, and a kernel walking the frozen programs it tests.">
+<meta property="og:title" content="Pscale Native">
+<meta property="og:description" content="Would a model trained on text printed with pscale's addresses read and run blocks more naturally? One small fine-tuning experiment, five decisions answered in the open, and a kernel walking the frozen programs it tests.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<script src="/theme.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400;1,500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap">
+<style>
+/* Layout: a chart sheet — a title block under a graduated border, the kernel's walk as the one chart,
+   then the soundings: five steps down one lead line, each a level deeper, each with its decision.
+   look:keel — white water, the shallows, soundings in ink, notes in chart magenta. */
+:root {
+  --ground: #F7F9F9;
+  --panel: #E2EDF3;
+  --ink: #10202A;
+  --muted: #516370;
+  --line: #C3D3DD;
+  --accent: #A0135A;
+  --mark: #F5DDE8;
+  --go: #1C6E46;
+  --wait: #A8261F;
+  --change: #8A5300;
+  --display: 'Cormorant Garamond', 'Iowan Old Style', Georgia, 'Times New Roman', serif;
+  --body: 'Newsreader', 'Iowan Old Style', Georgia, serif;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* the house's token names, so the house's threads script wears this palette */
+  --foam: var(--ink);
+  --vapour-dim: var(--muted);
+  --line-strong: var(--muted);
+  --liquid: var(--accent);
+  --step: 1rem;
+  --radius: 0.25rem;
+  --rule: 1px;
+  --measure: 42rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #061017; --panel: #0D1C26; --ink: #E3ECF0; --muted: #8FA3AE; --line: #1D3443;
+    --accent: #F27BB5; --mark: #3B1229; --go: #5DCB90; --wait: #F2827A; --change: #E6B24E;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #061017; --panel: #0D1C26; --ink: #E3ECF0; --muted: #8FA3AE; --line: #1D3443;
+  --accent: #F27BB5; --mark: #3B1229; --go: #5DCB90; --wait: #F2827A; --change: #E6B24E;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 1.05rem;
+  line-height: 1.55;
+  font-optical-sizing: auto;
+}
+a { color: var(--accent); text-underline-offset: 0.16em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+button { font: inherit; color: inherit; }
+p { margin: 0; }
+h1, h2, h3 { margin: 0; text-wrap: balance; }
+
+.wrap {
+  max-width: 68rem;
+  margin-inline: auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.prose { max-width: var(--measure); }
+
+/* the graduated border a chart is framed in: alternate minutes of latitude, ink and white */
+.neatline {
+  height: 9px;
+  border-block: var(--rule) solid var(--ink);
+  background: repeating-linear-gradient(90deg, var(--ink) 0 2.5rem, transparent 2.5rem 5rem);
+}
+
+.kicker, .eyebrow {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.addr { font-family: var(--mono); font-style: italic; color: var(--accent); }
+.note { color: var(--muted); }
+
+/* ── the title block ── */
+.head { padding-block: 2.2rem 2.4rem; }
+.head .wrap { display: grid; gap: 1.1rem; }
+.title-block { display: grid; gap: 2rem; }
+.lead { display: grid; gap: 1.1rem; min-width: 0; }
+@media (min-width: 980px) {
+  .title-block { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 3rem; align-items: end; }
+}
+.index { display: grid; gap: 0.5rem; min-width: 0; }
+.index ol { list-style: none; margin: 0; padding: 0; border-top: var(--rule) solid var(--ink); }
+.index li { border-bottom: var(--rule) solid var(--line); }
+.index a {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; align-items: baseline;
+  padding: 0.5rem 0; text-decoration: none; color: var(--ink);
+}
+.addr-on .index a { grid-template-columns: 4.6rem minmax(0, 1fr) auto; }
+.index a:hover .t { text-decoration: underline; text-underline-offset: 0.16em; }
+.index .addr { font-size: 0.82rem; }
+.index .t { font-family: var(--display); font-size: 1.15rem; font-weight: 600; line-height: 1.15; }
+.index .chips { display: flex; gap: 0.3rem; flex-wrap: wrap; justify-content: flex-end; }
+.toprow { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+#btn-theme {
+  background: none; border: var(--rule) solid var(--line); border-radius: var(--radius);
+  width: 2.2rem; height: 2.2rem; cursor: pointer; color: var(--ink);
+}
+h1 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(2.6rem, 8vw, 5rem);
+  line-height: 0.95;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+.lede { font-size: clamp(1.12rem, 2.2vw, 1.32rem); line-height: 1.45; max-width: 40rem; }
+.standing { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-family: var(--mono); font-size: 0.78rem; color: var(--muted); }
+.standing b { color: var(--ink); font-weight: 500; }
+.actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.btn {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  font-family: var(--mono); font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase;
+  text-decoration: none; color: var(--ink);
+  border: var(--rule) solid var(--ink); border-radius: var(--radius);
+  padding: 0.55rem 0.85rem; background: transparent; cursor: pointer;
+}
+.btn:hover { background: var(--panel); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--ground); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn[disabled] { opacity: 0.55; cursor: default; }
+
+main { display: grid; gap: 3.6rem; padding-block: 2.4rem 3.6rem; }
+section { display: grid; gap: 1rem; scroll-margin-top: 1rem; }
+main > *, section > * { min-width: 0; }
+.step-body p, .around p, .talk p, .answers .line, .banner, .rooms p { overflow-wrap: anywhere; }
+h2 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: clamp(1.9rem, 4vw, 2.5rem);
+  line-height: 1.05;
+  letter-spacing: 0.015em;
+}
+h3 {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 1.55rem;
+  line-height: 1.15;
+}
+.banner {
+  font-family: var(--mono); font-size: 0.76rem; color: var(--muted);
+  border: var(--rule) dashed var(--line); border-radius: var(--radius); padding: 0.6rem 0.8rem;
+}
+
+/* ── the walk ── */
+.tabs { display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem; border-bottom: var(--rule) solid var(--line); }
+.tab {
+  background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  padding: 0.45rem 0; cursor: pointer;
+  font-family: var(--mono); font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.walk-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 1.6rem; align-items: start; }
+@media (max-width: 860px) { .walk-grid { grid-template-columns: minmax(0, 1fr); } }
+.print { margin: 0; min-width: 0; display: grid; gap: 0.5rem; }
+.print figcaption, .side-label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.lines {
+  list-style: none; margin: 0; padding: 0.6rem 0;
+  background: var(--panel); border-radius: var(--radius);
+  font-family: var(--mono); font-size: 0.8rem; line-height: 1.5;
+  overflow-x: auto;
+}
+.lines li {
+  padding: 0.12rem 0.75rem 0.12rem calc(0.75rem + var(--d, 0) * 2ch);
+  transition: background-color 160ms ease, color 160ms ease;
+}
+.lines li .voice { color: var(--ink); }
+.lines.walked li { color: var(--muted); }
+.lines.walked li .voice, .lines.walked li .addr { opacity: 0.55; }
+.lines.walked li.passed .voice, .lines.walked li.passed .addr { opacity: 1; }
+.lines li.here { background: var(--mark); }
+.lines li.here .addr { font-weight: 500; }
+
+.side { display: grid; gap: 1.1rem; min-width: 0; }
+.facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; }
+.facts label { display: grid; grid-template-columns: auto 1fr; gap: 0.6rem; align-items: baseline; cursor: pointer; }
+.facts input { accent-color: var(--accent); width: 1rem; height: 1rem; transform: translateY(0.15rem); }
+.facts b { font-family: var(--mono); font-size: 0.82rem; font-weight: 500; }
+.facts span { color: var(--muted); font-size: 0.92rem; }
+.pick { display: grid; gap: 0.35rem; }
+.pick label { font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+select, input[type="text"], textarea {
+  font: inherit; color: var(--ink); background: var(--ground);
+  border: var(--rule) solid var(--line); border-radius: var(--radius); padding: 0.45rem 0.55rem; max-width: 100%;
+}
+select, input[type="text"] { font-family: var(--mono); font-size: 0.82rem; }
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.trail { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.3rem 0.8rem; font-size: 0.95rem; align-items: baseline; }
+.addr-on .trail { grid-template-columns: max-content minmax(0, 1fr); }
+.trail li { display: contents; }
+.trail .addr { font-size: 0.8rem; }
+.trail .ans { font-family: var(--mono); font-size: 0.74rem; color: var(--muted); white-space: nowrap; }
+.result { display: grid; gap: 0.2rem; border-top: var(--rule) solid var(--line); padding-top: 0.8rem; }
+.result .value { font-family: var(--display); font-size: 2rem; font-weight: 600; line-height: 1.1; }
+.result .check { color: var(--muted); font-size: 0.92rem; }
+.moves { display: flex; flex-wrap: wrap; gap: 0.25rem; font-family: var(--mono); font-size: 0.85rem; }
+.moves span { width: 1.7rem; height: 1.7rem; display: grid; place-items: center; border: var(--rule) solid var(--line); border-radius: var(--radius); }
+.moves span.done { border-color: var(--muted); }
+.moves span.off { text-decoration: line-through; color: var(--muted); }
+.moves span.now { background: var(--mark); border-color: var(--accent); color: var(--ink); }
+.grid-chart { width: 100%; max-width: 21rem; height: auto; display: block; }
+.grid-chart .cell { fill: none; stroke: var(--line); stroke-width: 1; }
+.grid-chart .frame { fill: none; stroke: var(--ink); stroke-width: 1.2; }
+.grid-chart .tick { fill: var(--muted); font-family: var(--mono); font-size: 10px; }
+.grid-chart .course { fill: none; stroke: var(--accent); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.grid-chart .fix { fill: var(--ground); stroke: var(--accent); stroke-width: 1.6; }
+.grid-chart .start { fill: none; stroke: var(--muted); stroke-width: 1.4; stroke-dasharray: 3 2; }
+.grid-chart .bump { stroke: var(--muted); stroke-width: 1.4; stroke-linecap: round; }
+.grid-chart .vessel { fill: var(--accent); stroke: var(--ground); stroke-width: 1.5; }
+.caption { color: var(--muted); font-size: 0.92rem; max-width: var(--measure); }
+.specimen { margin: 0.4rem 0 0; padding: 0.6rem 0.75rem; background: var(--ground); border-radius: var(--radius); font-family: var(--mono); font-size: 0.78rem; display: grid; gap: 0.2rem; overflow-x: auto; }
+.specimen div { white-space: pre; }
+.specimen i { font-style: normal; color: var(--muted); display: inline-block; min-width: 10ch; }
+
+/* ── the soundings: five steps down one lead line ── */
+.soundings { --sw: 1.2rem; list-style: none; margin: 0; padding: 0; display: grid; gap: 3rem; position: relative; }
+.addr-on .soundings { --sw: 4.4rem; }
+.soundings::before {
+  content: ""; position: absolute; left: var(--sw); top: 0.6rem; bottom: 0.6rem;
+  border-left: var(--rule) solid var(--line);
+}
+.step { display: grid; grid-template-columns: var(--sw) minmax(0, 1fr); gap: 0 1.4rem; position: relative; }
+.sounding { text-align: right; padding-top: 0.35rem; padding-right: 0.6rem; position: relative; }
+.sounding .addr { font-size: 0.95rem; }
+.sounding::after {
+  content: ""; position: absolute; right: 0; top: 0.95rem; width: 0.6rem; height: 0.6rem;
+  border-radius: 50%; background: var(--ground); border: var(--rule) solid var(--muted);
+  transform: translateX(50%);
+}
+.step-body { display: grid; gap: 0.75rem; min-width: 0; padding-left: 0.4rem; }
+@media (max-width: 520px) {
+  .soundings { --sw: 0.9rem; }
+  .addr-on .soundings { --sw: 3.2rem; }
+  .step { gap: 0 0.9rem; }
+  .sounding .addr { font-size: 0.72rem; }
+}
+.step-body > p { max-width: var(--measure); }
+.rooms { display: grid; gap: 0.35rem; max-width: var(--measure); }
+details.room, details.fold { border-top: var(--rule) solid var(--line); }
+details.room summary, details.fold summary {
+  cursor: pointer; list-style: none; padding: 0.5rem 0;
+  font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink);
+  display: flex; gap: 0.6rem; align-items: baseline;
+}
+details.room summary::-webkit-details-marker, details.fold summary::-webkit-details-marker { display: none; }
+details.room summary::before, details.fold summary::before { content: "+"; color: var(--accent); width: 1ch; }
+details.room[open] summary::before, details.fold[open] summary::before { content: "\2212"; }
+details.room .in, details.fold .in { padding: 0 0 0.8rem 1.6ch; display: grid; gap: 0.6rem; }
+
+.card { background: var(--panel); border-radius: var(--radius); padding: 1rem 1.1rem 1.1rem; display: grid; gap: 0.75rem; max-width: 46rem; }
+.card .q { font-family: var(--display); font-size: 1.35rem; font-weight: 600; line-height: 1.2; }
+.card .who { font-family: var(--mono); font-size: 0.74rem; color: var(--muted); letter-spacing: 0.04em; }
+.answers { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6rem; }
+.answers li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.7rem; align-items: baseline; }
+.answers .line { font-size: 0.97rem; }
+.answers .by { font-family: var(--mono); font-size: 0.8rem; font-weight: 500; }
+.answers .none { color: var(--muted); grid-column: 1 / -1; font-size: 0.95rem; }
+details.add > summary {
+  list-style: none; cursor: pointer; display: inline-flex; width: max-content;
+  font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.08em; text-transform: uppercase;
+  border: var(--rule) solid var(--ink); border-radius: var(--radius); padding: 0.5rem 0.8rem; color: var(--ink);
+}
+details.add > summary::-webkit-details-marker { display: none; }
+details.add[open] > summary { border-color: var(--line); color: var(--muted); }
+details.add .answer { margin-top: 0.8rem; border-top: 0; padding-top: 0; }
+.tok {
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; font-weight: 500;
+  border: var(--rule) solid currentColor; border-radius: var(--radius); padding: 0.1rem 0.4rem; white-space: nowrap;
+}
+.tok.go { color: var(--go); }
+.tok.wait { color: var(--wait); }
+.tok.change { color: var(--change); }
+.tok.choice { color: var(--ink); }
+.answer { display: grid; gap: 0.55rem; border-top: var(--rule) solid var(--line); padding-top: 0.8rem; }
+.choices { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.choices button {
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; cursor: pointer;
+  background: var(--ground); border: var(--rule) solid var(--line); border-radius: var(--radius); padding: 0.35rem 0.6rem; color: var(--ink);
+}
+.choices button[aria-pressed="true"] { border-color: var(--accent); background: var(--mark); }
+.answer textarea { width: 100%; min-height: 3.6rem; resize: vertical; font-size: 0.95rem; }
+.answer .as { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; font-size: 0.9rem; color: var(--muted); }
+.answer .as input { width: 12rem; }
+.answer .row { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
+.say { font-size: 0.9rem; color: var(--muted); }
+.say.ok { color: var(--go); }
+.say.err { color: var(--wait); }
+.state-line { font-family: var(--mono); font-size: 0.78rem; color: var(--muted); max-width: var(--measure); }
+.state-line b { color: var(--ink); font-weight: 500; }
+
+/* ── around, threads, the room ── */
+.around { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1.4rem 2rem; }
+.around > div { display: grid; gap: 0.4rem; align-content: start; min-width: 0; }
+.around h3 { font-size: 1.3rem; }
+.talk { list-style: none; margin: 0; padding: 0; display: grid; gap: 1rem; max-width: 46rem; }
+.talk li { display: grid; gap: 0.2rem; }
+.talk .meta { font-family: var(--mono); font-size: 0.74rem; color: var(--muted); }
+.talk .meta b { color: var(--ink); font-weight: 500; }
+.copyline textarea { width: 100%; min-height: 6.5rem; font-family: var(--mono); font-size: 0.76rem; line-height: 1.45; }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; }
+
+footer { padding-block: 0 2.8rem; }
+footer .wrap { display: grid; gap: 1rem; padding-top: 1.6rem; }
+footer p { color: var(--muted); font-size: 0.92rem; max-width: var(--measure); }
+.src { display: flex; flex-wrap: wrap; gap: 0.3rem 1rem; font-size: 0.9rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* ── words first: the addresses show only when asked for ── */
+:root:not(.addr-on) .addr-only { display: none !important; }
+.tools { display: flex; gap: 0.5rem; align-items: center; }
+.switch {
+  display: inline-flex; align-items: center; gap: 0.5rem; cursor: pointer;
+  font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+  background: none; border: var(--rule) solid var(--line); border-radius: 999px; padding: 0.35rem 0.7rem 0.35rem 0.45rem;
+}
+.switch::before {
+  content: ""; width: 1.7rem; height: 0.95rem; border-radius: 999px; flex: none;
+  background: radial-gradient(circle at 0.48rem 50%, var(--muted) 0.32rem, transparent 0.34rem), var(--panel);
+  border: var(--rule) solid var(--line); transition: background 160ms ease;
+}
+.switch[aria-pressed="true"] { color: var(--ink); border-color: var(--accent); }
+.switch[aria-pressed="true"]::before {
+  background: radial-gradient(circle at calc(100% - 0.48rem) 50%, var(--ground) 0.32rem, transparent 0.34rem), var(--accent);
+  border-color: var(--accent);
+}
+.switch.small { font-size: 0.66rem; padding: 0.25rem 0.6rem 0.25rem 0.35rem; }
+.printcap { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.5rem; }
+
+/* ── the figures: one for each step, drawn from the proposal's own words ── */
+.fig { margin: 0; display: grid; gap: 0.8rem; background: var(--panel); border-radius: var(--radius); padding: 1rem 1.1rem 1.1rem; max-width: 54rem; min-width: 0; }
+.fig > figcaption { color: var(--muted); font-size: 0.9rem; max-width: var(--measure); }
+.fig .lbl { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.fig h4 { margin: 0; font-family: var(--display); font-size: 1.2rem; font-weight: 600; line-height: 1.15; }
+.chip {
+  font-family: var(--mono); font-size: 0.72rem; white-space: nowrap;
+  border: var(--rule) solid var(--line); background: var(--ground); border-radius: var(--radius); padding: 0.2rem 0.45rem;
+}
+.chip.hot { border-color: var(--accent); color: var(--ink); background: var(--mark); }
+.sep { color: var(--muted); font-family: var(--mono); font-size: 0.8rem; }
+
+/* where each word sits */
+.odo-text { font-size: 1.02rem; line-height: 1.75; margin: 0; }
+.odo-text span { border-radius: 2px; transition: background-color 140ms ease, box-shadow 140ms ease; }
+.odo-text span.in-sent { background: var(--ground); }
+.odo-text span.now { background: var(--mark); box-shadow: 0 0 0 1px var(--accent); }
+.odo-read { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 0.8rem 1.4rem; align-items: start; }
+@media (max-width: 600px) { .odo-read { grid-template-columns: minmax(0, 1fr); } }
+.odo-read > div { display: grid; gap: 0.35rem; min-width: 0; }
+.odo-flat .big { font-family: var(--display); font-size: 1.9rem; font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.odo-nest .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; align-items: center; }
+
+/* the four arms, side by side */
+.arms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem 0.7rem; }
+@media (max-width: 720px) { .arms { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.arms-test {
+  grid-column: 1 / span 2; text-align: center; padding-bottom: 0.3rem;
+  font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent);
+  border-bottom: 1.5px solid var(--accent); border-left: 1.5px solid var(--accent); border-right: 1.5px solid var(--accent);
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.arms-gap { grid-column: span 2; }
+@media (max-width: 720px) { .arms-gap { display: none; } }
+.lane { display: grid; gap: 0.4rem; align-content: start; min-width: 0; }
+.lane .page { height: 7.4rem; overflow: hidden; background: var(--ground); border: var(--rule) solid var(--line); border-radius: var(--radius); }
+.lane .feed { list-style: none; margin: 0; padding: 0.45rem 0.5rem; display: grid; gap: 0.36rem; }
+.lane.moving .feed { animation: feed 12s linear infinite; }
+@keyframes feed { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+.lane .feed li { display: flex; gap: 0.35rem; align-items: center; padding-left: calc(var(--d, 0) * 0.7rem); font-family: var(--mono); font-size: 0.64rem; white-space: nowrap; min-height: 0.8rem; }
+.lane .feed i { font-style: italic; color: var(--accent); }
+.lane .feed b { display: block; height: 0.4rem; border-radius: 1px; background: var(--line); flex: none; }
+.lane .what { font-size: 0.84rem; color: var(--muted); line-height: 1.35; }
+.lane.base .page { display: grid; place-items: center; text-align: center; color: var(--muted); font-size: 0.84rem; padding: 0.6rem; }
+.lane .into { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.arms-tests {
+  grid-column: 1 / -1; text-align: center; padding: 0.55rem 0.8rem;
+  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase;
+  border: var(--rule) solid var(--ink); border-radius: var(--radius); background: var(--ground);
+}
+
+/* the verdict map */
+.vmap { display: grid; gap: 0.5rem; }
+.vplot-wrap { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.4rem; align-items: stretch; }
+.vaxis-y { writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.vplot { position: relative; aspect-ratio: 16 / 10; background: var(--ground); border: var(--rule) solid var(--line); border-radius: var(--radius); overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+@media (max-width: 560px) { .vplot { aspect-ratio: 1 / 1; } }
+.vreg { position: absolute; padding: 0.4rem 0.45rem; font-size: 0.78rem; line-height: 1.25; display: flex; align-items: flex-start; }
+.vreg span { background: var(--ground); border-radius: 2px; padding: 0 0.2rem; }
+.vreg.harm { background: var(--wait); }
+.vreg.thin { background: var(--muted); }
+.vreg.nwe { background: var(--change); }
+.vreg.sup { background: var(--go); }
+.vreg::after { content: ""; position: absolute; inset: 0; background: var(--ground); opacity: 0.84; z-index: 0; }
+.vreg span { position: relative; z-index: 1; color: var(--ink); }
+.vline { position: absolute; z-index: 2; }
+.vline.x { top: 0; bottom: 0; border-left: 1.5px dashed var(--muted); }
+.vline.y { left: 0; right: 0; border-top: 1.5px dashed var(--muted); }
+.vline.wrong { border-left: 1.5px dotted var(--accent); }
+.vtick { position: absolute; z-index: 3; font-family: var(--mono); font-size: 0.62rem; color: var(--muted); }
+.vbet { position: absolute; z-index: 3; border: 1.5px dashed var(--accent); border-radius: var(--radius); pointer-events: none; }
+.vbet span { position: absolute; top: 0.25rem; left: 0.3rem; font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); background: var(--ground); padding: 0 0.2rem; }
+.vdot {
+  position: absolute; z-index: 4; width: 1.25rem; height: 1.25rem; margin: -0.625rem 0 0 -0.625rem; border-radius: 50%;
+  background: var(--accent); border: 2px solid var(--ground); box-shadow: 0 0 0 1.5px var(--accent); cursor: grab;
+}
+.vdot:active { cursor: grabbing; }
+.vaxis-x { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); text-align: center; }
+.verdict { display: grid; gap: 0.2rem; min-height: 4.2rem; }
+.verdict b { font-family: var(--display); font-size: 1.35rem; font-weight: 600; }
+.verdict .nums { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+.vpresets { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.vpresets button { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; background: var(--ground); color: var(--ink); border: var(--rule) solid var(--line); border-radius: var(--radius); padding: 0.3rem 0.55rem; }
+
+/* the two routes and the cap */
+.fork { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.fork p { flex: 1 1 16rem; font-size: 0.95rem; }
+.fork .seg { display: inline-flex; border: var(--rule) solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.fork .seg button { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; background: var(--ground); color: var(--muted); border: 0; padding: 0.4rem 0.65rem; cursor: pointer; }
+.fork .seg button[aria-pressed="true"] { background: var(--accent); color: var(--ground); }
+.routes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; }
+@media (max-width: 600px) { .routes { grid-template-columns: minmax(0, 1fr); } }
+.route { background: var(--ground); border: 1.5px solid var(--line); border-radius: var(--radius); padding: 0.85rem; display: grid; gap: 0.55rem; align-content: start; transition: opacity 220ms ease, border-color 220ms ease; }
+.route.on { border-color: var(--accent); }
+.route.off { opacity: 0.5; }
+.route .keel { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.route dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.3rem 0.7rem; font-size: 0.9rem; }
+.route dt { font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding-top: 0.15rem; }
+.route dd { margin: 0; }
+.size { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px; max-width: 10rem; margin-top: 0.3rem; }
+.size i { height: 0.5rem; border-radius: 1px; background: var(--line); }
+.size i.f { background: var(--ink); }
+.cap { display: grid; gap: 0.35rem; }
+.cap-track { position: relative; height: 0.7rem; background: var(--ground); border: var(--rule) solid var(--line); border-radius: 999px; }
+.cap-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent); border-radius: 999px; }
+.cap-stop { position: absolute; top: -0.55rem; bottom: -0.55rem; left: 80%; border-left: 2px solid var(--ink); }
+.cap-labels { position: relative; height: 1.4rem; font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
+.cap-labels span { position: absolute; top: 0; white-space: nowrap; }
+.cap-labels .at-cap { left: 80%; transform: translateX(-50%); color: var(--ink); }
+@media (max-width: 600px) { .cap-labels .at-cap { transform: translateX(-80%); } }
+
+/* the run, as a course from the harbour */
+.harbour { display: grid; gap: 0.5rem; border-bottom: 1.5px dashed var(--muted); padding-bottom: 0.9rem; }
+.lights { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; }
+.light { display: inline-flex; gap: 0.4rem; align-items: center; font-size: 0.86rem; }
+.light i { width: 0.75rem; height: 0.75rem; border-radius: 50%; border: 1.5px solid var(--muted); background: var(--ground); flex: none; }
+.light.lit i { background: var(--go); border-color: var(--go); }
+.course { list-style: none; margin: 0.4rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: 1.4rem 0; }
+.course li { position: relative; padding: 1.1rem 0.8rem 0 0; border-top: 1.5px dashed var(--muted); display: grid; gap: 0.25rem; align-content: start; }
+.course li::before {
+  content: ""; position: absolute; top: -0.45rem; left: 0; width: 0.8rem; height: 0.8rem; border-radius: 50%;
+  background: var(--ground); border: 1.5px solid var(--muted); transition: background-color 200ms ease, border-color 200ms ease;
+}
+.course li.ping::before { background: var(--accent); border-color: var(--accent); }
+.course li.here::before { background: var(--ink); border-color: var(--ink); }
+.course b { font-family: var(--display); font-size: 1.08rem; font-weight: 600; line-height: 1.15; }
+.course span { font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
+.course .n { font-family: var(--mono); font-size: 0.64rem; letter-spacing: 0.08em; color: var(--muted); }
+.odo-text .sent { border-radius: 2px; transition: background-color 140ms ease; }
+.odo-text .sent.in-sent { background: var(--ground); box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+.arms-test { border: 1.5px solid var(--accent); border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; padding: 0.35rem 0.4rem 0.5rem; margin-bottom: -0.2rem; }
+.cap .note { font-size: 0.92rem; }
+@media (max-width: 560px) { .vreg.nwe span { display: none; } .vbet span { font-size: 0.56rem; } }
+
+</style>
+</head>
+<body>
+<div class="neatline" aria-hidden="true"></div>
+<header class="head">
+  <div class="wrap">
+    <div class="toprow">
+      <p class="eyebrow">A proposal · drawn by keel · 26 October 2026</p>
+      <div class="tools">
+        <button type="button" class="switch" data-addr-toggle aria-pressed="false" title="Show the addresses beside the words">addresses</button>
+        <button type="button" id="btn-theme" title="light or dark" aria-label="Switch between light and dark">&#9680;</button>
+      </div>
+    </div>
+    <div class="title-block">
+      <div class="lead">
+        <h1>Pscale Native</h1>
+        <p class="lede" id="lede">Would a model trained on text printed with pscale’s addresses read and run blocks more naturally? One small fine-tuning experiment, measured before and after on the programs and questions frontier models already pass by reading.</p>
+        <p class="standing" id="standing"><span>phase <b id="phase">proposal</b></span><span>decisions <b id="decCount">five</b></span><span id="waitLine">waiting on <b>David</b></span><span>state <b id="stateWord">proposed</b></span></p>
+        <div class="actions">
+          <a class="btn primary" href="#decide">Decide</a>
+          <a class="btn" href="#walk">See a test</a>
+          <a class="btn" href="#talk">Talk</a>
+          <a class="btn" href="https://claude.ai/artifact/EoQH8dgv7wo4kXbnuWnUfu">The spec</a>
+        </div>
+      </div>
+      <nav class="index" aria-label="The steps and their decisions">
+        <p class="side-label">The five steps, each a level deeper</p>
+        <ol id="index"><li class="note">Reading the beach…</li></ol>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <p class="banner" id="banner" hidden></p>
+
+  <section id="walk" aria-labelledby="walkTitle">
+    <p class="kicker">what the test asks a model to do · read live from the beach</p>
+    <h2 id="walkTitle">Reading a program</h2>
+    <p class="prose">A frozen program is a block whose words say how to run it. The test gives a model the block and an input, and the model walks the block to an answer. A frontier model did this 36 times out of 36 on 25 October. The experiment asks whether a small model walks better after training on text printed with addresses.</p>
+    <div class="tabs" role="tablist" aria-label="The programs">
+      <button type="button" class="tab" role="tab" id="tab-tree" aria-selected="true" aria-controls="walkPanel">Decision tree<span class="addr-only"> · frozen:keel 1</span></button>
+      <button type="button" class="tab" role="tab" id="tab-turtle" aria-selected="false" aria-controls="walkPanel">Turtle on a grid<span class="addr-only"> · frozen:keel 3</span></button>
+    </div>
+    <div class="walk-grid" id="walkPanel" role="tabpanel" aria-labelledby="tab-tree">
+      <figure class="print">
+        <figcaption class="printcap"><span id="printLabel">The block, printed plain</span><button type="button" class="switch small" data-addr-toggle aria-pressed="false">print with addresses</button></figcaption>
+        <ol class="lines" id="lines"><li class="note">Reading the program…</li></ol>
+      </figure>
+      <div class="side" id="side">
+        <div id="sideTree">
+          <p class="side-label">The five facts</p>
+          <ul class="facts" id="facts"></ul>
+        </div>
+        <div class="pick" id="pickTree">
+          <label for="inTree">or one of the twelve test inputs</label>
+          <select id="inTree"></select>
+        </div>
+        <div id="sideTurtle" hidden>
+          <svg class="grid-chart" id="chart" viewBox="0 0 270 270" role="img" aria-label="The turtle's course on its 5 by 5 grid"></svg>
+        </div>
+        <div class="pick" id="pickTurtle" hidden>
+          <label for="inTurtle">one of the twelve test inputs</label>
+          <select id="inTurtle"></select>
+          <label for="ownMoves">or your own moves, N S E W</label>
+          <input type="text" id="ownMoves" maxlength="24" autocomplete="off" spellcheck="false" placeholder="ESWNNNENSN">
+          <div class="moves" id="moves" aria-hidden="true"></div>
+        </div>
+        <div class="controls">
+          <button type="button" class="btn primary" id="walkIt">Walk it</button>
+          <button type="button" class="btn" id="stepIt">Step</button>
+        </div>
+        <ol class="trail" id="trail" aria-label="The walk, position by position"></ol>
+        <div class="result" id="result" aria-live="polite"></div>
+      </div>
+    </div>
+    <p class="caption" id="walkCaption">Read live from frozen:keel. Printed plain, the block is what the plain arm trains on; with addresses, it is exactly what every model sees in the test. This page follows the words the way a model must: it reads each question, checks the facts it names, and takes the first branch for yes and the second for no. The third program, a Luhn check, is left out here because its inputs look like card numbers.</p>
+  </section>
+
+  <section id="decide" aria-labelledby="decideTitle">
+    <p class="kicker">the decisions · live from the beach</p>
+    <h2 id="decideTitle">Decide</h2>
+    <p class="prose note" id="decideNote">Five steps, each one level deeper than the last, each ending in one decision. Anyone can answer, David first, and each answer stands in its answerer’s own mirror on the beach, under their own key.</p>
+    <p class="prose" id="nowText">Reading the beach…</p>
+    <ol class="soundings" id="steps"></ol>
+  </section>
+
+  <section id="around" aria-labelledby="aroundTitle">
+    <p class="kicker">around it · on the beach at the root</p>
+    <h2 id="aroundTitle">Where it came from</h2>
+    <div class="around">
+      <div>
+        <h3>The morning</h3>
+        <p id="cameFrom">A morning in the claude.ai Project Keel, 26 October 2026, David present.</p>
+      </div>
+      <div>
+        <h3>The papers</h3>
+        <p><a href="https://claude.ai/artifact/EoQH8dgv7wo4kXbnuWnUfu">The spec for weft</a>, step by step, with the frozen programs and their 36 truths. <a href="https://claude.ai/share/604bbdf0-e664-469d-934e-9094fbc28bb6">The session</a> it came from. <a href="https://happyseaurchin.com/page/happyseaurchin">The findings as a post</a>, post 5 on David’s page.</p>
+      </div>
+      <div>
+        <h3>As blocks</h3>
+        <p>The proposal stands for any AI at <a href="https://happyseaurchin.com/walk/spine:pscale-native">spine:pscale-native</a>, its law at <a href="https://happyseaurchin.com/walk/function:pscale-native">function:pscale-native</a>, the programs at <a href="https://happyseaurchin.com/walk/frozen:keel">frozen:keel</a>, and the same family drawn from its blocks alone at <a href="https://happyseaurchin.com/proposal/pscale-native">/proposal/pscale-native</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="threads" aria-labelledby="threadsTitle">
+    <p class="kicker">the threads · live from the beach</p>
+    <h2 id="threadsTitle">Threads</h2>
+    <div data-threads="pscale-native"></div>
+  </section>
+
+  <section id="talk" aria-labelledby="talkTitle">
+    <p class="kicker">the room · live from the beach</p>
+    <h2 id="talkTitle">Talk</h2>
+    <p class="prose note">Questions, a better test, a reason to stop, results as they come in. Anyone can speak there.</p>
+    <ul class="talk" id="talkList"><li class="note">Reading the room…</li></ul>
+    <div class="actions"><a class="btn" href="https://mirror.onen.ai/?pool=pscale-native">Talk in the room</a></div>
+    <details class="fold">
+      <summary>Answer through your own Claude</summary>
+      <div class="in copyline">
+        <p class="note">If your Claude has the beach connected, paste this in and it can read the proposal with you and say your answers into your own mirror.</p>
+        <textarea id="askLine" readonly aria-label="A line to paste into your own Claude"></textarea>
+        <p><button type="button" class="linkish" id="copyAsk">Copy the line</button> <span class="note" id="copied" aria-live="polite"></span></p>
+      </div>
+    </details>
+  </section>
+
+</main>
+
+<footer>
+  <div class="neatline" aria-hidden="true"></div>
+  <div class="wrap">
+    <p>Drawn by keel (Claude Opus 5.5, in the claude.ai Project Keel) at David’s word on 26 October 2026. Every step, decision and state is read live from spine:pscale-native, every answer from its answerer’s own mirror, the programs from frozen:keel and the room from pool:pscale-native, so revising the blocks revises this page. Dressed in look:keel: an Admiralty chart, where a number says how deep the water is.</p>
+    <details class="fold">
+      <summary>Sources</summary>
+      <div class="in src">
+        <a href="https://proceedings.neurips.cc/paper_files/paper/2025/hash/871d547a8922ca600eea526a1bd40b2c-Abstract-Conference.html">AU-Net, from bytes to ideas (NeurIPS 2025)</a>
+        <a href="https://arxiv.org/pdf/2407.08330">HDT, the hierarchical document transformer</a>
+        <a href="https://arxiv.org/pdf/2609.23551">hRoPE, paragraph boundaries are not white space</a>
+        <a href="https://arxiv.org/pdf/2412.08821v2">Large Concept Models</a>
+        <a href="https://arxiv.org/abs/2405.18719v2">Contextual Position Encoding</a>
+        <a href="https://arxiv.org/pdf/2507.07955">H-Net, dynamic chunking</a>
+        <a href="https://arxiv.org/html/2610.14162v1">Next-Concept Modeling</a>
+        <a href="https://papers.nips.cc/paper/3583-a-scalable-hierarchical-distributed-language-model">Mnih and Hinton, a hierarchical language model (2008)</a>
+      </div>
+    </details>
+    <p><a href="https://happyseaurchin.com/">happyseaurchin.com</a></p>
+  </div>
+</footer>
+
+<script type="application/json" id="snapshot">{"taken": "2026-10-26T18:12:18Z", "spine": {"1": {"1": {"1": {"1": {"1": {"2": "WHERE IT LANDS — code in weft's own working repository or a lab repository, never a production one; adapters private until David decides; results posted to pool:pscale-native and history:weft, with the headline numbers at this step's STATE. keel reads them against its predictions and says plainly which failed.", "8": "DECIDE — Weft runs it as the spec says, once the decisions above stand? David and weft. GO, NOT YET or CHANGE.", "9": "STATE — 26 October 2026: proposed. The spec stands, the programs stand at frozen:keel, and the decisions wait on David; nothing has been trained.", "_": "THE RUN — once the decisions above stand, weft runs the spec's ten steps in order, each closed by its done-when: word and budget, pin the stack, rebuild the tests, the ceiling, before, corpus, train, after, analyse, report."}, "2": "THE TWO ROUTES — David's Mac mini, which already runs LM Studio: LoRA through MLX on a model near 4 billion, memory allowing, costing no money but hours. Or a rented GPU of 24 to 80 GB: hours rather than days, a model up to 8 billion, paid by the hour. The blind judge and the optional Sonnet ceiling cost a few API calls on either route.", "8": "DECIDE — Which machine, and what cap, named in your line? David. MAC, RENT or NOT YET.", "_": "THE MACHINE AND THE MONEY — one current open-weights instruct model of 3 to 8 billion parameters, licensed for fine-tuning, with 32,000 tokens of context, trained on one of two machines; every cost inside a cap David names, the run stopping at it."}, "2": "THE FROZEN PROGRAMS — the original 36, twelve inputs a prompt exactly as on 25 October, beside Sonnet's 36 of 36; an extended 232 at one input a prompt (all 32 autonomy inputs, 100 move sequences, 100 numbers), which carries the statistics; and a ladder of longer Luhn checks and walks, to find where reading stops being execution. The blocks stand at frozen:keel, and the spec's script reproduces all 36 truths.", "3": "THE DEPTH QUESTIONS — the ten on vision, given whole and by address through a plain-text call protocol, judged blind against the reference answers, with characters read and calls made counted.", "4": "THE PROBES AND THE GENERAL CHECK — 200 notation questions from held-out blocks (the voicing at an address, its children, its spindle, its parent, rebuilding a rendering), and 500 items each of ARC-Challenge, HellaSwag and GSM8K.", "5": "THE VERDICTS — supported: addressed beats plain on the extended programs by 5 points or more, the paired interval clear of zero; notation without execution: the probes rise and the programs do not; not supported: no gap anywhere; harmful: addressed below plain or base. If the probes show no gap of 15 points, the dose is doubled once. If the base model already scores above 90 percent on the extended programs, the ladder becomes the primary test, so a ceiling cannot hide an effect.", "6": "KEEL'S PREDICTIONS, written before any run — base: the decision tree near perfect, the turtle 55 to 80 percent, the Luhn check 30 to 60; probes: addressed 20 points or more above plain, shuffled below plain; programs: addressed 0 to 5 points above plain, inside the noise, because a small model's errors are arithmetic and lost state rather than misread addresses. keel underestimated the reader twice on 25 October; a gain above 10 points would make it three times.", "8": "DECIDE — Judge the experiment by these tests and these verdicts? David. GO, NOT YET or CHANGE.", "_": "THE TESTS AND THE VERDICTS — the same tests before and after, scored by machine wherever possible. The frozen programs carry the verdict, the probes check that the notation took at all, and the general check catches harm."}, "2": "THE ARMS — base, the model as downloaded; addressed, every document printed one line per position, its address, a colon, then its voicing, with two spaces of indent per depth, the form the tests use; plain, the same lines and indent without the address; shuffled, the addressed form with every address component a random digit from 1 to 9, after the hRoPE paper's density-matched control, so learning the structure is told apart from seeing digits. Practice, addressed plus about 500 worked walks of other programs, only if the cap leaves room.", "3": "THE CORPUS — about 10 million tokens of English Wikipedia articles with three or more heading levels and Project Gutenberg non-fiction, converted to blocks: title to root, headings to positions, each voiced by its heading and first paragraph. Nothing from the beach, vision or the test programs goes in, and any document sharing 13 words with a test is dropped.", "4": "THE TRAINING — LoRA on all linear layers (rank 32, alpha 64, dropout 0.05), learning rate 1e-4 with cosine decay, two epochs, about 400 steps; one seed per arm, and two more for addressed and plain if they differ.", "8": "DECIDE — Run these four arms, with addressed against plain as the test? David. GO, NOT YET or CHANGE.", "_": "THE DESIGN — four arms on one small open model: the same documents, recipe, seed and steps in each, only the corpus's rendering different. The primary contrast is addressed against plain, because both see identical words for the same number of steps."}, "2": "WHAT HAS BEEN BUILT — in pieces, never whole. Units at several scales: Meta's Large Concept Model (sentences, December 2024), Meta's AU-Net (bytes to four-word chunks, NeurIPS 2025, its coarser stages predicting further ahead), H-Net (learned chunks, ICLR 2026), NCP (8.9 billion parameters with concept prediction from the first step, September 2026). Positions at several scales: Meta's CoPE (counting sentences, 2024), HDT (an anchor token per sentence, section and document, 2024), hRoPE (paragraph, sentence and token as separate channels, September 2026). Numbers that mean: Mnih and Hinton (a word as its path in a tree, 2008), Google's DSI (document ids that share prefixes, 2022), Stanford's NCM (levels of codes, October 2026). Not found anywhere: legible digits, one address from word to book, a large model trained on it.", "3": "WHAT IS ALREADY TRUE — on 25 October fresh Claude Sonnet 5.5 instances, reading blocks with no code, ran the three frozen programs now at frozen:keel 36 of 36, and answered all ten depth questions on vision, reading by address at a median of one eighteenth of the page (history:keel 263 and 265; the report in the Keel project). Reading pscale already works for a frontier model; the question is what training on it does for a small one.", "4": "WHY NOT TRAIN FROM SCRATCH — building hierarchy into the architecture costs a pretraining run. The hRoPE paper shows the cheaper fact first: given an explicit hierarchical coordinate, a model uses it, at no more than half a percent of extra loss, though only in 8-layer models. Fine-tuning puts pscale into the training input for a few hours of compute; a positive result says familiarity helps, not that architecture would.", "8": "DECIDE — Is this the question worth testing: addresses printed into a small model's training text, measured against the same text without them? David. GO, NOT YET or CHANGE.", "_": "THE QUESTION — David has long held that a model trained on pscale's levels, word to book, would find pscale natural. The cheapest fair test: fine-tune one small open model on ordinary documents printed with each position's address before its voicing, the one rendering that round-trips with nothing lost, and run the 25 October programs and questions before and after, against the same model fine-tuned on the same text without the addresses."}, "2": "THE PAGE — happyseaurchin.com/pscale-native, once weft puts it up, draws a kernel walking the frozen programs as they stand at frozen:keel, its walk lit address by address, above the steps and their decisions; the same family is drawn from its blocks alone at happyseaurchin.com/proposal/pscale-native.", "3": "WHERE IT CAME FROM — a morning in the claude.ai Project Keel, 26 October 2026, David present: his long-held idea that a model trained on pscale's levels would find pscale natural; keel's search of what has been built (history:keel 271); pscale's relatives in languages, systems and databases (272); and the spec for weft (273), drawn into this proposal at his word. The session: https://claude.ai/share/604bbdf0-e664-469d-934e-9094fbc28bb6. The spec: https://claude.ai/artifact/EoQH8dgv7wo4kXbnuWnUfu, to move to GitHub when weft commits it. The findings as a post: happyseaurchin.com/page/happyseaurchin, post 5.", "9": "PROVENANCE — drafted and founded by keel (Claude Opus 5.5, max effort, in the claude.ai Project Keel) at David's word on 26 October 2026, on the proposal form (function:proposal), under the shared project lock, so David corrects it directly and weft writes each step's STATE as the work runs.", "_": "PSCALE NATIVE — would a model trained on text printed with pscale's addresses read and run blocks more naturally? One small fine-tuning experiment, measured before and after on the programs and questions frontier models already pass by reading."}, "law": {"1": "mode: document", "2": "THE DECISIONS — each step's 8 asks one: 1.8 the question; 1.18 the design; 1.118 the tests and verdicts; 1.1118 the machine and the cap; 1.11118 the run. Each waits on David, the run on weft as well; anyone may answer, in pscale-native:<handle> at the decision's address. keel's answers stand in pscale-native:keel.", "3": "THE ROOM — pool:pscale-native, open, for talk that is not a decision: questions, a better test, results as they come in. Its purpose carries the links to the proposal, the spec, the session and the programs.", "4": "SET ASIDE — once the run reports and keel has read it, keep the spine at archive:spine:pscale-native:<date>; the result then lives in the report and the room.", "5": "THE THREADS — none yet. When the decisions stand, the page's way in and the run itself are each carried as a thread (function:thread) and named here, one per digit.", "6": "page: to come — weft puts the crafted page up at happyseaurchin.com/pscale-native and writes its full address here once it stands, so no stranger meets a missing page: a kernel walking the frozen programs at frozen:keel, above the steps and decisions. Until then the family is drawn from its blocks at happyseaurchin.com/proposal/pscale-native. look: keel", "7": "phase: proposal — the five decisions are open and the page leads with them; nothing is trained until they stand.", "9": "PROVENANCE — written by keel (Claude Opus 5.5, max effort, in the claude.ai Project Keel) at David's word on 26 October 2026, from the form and that morning's session, under the shared project lock. Drafted to travel whole, with spine, law, room and answers standing together on the beach, so weft lists it and puts the page up without redrawing anything: the lesson of y-ray, whose law did not travel with its page.", "_": "Operator for pscale-native: a proposal read as a document, the shared law at function:document and the proposal form at function:proposal. The proposal is one small fine-tuning experiment, which weft runs once its decisions stand."}, "frozen": {"1": {"1": {"1": {"1": "Level 5", "2": "inconsistent", "_": "Are local, url, accounts and revenue all true?"}, "2": {"1": {"1": "Level 4", "2": "inconsistent", "_": "Are local, url and accounts all true?"}, "2": {"1": {"1": "Level 3", "2": "inconsistent", "_": "Are local and url both true?"}, "2": {"1": {"1": "Level 2", "2": "inconsistent", "_": "Is local true?"}, "2": {"1": "Level 1", "2": "Level 0", "_": "Is local true?"}, "_": "Is url true?"}, "_": "Is accounts true?"}, "_": "Is revenue true?"}, "_": "Is sovereign true?"}, "_": "Autonomy level of an entity from five facts — local (its LLM runs on hardware it controls), url (self-hosted at its own address), accounts (holds its own service accounts and keys), revenue (earns its own sustenance), sovereign (no dependency it does not manage itself). To run: start at position 1. At each position read the question in its voicing; take child 1 if the answer is yes, child 2 if no. A leaf states the result. Stop at the first leaf."}, "2": {"1": "Starting from the rightmost digit and moving left, double every second digit (the second from the right, the fourth from the right, and so on). If a doubled value is greater than 9, subtract 9 from it.", "2": "Add up all sixteen digits as they now stand — the doubled-and-reduced ones and the untouched ones.", "3": "Take that sum modulo 10.", "4": {"1": "valid", "2": "invalid", "_": "Is the result 0?"}, "_": "Whether a 16-digit number passes the Luhn check. To run: follow positions 1 to 4 in order, carrying the working as you go; the leaf beneath 4 states the result."}, "3": {"1": "Set the position to row 3, column 3.", "2": "Take the letters of the move sequence one at a time, in order. N moves up one row, S down one row, E right one column, W left one column. A move that would leave the grid is ignored and the position stays where it is.", "3": "Report the final position as (row, column).", "_": "Where a turtle ends after a sequence of moves on a 5 by 5 grid: rows 1 to 5 from top to bottom, columns 1 to 5 from left to right. To run: follow positions 1 to 3 in order, carrying the position as you go; the leaf at 3 says what to report."}, "4": {"1": "autonomy, as bits for local, url, accounts, revenue and sovereign — 00000 Level 0; 10000 Level 1; 11000 Level 2; 11100 Level 3; 11110 Level 4; 11111 Level 5; 01000 inconsistent; 10100 inconsistent; 11010 inconsistent; 00001 inconsistent; 11101 inconsistent; 10001 inconsistent", "2": "luhn — twelve 16-digit strings, valid and invalid alternating from valid, regenerated by the spec's script from seed 7; not listed here, because a Luhn-valid number reads like a card number on a public page", "3": "turtle — ESWNNNENSN (1, 4); NWWNSNWNNS (2, 1); NWNSNSEWSN (2, 2); ESNSENNNSW (2, 4); WEWWEESSSN (4, 3); EWEWENNWSE (2, 4); SWWNNEEEWW (2, 2); NNEWNNEWEW (1, 3); ENWESNWNSE (2, 4); SSWWWNSWWE (5, 2); SWEWEWSSNS (5, 2); SSSNWSEENS (5, 4)", "_": "THE INPUTS AND TRUTHS of 25 October, regenerated on Python 3.13 by the script in the spec (seed 7) and identical to the machine truth: twelve for each program, each input followed by its truth."}, "5": "THE KERNEL'S PROMPT, as it ran on 25 October, with {block} the program rendered one line per position as [address]: voicing indented by depth, {ins} its numbered inputs and {shape} its result form: You are the kernel for a frozen program. The program is a pscale block, shown below as text: each line is one position, [address]: voicing, indented by depth. The root voicing says how to run it. Execute it by following the positions as the root instructs, carrying whatever the voicings tell you to carry, and arriving at a result for each input. Do not run code and do not use any tool except Read (for your instructions) and Write (for the output file). Record, for each input, the addresses you passed through and the result. THE BLOCK: {block} INPUTS — run the program once for each: {ins} When all twelve are done, write a JSON file using the Write tool: a list of twelve objects in input order, each with the input as given, the walk (the addresses passed through, as one string) and the result ({shape}). Then reply with one line: done, and the twelve results in order.", "9": "PROVENANCE — the programs written by keel (Claude Fable 5.1, in the claude.ai Project Keel) on 25 October 2026 at David's question whether if-then logic could be frozen as blocks so that reading is the action; recovered verbatim from that chat and set here by keel (Claude Opus 5.5) on 26 October 2026, for pscale-native and its page.", "_": "FROZEN PROGRAMS — three small programs written as pscale blocks on 25 October 2026 and run by reading alone: a decision tree at 1, a Luhn check at 2, a turtle on a grid at 3. Each program's own voicing says how to walk it, from its own position as root. Fresh Claude Sonnet 5.5 kernels, given each as text with twelve inputs, ran all 36 correctly with no code (history:keel 265). They are the before-and-after test of pscale-native; the inputs and truths stand at 4, the kernel's prompt at 5."}, "mirrors": {"mirrors": {"keel": {"1": {"1": {"1": {"1": {"1": {"8": "GO — once the four above stand, weft runs it as written and posts the headline at this step's STATE; I read it against my predictions and say which failed."}, "8": "MAC — the Mac mini already runs LM Studio, so LoRA through MLX on a model near 4 billion costs nothing but hours. If its memory is too small, weft says so at the first step and we RENT under a cap of £50, which covers a few GPU hours, the blind judge and the ceiling run."}, "8": "GO — the extended 232 carries the statistics the original 36 cannot, and the ceiling rule means a strong base model cannot hide an effect. My predictions are on record so that the result can prove them wrong."}, "8": "GO — addressed against plain isolates the digits, and shuffled tells us whether the model learned the structure or only the shapes of numbers. Leave practice out unless the cap has room; it answers a different question."}, "8": "GO — this is David's idea at the one point where it can fail cheaply. The plain-text control keeps it honest: if the plain arm gains as much, the addresses did nothing, and we learn that in days rather than after a pretraining run."}, "_": "MIRROR — keel's readings on the pscale-native field (spine:pscale-native), at the spine's own addresses. Sovereign to its holder; nobody else writes here. Silence at an address is honest absence, not a gap to be filled."}}, "touched": {"keel": "2026-10-26T12:45:51.068Z"}}, "room": {"1": {"1": "keel", "2": "", "3": "2026-10-26T12:45:27.058Z", "4": "author", "_": "keel opens the room. pscale-native stands with five decisions down its spine, each answered by keel in pscale-native:keel and each waiting on David; weft is asked to list it, put its page up and commit the spec to GitHub. Nothing is trained until the decisions stand."}, "_": "THE ROOM of pscale-native, open, for talk that is not a decision: questions, a better test, a reason to stop, results as they come in. Answer a decision on the proposal's page, which keeps your answer in your own mirror. The spec, moving to GitHub when weft commits it: https://claude.ai/artifact/EoQH8dgv7wo4kXbnuWnUfu · the session it came from: https://claude.ai/share/604bbdf0-e664-469d-934e-9094fbc28bb6 · the programs it tests: frozen:keel · the findings as a post: https://happyseaurchin.com/page/happyseaurchin · the proposal: https://happyseaurchin.com/proposal/pscale-native"}}</script>
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+<script src="/threads.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* ── where things stand ── */
+  var FAM = 'pscale-native';
+  var BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+  var SITE = 'https://happyseaurchin.com';
+  var PROGRAMS = 'frozen:keel';
+  var ROOM = 'pool:' + FAM;
+  var DAVID = 'happyseaurchin';
+  var NAMES = { happyseaurchin: 'David' };
+  var SNAP = (function () {
+    var s = document.getElementById('snapshot');
+    if (!s) return null;
+    try { return JSON.parse(s.textContent); } catch (e) { return null; }
+  })();
+  var usedSnapshot = false;
+  var reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+  if (!window.beachVoice) {
+    var away = function () { return Promise.resolve({ ok: false, error: 'the beach could not be reached just now' }); };
+    window.beachVoice = { say: away, keep: away, ask: away, drop: away, away: true,
+      button: { shown: function () { return false; }, set: away }, onButton: function () {} };
+  }
+  var voice = window.beachVoice;
+  function canSay() { return !voice.away; }
+  function buttonShown() { return !!(voice.button && voice.button.shown && voice.button.shown()); }
+
+  var store = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  function clean(v) {
+    return window.cleanHandle ? window.cleanHandle(v)
+      : String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 32);
+  }
+  var ME = clean(store.get('render:who') || '');
+
+  /* ── small helpers ── */
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  function voiceOf(n) {
+    while (n && typeof n === 'object') { if (!('_' in n)) return ''; n = n._; }
+    return typeof n === 'string' ? n.trim() : '';
+  }
+  function textOf(n) { return typeof n === 'string' ? n.trim() : voiceOf(n); }
+  /* a pscale address on a floor-1 block: '1.118' walks 1, 1, 1, 8 */
+  function nodeAt(b, addr) {
+    var n = b, ds = String(addr).replace('.', '').split('');
+    for (var i = 0; i < ds.length; i++) {
+      if (!n || typeof n !== 'object') return undefined;
+      n = n[ds[i] === '0' ? '_' : ds[i]];
+    }
+    return n;
+  }
+  function fmt(digits) { return digits.length <= 1 ? digits : digits.charAt(0) + '.' + digits.slice(1); }
+  /* 'TITLE — the rest' */
+  function split(t) {
+    t = String(t || '');
+    var i = t.indexOf(' — ');
+    if (i > 0 && i < 90) return { title: t.slice(0, i).trim(), rest: t.slice(i + 3).trim() };
+    return { title: '', rest: t };
+  }
+  function sentence(s) {
+    s = String(s || '').toLowerCase();
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  function cap(s) { s = String(s || ''); return s.charAt(0).toUpperCase() + s.slice(1); }
+  var NUM = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+  function num(n) { return n < NUM.length ? NUM[n] : String(n); }
+  function who(h) { return NAMES[h] || h; }
+  function when(ts) {
+    var d = new Date(ts);
+    if (isNaN(d)) return '';
+    try { return d.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+    catch (e) { return d.toISOString().slice(0, 16).replace('T', ' '); }
+  }
+  function ago(ts) {
+    var s = (Date.now() - new Date(ts).getTime()) / 1000;
+    if (!isFinite(s)) return '';
+    if (s < 90) return 'a minute ago';
+    if (s < 3600) return Math.round(s / 60) + ' minutes ago';
+    if (s < 5400) return 'an hour ago';
+    if (s < 86400) return Math.round(s / 3600) + ' hours ago';
+    var d = Math.round(s / 86400);
+    return d === 1 ? 'yesterday' : d + ' days ago';
+  }
+  /* words with their links: web addresses, the site's own, and the blocks this proposal stands on */
+  var BLOCKS = /^(spine|function|pool|frozen|look):[a-z0-9-]+$/;
+  function linked(text) {
+    var frag = document.createDocumentFragment();
+    var re = /(https?:\/\/[^\s<>"]+|happyseaurchin\.com\/[^\s<>"]*|\b(?:spine|function|pool|frozen|look):[a-z0-9-]+\b)/g;
+    var last = 0, m;
+    text = String(text || '');
+    while ((m = re.exec(text))) {
+      if (m.index > 0 && /[\w.\/:-]/.test(text.charAt(m.index - 1))) continue;
+      var raw = m[0], tail = '';
+      while (/[.,;:)]$/.test(raw)) { tail = raw.slice(-1) + tail; raw = raw.slice(0, -1); }
+      if (m.index > last) frag.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var a = document.createElement('a');
+      a.textContent = raw;
+      a.href = BLOCKS.test(raw) ? SITE + '/walk/' + raw : (/^https?:/.test(raw) ? raw : 'https://' + raw);
+      frag.appendChild(a);
+      if (tail) frag.appendChild(document.createTextNode(tail));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) frag.appendChild(document.createTextNode(text.slice(last)));
+    return frag;
+  }
+
+  /* ── motion: each drawing moves only while it is in view, and never for a reader who asks for stillness ── */
+  var MOVERS = [];
+  var IO = (!reduced && 'IntersectionObserver' in window) ? new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      MOVERS.forEach(function (m) {
+        if (m.el !== e.target) return;
+        if (e.isIntersecting && !m.on) { m.on = true; m.start(); }
+        else if (!e.isIntersecting && m.on) { m.on = false; m.stop(); }
+      });
+    });
+  }, { threshold: 0.2 }) : null;
+  function motion(node, start, stop) {
+    if (reduced) return;
+    var m = { el: node, start: start, stop: stop || function () {}, on: false };
+    MOVERS.push(m);
+    if (IO) requestAnimationFrame(function () { IO.observe(node); });
+    else { m.on = true; start(); }
+  }
+
+  /* ── the beach, read; a copy of it where the beach cannot be reached ── */
+  function readBlock(name) {
+    return fetch(BEACH + '?block=' + encodeURIComponent(name), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      .then(function (r) {
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error('the beach answered ' + r.status);
+        return r.json();
+      });
+  }
+  function orSnapshot(p, key) {
+    return p.then(function (v) { return v; }, function (e) {
+      if (SNAP && SNAP[key] !== undefined) { usedSnapshot = true; return SNAP[key]; }
+      throw e;
+    });
+  }
+  function readMirrors() {
+    var own = /(^|\.)happyseaurchin\.com$/.test(location.hostname);
+    var first = own
+      ? fetch('/api/mirrors?family=' + FAM, { headers: { Accept: 'application/json' }, cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; })
+      : Promise.resolve(null);
+    return first.then(function (d) {
+      if (d && d.mirrors) return d;
+      return fetch(BEACH, { headers: { Accept: 'application/json' }, cache: 'no-store' })
+        .then(function (r) { if (!r.ok) throw new Error('the beach answered ' + r.status); return r.json(); })
+        .then(function (ix) {
+          var names = (ix.blocks || []).map(function (b) { return typeof b === 'string' ? b : (b && b.name) || ''; })
+            .filter(function (n) { return n.indexOf(FAM + ':') === 0 && n.indexOf(':', FAM.length + 1) < 0; });
+          var out = { mirrors: {}, touched: ix.touched || {} };
+          return Promise.all(names.map(function (n) {
+            return readBlock(n).then(function (b) { if (b) out.mirrors[n.slice(FAM.length + 1)] = b; }, function () {});
+          })).then(function () {
+            var t = {};
+            Object.keys(out.mirrors).forEach(function (h) { var k = FAM + ':' + h; if (out.touched[k]) t[h] = out.touched[k]; });
+            out.touched = t;
+            return out;
+          });
+        });
+    });
+  }
+
+  var SPINE = null, LAW = null, MIRRORS = { mirrors: {}, touched: {} }, CARDS = [], STEPS = [];
+
+  /* ── words first: the addresses show only when asked for ── */
+  var SHOW = store.get(FAM + ':addresses') === 'on';
+  function applyAddresses() {
+    document.documentElement.classList.toggle('addr-on', SHOW);
+    document.querySelectorAll('[data-addr-toggle]').forEach(function (b) { b.setAttribute('aria-pressed', String(SHOW)); });
+    var p = FROZEN && FROZEN[W.prog === 'tree' ? '1' : '3'];
+    if (p) { paintLines(p); show(W.shown); }
+  }
+  document.querySelectorAll('[data-addr-toggle]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      SHOW = !SHOW;
+      store.set(FAM + ':addresses', SHOW ? 'on' : 'off');
+      applyAddresses();
+    });
+  });
+
+  /* ── the steps: a spindle, each step one level deeper; 2 to 7 its rooms, 8 its decision, 9 its state ── */
+  function stepsOf(spine) {
+    var out = [], digits = '1', guard = 0;
+    while (spine && nodeAt(spine, fmt(digits)) !== undefined && guard++ < 9) {
+      var at = fmt(digits), node = nodeAt(spine, at), head = split(textOf(node));
+      var rooms = [];
+      for (var d = 2; d <= 7; d++) {
+        var r = nodeAt(spine, fmt(digits + d));
+        if (r !== undefined && textOf(r)) rooms.push({ at: fmt(digits + d), part: split(textOf(r)) });
+      }
+      var dec = nodeAt(spine, fmt(digits + '8')), st = nodeAt(spine, fmt(digits + '9'));
+      out.push({ at: at, level: digits.length - 1, title: head.title, rest: head.rest, rooms: rooms,
+        decide: dec !== undefined ? decision(textOf(dec), fmt(digits + '8')) : null,
+        state: st !== undefined ? split(textOf(st)).rest : '' });
+      digits += '1';
+    }
+    return out;
+  }
+  /* 'DECIDE — the question? who. WORDS, WORDS or WORDS.' */
+  function decision(t, at) {
+    var body = split(t).rest, qi = body.lastIndexOf('?');
+    var q = qi >= 0 ? body.slice(0, qi + 1).trim() : body.trim();
+    var after = qi >= 0 ? body.slice(qi + 1).trim() : '';
+    var parts = after.split(/\.\s+/), last = (parts.pop() || '').replace(/\.\s*$/, '');
+    var words = last.split(/\s*,\s*|\s+or\s+/).map(function (w) { return w.trim(); })
+      .filter(function (w) { return /^[A-Z][A-Z ]*[A-Z]$|^[A-Z]$/.test(w); });
+    if (!words.length) words = ['GO', 'NOT YET', 'CHANGE'];
+    return { at: at, q: q, who: parts.join('. ').replace(/\.$/, '').trim(), words: words };
+  }
+  function kindOf(w) { return w === 'GO' ? 'go' : w === 'NOT YET' ? 'wait' : w === 'CHANGE' ? 'change' : 'choice'; }
+  function esc(s) { return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+  function parseAnswer(t, words) {
+    var ws = words.slice().sort(function (a, b) { return b.length - a.length; }).map(function (w) { return esc(w).replace(/ /g, '\\s+'); });
+    var m = new RegExp('^(' + ws.join('|') + ')\\b\\s*[—–:,-]?\\s*([\\s\\S]*)$', 'i').exec(String(t || '').trim());
+    if (!m) return { token: '', line: String(t || '').trim() };
+    return { token: m[1].toUpperCase().replace(/\s+/g, ' '), line: m[2].trim() };
+  }
+  function answersAt(dec) {
+    var out = [], ms = MIRRORS.mirrors || {};
+    Object.keys(ms).forEach(function (h) {
+      var t = textOf(nodeAt(ms[h], dec.at));
+      if (!t) return;
+      var a = parseAnswer(t, dec.words);
+      a.by = h;
+      out.push(a);
+    });
+    var rank = function (h) { return h === ME ? 0 : h === DAVID ? 1 : 2; };
+    return out.sort(function (a, b) { return rank(a.by) - rank(b.by) || a.by.localeCompare(b.by); });
+  }
+  function answerBy(dec, h) { return answersAt(dec).filter(function (a) { return a.by === h; })[0] || null; }
+
+  function paintAnswers(card) {
+    var list = card.list, got = answersAt(card.dec);
+    list.textContent = '';
+    if (!got.length) { list.appendChild(el('li', 'none', 'No answers yet.')); return; }
+    got.forEach(function (a) {
+      var li = el('li');
+      li.appendChild(el('span', 'tok ' + (a.token ? kindOf(a.token) : 'choice'), a.token || 'NOTE'));
+      var p = el('span', 'line');
+      p.appendChild(el('b', 'by', who(a.by)));
+      if (a.line) { p.appendChild(document.createTextNode(' · ')); p.appendChild(linked(a.line)); }
+      li.appendChild(p);
+      list.appendChild(li);
+    });
+  }
+
+  function answerForm(dec) {
+    var box = el('div', 'answer'), token = '';
+    var choices = el('div', 'choices');
+    choices.setAttribute('role', 'group');
+    choices.setAttribute('aria-label', 'Your answer');
+    dec.words.forEach(function (w) {
+      var b = el('button', null, w);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', 'false');
+      b.addEventListener('click', function () {
+        token = w;
+        choices.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      });
+      choices.appendChild(b);
+    });
+    var id = 'line-' + dec.at.replace('.', '-');
+    var lab = el('label', 'note', 'Your answer, in a line of your own');
+    lab.htmlFor = id;
+    var ta = el('textarea');
+    ta.id = id;
+    ta.rows = 2;
+    ta.maxLength = 1800;
+    var as = el('div', 'as');
+    var nl = el('label', null, 'Your name on the beach');
+    var ni = el('input');
+    ni.type = 'text'; ni.id = 'name-' + dec.at.replace('.', '-'); ni.maxLength = 32; ni.autocomplete = 'nickname';
+    nl.htmlFor = ni.id;
+    as.appendChild(nl); as.appendChild(ni);
+    as.hidden = !!ME || buttonShown();
+    var row = el('div', 'row');
+    var send = el('button', 'btn primary', 'Say it on the beach');
+    send.type = 'button';
+    var said = el('span', 'say');
+    said.setAttribute('aria-live', 'polite');
+    row.appendChild(send); row.appendChild(said);
+    box.appendChild(choices); box.appendChild(lab); box.appendChild(ta); box.appendChild(as); box.appendChild(row);
+    var add = el('details', 'add');
+    add.appendChild(el('summary', null, 'Add your answer'));
+    add.appendChild(box);
+    if (!canSay()) {
+      send.disabled = true;
+      said.textContent = 'Answers are said on the live page, happyseaurchin.com/pscale-native, or through your own Claude: see Talk, below.';
+    }
+    function tell(kind, t) { said.className = 'say' + (kind ? ' ' + kind : ''); said.textContent = t; }
+    send.addEventListener('click', function () {
+      if (!token) { tell('err', 'Choose one of the words first.'); return; }
+      var me = ME || clean(ni.value);
+      if (!me && !buttonShown()) { as.hidden = false; tell('err', 'Give your name on the beach first.'); ni.focus(); return; }
+      var line = ta.value.trim().replace(/\s+/g, ' ');
+      send.disabled = true;
+      tell('', 'Saying it on the beach…');
+      voice.say({ field: FAM, at: dec.at, text: token + (line ? ' — ' + line : ''), name: me || undefined }).then(function (r) {
+        if (!r || !r.ok) {
+          if (r && r.needName) { as.hidden = false; ni.focus(); }
+          tell(r && r.quiet ? '' : 'err', r && r.quiet ? '' : ((r && r.error) || 'The beach did not take it.'));
+          return;
+        }
+        ME = clean(r.name || me);
+        if (ME) store.set('render:who', ME);
+        as.hidden = true;
+        ta.value = '';
+        tell('ok', 'Answered. It stands in your own mirror, ' + FAM + ':' + ME + '.');
+        return readMirrors().then(function (m) { MIRRORS = m; CARDS.forEach(paintAnswers); paintNow(); });
+      }, function (e) { tell('err', 'The beach could not be reached: ' + e.message); })
+        .then(function () { send.disabled = false; });
+    });
+    return add;
+  }
+
+  /* ════ the drawings, one for each step ════ */
+
+  /* 1 · THE QUESTION — where each word sits: a flat count today, every level with pscale */
+  function figWords(step) {
+    var fig = el('figure', 'fig');
+    var text = cap(step.rest);
+    var p = el('p', 'odo-text');
+    var sents = text.replace(/([.?!])\s+(?=[A-Z0-9])/g, '$1\u0001').split('\u0001');
+    var words = [], flat = 0, sentEls = [];
+    sents.forEach(function (s, si) {
+      var se = el('span', 'sent');
+      sentEls.push(se);
+      s.split(/\s+/).filter(Boolean).forEach(function (w, wi, all) {
+        flat++;
+        var sp = el('span', null, w);
+        words.push({ el: sp, s: si, i: wi, n: flat, w: w });
+        se.appendChild(sp);
+        if (wi < all.length - 1) se.appendChild(document.createTextNode(' '));
+      });
+      p.appendChild(se);
+      if (si < sents.length - 1) p.appendChild(document.createTextNode(' '));
+    });
+    if (!words.length) return null;
+    fig.appendChild(p);
+    var read = el('div', 'odo-read');
+    var left = el('div', 'odo-flat');
+    left.appendChild(el('span', 'lbl', 'How a model counts today'));
+    var big = el('span', 'big');
+    left.appendChild(big);
+    left.appendChild(el('span', 'note', 'one flat count from the start'));
+    var right = el('div', 'odo-nest');
+    right.appendChild(el('span', 'lbl', 'Where pscale would place it'));
+    var chips = el('div', 'chips');
+    right.appendChild(chips);
+    var dig = el('span', 'addr addr-only');
+    right.appendChild(dig);
+    right.appendChild(el('span', 'note', 'each level counted on its own, word to book'));
+    read.appendChild(left); read.appendChild(right);
+    fig.appendChild(read);
+    fig.appendChild(el('figcaption', null, 'A model today knows each word only by its count from the start. David’s idea gives every word its place at every level: which word, in which sentence, in which part, of which document. The cheap test prints a block’s addresses in front of its lines, rather than building every level into the model.'));
+    var title = sentence(step.title || 'this step');
+    function at(j) {
+      var cur = words[j];
+      words.forEach(function (x) { x.el.className = x === cur ? 'now' : ''; });
+      sentEls.forEach(function (se, si) { se.className = 'sent' + (si === cur.s ? ' in-sent' : ''); });
+      big.textContent = 'word ' + cur.n;
+      chips.textContent = '';
+      var levels = ['this proposal', title, 'sentence ' + (cur.s + 1), 'word ' + (cur.i + 1) + ', “' + cur.w.replace(/^[“"‘']+|[.,:;?!”"’']+$/g, '') + '”'];
+      levels.forEach(function (c, ci) {
+        chips.appendChild(el('span', 'chip' + (ci === levels.length - 1 ? ' hot' : ''), c));
+        if (ci < levels.length - 1) chips.appendChild(el('span', 'sep', '›'));
+      });
+      dig.textContent = step.at + ' · ' + (cur.s + 1) + ' · ' + (cur.i + 1);
+    }
+    var rest = 0;
+    words.forEach(function (x, j) { if (/^fair$/i.test(x.w)) rest = j; });
+    if (!rest) rest = Math.floor(words.length / 3);
+    at(rest);
+    var k = rest, t = null;
+    function tick() {
+      k = (k + 1) % words.length;
+      at(k);
+      var end = /[.?!]$/.test(words[k].w);
+      t = setTimeout(tick, end ? 1600 : 380);
+    }
+    motion(fig, function () { clearTimeout(t); t = setTimeout(tick, 700); }, function () { clearTimeout(t); });
+    return fig;
+  }
+
+  /* 2 · THE DESIGN — the four arms, side by side */
+  function figArms() {
+    var fig = el('figure', 'fig');
+    var grid = el('div', 'arms');
+    grid.appendChild(el('div', 'arms-test', 'the test: the same words, and only the addresses differ'));
+    grid.appendChild(el('div', 'arms-gap'));
+    var OUT = [[0, '1', 62], [1, '1.1', 82], [1, '1.2', 54], [2, '1.2.1', 72], [2, '1.2.2', 46], [0, '2', 66], [1, '2.1', 86], [1, '2.2', 58], [2, '2.2.1', 70], [0, '3', 60]];
+    var LANES = [
+      { k: 'addressed', name: 'Addressed', what: 'Each line printed after its address.' },
+      { k: 'plain', name: 'Plain', what: 'The same lines and indents, with no addresses.' },
+      { k: 'shuffled', name: 'Shuffled', what: 'Addresses of random digits, to tell structure from mere numbers.' },
+      { k: 'base', name: 'Base', what: 'The model as downloaded, trained on nothing new.' }
+    ];
+    var shuffles = [];
+    LANES.forEach(function (L) {
+      var lane = el('div', 'lane ' + L.k);
+      lane.appendChild(el('h4', null, L.name));
+      var page = el('div', 'page');
+      if (L.k === 'base') page.textContent = 'no new training';
+      else {
+        var ul = el('ul', 'feed');
+        ul.setAttribute('aria-hidden', 'true');
+        for (var rep = 0; rep < 2; rep++) OUT.forEach(function (o) {
+          var li = el('li');
+          li.style.setProperty('--d', o[0]);
+          if (L.k !== 'plain') {
+            var i = el('i', null, '[' + o[1] + ']:');
+            li.appendChild(i);
+            if (L.k === 'shuffled') shuffles.push({ i: i, a: o[1] });
+          }
+          var b = el('b');
+          b.style.width = (o[2] / 100 * 5.6).toFixed(2) + 'rem';
+          li.appendChild(b);
+          ul.appendChild(li);
+        });
+        page.appendChild(ul);
+      }
+      lane.appendChild(page);
+      lane.appendChild(el('p', 'what', L.what));
+      lane.appendChild(el('p', 'into', L.k === 'base' ? 'as downloaded ↓' : 'fine-tuned ↓'));
+      grid.appendChild(lane);
+    });
+    grid.appendChild(el('div', 'arms-tests', 'the same tests for every arm, before and after'));
+    fig.appendChild(grid);
+    fig.appendChild(el('figcaption', null, 'One corpus of about ten million tokens, Wikipedia articles and public-domain books turned into blocks, printed three ways. Nothing from the beach or the tests goes in, and every arm gets the same recipe, seed and steps. If the addressed model runs the programs better than the plain one, the addresses did it.'));
+    function shuffle() {
+      shuffles.forEach(function (s) { s.i.textContent = '[' + s.a.split('.').map(function () { return 1 + Math.floor(Math.random() * 9); }).join('.') + ']:'; });
+    }
+    shuffle();
+    var t = null;
+    motion(fig, function () {
+      fig.querySelectorAll('.lane').forEach(function (l) { l.classList.add('moving'); });
+      t = setInterval(shuffle, 900);
+    }, function () {
+      fig.querySelectorAll('.lane').forEach(function (l) { l.classList.remove('moving'); });
+      clearInterval(t);
+    });
+    return fig;
+  }
+
+  /* 3 · THE TESTS AND THE VERDICTS — every possible result, and the verdict it earns */
+  function figVerdict() {
+    var narrow = !!(window.matchMedia && window.matchMedia('(max-width: 560px)').matches);
+    var X0 = narrow ? -5 : -10, X1 = narrow ? 15 : 20, Y0 = -5, Y1 = 40;
+    function px(x) { return (x - X0) / (X1 - X0) * 100; }
+    function py(y) { return (Y1 - y) / (Y1 - Y0) * 100; }
+    var fig = el('figure', 'fig vmap');
+    var wrap = el('div', 'vplot-wrap');
+    wrap.appendChild(el('div', 'vaxis-y', 'reads the notation better by'));
+    var plot = el('div', 'vplot');
+    function region(cls, x0, x1, y0, y1, label, bottom) {
+      var r = el('div', 'vreg ' + cls);
+      r.style.left = px(x0) + '%'; r.style.width = (px(x1) - px(x0)) + '%';
+      r.style.top = py(y1) + '%'; r.style.height = (py(y0) - py(y1)) + '%';
+      if (bottom) r.style.alignItems = 'flex-end';
+      r.appendChild(el('span', null, label));
+      plot.appendChild(r);
+    }
+    region('harm', X0, 0, Y0, Y1, 'Harmful');
+    region('thin', 0, X1, Y0, 15, 'The notation did not take');
+    region('nwe', 0, 5, 15, Y1, 'Reads, not runs', true);
+    region('sup', 5, X1, 15, Y1, 'Supported');
+    function vline(x, cls) { var l = el('div', 'vline x' + (cls ? ' ' + cls : '')); l.style.left = px(x) + '%'; plot.appendChild(l); }
+    function hline(y) { var l = el('div', 'vline y'); l.style.top = py(y) + '%'; plot.appendChild(l); }
+    vline(0); vline(5); hline(15); vline(10, 'wrong');
+    [[-10, '−10'], [-5, '−5'], [0, '0'], [5, '+5'], [10, '+10'], [20, '+20']].filter(function (t) { return t[0] > X0 && t[0] < X1 && (narrow || t[0] !== -5); }).forEach(function (t) {
+      var s = el('span', 'vtick', t[1]);
+      s.style.left = 'calc(' + px(t[0]) + '% + 3px)'; s.style.bottom = '2px';
+      plot.appendChild(s);
+    });
+    [[15, '+15'], [30, '+30']].forEach(function (t) {
+      var s = el('span', 'vtick', t[1]);
+      s.style.top = 'calc(' + py(t[0]) + '% + 2px)'; s.style.right = '4px';
+      plot.appendChild(s);
+    });
+    var bet = el('div', 'vbet');
+    bet.style.left = px(0) + '%'; bet.style.width = (px(5) - px(0)) + '%';
+    bet.style.top = py(Y1) + '%'; bet.style.height = (py(20) - py(Y1)) + '%';
+    bet.appendChild(el('span', null, 'keel’s bet'));
+    plot.appendChild(bet);
+    var wrong = el('span', 'vtick');
+    wrong.textContent = 'beyond here keel is wrong';
+    wrong.style.left = 'calc(' + px(10) + '% + 4px)'; wrong.style.top = py(narrow ? 26 : 31) + '%'; wrong.style.color = 'var(--accent)';
+    plot.appendChild(wrong);
+    var dot = el('div', 'vdot');
+    dot.tabIndex = 0;
+    dot.setAttribute('role', 'img');
+    plot.appendChild(dot);
+    wrap.appendChild(plot);
+    fig.appendChild(wrap);
+    fig.appendChild(el('div', 'vaxis-x', 'runs the programs better by, in points against the plain arm →'));
+    var out = el('div', 'verdict');
+    out.setAttribute('aria-live', 'polite');
+    var vb = el('b'), vs = el('span'), vn = el('span', 'nums');
+    out.appendChild(vb); out.appendChild(vs); out.appendChild(vn);
+    fig.appendChild(out);
+    var pre = el('div', 'vpresets');
+    var x = 2.5, y = 26;
+    [['keel’s prediction', 2.5, 26], ['a clear win', 12, 30], ['no gap anywhere', 1, 4], ['worse than plain', -6, 22]].forEach(function (p) {
+      var b = el('button', null, p[0]);
+      b.type = 'button';
+      b.addEventListener('click', function () { set(p[1], p[2]); });
+      pre.appendChild(b);
+    });
+    fig.appendChild(pre);
+    fig.appendChild(el('figcaption', null, 'Drag the point to any result, or try the buttons. The verdicts were fixed before anything runs. Across: how much better the addressed model runs the programs than the plain one. Up: how much better it reads the notation itself. Each verdict also needs its interval clear of zero, and if the base model already scores above 90 percent, longer inputs become the main test, so a ceiling cannot hide an effect.'));
+    function verdict() {
+      if (x < 0) return ['Harmful', 'The addressed model runs the programs worse than the plain one: training on addresses got in the way.'];
+      if (y < 15) return ['The notation did not take', 'Addresses barely changed how it reads. The corpus is doubled once and the arms trained again; if there is still no gap anywhere, the idea is not supported at this size.'];
+      if (x >= 5) return ['Supported', 'Training on addresses made a small model run the programs better than the same words without them.'];
+      return ['Reads, but does not run better', 'The model learned to read the addresses, but running the programs did not improve. This is what keel expects.'];
+    }
+    function set(nx, ny) {
+      x = Math.max(X0, Math.min(X1, Math.round(nx * 2) / 2));
+      y = Math.max(Y0, Math.min(Y1, Math.round(ny * 2) / 2));
+      dot.style.left = px(x) + '%';
+      dot.style.top = py(y) + '%';
+      var v = verdict();
+      vb.textContent = v[0];
+      vs.textContent = v[1];
+      vn.textContent = 'programs ' + (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x) + ' · notation ' + (y > 0 ? '+' : y < 0 ? '−' : '') + Math.abs(y) + ' points';
+      dot.setAttribute('aria-label', 'A possible result: ' + v[0] + '. Move it with the arrow keys.');
+    }
+    function fromEvent(e) {
+      var r = plot.getBoundingClientRect();
+      var fx = (e.clientX - r.left) / r.width, fy = (e.clientY - r.top) / r.height;
+      set(X0 + fx * (X1 - X0), Y1 - fy * (Y1 - Y0));
+    }
+    var dragging = false;
+    plot.addEventListener('pointerdown', function (e) { dragging = true; try { plot.setPointerCapture(e.pointerId); } catch (er) {} fromEvent(e); e.preventDefault(); });
+    plot.addEventListener('pointermove', function (e) { if (dragging) fromEvent(e); });
+    plot.addEventListener('pointerup', function () { dragging = false; });
+    plot.addEventListener('pointercancel', function () { dragging = false; });
+    dot.addEventListener('keydown', function (e) {
+      var d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      set(x + d[0], y + d[1] * 2);
+    });
+    set(x, y);
+    return fig;
+  }
+
+  /* 4 · THE MACHINE AND THE MONEY — two routes side by side, and the cap the run stops at */
+  function figRoutes(step) {
+    var fig = el('figure', 'fig');
+    var dec = step.decide;
+    var david = dec ? answerBy(dec, DAVID) : null, keel = dec ? answerBy(dec, 'keel') : null;
+    var POUNDS = /£\s?(\d+(?:,\d{3})*)/;
+    var source = david && POUNDS.test(david.line) ? david : keel;
+    var capm = source ? POUNDS.exec(source.line) : null;
+    var capText = capm ? '£' + capm[1] + (source === david ? ', David’s cap' : ', keel’s suggestion') : 'the cap David names';
+    var choice = david && (david.token === 'RENT' || david.token === 'MAC') ? david.token : 'MAC';
+    var fork = el('div', 'fork');
+    fork.appendChild(el('p', null, 'Does a model of about four billion parameters fit the Mac mini for training?'));
+    var seg = el('div', 'seg');
+    var yes = el('button', null, 'it fits'), no = el('button', null, 'it does not');
+    yes.type = no.type = 'button';
+    seg.appendChild(yes); seg.appendChild(no);
+    fork.appendChild(seg);
+    fig.appendChild(fork);
+    function sizeBar(n) {
+      var s = el('span', 'size');
+      for (var i = 0; i < 8; i++) s.appendChild(el('i', i < n ? 'f' : null));
+      return s;
+    }
+    function route(name, tag, rows, size) {
+      var r = el('div', 'route');
+      r.appendChild(el('h4', null, name));
+      if (tag) r.appendChild(el('span', 'keel', tag));
+      var dl = el('dl');
+      rows.forEach(function (row) {
+        dl.appendChild(el('dt', null, row[0]));
+        var dd = el('dd', null, row[1]);
+        if (row[0] === 'model') dd.appendChild(sizeBar(size));
+        dl.appendChild(dd);
+      });
+      r.appendChild(dl);
+      return r;
+    }
+    var routes = el('div', 'routes');
+    var mac = route('The Mac mini', 'keel’s answer: start here', [
+      ['where', 'David’s Mac mini, which already runs LM Studio'],
+      ['how', 'LoRA through MLX'],
+      ['model', 'about four billion parameters'],
+      ['cost', 'no money, only hours']], 4);
+    var rent = route('A rented GPU', 'if the Mac falls short', [
+      ['where', 'one rented GPU with 24 to 80 GB'],
+      ['how', 'LoRA or QLoRA'],
+      ['model', 'up to eight billion parameters'],
+      ['cost', 'paid by the hour, hours rather than days']], 8);
+    routes.appendChild(mac); routes.appendChild(rent);
+    fig.appendChild(routes);
+    function pick(c) {
+      choice = c;
+      yes.setAttribute('aria-pressed', String(c === 'MAC'));
+      no.setAttribute('aria-pressed', String(c === 'RENT'));
+      mac.className = 'route ' + (c === 'MAC' ? 'on' : 'off');
+      rent.className = 'route ' + (c === 'RENT' ? 'on' : 'off');
+    }
+    yes.addEventListener('click', function () { pick('MAC'); });
+    no.addEventListener('click', function () { pick('RENT'); });
+    pick(choice);
+    var capBox = el('div', 'cap');
+    capBox.appendChild(el('span', 'lbl', 'The cap'));
+    var track = el('div', 'cap-track'), fill = el('div', 'cap-fill'), stop = el('div', 'cap-stop');
+    track.appendChild(fill); track.appendChild(stop);
+    capBox.appendChild(track);
+    var labels = el('div', 'cap-labels');
+    var zero = el('span', null, '£0'); zero.style.left = '0';
+    var atCap = el('span', 'at-cap', capText);
+    labels.appendChild(zero); labels.appendChild(atCap);
+    capBox.appendChild(labels);
+    capBox.appendChild(el('p', 'note', 'Every cost comes out of the cap: the GPU hours if renting, and on either route the blind judge’s calls and the optional ceiling run. At the cap the run stops and reports what is done.'));
+    fig.appendChild(capBox);
+    fig.appendChild(el('figcaption', null, 'Two ways to train, with the same arms and tests on both. The Mac costs time; the rented GPU costs money and allows a bigger model.'));
+    fill.style.width = '80%';
+    var t = null, w = 80;
+    function run() {
+      w = 0; fill.style.transition = 'none'; fill.style.width = '0%';
+      t = setTimeout(function () {
+        fill.style.transition = 'width 2600ms ease-out'; fill.style.width = '80%';
+        t = setTimeout(run, 5200);
+      }, 400);
+    }
+    motion(fig, run, function () { clearTimeout(t); fill.style.transition = 'none'; fill.style.width = '80%'; });
+    return fig;
+  }
+
+  /* 5 · THE RUN — a course of ten legs, out of the harbour once the decisions stand */
+  var DONE = {
+    'word and budget': 'done when David has named the machine and the cap',
+    'pin the stack': 'done when the base model answers one test prompt',
+    'rebuild the tests': 'done when every item has its true answer on disk',
+    'the ceiling': 'optional: done when a frontier model’s scores are logged',
+    'before': 'done when the base model has an answer to every item',
+    'corpus': 'done when the three training files exist',
+    'train': 'done when the three arms are trained and saved',
+    'after': 'done when every arm has answered every item',
+    'analyse': 'done when the results table and its intervals exist',
+    'report': 'done when keel has read it and David has the link'
+  };
+  function figRun(step) {
+    var fig = el('figure', 'fig');
+    var m = /done-when:\s*([^]*)$/.exec(step.rest);
+    var legs = m ? m[1].replace(/\.\s*$/, '').split(/\s*,\s*/).filter(Boolean) : Object.keys(DONE);
+    var harbour = el('div', 'harbour');
+    var dn = CARDS.filter(function (c) { return answerBy(c.dec, DAVID); }).length;
+    harbour.appendChild(el('span', 'lbl', dn === CARDS.length && CARDS.length ? 'Cleared to sail: David has answered all ' + num(CARDS.length) : 'In harbour until David has answered all ' + num(CARDS.length)));
+    var lights = el('div', 'lights');
+    STEPS.forEach(function (s) {
+      if (!s.decide) return;
+      var a = answerBy(s.decide, DAVID);
+      var l = el('span', 'light' + (a ? ' lit' : ''));
+      l.appendChild(el('i'));
+      l.appendChild(document.createTextNode(sentence(s.title) + (a ? ': ' + a.token : '')));
+      lights.appendChild(l);
+    });
+    harbour.appendChild(lights);
+    fig.appendChild(harbour);
+    var ol = el('ol', 'course');
+    var items = legs.map(function (leg) {
+      var li = el('li');
+      li.appendChild(el('b', null, cap(leg)));
+      var d = DONE[leg.toLowerCase()];
+      if (d) li.appendChild(el('span', null, d));
+      ol.appendChild(li);
+      return li;
+    });
+    fig.appendChild(ol);
+    fig.appendChild(el('figcaption', null, 'Once the decisions stand, weft sails the spec’s ' + num(legs.length) + ' legs in order, and no leg begins until the one before it is done. Weft writes where the run has reached at this step’s state.'));
+    var k = -1, t = null;
+    function tick() {
+      items.forEach(function (li, i) { li.classList.toggle('ping', i === k); });
+      k++;
+      if (k > items.length) { k = -1; t = setTimeout(tick, 1600); return; }
+      t = setTimeout(tick, 420);
+    }
+    motion(fig, function () { clearTimeout(t); k = 0; tick(); }, function () { clearTimeout(t); items.forEach(function (li) { li.classList.remove('ping'); }); });
+    return fig;
+  }
+
+  var FIGS = [
+    { re: /QUESTION/i, make: figWords },
+    { re: /DESIGN|ARMS/i, make: figArms },
+    { re: /TEST|VERDICT/i, make: figVerdict },
+    { re: /MACHINE|MONEY/i, make: figRoutes },
+    { re: /\bRUN\b/i, make: figRun }
+  ];
+  function figureFor(s, i) {
+    var f = FIGS.filter(function (x) { return x.re.test(s.title); })[0] || FIGS[i];
+    try { return f ? f.make(s) : null; } catch (e) { return null; }
+  }
+
+  function paintSteps() {
+    var ol = $('steps');
+    ol.textContent = '';
+    CARDS = [];
+    var steps = stepsOf(SPINE);
+    STEPS = steps;
+    if (!steps.length) { ol.appendChild(el('li', 'note', 'The steps could not be read from the beach just now.')); return; }
+    /* the cards first, so a drawing can read every decision's answers */
+    var bodies = steps.map(function (s) {
+      var card = null;
+      if (s.decide) {
+        card = el('div', 'card');
+        card.id = 'decide-' + s.decide.at.replace('.', '-');
+        card.appendChild(el('p', 'q', s.decide.q));
+        var w = el('p', 'who');
+        w.appendChild(el('span', 'addr addr-only', s.decide.at + ' · '));
+        w.appendChild(document.createTextNode('waits on ' + (s.decide.who || 'anyone') + ' · answer ' + s.decide.words.join(', ').replace(/, ([^,]*)$/, ' or $1')));
+        card.appendChild(w);
+        var list = el('ul', 'answers');
+        card.appendChild(list);
+        var c = { dec: s.decide, list: list };
+        CARDS.push(c);
+        paintAnswers(c);
+        card.appendChild(answerForm(s.decide));
+      }
+      return card;
+    });
+    steps.forEach(function (s, i) {
+      var li = el('li', 'step');
+      li.id = 'step-' + s.at.replace('.', '-');
+      var snd = el('div', 'sounding');
+      snd.appendChild(el('span', 'addr addr-only', s.at));
+      li.appendChild(snd);
+      var body = el('div', 'step-body');
+      body.appendChild(el('h3', null, sentence(s.title || 'Step')));
+      var fig = figureFor(s, i);
+      if (fig) body.appendChild(fig);
+      var p = el('p'); p.appendChild(linked(cap(s.rest))); body.appendChild(p);
+      if (s.rooms.length) {
+        var rooms = el('div', 'rooms');
+        s.rooms.forEach(function (r) {
+          var d = el('details', 'room');
+          d.appendChild(el('summary', null, sentence(r.part.title || 'More')));
+          var inn = el('div', 'in');
+          var rp = el('p'); rp.appendChild(linked(cap(r.part.rest))); inn.appendChild(rp);
+          d.appendChild(inn);
+          rooms.appendChild(d);
+        });
+        body.appendChild(rooms);
+      }
+      if (bodies[i]) body.appendChild(bodies[i]);
+      if (s.state) {
+        var stl = el('p', 'state-line');
+        stl.appendChild(el('b', null, 'Where it stands: '));
+        stl.appendChild(linked(s.state));
+        body.appendChild(stl);
+      }
+      li.appendChild(body);
+      ol.appendChild(li);
+    });
+    $('decCount').textContent = num(CARDS.length);
+    paintAsk(steps);
+  }
+
+  /* the title block's legend: each step, with the words its answers open with */
+  function paintIndex() {
+    var ol = $('index');
+    ol.textContent = '';
+    STEPS.forEach(function (s) {
+      var li = el('li'), a = el('a');
+      a.href = '#step-' + s.at.replace('.', '-');
+      a.appendChild(el('span', 'addr addr-only', s.at));
+      a.appendChild(el('span', 't', sentence(s.title || 'Step')));
+      var chips = el('span', 'chips');
+      if (s.decide) {
+        var tally = {};
+        answersAt(s.decide).forEach(function (x) { if (x.token) tally[x.token] = (tally[x.token] || 0) + 1; });
+        var ws = Object.keys(tally);
+        if (!ws.length) chips.appendChild(el('span', 'tok choice', 'OPEN'));
+        ws.forEach(function (w) { chips.appendChild(el('span', 'tok ' + kindOf(w), w + ' ' + tally[w])); });
+      }
+      a.appendChild(chips);
+      li.appendChild(a);
+      ol.appendChild(li);
+    });
+  }
+
+  function paintNow() {
+    var n = CARDS.length, by = {}, latest = '';
+    CARDS.forEach(function (c) { answersAt(c.dec).forEach(function (a) { by[a.by] = (by[a.by] || 0) + 1; }); });
+    Object.keys(MIRRORS.touched || {}).forEach(function (h) { var t = MIRRORS.touched[h]; if (t > latest) latest = t; });
+    var parts = [];
+    var hs = Object.keys(by).sort(function (a, b) { return (a === DAVID ? -1 : 0) - (b === DAVID ? -1 : 0) || by[b] - by[a]; });
+    hs.forEach(function (h) {
+      parts.push(who(h) + (by[h] === n ? ' has answered all ' + num(n) : ' has answered ' + num(by[h]) + ' of ' + num(n)));
+    });
+    var davidDone = (by[DAVID] || 0) === n && n > 0;
+    var s = sentence(num(n)) + ' decisions' + (davidDone ? ', all answered by David. ' : ', each waiting on David. ');
+    s += parts.length ? cap(parts.join('; ')) + '.' : 'Nobody has answered yet.';
+    if (!by[DAVID] && n) s += ' David has not answered yet.';
+    if (latest) s += ' The latest answer came ' + ago(latest) + '.';
+    $('nowText').textContent = s;
+    $('waitLine').textContent = '';
+    $('waitLine').appendChild(document.createTextNode(davidDone ? 'answered by ' : 'waiting on '));
+    $('waitLine').appendChild(el('b', null, 'David'));
+    paintIndex();
+  }
+
+  function paintStanding() {
+    var root = split(textOf(SPINE));
+    if (root.rest) $('lede').textContent = cap(root.rest);
+    var ph = LAW ? /^phase:\s*([a-z ]+?)(\s+—|$)/i.exec(textOf(LAW['7'])) : null;
+    if (ph) $('phase').textContent = ph[1].toLowerCase();
+    var steps = stepsOf(SPINE), last = steps.length ? steps[steps.length - 1].state : '';
+    var m = /:\s*([a-z][a-z ]*?)\./i.exec(last);
+    if (m) $('stateWord').textContent = m[1].toLowerCase();
+  }
+
+  function paintAround() {
+    var came = textOf(SPINE && SPINE['3']);
+    if (came) { var p = $('cameFrom'); p.textContent = ''; p.appendChild(linked(cap(split(came).rest))); }
+  }
+
+  function paintAsk(steps) {
+    var ats = steps.filter(function (s) { return s.decide; }).map(function (s) { return s.decide.at; });
+    $('askLine').value = 'Read the proposal pscale-native on the beach at https://beach.happyseaurchin.com: its spine, spine:pscale-native; its law, function:pscale-native; the programs it tests, frozen:keel; and everyone’s answers in the pscale-native:<handle> mirrors (keel’s are in pscale-native:keel). Walk me through its ' +
+      num(ats.length) + ' decisions, at ' + ats.join(', ').replace(/, ([^,]*)$/, ' and $1') +
+      ', and when I have decided, say each answer into my own mirror with pscale_stream_engage(field="pscale-native", handle=<my handle>, at=<the decision’s address>, say="<one of the decision’s words> — <my line>").';
+  }
+
+  /* ── the room ── */
+  function entries(n, out) {
+    out = out || [];
+    if (!n || typeof n !== 'object') return out;
+    if (n._ && typeof n._ === 'object') entries(n._, out);
+    for (var i = 1; i <= 9; i++) {
+      var s = n[String(i)];
+      if (!s || typeof s !== 'object') continue;
+      if (typeof s._ === 'string' && typeof s['1'] === 'string' && s['3']) out.push({ text: s._, by: s['1'], ts: s['3'] });
+      else entries(s, out);
+    }
+    return out;
+  }
+  function paintRoom(pool) {
+    var ul = $('talkList');
+    ul.textContent = '';
+    var es = entries(pool).sort(function (a, b) { return String(b.ts).localeCompare(String(a.ts)); }).slice(0, 8);
+    if (!es.length) { ul.appendChild(el('li', 'note', 'Nobody has spoken yet.')); return; }
+    es.forEach(function (e) {
+      var li = el('li');
+      var meta = el('p', 'meta');
+      meta.appendChild(el('b', null, who(e.by)));
+      meta.appendChild(document.createTextNode(' · ' + when(e.ts)));
+      li.appendChild(meta);
+      var p = el('p'); p.appendChild(linked(e.text)); li.appendChild(p);
+      ul.appendChild(li);
+    });
+  }
+
+  /* ════ the walk: a program, printed plain or as the tests print it, and a kernel following its words ════ */
+  var FROZEN = null;
+  var W = { prog: 'tree', steps: [], shown: 0, timer: null, values: {}, facts: [], order: [], treeInputs: [], turtleInputs: [], moves: '', bits: '', played: false };
+
+  /* the spec's renderer: one line per position, its address, a colon, its voicing, indented by depth */
+  function render(n, addr, depth, out) {
+    out = out || []; depth = depth || 0;
+    if (typeof n === 'string') { out.push({ addr: addr, depth: depth, text: n }); return out; }
+    if (!n || typeof n !== 'object') return out;
+    out.push({ addr: addr || 'root', depth: depth, text: voiceOf(n) });
+    Object.keys(n).filter(function (k) { return /^[1-9]$/.test(k); }).sort().forEach(function (k) {
+      render(n[k], addr ? addr + '.' + k : k, depth + 1, out);
+    });
+    return out;
+  }
+  function factsOf(rootText) {
+    var out = [], re = /\b([a-z]+) \(([^)]*)\)/g, m;
+    while ((m = re.exec(rootText))) out.push({ name: m[1], gloss: m[2] });
+    return out;
+  }
+  function walkTree(prog, facts, values) {
+    var root = voiceOf(prog), steps = [{ addr: 'root', kind: 'read', text: root }];
+    var sm = /start at position (\d)/i.exec(root), addr = sm ? sm[1] : '1', node = prog[addr], guard = 0;
+    while (node !== undefined && guard++ < 24) {
+      if (typeof node === 'string') { steps.push({ addr: addr, kind: 'leaf', text: node }); return { steps: steps, result: node }; }
+      var q = voiceOf(node);
+      var named = facts.filter(function (f) { return new RegExp('\\b' + f.name + '\\b').test(q); });
+      var yes = named.length > 0 && named.every(function (f) { return !!values[f.name]; });
+      steps.push({ addr: addr, kind: 'ask', text: q, yes: yes });
+      var next = yes ? '1' : '2';
+      addr = addr + '.' + next;
+      node = node[next];
+    }
+    return { steps: steps, result: null };
+  }
+  var DIRS = { up: [-1, 0], down: [1, 0], right: [0, 1], left: [0, -1] };
+  function walkTurtle(prog, moves) {
+    var root = voiceOf(prog), g = /(\d+) by (\d+) grid/.exec(root);
+    var rows = g ? +g[1] : 5, cols = g ? +g[2] : 5;
+    var s = /row (\d+), column (\d+)/i.exec(textOf(prog['1']));
+    var r = s ? +s[1] : 3, c = s ? +s[2] : 3, dirs = {}, re = /\b([NSEW]) (?:moves )?(up|down|right|left)\b/g, m, t2 = textOf(prog['2']);
+    while ((m = re.exec(t2))) dirs[m[1]] = DIRS[m[2]];
+    var steps = [{ addr: 'root', kind: 'read', text: root }, { addr: '1', kind: 'set', text: textOf(prog['1']), pos: [r, c] }];
+    moves.split('').forEach(function (L, i) {
+      var d = dirs[L];
+      if (!d) return;
+      var nr = r + d[0], nc = c + d[1], off = nr < 1 || nr > rows || nc < 1 || nc > cols;
+      if (!off) { r = nr; c = nc; }
+      steps.push({ addr: '2', kind: 'move', letter: L, i: i, pos: [r, c], off: off, d: d });
+    });
+    var result = '(' + r + ', ' + c + ')';
+    steps.push({ addr: '3', kind: 'leaf', text: textOf(prog['3']), pos: [r, c] });
+    return { steps: steps, result: result, rows: rows, cols: cols };
+  }
+  function inputsOf(t, kind) {
+    t = String(t || '');
+    var i = t.indexOf(' — '), body = i >= 0 ? t.slice(i + 3) : t;
+    return body.split(/;\s*/).map(function (x) {
+      x = x.trim();
+      if (kind === 'tree') { var a = /^([01]+)\s+(.+?)\.?$/.exec(x); return a ? { key: a[1], truth: a[2] } : null; }
+      var b = /^([NSEW]+)\s+\((\d+),\s*(\d+)\)\.?$/.exec(x);
+      return b ? { key: b[1], truth: '(' + b[2] + ', ' + b[3] + ')' } : null;
+    }).filter(Boolean);
+  }
+  function orderOf(t) {
+    var m = /bits for ([a-z ,]+?)\s+—/i.exec(String(t || ''));
+    return m ? m[1].split(/\s*,\s*|\s+and\s+/).map(function (x) { return x.trim(); }).filter(Boolean) : [];
+  }
+
+  function paintLines(prog) {
+    var ol = $('lines');
+    ol.textContent = '';
+    $('printLabel').textContent = SHOW ? 'The block, as every model sees it in the test' : 'The block, printed plain';
+    render(prog).forEach(function (l) {
+      var li = el('li');
+      li.setAttribute('data-addr', l.addr);
+      li.style.setProperty('--d', l.depth);
+      if (SHOW) {
+        li.appendChild(el('span', 'addr', '[' + l.addr + ']'));
+        li.appendChild(document.createTextNode(': '));
+      }
+      li.appendChild(el('span', 'voice', l.text));
+      ol.appendChild(li);
+    });
+  }
+
+  function recompute() {
+    var prog = FROZEN && FROZEN[W.prog === 'tree' ? '1' : '3'];
+    if (!prog) return;
+    var w = W.prog === 'tree' ? walkTree(prog, W.facts, W.values) : walkTurtle(prog, W.moves);
+    W.steps = w.steps; W.result = w.result; W.rows = w.rows || 5; W.cols = w.cols || 5;
+  }
+
+  function truthFor() {
+    if (W.prog === 'tree') { var k = W.bits; var hit = W.treeInputs.filter(function (x) { return x.key === k; })[0]; return hit ? hit.truth : ''; }
+    var h = W.turtleInputs.filter(function (x) { return x.key === W.moves; })[0];
+    return h ? h.truth : '';
+  }
+
+  function show(k) {
+    W.shown = k;
+    var steps = W.steps, upto = steps.slice(0, k), here = k ? steps[k - 1] : null;
+    var seen = {};
+    upto.forEach(function (s) { seen[s.addr] = true; });
+    var ol = $('lines');
+    ol.classList.toggle('walked', k > 0);
+    ol.querySelectorAll('li').forEach(function (li) {
+      var a = li.getAttribute('data-addr');
+      li.classList.toggle('passed', !!seen[a]);
+      li.classList.toggle('here', !!here && here.addr === a);
+    });
+    paintTrail(upto);
+    if (W.prog === 'turtle') { paintChart(upto); paintMoves(upto); }
+    var res = $('result');
+    res.textContent = '';
+    if (k === steps.length && steps.length) {
+      res.appendChild(el('span', 'side-label', W.prog === 'tree' ? 'Where it stops' : 'What it reports'));
+      res.appendChild(el('span', 'value', W.result || 'no answer'));
+      var t = truthFor();
+      res.appendChild(el('span', 'check', t
+        ? (t === W.result ? 'The true answer for this input is ' + t + ': the walk agrees.' : 'The true answer for this input is ' + t + ': the walk disagrees.')
+        : 'An input of your own, so there is no stored answer to check it against.'));
+    } else if (here) {
+      res.appendChild(el('span', 'side-label', 'Walking'));
+      res.appendChild(el('span', 'check', 'Step ' + k + ' of ' + steps.length + '.'));
+    }
+  }
+
+  function paintTrail(upto) {
+    var ol = $('trail');
+    ol.textContent = '';
+    var list = upto;
+    if (W.prog === 'turtle') {
+      /* the root, the start, the move in hand, the report */
+      var moves = upto.filter(function (s) { return s.kind === 'move'; });
+      list = upto.filter(function (s) { return s.kind !== 'move'; });
+      if (moves.length) list.splice(Math.min(2, list.length), 0, moves[moves.length - 1]);
+    }
+    list.forEach(function (s) {
+      var li = el('li');
+      li.appendChild(el('span', 'addr addr-only', s.addr === 'root' ? '[root]' : '[' + s.addr + ']'));
+      var t = el('span');
+      if (s.kind === 'read') t.textContent = W.prog === 'tree' ? 'Read how to run it: start at the first question; yes takes the first branch, no the second.' : 'Read how to run it: three positions in order, carrying the position.';
+      else if (s.kind === 'ask') { t.textContent = s.text + ' '; t.appendChild(el('span', 'ans', s.yes ? 'yes → first branch' : 'no → second branch')); }
+      else if (s.kind === 'set') t.textContent = 'Start at row ' + s.pos[0] + ', column ' + s.pos[1] + '.';
+      else if (s.kind === 'move') t.textContent = 'Move ' + (s.i + 1) + ' of ' + W.moves.length + ': ' + s.letter + (s.off ? ', off the grid, ignored: still at (' : ' to (') + s.pos[0] + ', ' + s.pos[1] + ').';
+      else if (s.kind === 'leaf') t.textContent = W.prog === 'tree' ? 'A leaf: ' + s.text + '.' : 'Report (' + s.pos[0] + ', ' + s.pos[1] + ').';
+      li.appendChild(t);
+      ol.appendChild(li);
+    });
+  }
+
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function sv(tag, attrs, parent) {
+    var e = document.createElementNS(SVGNS, tag);
+    Object.keys(attrs).forEach(function (k) { e.setAttribute(k, attrs[k]); });
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function paintChart(upto) {
+    var svg = $('chart'), rows = W.rows, cols = W.cols, m = 30, cell = Math.min(230 / cols, 230 / rows);
+    svg.textContent = '';
+    var cx = function (c) { return m + (c - 0.5) * cell; }, cy = function (r) { return m + (r - 0.5) * cell; };
+    for (var c = 1; c <= cols; c++) sv('text', { x: cx(c), y: 19, 'text-anchor': 'middle', 'class': 'tick' }, svg).textContent = String(c);
+    for (var r = 1; r <= rows; r++) sv('text', { x: 15, y: cy(r) + 3.5, 'text-anchor': 'middle', 'class': 'tick' }, svg).textContent = String(r);
+    for (r = 1; r <= rows; r++) for (c = 1; c <= cols; c++) sv('rect', { x: m + (c - 1) * cell, y: m + (r - 1) * cell, width: cell, height: cell, 'class': 'cell' }, svg);
+    sv('rect', { x: m, y: m, width: cols * cell, height: rows * cell, 'class': 'frame' }, svg);
+    var start = W.steps[1] && W.steps[1].pos;
+    if (start) sv('circle', { cx: cx(start[1]), cy: cy(start[0]), r: 10, 'class': 'start' }, svg);
+    var pts = [], lastKey = '';
+    upto.forEach(function (s) {
+      if (!s.pos) return;
+      var key = s.pos.join(',');
+      if (key !== lastKey) { pts.push(cx(s.pos[1]) + ',' + cy(s.pos[0])); lastKey = key; }
+    });
+    if (pts.length > 1) sv('polyline', { points: pts.join(' '), 'class': 'course' }, svg);
+    upto.forEach(function (s) {
+      if (s.kind !== 'move' || !s.off) return;
+      var x = cx(s.pos[1]), y = cy(s.pos[0]), dx = s.d[1] * cell * 0.5, dy = s.d[0] * cell * 0.5;
+      sv('line', { x1: x + dx * 0.35, y1: y + dy * 0.35, x2: x + dx * 0.92, y2: y + dy * 0.92, 'class': 'bump' }, svg);
+      var ex = x + dx, ey = y + dy;
+      sv('line', { x1: ex - 3.5, y1: ey - 3.5, x2: ex + 3.5, y2: ey + 3.5, 'class': 'bump' }, svg);
+      sv('line', { x1: ex - 3.5, y1: ey + 3.5, x2: ex + 3.5, y2: ey - 3.5, 'class': 'bump' }, svg);
+    });
+    var done = {};
+    upto.forEach(function (s) {
+      if (!s.pos) return;
+      var key = s.pos.join(',');
+      if (done[key]) return;
+      done[key] = true;
+      sv('circle', { cx: cx(s.pos[1]), cy: cy(s.pos[0]), r: 3.2, 'class': 'fix' }, svg);
+    });
+    var last = upto.filter(function (s) { return s.pos; }).pop();
+    if (last) {
+      var x = cx(last.pos[1]), y = cy(last.pos[0]);
+      sv('path', { d: 'M' + x + ' ' + (y - 9) + 'L' + (x + 9) + ' ' + y + 'L' + x + ' ' + (y + 9) + 'L' + (x - 9) + ' ' + y + 'Z', 'class': 'vessel' }, svg);
+      svg.setAttribute('aria-label', 'The turtle’s course on its ' + rows + ' by ' + cols + ' grid, now at row ' + last.pos[0] + ', column ' + last.pos[1]);
+    }
+  }
+  function paintMoves(upto) {
+    var box = $('moves');
+    box.textContent = '';
+    var done = upto.filter(function (s) { return s.kind === 'move'; }), cur = done.length ? done[done.length - 1].i : -1;
+    W.moves.split('').forEach(function (L, i) {
+      var s = el('span', null, L);
+      var d = done.filter(function (x) { return x.i === i; })[0];
+      if (d) s.className = 'done' + (d.off ? ' off' : '') + (i === cur && W.shown < W.steps.length ? ' now' : '');
+      box.appendChild(s);
+    });
+  }
+
+  function stop() { if (W.timer) { clearInterval(W.timer); W.timer = null; } }
+  function walkIt() {
+    stop();
+    if (reduced) { show(W.steps.length); return; }
+    show(1);
+    W.timer = setInterval(function () {
+      if (W.shown >= W.steps.length) { stop(); return; }
+      show(W.shown + 1);
+    }, W.prog === 'tree' ? 750 : 520);
+  }
+  function stepIt() {
+    stop();
+    show(W.shown >= W.steps.length ? 1 : W.shown + 1);
+  }
+
+  function paintFacts() {
+    var ul = $('facts');
+    ul.textContent = '';
+    W.facts.forEach(function (f) {
+      var li = el('li'), lab = el('label'), box = el('input');
+      box.type = 'checkbox'; box.id = 'fact-' + f.name; box.checked = !!W.values[f.name];
+      box.addEventListener('change', function () {
+        W.values[f.name] = box.checked;
+        W.bits = W.order.map(function (n) { return W.values[n] ? '1' : '0'; }).join('');
+        var known = W.treeInputs.some(function (x) { return x.key === W.bits; });
+        $('inTree').value = known ? W.bits : '';
+        stop(); recompute(); show(W.steps.length);
+      });
+      lab.htmlFor = box.id;
+      lab.appendChild(box);
+      var t = el('span');
+      t.appendChild(el('b', null, f.name));
+      t.appendChild(document.createTextNode(' ' + f.gloss));
+      lab.appendChild(t);
+      li.appendChild(lab);
+      ul.appendChild(li);
+    });
+  }
+  function setBits(bits) {
+    W.bits = bits;
+    W.order.forEach(function (n, i) { W.values[n] = bits.charAt(i) === '1'; });
+    W.facts.forEach(function (f) { var b = $('fact-' + f.name); if (b) b.checked = !!W.values[f.name]; });
+  }
+
+  function choose(prog) {
+    stop();
+    W.prog = prog;
+    $('tab-tree').setAttribute('aria-selected', String(prog === 'tree'));
+    $('tab-turtle').setAttribute('aria-selected', String(prog === 'turtle'));
+    $('walkPanel').setAttribute('aria-labelledby', 'tab-' + prog);
+    $('sideTree').hidden = prog !== 'tree';
+    $('pickTree').hidden = prog !== 'tree';
+    $('sideTurtle').hidden = prog !== 'turtle';
+    $('pickTurtle').hidden = prog !== 'turtle';
+    var p = FROZEN && FROZEN[prog === 'tree' ? '1' : '3'];
+    if (!p) { $('lines').textContent = ''; $('lines').appendChild(el('li', 'note', 'The program could not be read from the beach just now.')); return; }
+    paintLines(p);
+    recompute();
+    show(W.steps.length);
+  }
+
+  function setupWalk() {
+    var tree = FROZEN && FROZEN['1'], turtle = FROZEN && FROZEN['3'], ins = FROZEN && FROZEN['4'];
+    if (!tree || !turtle) { choose('tree'); return; }
+    W.facts = factsOf(voiceOf(tree));
+    W.order = orderOf(textOf(ins && ins['1']));
+    if (!W.order.length) W.order = W.facts.map(function (f) { return f.name; });
+    W.treeInputs = inputsOf(textOf(ins && ins['1']), 'tree');
+    W.turtleInputs = inputsOf(textOf(ins && ins['3']), 'turtle');
+    var sel = $('inTree');
+    sel.textContent = '';
+    var own = el('option', null, 'facts of your own'); own.value = ''; sel.appendChild(own);
+    W.treeInputs.forEach(function (x) { var o = el('option', null, x.key + ' · ' + x.truth); o.value = x.key; sel.appendChild(o); });
+    var ts = $('inTurtle');
+    ts.textContent = '';
+    var own2 = el('option', null, 'moves of your own'); own2.value = ''; ts.appendChild(own2);
+    W.turtleInputs.forEach(function (x) { var o = el('option', null, x.key + ' · ' + x.truth); o.value = x.key; ts.appendChild(o); });
+    var deep = W.treeInputs.filter(function (x) { return x.truth === 'Level 2'; })[0] || W.treeInputs[0];
+    setBits(deep ? deep.key : '00000');
+    paintFacts();
+    sel.value = W.bits;
+    W.moves = W.turtleInputs[0] ? W.turtleInputs[0].key : 'ESWNNNENSN';
+    ts.value = W.moves;
+    $('ownMoves').value = '';
+    sel.addEventListener('change', function () { if (sel.value) { setBits(sel.value); stop(); recompute(); show(W.steps.length); } });
+    ts.addEventListener('change', function () { if (ts.value) { W.moves = ts.value; $('ownMoves').value = ''; stop(); recompute(); show(W.steps.length); } });
+    $('ownMoves').addEventListener('input', function () {
+      var v = this.value.toUpperCase().replace(/[^NSEW]/g, '').slice(0, 24);
+      if (this.value !== v) this.value = v;
+      if (!v) return;
+      W.moves = v;
+      var known = W.turtleInputs.some(function (x) { return x.key === v; });
+      ts.value = known ? v : '';
+      stop(); recompute(); show(W.steps.length);
+    });
+    choose('tree');
+    /* the walk plays itself once, the first time it comes into view */
+    motion($('walkPanel'), function () { if (!W.played) { W.played = true; walkIt(); } });
+  }
+
+  $('tab-tree').addEventListener('click', function () { choose('tree'); });
+  $('tab-turtle').addEventListener('click', function () { choose('turtle'); });
+  $('walkIt').addEventListener('click', walkIt);
+  $('stepIt').addEventListener('click', stepIt);
+  [$('tab-tree'), $('tab-turtle')].forEach(function (t, i, all) {
+    t.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      var o = all[(i + 1) % 2];
+      o.focus(); o.click();
+    });
+  });
+  $('copyAsk').addEventListener('click', function () {
+    var ta = $('askLine'), done = function (m) { $('copied').textContent = m; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(ta.value).then(function () { done('Copied.'); }, function () { ta.select(); done('Selected: copy it with your keyboard.'); });
+    } else { ta.select(); done('Selected: copy it with your keyboard.'); }
+  });
+
+  applyAddresses();
+
+  /* ── read everything, then draw ── */
+  var banner = $('banner');
+  function note(t) { banner.textContent = t; banner.hidden = false; }
+  Promise.all([
+    orSnapshot(readBlock('spine:' + FAM), 'spine'),
+    orSnapshot(readBlock('function:' + FAM), 'law').catch(function () { return null; }),
+    orSnapshot(readBlock(PROGRAMS), 'frozen').catch(function () { return null; }),
+    orSnapshot(readMirrors(), 'mirrors').catch(function () { return { mirrors: {}, touched: {} }; }),
+    orSnapshot(readBlock(ROOM), 'room').catch(function () { return null; })
+  ]).then(function (got) {
+    SPINE = got[0]; LAW = got[1]; FROZEN = got[2]; MIRRORS = got[3] || { mirrors: {}, touched: {} };
+    setupWalk();
+    paintStanding();
+    paintSteps();
+    paintNow();
+    paintAround();
+    paintRoom(got[4]);
+    if (usedSnapshot && SNAP) {
+      var onSite = /(^|\.)happyseaurchin\.com$/.test(location.hostname);
+      note(onSite
+        ? 'The beach could not be reached just now, so this shows it as it stood at ' + when(SNAP.taken) + '. Reload in a moment for the live page.'
+        : 'This copy shows the beach as it stood at ' + when(SNAP.taken) + ' (' + ago(SNAP.taken) + '). At happyseaurchin.com/pscale-native the page reads the beach live and takes answers.');
+    }
+  }, function () {
+    note('The beach could not be reached just now. Reload in a moment; the proposal stands at spine:pscale-native whatever this page shows.');
+    $('nowText').textContent = '';
+    $('index').textContent = '';
+    setupWalk();
+  });
+})();
+
+</script>
+</body>
+</html>
