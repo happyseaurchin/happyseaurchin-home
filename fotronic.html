@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Fotronic</title>
+<meta name="description" content="Fortress as a minimal team snake: two teams of light cycles, a zone each to hold, on the Ladle's own numbers. One keyboard, or against bots.">
+<meta property="og:title" content="Fotronic">
+<meta property="og:description" content="Fortress as a minimal team snake: two teams of light cycles, a zone each to hold, on the Ladle's own numbers. One keyboard, or against bots.">
+<meta name="theme-color" content="#04070d">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Fotronic — the game page alone. It wears the grid's own night, not theme.css: a game is not a page of words,
+   and the skin changes nothing of play (spine:tronic-glass 1.15). No bar, no write box, no beach button: the
+   beach opens it with ?match=&team=&seat=&handle= and takes its result line back (1.172). */
+:root {
+  --bg: #04070d; --panel: #0a1222; --ink: #e6f6ff; --muted: #8ba5bb; --rule: #173452; --rule-2: #24507a;
+  --blue: #4488ff; --gold: #ffff44;                 /* the Ladle's colours (1.15) */
+  --grid: rgba(54, 201, 255, 0.075);
+  --display: 'Orbitron', system-ui, sans-serif; --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 15px; line-height: 1.5; overflow: hidden;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 44px 44px; background-position: -1px -1px; -webkit-text-size-adjust: 100%; touch-action: none;
+}
+a { color: #36c9ff; }
+#stage { position: fixed; inset: 0; overflow: hidden; display: grid; grid-template-rows: auto 1fr auto; padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); gap: 6px; }
+#top { min-width: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; font-family: var(--display); font-weight: 700; letter-spacing: 0.06em; }
+#top .b { color: var(--blue); text-shadow: 0 0 12px rgba(68,136,255,0.6); }
+#top .g { color: var(--gold); text-align: right; text-shadow: 0 0 12px rgba(255,255,68,0.5); }
+#top .mid { font-size: 0.8rem; color: var(--muted); font-weight: 500; text-align: center; min-height: 1.2em; }
+#top .score { font-size: 1.4rem; }
+#arenaBox { position: relative; min-height: 0; min-width: 0; display: grid; place-items: center; }
+canvas#arena { display: block; background: #03060b; border-radius: 6px; box-shadow: 0 0 0 1px var(--rule), 0 0 40px rgba(54,201,255,0.14); }
+#centre { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; text-align: center; font-family: var(--display); font-weight: 700; }
+#centre .big { font-size: clamp(2rem, 9vmin, 5rem); letter-spacing: 0.08em; text-shadow: 0 0 24px rgba(230,246,255,0.5); }
+#centre .small { font-size: clamp(0.8rem, 2.4vmin, 1.1rem); color: var(--muted); font-family: var(--mono); font-weight: 400; margin-top: 0.4em; }
+#centre .b { color: var(--blue); } #centre .g { color: var(--gold); }
+#bottom { display: flex; gap: 14px; justify-content: center; align-items: center; flex-wrap: wrap; font-size: 0.78rem; color: var(--muted); min-height: 1.6em; }
+.gauge { display: inline-flex; align-items: center; gap: 6px; }
+.gauge i { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: var(--rule); position: relative; overflow: hidden; }
+.gauge i b { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--ink); border-radius: 3px; }
+.gauge.b i b { background: var(--blue); } .gauge.g i b { background: var(--gold); }
+.gauge.rubber i b { background: #ff6b6b; }
+#touch { position: absolute; inset: 0; display: none; }
+#touch.on { display: block; }
+#touch .half { position: absolute; top: 0; bottom: 0; width: 50%; }
+#touch .half.l { left: 0; } #touch .half.r { right: 0; }
+#brake { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font: 700 0.8rem var(--display); letter-spacing: 0.1em; color: var(--ink); background: rgba(10,18,34,0.8); border: 1px solid var(--rule-2); border-radius: 999px; padding: 10px 22px; user-select: none; -webkit-user-select: none; }
+#brake.held { background: rgba(255,107,107,0.25); border-color: #ff6b6b; }
+.sheet { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4,7,13,0.86); padding: 16px; overflow: auto; z-index: 5; }
+.sheet.hidden { display: none; }
+.card { width: min(34rem, 100%); background: var(--panel); border: 1px solid var(--rule-2); border-radius: 10px; padding: 20px 22px; box-shadow: 0 0 60px rgba(54,201,255,0.12); }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(1.6rem, 6vw, 2.4rem); letter-spacing: 0.14em; margin: 0 0 4px; text-shadow: 0 0 24px rgba(54,201,255,0.5); }
+h1 small { display: block; font-family: var(--mono); font-weight: 400; font-size: 0.8rem; letter-spacing: 0.08em; color: var(--muted); margin-top: 6px; }
+.lede { margin: 10px 0 16px; color: var(--muted); }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin: 10px 0; }
+.row.one { grid-template-columns: 1fr; }
+label { display: grid; gap: 4px; font-size: 0.78rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+label.b { color: var(--blue); } label.g { color: var(--gold); }
+select, input { font: inherit; color: var(--ink); background: #061020; border: 1px solid var(--rule-2); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.keys { font-size: 0.82rem; color: var(--muted); margin: 12px 0 0; }
+.keys kbd { font-family: var(--mono); border: 1px solid var(--rule-2); border-radius: 4px; padding: 0 5px; color: var(--ink); }
+.btn { font: 700 0.9rem var(--display); letter-spacing: 0.1em; color: #04070d; background: #36c9ff; border: 0; border-radius: 999px; padding: 12px 26px; cursor: pointer; margin-top: 16px; }
+.btn.line { background: transparent; color: var(--ink); border: 1px solid var(--rule-2); }
+.btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #36c9ff; outline-offset: 2px; }
+.line-box { font-family: var(--mono); font-size: 0.9rem; background: #061020; border: 1px solid var(--rule-2); border-radius: 6px; padding: 10px 12px; margin: 8px 0; word-break: break-word; user-select: all; -webkit-user-select: all; }
+.hint { font-size: 0.8rem; color: var(--muted); min-height: 1.2em; margin-top: 6px; }
+.foot { font-size: 0.74rem; color: var(--muted); margin-top: 14px; }
+.foot a { color: var(--muted); }
+@media (max-width: 480px) { .row { grid-template-columns: 1fr; } #top .score { font-size: 1.1rem; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="top">
+    <div class="b"><span class="score" id="scoreBlue">0</span> BLUE</div>
+    <div class="mid" id="mid"></div>
+    <div class="g">GOLD <span class="score" id="scoreGold">0</span></div>
+  </div>
+  <div id="arenaBox">
+    <canvas id="arena" width="300" height="300" role="img" aria-label="A Fortress arena seen from above: a square grid with a blue zone at the bottom and a gold zone at the top, light cycles leaving walls of their own colour."></canvas>
+    <div id="centre" aria-live="polite"></div>
+    <div id="touch"><div class="half l" aria-hidden="true"></div><div class="half r" aria-hidden="true"></div><button type="button" id="brake">BRAKE</button></div>
+  </div>
+  <div id="bottom"></div>
+</div>
+
+<section id="start" class="sheet" aria-label="Start a match">
+  <div class="card">
+    <h1>FOTRONIC <small>Fortress as a minimal team snake</small></h1>
+    <p class="lede">Two teams, a zone each. Hold yours, take theirs: one enemy alone in a zone takes it in five seconds, one defender inside stops one attacker. Ride close to a wall to go fast. The Ladle's own numbers.</p>
+    <div class="row">
+      <label>Team size <select id="size"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></label>
+      <label>Your name <input id="handle" maxlength="32" autocomplete="nickname" placeholder="you"></label>
+      <label class="b">Blue seat you take <select id="seatBlue"></select></label>
+      <label class="g">Gold seat you take <select id="seatGold"></select></label>
+    </div>
+    <p class="keys" id="keys"></p>
+    <button type="button" class="btn" id="go">PLAY</button>
+    <p class="foot">Bots fill the other seats. The match ends at 100. The spec and its decisions: <a href="/tronic-glass#fotronic">TRONIC Glass</a>.</p>
+  </div>
+</section>
+
+<section id="end" class="sheet hidden" aria-label="The match is over">
+  <div class="card">
+    <h1 id="endTitle">MATCH OVER</h1>
+    <p class="lede" id="endLede"></p>
+    <div id="lines"></div>
+    <div class="hint" id="copied"></div>
+    <button type="button" class="btn" id="copy">COPY THE LINE</button>
+    <button type="button" class="btn line" id="again">PLAY AGAIN</button>
+    <p class="foot">The line is the match's result, for the beach's voice to write into each player's own mirror at the match's address, where boards and cups read it (spine:tronic-glass 1.172).</p>
+  </div>
+</section>
+
+<script type="module">
+import * as sim from './fotronic/sim.js';
+
+const $ = id => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+const MATCH = (params.get('match') || 'local').replace(/[^\w.:-]/g, '').slice(0, 40) || 'local';
+const TPS = sim.LAW.TICKS_PER_SECOND;
+
+/* ── the transport: a local loop for now (1.17); every event, from a key, a tap or a bot, goes through it ── */
+const transport = {
+  listeners: [],
+  send(event) { for (const f of this.listeners) f(event); },
+  onEvent(f) { this.listeners.push(f); }
+};
+
+let state = null, humans = { blue: null, gold: null }, law = sim.LAW, running = false;
+transport.onEvent(event => { if (state) sim.apply(state, event); });
+
+/* ── the start screen ── */
+function fillSeats(sel, size, chosen) {
+  sel.innerHTML = '<option value="0">bot</option>' + Array.from({ length: size }, (_, i) => '<option value="' + (i + 1) + '"' + (chosen === i + 1 ? ' selected' : '') + '>seat ' + (i + 1) + '</option>').join('');
+}
+function preset() {
+  const team = params.get('team'), seat = parseInt(params.get('seat') || '', 10);
+  const size = Math.max(parseInt($('size').value, 10), seat > 0 && seat <= law.TEAM_MAX_PLAYERS ? seat : 0) || 3;
+  $('size').value = String(size);
+  fillSeats($('seatBlue'), size, team === 'gold' ? 0 : (team === 'blue' && seat > 0 ? seat : 1));
+  fillSeats($('seatGold'), size, team === 'gold' && seat > 0 ? seat : 0);
+  if (team === 'blue' || team === 'gold') { if (team === 'blue') $('seatGold').value = '0'; else $('seatBlue').value = '0'; }
+  $('handle').value = (params.get('handle') || '').replace(/[^A-Za-z0-9_\s-]/g, '').trim().slice(0, 32);
+  keysHint();
+}
+const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+function keysHint() {
+  const b = $('seatBlue').value !== '0', g = $('seatGold').value !== '0';
+  let t;
+  if (b && g) t = 'Blue turns with <kbd>A</kbd> <kbd>D</kbd> and brakes with <kbd>S</kbd>; gold with <kbd>←</kbd> <kbd>→</kbd> and <kbd>↓</kbd>.';
+  else if (b || g) t = 'Turn with <kbd>←</kbd> <kbd>→</kbd>, brake with <kbd>↓</kbd>' + (touch ? ', or tap the left or right half of the arena.' : '.');
+  else t = 'No seat of yours: watch the bots play.';
+  $('keys').innerHTML = t;
+}
+$('size').addEventListener('change', () => { const n = parseInt($('size').value, 10); fillSeats($('seatBlue'), n, Math.min(n, parseInt($('seatBlue').value, 10))); fillSeats($('seatGold'), n, Math.min(n, parseInt($('seatGold').value, 10))); keysHint(); });
+$('seatBlue').addEventListener('change', keysHint);
+$('seatGold').addEventListener('change', keysHint);
+preset();
+
+$('go').addEventListener('click', start);
+$('again').addEventListener('click', () => { $('end').classList.add('hidden'); $('start').classList.remove('hidden'); running = false; });
+
+function start() {
+  const size = parseInt($('size').value, 10);
+  const handle = $('handle').value.replace(/[^A-Za-z0-9_\s-]/g, '').trim().slice(0, 32) || 'you';
+  const mine = { blue: parseInt($('seatBlue').value, 10), gold: parseInt($('seatGold').value, 10) };
+  const seats = [];
+  for (const team of ['blue', 'gold']) for (let n = 1; n <= size; n++) {
+    const human = mine[team] === n;
+    seats.push({ team, seat: n, bot: !human, handle: human ? handle : team + n });
+  }
+  state = sim.createMatch(law, seats, MATCH);
+  humans = { blue: null, gold: null };
+  state.seats.forEach(s => { if (!s.bot) humans[s.team] = s.index; });
+  effects.length = 0;
+  $('start').classList.add('hidden');
+  $('end').classList.add('hidden');
+  $('touch').classList.toggle('on', touch && (humans.blue !== null || humans.gold !== null));
+  bottomGauges();
+  running = true; last = performance.now(); acc = 0;
+  window.fotronic = { state, law, transport };   // for a look under the hood; nothing here writes the state
+}
+
+/* ── keys: a key sends an event; it never touches the state (1.16) ── */
+const held = new Set();
+function keySeat(code) {
+  const two = humans.blue !== null && humans.gold !== null;
+  const arrowsFor = two ? humans.gold : (humans.blue !== null ? humans.blue : humans.gold);
+  if (code === 'ArrowLeft') return { seat: arrowsFor, action: 'L' };
+  if (code === 'ArrowRight') return { seat: arrowsFor, action: 'R' };
+  if (code === 'ArrowDown') return { seat: arrowsFor, action: 'BRAKE' };
+  if (two) {
+    if (code === 'KeyA') return { seat: humans.blue, action: 'L' };
+    if (code === 'KeyD') return { seat: humans.blue, action: 'R' };
+    if (code === 'KeyS') return { seat: humans.blue, action: 'BRAKE' };
+  }
+  return null;
+}
+window.addEventListener('keydown', e => {
+  if (!running || !state || e.repeat) return;
+  const k = keySeat(e.code);
+  if (!k || k.seat === null) return;
+  e.preventDefault();
+  if (k.action === 'BRAKE') { if (!held.has(e.code)) { held.add(e.code); transport.send({ tick: state.tick, seat: k.seat, action: 'BRAKE_ON' }); } }
+  else transport.send({ tick: state.tick, seat: k.seat, action: k.action });
+});
+window.addEventListener('keyup', e => {
+  if (!state) return;
+  const k = keySeat(e.code);
+  if (k && k.action === 'BRAKE' && held.has(e.code)) { held.delete(e.code); if (k.seat !== null) transport.send({ tick: state.tick, seat: k.seat, action: 'BRAKE_OFF' }); }
+});
+window.addEventListener('blur', () => { if (!state) return; for (const code of Array.from(held)) { const k = keySeat(code); held.delete(code); if (k && k.seat !== null) transport.send({ tick: state.tick, seat: k.seat, action: 'BRAKE_OFF' }); } });
+
+/* ── taps: either half of the arena turns the human's cycle; the brake is a button held ── */
+function tapSeat() { return humans.blue !== null ? humans.blue : humans.gold; }
+for (const side of ['l', 'r']) {
+  document.querySelector('#touch .half.' + side).addEventListener('pointerdown', e => {
+    if (!running || !state) return;
+    e.preventDefault();
+    const seat = tapSeat();
+    if (seat !== null) transport.send({ tick: state.tick, seat, action: side === 'l' ? 'L' : 'R' });
+  });
+}
+const brakeBtn = $('brake');
+function brake(on) {
+  const seat = tapSeat();
+  if (!running || !state || seat === null) return;
+  brakeBtn.classList.toggle('held', on);
+  transport.send({ tick: state.tick, seat, action: on ? 'BRAKE_ON' : 'BRAKE_OFF' });
+}
+brakeBtn.addEventListener('pointerdown', e => { e.preventDefault(); brake(true); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) brakeBtn.addEventListener(ev, () => brake(false));
+
+/* ── the clock: 120 ticks a second, drawn on requestAnimationFrame ── */
+let last = performance.now(), acc = 0;
+const TICK_MS = 1000 / TPS;
+const effects = [];   // flashes where a cycle died: page-side only
+function frame(now) {
+  requestAnimationFrame(frame);
+  if (!state) return;
+  if (running) {
+    acc += Math.min(now - last, 250);
+    last = now;
+    while (acc >= TICK_MS) {
+      for (const e of sim.botEvents(state)) transport.send(e);
+      sim.step(state);
+      for (const n of state.news) {
+        if (n.kind === 'death') effects.push({ x: n.x, y: n.y, at: state.tick, team: state.cycles[n.seat].team });
+        if (n.kind === 'over') finish();
+      }
+      acc -= TICK_MS;
+    }
+  } else last = now;
+  draw();
+  hud();
+}
+document.addEventListener('visibilitychange', () => { last = performance.now(); acc = 0; });
+requestAnimationFrame(frame);
+
+/* ── the end: the result line (1.172) ── */
+function finish() {
+  running = false;
+  const who = state.seats.filter(s => !s.bot);
+  const lines = (who.length ? who : [state.seats[0]]).map(s => sim.resultLine(state, s.index));
+  const winner = state.score.blue === state.score.gold ? null : (state.score.blue > state.score.gold ? 'BLUE' : 'GOLD');
+  $('endTitle').textContent = winner ? winner + ' WINS' : 'A DRAW';
+  $('endTitle').style.color = winner === 'BLUE' ? 'var(--blue)' : winner === 'GOLD' ? 'var(--gold)' : '';
+  $('endLede').textContent = 'BLUE ' + state.score.blue + ' – GOLD ' + state.score.gold + ' · rounds ' + state.rounds.blue + '–' + state.rounds.gold + ' · ' + (state.tick / TPS / 60).toFixed(1) + ' minutes';
+  $('lines').innerHTML = lines.map(l => '<div class="line-box">' + esc(l) + '</div>').join('');
+  $('copied').textContent = '';
+  $('copy').onclick = () => {
+    const text = lines.join('\n');
+    const done = () => { $('copied').textContent = 'Copied.'; };
+    const fail = () => { $('copied').textContent = 'The clipboard stayed closed; select the line and copy it by hand.'; };
+    try { navigator.clipboard.writeText(text).then(done, fail); } catch (e) { fail(); }
+  };
+  $('end').classList.remove('hidden');
+  $('touch').classList.remove('on');
+}
+function esc(s) { const d = document.createElement('span'); d.textContent = s; return d.innerHTML; }
+
+/* ── the HUD ── */
+let gauges = [];
+function bottomGauges() {
+  gauges = [];
+  const el = $('bottom');
+  el.innerHTML = '';
+  for (const team of ['blue', 'gold']) {
+    const i = humans[team];
+    if (i === null) continue;
+    const wrap = document.createElement('span');
+    wrap.innerHTML = '<span class="gauge ' + team[0] + '"><span>' + esc(state.seats[i].handle) + ' speed</span><i><b></b></i></span> <span class="gauge rubber"><span>rubber</span><i><b></b></i></span> <span class="gauge ' + team[0] + '"><span>brake</span><i><b></b></i></span>';
+    el.appendChild(wrap);
+    const bars = wrap.querySelectorAll('b');
+    gauges.push({ i, speed: bars[0], rubber: bars[1], brake: bars[2] });
+  }
+  if (!gauges.length) el.innerHTML = '<span>the bots play; ' + (touch ? 'tap' : 'press') + ' nothing</span>';
+}
+function hud() {
+  $('scoreBlue').textContent = state.score.blue;
+  $('scoreGold').textContent = state.score.gold;
+  const left = Math.max(0, Math.ceil((state.phaseUntil - state.tick) / TPS));
+  let mid = 'round ' + state.round, centre = '';
+  if (state.phase === 'countdown') centre = '<div class="big">' + left + '</div><div class="small">round ' + state.round + ' · first to ' + law.LIMIT_SCORE + '</div>';
+  else if (state.phase === 'result' && state.lastRound) {
+    const w = state.lastRound.winner;
+    centre = '<div class="big ' + (w ? w[0] : '') + '">' + (w ? w.toUpperCase() + ' TAKES IT' : 'A DRAW') + '</div><div class="small">' + esc(state.lastRound.how) + '</div>';
+  }
+  else if (state.phase === 'play') {
+    const zb = state.zones.blue, zg = state.zones.gold;
+    mid = 'round ' + state.round + (zb.conquest > 0 ? ' · blue zone ' + Math.round(zb.conquest * 100) + '%' : '') + (zg.conquest > 0 ? ' · gold zone ' + Math.round(zg.conquest * 100) + '%' : '');
+  }
+  $('mid').textContent = mid;
+  if ($('centre').innerHTML !== centre) $('centre').innerHTML = centre;
+  for (const g of gauges) {
+    const c = state.cycles[g.i];
+    g.speed.style.width = Math.min(100, c.v / 60 * 100) + '%';
+    g.rubber.style.width = Math.min(100, c.rubber / law.CYCLE_RUBBER * 100) + '%';
+    g.brake.style.width = (c.brake * 100) + '%';
+    g.speed.parentElement.style.opacity = c.alive ? 1 : 0.3;
+  }
+}
+
+/* ── drawing: top-down over the whole arena (1.15) ── */
+const canvas = $('arena'), ctx = canvas.getContext('2d');
+const view = { px: 600, s: 1, dpr: 1 };
+function fit() {
+  const box = $('arenaBox').getBoundingClientRect();
+  const px = Math.max(120, Math.floor(Math.min(box.width, box.height)));
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  if (px === view.px && dpr === view.dpr) return;
+  view.px = px; view.dpr = dpr; view.s = px / law.ARENA_SIZE;
+  canvas.style.width = px + 'px'; canvas.style.height = px + 'px';
+  canvas.width = Math.round(px * dpr); canvas.height = Math.round(px * dpr);
+}
+window.addEventListener('resize', fit);
+fit();
+const COLOUR = { blue: '#4488ff', gold: '#ffff44' };
+const GLOW = { blue: 'rgba(68,136,255,0.35)', gold: 'rgba(255,255,68,0.35)' };
+function X(x) { return x * view.s; }
+function Y(y) { return (law.ARENA_SIZE - y) * view.s; }   // y up from blue's end: blue at the bottom of the screen
+function draw() {
+  fit();
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.clearRect(0, 0, view.px, view.px);
+  // the grid and the rim
+  ctx.strokeStyle = 'rgba(54,201,255,0.08)'; ctx.lineWidth = 1;
+  for (let i = 50; i < law.ARENA_SIZE; i += 50) { ctx.beginPath(); ctx.moveTo(X(i), 0); ctx.lineTo(X(i), view.px); ctx.moveTo(0, Y(i)); ctx.lineTo(view.px, Y(i)); ctx.stroke(); }
+  ctx.strokeStyle = 'rgba(54,201,255,0.5)'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, view.px - 2, view.px - 2);
+  // the zones
+  for (const z of [state.zones.blue, state.zones.gold]) {
+    if (z.r <= 0) continue;
+    const col = COLOUR[z.team];
+    ctx.beginPath(); ctx.arc(X(z.x), Y(z.y), z.r * view.s, 0, Math.PI * 2);
+    ctx.fillStyle = z.team === 'blue' ? 'rgba(68,136,255,' + (0.08 + z.conquest * 0.1) + ')' : 'rgba(255,255,68,' + (0.07 + z.conquest * 0.1) + ')';
+    ctx.fill();
+    ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.7; ctx.stroke(); ctx.globalAlpha = 1;
+    if (z.conquest > 0) {   // the ring fills as enemies drive inside it
+      ctx.beginPath(); ctx.arc(X(z.x), Y(z.y), z.r * view.s - 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * z.conquest);
+      ctx.strokeStyle = COLOUR[z.team === 'blue' ? 'gold' : 'blue']; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.stroke();
+    }
+  }
+  // the walls, then the cycles
+  const stay = law.WALLS_STAY_UP_DELAY * TPS;
+  for (const c of state.cycles) {
+    if (!c.walls.length) continue;
+    const col = COLOUR[c.team];
+    const age = c.alive ? 0 : (state.tick - c.diedAt) / stay;
+    ctx.globalAlpha = c.alive ? 1 : Math.max(0.15, 1 - age);
+    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+    ctx.beginPath();
+    for (const w of c.walls) { ctx.moveTo(X(w.x1), Y(w.y1)); ctx.lineTo(X(w.x2), Y(w.y2)); }
+    ctx.strokeStyle = GLOW[c.team]; ctx.lineWidth = Math.max(3, 1.2 * view.s); ctx.stroke();
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, 0.5 * view.s); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  for (const c of state.cycles) {
+    if (!c.alive) continue;
+    const col = COLOUR[c.team], hx = X(c.x), hy = Y(c.y);
+    const dx = sim.DX[c.dir], dy = -sim.DY[c.dir];
+    const n = Math.max(5, 2.4 * view.s);
+    ctx.beginPath();
+    ctx.moveTo(hx + dx * n * 1.6, hy + dy * n * 1.6);
+    ctx.lineTo(hx - dx * n + dy * n * 0.8, hy - dy * n - dx * n * 0.8);
+    ctx.lineTo(hx - dx * n - dy * n * 0.8, hy - dy * n + dx * n * 0.8);
+    ctx.closePath();
+    ctx.fillStyle = col; ctx.fill();
+    ctx.beginPath(); ctx.arc(hx, hy, n * 0.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+    if (!state.seats[c.index].bot) { ctx.beginPath(); ctx.arc(hx, hy, n * 2.2, 0, Math.PI * 2); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.globalAlpha = 0.6; ctx.stroke(); ctx.globalAlpha = 1; }
+    if (c.rubber > 0.5) { ctx.beginPath(); ctx.arc(hx, hy, n * (1 + c.rubber / law.CYCLE_RUBBER * 2), 0, Math.PI * 2); ctx.strokeStyle = '#ff6b6b'; ctx.lineWidth = 1.5; ctx.globalAlpha = Math.min(1, c.rubber / law.CYCLE_RUBBER); ctx.stroke(); ctx.globalAlpha = 1; }
+  }
+  // the flashes where cycles died
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const f = effects[i], t = (state.tick - f.at) / (0.6 * TPS);
+    if (t >= 1) { effects.splice(i, 1); continue; }
+    ctx.beginPath(); ctx.arc(X(f.x), Y(f.y), (2 + t * 14) * view.s, 0, Math.PI * 2);
+    ctx.strokeStyle = COLOUR[f.team]; ctx.lineWidth = 2; ctx.globalAlpha = 1 - t; ctx.stroke(); ctx.globalAlpha = 1;
+  }
+}
+</script>
+</body>
+</html>
