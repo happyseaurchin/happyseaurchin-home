@@ -102,6 +102,7 @@
   .st.bee.done{color:var(--vapour-dim);border-color:var(--line-strong)}
   .grid{position:relative}
   .visit{position:absolute;top:4px;width:9px;height:9px;margin-left:-4.5px;border-radius:2px;transform:rotate(45deg);background:var(--bud);box-shadow:0 0 0 2px var(--abyss);cursor:help;z-index:1}
+  .chip.word{color:var(--solid);border-color:rgba(var(--solid-rgb),0.5);font-weight:600} .chip.word.waits{background:rgba(var(--solid-rgb),0.12)}
   .visit.waits-you,.visit.waits-merge{background:var(--solid)} .visit.done{background:var(--vapour-dim)} .visit.stalled,.visit.failed{background:var(--l3)}
   .lane.routine .visit{top:1px}
   .bead.bee{border-radius:2px;transform:rotate(45deg);width:12px;height:12px;top:9px;margin-left:-6px;border-color:var(--bud)}
@@ -202,7 +203,8 @@
     background:radial-gradient(70% 60% at 36% 66%, rgba(var(--bud-rgb),0.07), transparent 70%), rgba(var(--wash-rgb),0.015)}
   .stage svg{display:block;width:100%;height:min(86vh,980px);touch-action:pan-y;user-select:none;-webkit-user-select:none}
   .fruit .hb{fill:transparent;pointer-events:all}
-  .fruit a,.fruit .ft-title,.fruit .ft-more{cursor:pointer}
+  .fruit a,.fruit .ft-title,.fruit .ft-more,.fruit .ft-word{cursor:pointer}
+  .lab.word{fill:var(--solid);font-weight:600} .fruit .ft-word:hover .lab{text-decoration:underline}
   .lab.line{font-family:var(--mono);fill:var(--vapour)}
   .lab.sess{font-family:var(--mono);fill:var(--liquid)}
   .lab.more{font-family:var(--mono);fill:var(--vapour-dim)}
@@ -914,13 +916,14 @@ function draw(){
           made.sort((p, q) => RANK[p.kind] - RANK[q.kind]);
           const cap = L.routine ? 3 : 7;
           const chips = made.slice(0, cap).map(o => chipHtml(o, true)).join('') + (made.length > cap ? `<button class="chip more" type="button" data-open="${esc(L.key)}">+${made.length - cap} more</button>` : '');
+          const wordChip = (L.routine || L.bee) ? '' : `<button class="chip word${bv && /waits/.test(bv.state || '') ? ' waits' : ''}" type="button" data-open="${esc(L.key)}" title="GO, CHANGE, NOT YET or STOP — your word to the bee about this lane">${mw ? 'your word: ' + esc((mw.match(WORD_RX) || ['said'])[0].toLowerCase()) : 'say GO, CHANGE, NOT YET or STOP'}</button>`;
           const mine = st.open.some(o => { const f = namer.get(o.key); return f && f.L === L; });
           const tag = st.live ? '<span class="st live">now</span>' : ((mine || st.waits) && Date.now() - st.last.at < 4 * 864e5) ? '<span class="st waits">waits</span>' : '';
           return `<div class="lane${L.routine ? ' routine' : ''}" style="--c:${L.color}">
             <button class="name" type="button" data-open="${esc(L.key)}" title="${esc(L.name)} — open its story"><i class="sw"></i><span class="nm">${esc(L.name)}</span>${HANDS.length > 1 && L.name !== L.hand ? `<span class="who">${esc(L.hand)}</span>` : ''}${tag}${beeTag}${wordTag}</button>
             <div class="track"><i class="span${from ? ' from' : ''}${into ? ' into' : ''}" style="left:${a.toFixed(2)}%;width:${Math.max(0.6, b - a).toFixed(2)}%"></i>${nowLine}${beads}${marks}</div>
             <p class="said w">${esc(firstSentence(ts.length ? ts[ts.length - 1].text : reads.length ? 'the bee: ' + (reads[reads.length - 1].note || reads[reads.length - 1].state) : ''))}</p>
-            ${chips ? `<div class="chips">${chips}</div>` : '<div class="chips"></div>'}
+            <div class="chips">${chips}${wordChip}</div>
           </div>`;
         }).join('')}
       </div>
@@ -1063,6 +1066,12 @@ function shortOf(o){
   if (o.kind === 'app') return 'app';
   return String(o.label || '').replace(/^beach/, '').slice(0, 22);
 }
+/* the word line of a fruit: where to say GO, CHANGE, NOT YET or STOP, or the word already said */
+function wordLine(L){
+  if (L.routine || L.bee) return '';
+  const mw = S.words.mine.get(laneAddr(L));
+  return mw ? 'your word: ' + (mw.match(WORD_RX) || ['said'])[0].toLowerCase() : 'say GO · CHANGE · NOT YET · STOP';
+}
 /* one line of a fruit: what it is, in words a person can show someone */
 function fruitText(o){
   if (o.kind === 'pr'){ const p = prOf(o); return '#' + o.n + (p ? ' ' + p.title : ' ' + (SHORT[o.repo] || o.repo)); }
@@ -1166,14 +1175,15 @@ function buildFern(){
     Ln.turns.slice().reverse().forEach(t => t.made.forEach(o => { if (o.kind === 'session' || seen2.has(o.key) || !alive(o)) return; seen2.add(o.key); out.push(o); }));
     out.sort((a, b) => (FRUIT_RANK[a.kind] ?? 9) - (FRUIT_RANK[b.kind] ?? 9));
     fruits.push({ r: j, key: Ln.key, name: Ln.name, wx: T.x + ux * 7 * k, wy: T.y + uy * 7 * k, ang: p.a + 0.16,
-      sess: sessionFor(Ln, namer), lines: out.map(o => { const q3 = o.kind === 'pr' ? prOf(o) : null; return { text: fruitText(o), href: o.url, kind: o.kind, state: q3 ? q3.state : '' }; }) });
+      sess: sessionFor(Ln, namer), word: wordLine(Ln), lines: out.map(o => { const q3 = o.kind === 'pr' ? prOf(o) : null; return { text: fruitText(o), href: o.url, kind: o.kind, state: q3 ? q3.state : '' }; }) });
     hits.push(hit);
   });
   /* the fruit and the dates are laid in the frame's own units, above the curl, so they stay upright at any turn */
   const fruitSvg = fruits.map((fr, i) => {
     const lines = fr.lines.map((l, q) => `<a class="ft-line" data-q="${q}" href="${esc(l.href)}" target="_blank" rel="noopener"><rect class="hb"/><circle class="dot ${l.kind} ${l.state}" r="3.2"/><text class="lab line"></text></a>`).join('');
     const sess = fr.sess ? `<a class="ft-sess" href="${esc(fr.sess)}"${/^claude:/.test(fr.sess) ? '' : ' target="_blank" rel="noopener"'}><rect class="hb"/><text class="lab sess">▶ session</text></a>` : '';
-    return `<g class="fruit" data-i="${i}"><g class="ft-title" data-key="${esc(fr.key)}"><rect class="hb"/><text class="lab title">${esc(fr.name)}</text></g>${sess}${lines}<g class="ft-more" data-key="${esc(fr.key)}"><rect class="hb"/><text class="lab more"></text></g></g>`;
+    const word = fr.word ? `<g class="ft-word" data-key="${esc(fr.key)}"><rect class="hb"/><text class="lab word"></text></g>` : '';
+    return `<g class="fruit" data-i="${i}"><g class="ft-title" data-key="${esc(fr.key)}"><rect class="hb"/><text class="lab title">${esc(fr.name)}</text></g>${sess}${word}${lines}<g class="ft-more" data-key="${esc(fr.key)}"><rect class="hb"/><text class="lab more"></text></g></g>`;
   }).join('');
   svg.innerHTML = `<g transform="translate(${f1(F.E.x)} ${f1(F.E.y)})"><g id="fern-world">${parts.join('')}</g></g>`
     + `<g id="fern-dates">${dates.map(d => `<text class="lab date">${esc(d.text)}</text>`).join('')}</g><g id="fern-fruit">${fruitSvg}</g>`;
@@ -1239,7 +1249,7 @@ function frame(){
     const cap = !F.links || lpx < (narrow ? 9 : 10) ? 0 : e < 0.6 ? (narrow ? 4 : 7) : e < 1.6 ? (narrow ? 3 : 5) : e < 2.6 ? (narrow ? 2 : 3) : 0;
     const nLines = Math.min(fr.lines.length, cap), more = fr.lines.length - nLines;
     const lh = lpx * 1.5, tH = tpx * 1.5;
-    const height = (F.titles ? tH : 0) + (fr.sess ? lh : 0) + nLines * lh + (more > 0 && cap ? lh : 0);
+    const height = (F.titles ? tH : 0) + (fr.sess ? lh : 0) + (fr.word ? lh : 0) + nLines * lh + (more > 0 && cap ? lh : 0);
     /* where the column starts: beside the tip, above it when the frond points down, the title at the tip when it points up */
     let y = cy > 0.55 ? v.y + tpx * 1.2 : cy < -0.55 ? v.y - tpx * 0.2 : v.y + tpx * 0.35;
     const x = anchor === 'start' ? v.x + (cy < -0.55 ? 4 : 2) : v.x - 2;
@@ -1252,6 +1262,10 @@ function frame(){
     if (fr.sess){
       const se = kids[k2++];
       if (cap || e < 1.6){ place(se, '▶ session', lpx, x, y, anchor, room, false); y += lh; } else se.setAttribute('display', 'none');
+    }
+    if (fr.word){
+      const wd = kids[k2++];
+      if (cap || e < 1.6){ place(wd, fr.word, lpx, x, y, anchor, room, false); y += lh; } else wd.setAttribute('display', 'none');
     }
     fr.lines.forEach((l, q) => {
       const a = kids[k2 + q];
@@ -1361,9 +1375,9 @@ $('fern-stage').addEventListener('wheel', ev => {
 }, { passive: false });
 $('fern-svg').addEventListener('click', ev => {
   if (ev.target.closest('a')) return;   /* a link on the fruit goes where it says */
-  const tg = ev.target.closest('.ft-title, .ft-more');
+  const tg = ev.target.closest('.ft-title, .ft-more, .ft-word');
   if (tg){
-    if (tg.classList.contains('ft-more')){ openLane(tg.dataset.key); return; }
+    if (tg.classList.contains('ft-more') || tg.classList.contains('ft-word')){ openLane(tg.dataset.key); return; }
     fernPop({ h: { key: tg.dataset.key }, q: { kind: 'title' } }, ev); return;
   }
   const best = nearest(ev);
