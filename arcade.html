@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>The arcade — every game on the shelf, with its top ten today</title>
+<meta name="description" content="The game arcade's front door: every game on the beach's shelf, each with its top ten today, read live from the beach. Ghost Wire and the premieres stand on it first.">
+<meta property="og:title" content="The arcade — every game on the shelf, with its top ten today">
+<meta property="og:description" content="Every game on the beach's shelf with its top ten today, read live. Ghost Wire and the premieres first.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* THE ARCADE'S FRONT DOOR (26 Oct 2026, the game-arcade proposal's build order, spine:game-arcade 1.11111.3;
+     David's GO at 1.1111118): one page listing every game on the shelf with each one's top ten today.
+     Nothing is stored here and nothing is written. Only Ghost Wire and the premieres stand on the shelf today,
+     and the page reads nothing it cannot read honestly: Ghost Wire's day is its room, pool:ghost-wire, as
+     Matthew's page keeps it (through /api/board, one cached read for a crowd; times as kept, re-run by nobody
+     here); the premieres are each maker's own list, premieres:<handle>, gathered off the beach as /premiere
+     gathers them (through /api/mirrors), and a premiere's ten today are the people whose own mirror of it was
+     born today. When a game plugs in as a family (steps 3 to 6), its board becomes the fold of its players'
+     mirrors and this door reads that instead. */
+  :root{ --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace; }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{margin:0;background:var(--abyss);color:var(--foam);font-family:var(--body);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  a{color:var(--liquid);text-underline-offset:3px}
+  button{font:inherit}
+  .bar{position:sticky;top:0;z-index:20;background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:12px 18px;
+    font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
+  .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  .bar b{color:var(--foam)}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px;cursor:pointer}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .wrap{max-width:980px;margin:0 auto;padding:24px 16px 64px}
+  header{margin-bottom:26px}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:0.14em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 6px}
+  h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,4.4vw,42px);line-height:1.04;margin:0;overflow-wrap:anywhere}
+  .lede{margin:10px 0 0;color:var(--vapour);max-width:66ch}
+  .today{font-family:var(--mono);font-size:12px;letter-spacing:0.06em;color:var(--vapour-dim);margin:14px 0 0}
+  .msg{font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  .shelf{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px;margin:0;padding:0;list-style:none}
+  .game{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 18px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .game.wide{grid-column:1/-1}
+  .game h2{font-family:var(--display);font-weight:700;font-size:22px;line-height:1.1;margin:0;overflow-wrap:anywhere}
+  .game h2 a{color:var(--foam);text-decoration:none}
+  .game h2 a:hover{color:var(--liquid)}
+  .game .what{margin:0;color:var(--vapour);font-size:15.5px}
+  .game .kind{font-family:var(--mono);font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--vapour-dim);margin:0}
+  .play{align-self:flex-start;display:inline-block;padding:8px 14px;border-radius:999px;border:1px solid var(--liquid);color:var(--liquid);text-decoration:none;font-family:var(--mono);font-size:12px;letter-spacing:0.06em}
+  .play:hover{background:rgba(var(--liquid-rgb),0.12)}
+  .ten{margin:4px 0 0;padding:0;list-style:none;counter-reset:rank}
+  .ten li{display:grid;grid-template-columns:2ch 1fr auto;gap:10px;align-items:baseline;padding:6px 0;border-top:1px solid var(--line);font-size:15.5px}
+  .ten li::before{counter-increment:rank;content:counter(rank);font-family:var(--mono);font-size:12px;color:var(--vapour-dim)}
+  .ten .who{overflow-wrap:anywhere}
+  .ten .score{font-family:var(--mono);font-size:13px;color:var(--solid);white-space:nowrap}
+  .ten .score a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--solid)}
+  .ten .score a:hover{color:var(--foam)}
+  .ten .tries{color:var(--vapour-dim);font-size:12px;font-family:var(--mono);margin-left:6px}
+  .none{margin:4px 0 0;color:var(--vapour-dim);font-style:italic;font-size:15px}
+  .note{margin:6px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);line-height:1.5}
+  .foot{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);font-family:var(--mono);font-size:12px;color:var(--vapour-dim);line-height:1.6;max-width:80ch}
+  .foot code{font-family:var(--mono);color:var(--vapour)}
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.remove('no-js');</script>
+<div class="bar">
+  <span class="dot"></span>
+  <span class="title"><b>arcade</b><span class="sub" id="barsub"></span></span>
+  <span class="spacer"></span>
+  <button id="btn-theme" title="light or dark">◐</button>
+</div>
+<div class="wrap">
+  <header>
+    <p class="eyebrow">The arcade</p>
+    <h1>Every game on the shelf, with its top ten today</h1>
+    <p class="lede">A game made with an AI plugs into the beach and keeps its names, its results and its room there, in the open, outside any one platform. This is the front door: each game on the shelf, and who did best on it today. Ghost Wire and the premieres stand on it first.</p>
+    <p class="today" id="today">reading the beach…</p>
+  </header>
+  <ul class="shelf" id="shelf"></ul>
+  <div class="foot" id="foot"></div>
+</div>
+<script>
+(function(){
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+const voice = v => { while (v && typeof v === 'object') v = v._; return typeof v === 'string' ? v : ''; };
+const getJSON = async (url) => { const r = await fetch(url, { headers: { Accept: 'application/json' } }); if (r.status === 404) return null; if (!r.ok) throw new Error('answered ' + r.status); return r.json(); };
+const sameDay = (iso, day) => { const t = Date.parse(iso || ''); return !isNaN(t) && new Date(t).toISOString().slice(0, 10) === day; };
+const fmt = s => (Math.round(s * 100) / 100).toFixed(2) + ' s';
+const clock = iso => { const t = Date.parse(iso || ''); return isNaN(t) ? '' : new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); };
+const cap = s => s ? s[0].toUpperCase() + s.slice(1) : s;
+
+/* the site's bar: this page is one of the site's own, standing in no one's handle */
+if (window.siteDoors) siteDoors({ handle: null, here: 'arcade', site: true });
+
+/* ── Ghost Wire: its day, from its room, as Matthew's page keeps it ── */
+function ghostWire(b){
+  const li = document.createElement('li'); li.className = 'game wide';
+  if (!b || b.error){
+    li.innerHTML = '<p class="kind">A game · daily</p><h2><a href="https://phenomemental.github.io/happyseaurchin-beach/ghost-wire.html">Ghost Wire</a></h2>' +
+      '<p class="what">Trace a neon wire with your finger, from START to FINISH, as fast as you can without touching the walls, racing a ghost. One wire a day, drawn from the beach’s clock.</p>' +
+      '<p class="none">Its room can’t be read just now' + (b && b.error ? ': ' + esc(b.error) : '') + '. Try again in a moment.</p>';
+    return li;
+  }
+  const page = b.page, tries = n => n ? '<span class="tries">' + (n === '1' ? '1st try' : esc(n) + ' tries') + '</span>' : '';
+  li.innerHTML = '<p class="kind">A game · one wire a day</p>' +
+    '<h2><a href="' + esc(page) + '">' + esc(b.title || 'Ghost Wire') + '</a></h2>' +
+    '<p class="what">Trace a neon wire with your finger, from START to FINISH, as fast as you can without touching the walls, racing a ghost. Today’s wire is drawn from its address on the beach’s clock, <code>' + esc(b.day) + '</code>; the same address draws the same wire forever.</p>' +
+    '<a class="play" href="' + esc(page) + '">▶ Play today’s wire</a>' +
+    (b.top.length ? '<ol class="ten">' + b.top.map(r =>
+      '<li><span class="who">' + esc(r.name) + '</span><span class="score"><a href="' + esc(page) + '?track=' + esc(b.day) + '&amp;ghost=' + esc(r.slot) + '" title="race this ghost on today’s wire">' + fmt(r.time) + '</a>' + tries(r.tries) + '</span></li>').join('') + '</ol>'
+      : '<p class="none">No run on today’s wire yet: the first is yours to make.</p>') +
+    '<p class="note">' + (b.runs ? b.runs + (b.runs === 1 ? ' run' : ' runs') + ' by ' + b.players + (b.players === 1 ? ' player' : ' players') + ' on today’s wire, ' : '') +
+    'each player’s fastest, as the game’s room keeps them (<code>pool:ghost-wire</code>): a time here is a claim the room holds, re-run by nobody on this page. Tap a time to race that ghost. The game’s page re-runs every ghost it shows, and counts only one that finishes.</p>';
+  return li;
+}
+
+/* ── the premieres: each maker's own list, and for each design who had their premiere today ── */
+const namesIn = b => { const out = []; if (b && typeof b === 'object') for (let d = 1; d <= 9; d++){
+  const x = /^\s*([a-z0-9][a-z0-9-]*)\s*[—–]/i.exec(voice(b[String(d)]) || ''), n = x && x[1].toLowerCase();
+  if (n && out.indexOf(n) < 0) out.push(n); } return out; };
+async function premiere(x, day){
+  const [spine, room] = await Promise.all([
+    getJSON(BEACH + '?block=' + encodeURIComponent('spine:' + x.n) + '&pscale=0').catch(() => null),
+    getJSON('/api/mirrors?family=' + encodeURIComponent(x.n)).catch(() => null)
+  ]);
+  const root = spine && spine.entries && spine.entries[0] ? String(spine.entries[0].content || '') : '';
+  if (!root) return null;
+  const c = root.indexOf(':'), split = c > 0 && c < 80, title = split ? root.slice(0, c).trim() : x.n, what = cap(split ? root.slice(c + 1).trim() : root);
+  const born = (room && room.born) || {}, hands = Object.keys((room && room.mirrors) || {});
+  const today = hands.filter(h => sameDay(born[h], day)).sort((a, b) => String(born[b]).localeCompare(String(born[a]))).slice(0, 10);
+  return { n: x.n, by: x.by, title, what, today, born, count: hands.length };
+}
+function premiereCard(p){
+  const li = document.createElement('li'), href = '/premiere/' + encodeURIComponent(p.n); li.className = 'game';
+  li.innerHTML = '<p class="kind">A premiere · a show of slides you answer</p>' +
+    '<h2><a href="' + href + '">' + esc(p.title) + '</a></h2>' +
+    '<p class="what">' + esc(p.what) + '</p>' +
+    '<a class="play" href="' + href + '">▶ Have your premiere</a>' +
+    (p.today.length ? '<ol class="ten">' + p.today.map(h => '<li><span class="who">' + esc(h) + '</span><span class="score">' + esc(clock(p.born[h])) + '</span></li>').join('') + '</ol>'
+      : '<p class="none">No premiere of this one today yet.</p>') +
+    '<p class="note">' + (p.today.length ? 'The ten who had their premiere today, newest first, as their own mirrors were born on the beach (<code>' + esc(p.n) + ':&lt;handle&gt;</code>). ' : '') +
+    (p.count ? p.count + (p.count === 1 ? ' premiere' : ' premieres') + ' so far' : 'No one yet') + ' · listed by ' + esc(p.by) + '.</p>';
+  return li;
+}
+
+async function init(){
+  const shelf = $('shelf');
+  const [board, lists] = await Promise.all([
+    getJSON('/api/board?game=ghost-wire').catch(e => ({ error: e.message })),
+    getJSON('/api/mirrors?family=premieres').catch(() => null)
+  ]);
+  const read = (board && board.read) || new Date().toISOString(), day = read.slice(0, 10);
+  $('today').textContent = (board && board.date ? board.date + ' · the beach’s day ' + board.day : 'today') + ' · read live, ' + clock(read);
+  shelf.appendChild(ghostWire(board));
+  /* the lists, the earliest born first, as /premiere gathers them; a name in two lists shows once, in the earlier */
+  const mirrors = (lists && lists.mirrors) || {}, bornAt = (lists && lists.born) || {};
+  const hands = Object.keys(mirrors).sort((a, b) => (Date.parse(bornAt[a] || '') || Infinity) - (Date.parse(bornAt[b] || '') || Infinity) || (a < b ? -1 : 1)).slice(0, 27);
+  const named = [], seen = {};
+  hands.forEach(h => namesIn(mirrors[h]).forEach(n => { if (!seen[n]){ seen[n] = 1; named.push({ n, by: h }); } }));
+  const got = (await Promise.all(named.slice(0, 54).map(x => premiere(x, day).catch(() => null)))).filter(Boolean);
+  got.forEach(p => shelf.appendChild(premiereCard(p)));
+  if (!lists){ const li = document.createElement('li'); li.className = 'game'; li.innerHTML = '<p class="kind">The premieres</p><h2><a href="/premiere">Premieres</a></h2><p class="none">Their lists can’t be read just now. Try again in a moment.</p>'; shelf.appendChild(li); }
+  else if (!got.length){ const li = document.createElement('li'); li.className = 'game'; li.innerHTML = '<p class="kind">The premieres</p><h2><a href="/premiere">Premieres</a></h2><p class="none">No design is listed on the beach yet.</p>'; shelf.appendChild(li); }
+  $('foot').innerHTML = 'Read live from the beach, nothing kept here. Ghost Wire is Phenomemental’s page, keeping its record in its room on the beach (<code>pool:ghost-wire</code>, its law at <code>game:ghost-wire</code>); this door reads the room once for everyone who opens it (<code>/api/board</code>) and shows each player’s fastest on today’s wire as the room keeps it. ' +
+    'The premieres are each maker’s own list (<code>premieres:&lt;handle&gt;</code>), gathered as <a href="/premiere">/premiere</a> gathers them, and a premiere’s ten today are whose own mirror of it was born today. ' +
+    'When a game plugs into the beach as a family, its board is the fold of its players’ own mirrors, and this door reads that instead. How a game plugs in, and what the arcade is: <a href="/game-arcade">the proposal</a>.';
+}
+init().catch(e => { $('today').textContent = 'The beach can’t be reached just now: ' + e.message; });
+})();
+</script>
+</body>
+</html>

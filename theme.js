@@ -1052,6 +1052,9 @@
     /* every reflexive experience, gathered from each maker's own list (David, 2026-10-18:
      * "We definitely need a gallery of them") */
     ['premiere',    'premieres'],
+    /* the game arcade's front door: every game on the shelf with its top ten today (the game-arcade
+     * proposal's build order, 1.11111.3; David's GO, 26 Oct 2026) */
+    ['arcade',      'the arcade'],
     /* every proposal on the beach, each drawn from its own blocks, and the form that makes one
      * (function:proposal, 2026-10-22: "build the proposal-package") */
     ['proposal',    'proposals'],
