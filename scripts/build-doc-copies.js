@@ -81,6 +81,23 @@ const DOCS = [
       '--display:"Shippori Mincho B1",Georgia,serif;--body:"Zen Kaku Gothic New",system-ui,-apple-system,"Segoe UI",sans-serif;--size:18px',
     dark: '--page:#070C1C;--ink:#E8EDF8;--ink-soft:#9EADD0;--rule:#1E2B55;--link:#F0716A;--accent:#E9C46A;--card:#0C1430',
   },
+  {
+    slug: 'coloured-stigmergy',
+    title: 'Coloured stigmergy — sealing on the beach',
+    doc: 'https://claude.ai/artifact/S4FFrAen89bpekwtMd7bfg',
+    copied: '26 October 2026',
+    living: 'The living doc, where it is revised and where weft\u2019s evaluation is to be written, is kept in Claude for those it is shared with',
+    description: 'On the beach a seal belongs to the line, not the block: how sealing works now, and four moves that build on it \u2014 pages that seal, a private sed-chat, lines anywhere that only one colour can read, and sealed rooms that grow past nine.',
+    embed: (caption) => '<p class="note">The doc draws ' + inline(caption) + ' here. The proposal\u2019s page draws the same live, as a shore of sea glass: ' +
+      '<a href="/coloured-stigmergy">Coloured stigmergy</a>.</p>',
+    home: '<a href="/read">Everything to read</a> \u00b7 <a href="/coloured-stigmergy">Coloured stigmergy, the proposal</a> \u00b7 ' +
+      '<a href="/social-brain">The social brain, where the gap was found</a>',
+    // Coloured stigmergy's sea glass: frosted and clear glass on wet sand, teal for the accent
+    fonts: 'family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,400',
+    light: '--page:#eef2ef;--ink:#1b2a2d;--ink-soft:#536467;--rule:#cbd6d2;--link:#2b7a71;--accent:#a8722a;--card:#f8fbf9;' +
+      '--display:"Bricolage Grotesque",system-ui,sans-serif;--body:"Newsreader","Iowan Old Style",Georgia,serif;--size:19px',
+    dark: '--page:#081517;--ink:#e2ebe7;--ink-soft:#98aeaa;--rule:#1d3436;--link:#7cc7bb;--accent:#e3b062;--card:#0e2022',
+  },
 ];
 
 const esc = (s) =>
