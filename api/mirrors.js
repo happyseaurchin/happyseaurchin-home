@@ -32,6 +32,9 @@ const readBlock = (name) => getJSON(`${BEACH}?block=${encodeURIComponent(name)}`
  * same stamp, it has not been written since, and is not read again */
 const SEEN = new Map();
 
+/* every mirror of a family, as the door's board reads a game (board.js) */
+export async function mirrorsOf(family) { return room(family); }
+
 async function room(family) {
   const ix = await getJSON(BEACH);
   const names = (ix.blocks || []).map((b) => (typeof b === 'string' ? b : (b && b.name) || ''));
