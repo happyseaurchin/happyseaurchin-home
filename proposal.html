@@ -193,6 +193,8 @@
 
   /* the index: the words alone in the band, and on the shelf each proposal with its quipu beside it */
   .band.solo .wrap{max-width:46rem;grid-template-columns:minmax(0,1fr)}
+  /* a person's arrangement (/proposals/<handle>): the band's heading says whose, so the panel's own is not said twice */
+  #arranged .arr-who{display:none}
   .cards{display:grid;gap:0.9rem;margin:0.6rem 0 1rem}
   .card{border:1px solid var(--line-strong);border-radius:10px;background:rgba(var(--card-rgb),0.6);padding:0.95rem 1rem 1rem;display:grid;grid-template-columns:minmax(0,1fr) min(17rem,42%);gap:0.8rem 1.2rem;align-items:start;min-width:0}
   .card .txt{display:grid;gap:0.45rem;align-content:start;min-width:0}
@@ -251,7 +253,9 @@
   var CUSTOM = ['c1', 'c2', 'c3', 'c4'];
   var path = /^\/proposal\/([A-Za-z0-9-]+)\/?$/.exec(location.pathname);
   var NAME = ((path && path[1]) || new URLSearchParams(location.search).get('p') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
-  /* /proposals/<handle> is that person's arrangement of the list (function:arrangement 5), drawn above the shelf */
+  /* /proposals/<handle> is that person's arrangement of the proposals, a page of its own (function:arrangement 5);
+     /proposal is the list alone, and /proposal/<name> one proposal (David, 27 Oct 2026: "it is all rather messy
+     and needs to be cleaned up with /proposal and /proposals/<handle>") */
   var ARR = (/^\/proposals\/([A-Za-z0-9_-]{1,32})\/?$/.exec(location.pathname) || [])[1] || '';
 
   function $(id) { return document.getElementById(id); }
@@ -645,11 +649,16 @@
   function proposalPage() {
     var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '';
     $('bar-name').textContent = FAM;
-    Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM)]).then(function (two) {
-      SPINE = two[0]; LAW = two[1];
+    Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM), readBlock('proposals')]).then(function (three) {
+      SPINE = three[0]; LAW = three[1];
       if (!SPINE) return nothing();
-      learnCase(JSON.stringify(SPINE).replace(/\\n/g, ' '));
       L = lawOf(LAW, FAM);
+      /* only a proposal is drawn here: one on the list, or one whose law names its phase (function:proposal 1, at
+         its 7), as a new one does before it is listed (7, its 5 then 6). Any other family is not one: a person's
+         name goes on to their arrangement, and the rest is said plainly (David, 27 Oct 2026: "the
+         proposal/happyseaurchin is an abomination") */
+      if (!L.phase && !shelfOf(three[2]).some(function (s) { return s.name === FAM; })) return notOne();
+      learnCase(JSON.stringify(SPINE).replace(/\\n/g, ' '));
       if (L.accent) document.documentElement.style.setProperty('--acc', L.accent);
       if (L.look) wearLook(L.look);
       STEPS = stepsOf(SPINE); DECS = decisionsOf(STEPS);
@@ -671,13 +680,21 @@
       $('bandText').innerHTML = '<div class="eyebrow">A proposal</div><h1>' + esc(FAM) + '</h1><p class="lede">The beach couldn’t be read just now. Try again in a moment.</p>';
     });
 
-    function nothing() {
+    function nothing(other) {
       document.title = FAM + ' · proposals';
-      $('bandText').innerHTML = '<div class="eyebrow">A proposal, not yet on the beach</div><h1>' + esc(FAM) + '</h1>' +
-        '<p class="lede">No proposal stands at <code>spine:' + esc(FAM) + '</code> yet. The page draws itself the moment its spine and law stand on the beach.</p>' +
+      $('bandText').innerHTML = (other
+        ? '<div class="eyebrow">Not a proposal</div><h1>' + esc(FAM) + '</h1>' +
+          '<p class="lede">No proposal is called <b>' + esc(FAM) + '</b>. What stands under that name on the beach is something else, so it isn’t drawn here.</p>'
+        : '<div class="eyebrow">A proposal, not yet on the beach</div><h1>' + esc(FAM) + '</h1>' +
+          '<p class="lede">No proposal stands at <code>spine:' + esc(FAM) + '</code> yet. The page draws itself the moment its spine and law stand on the beach.</p>') +
         '<div class="actions"><a class="btn primary" href="/proposal#make">Make one with your AI</a><a class="btn line" href="/proposal">Every proposal</a></div>';
       $('main').innerHTML = '';
       $('foot').innerHTML = '<p><a href="/">happyseaurchin.com</a></p>';
+    }
+    /* a person's name, typed as a proposal's: on to their arrangement where they keep one, at its own address */
+    function notOne() {
+      var who = (path && path[1]) || FAM;
+      readBlock('arrangement:' + who).then(function (a) { if (a) location.replace('/proposals/' + encodeURIComponent(who)); else nothing(true); }, function () { nothing(true); });
     }
 
     function paint() {
@@ -927,6 +944,16 @@
     };
   }
 
+  /* the list's lines, '<name> — what · <its page>', each a proposal on the shelf */
+  function shelfOf(list) {
+    var shelf = [];
+    listed(list).forEach(function (t) {
+      var m = /^\s*([a-z0-9][a-z0-9-]*)\s*—\s*([\s\S]*?)(?:\s*·\s*(\S+))?\s*$/i.exec(t);
+      if (m) shelf.push({ name: m[1].toLowerCase(), what: m[2].trim(), page: m[3] ? (/^https?:/.test(m[3]) ? m[3] : 'https://' + m[3]) : '' });
+    });
+    return shelf;
+  }
+
   /* ════════ the index: every proposal on the beach's list, and the form itself ════════ */
   function indexPage() {
     document.title = 'Proposals';
@@ -935,20 +962,17 @@
       var form = two[0], list = two[1];
       if (!form) { $('bandText').innerHTML = '<div class="eyebrow">Proposals</div><h1>Proposals</h1><p class="lede">The proposal form couldn’t be found on the beach just now.</p>'; return; }
       learnCase(JSON.stringify(form));
-      var shelf = [];
-      listed(list).forEach(function (t) {
-        var m = /^\s*([a-z0-9][a-z0-9-]*)\s*—\s*([\s\S]*?)(?:\s*·\s*(\S+))?\s*$/i.exec(t);
-        if (m) shelf.push({ name: m[1].toLowerCase(), what: m[2].trim(), page: m[3] ? (/^https?:/.test(m[3]) ? m[3] : 'https://' + m[3]) : '' });
-      });
+      var shelf = shelfOf(list);
+      /* the list alone, and at its top one button to the reader's own arrangement, a page of its own; a reader the
+         page does not know starts from David's, the default (function:arrangement 4), where dragging makes it theirs
+         (David, 27 Oct 2026: "Just show the list and at the top add a simple button to go to the user's arrangement") */
+      var mine = '<a class="btn line" href="/proposals/' + esc(encodeURIComponent(ME || (window.beachArrange && beachArrange.DEFAULT) || 'happyseaurchin')) + '">' + (ME ? 'Your arrangement' : 'Arrange your own') + '</a>';
       $('bandText').innerHTML = '<div class="eyebrow">The proposal form · on the beach</div>' +
         '<h1><a href="/proposal">Proposals</a></h1>' +
         '<p class="lede">A proposal kept on the beach grows into its project’s page. It starts as a few steps with a decision at each, answered by anyone in their own words; as the decisions stand and the work begins, threads tie each piece of work to it, so one address carries the proposal and then the project.</p>' +
         '<p class="sub">Every one is drawn live from its own blocks. Any AI with the beach connected can set one up from the form alone.</p>' +
-        '<div class="actions"><a class="btn primary" href="#shelf">See them</a><a class="btn line" href="#make">Make one with your AI</a><a class="btn line" href="/explain?block=function:proposal">Read the form</a></div>';
+        '<div class="actions"><a class="btn primary" href="#shelf">See them</a>' + mine + '<a class="btn line" href="#make">Make one with your AI</a><a class="btn line" href="/explain?block=function:proposal">Read the form</a></div>';
       var sections = [];
-      sections.push('<section id="arranged"><div class="addr">live from the beach · each person’s own, at <b>arrangement:&lt;handle&gt;</b></div><h2 id="arrHead">Arranged</h2>' +
-        '<p class="note">However anyone nests the proposals, in their own block and under their own key; nothing is written onto a proposal by nesting it, and nobody’s arrangement is the structure. Where nobody is named, David’s is drawn, the default he chose (<a href="/proposal/y-ray">y-ray</a> 1.111118, <a href="/explain?block=function:arrangement">function:arrangement</a> 4).</p>' +
-        '<div id="arrangePanel"><p class="note">Reading the arrangements…</p></div></section>');
       sections.push('<section id="shelf"><div class="addr">live from the beach · the list, at <b>proposals</b></div><h2>The proposals</h2>' +
         (shelf.length ? '<p class="qcap">' + LEGEND + '</p>' : '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>') +
         '<div class="cards">' + shelf.map(function (s) {
@@ -972,11 +996,6 @@
         '<li>As the decisions stand and work begins: each piece of work tied as a thread, so the page grows into the project’s own.</li>' +
         '<li>If it earns one, a crafted page of its own: your AI follows <a href="/explain?block=ways:proposal">the craft</a>, from the design bar to the hand-over, and weft puts the page up.</li></ol></section>');
       $('main').innerHTML = sections.join('');
-      if (window.beachArrange && $('arrangePanel')) beachArrange.draw($('arrangePanel'), { handle: ARR || beachArrange.DEFAULT, onShow: function (roots, who, how) {
-        var h = $('arrHead'); if (!h) return;
-        h.textContent = how === 'list' ? 'As the list stands' : how === 'arranging' ? 'Arranging yours' : (who === beachArrange.DEFAULT ? 'As David arranges them' : 'As ' + who + ' arranges them');
-        if (ARR) document.title = (how === 'list' ? 'Proposals' : (who === beachArrange.DEFAULT ? 'David' : who) + '’s arrangement · proposals');
-      } });
       $('makeLine').value = 'Read function:proposal on https://beach.happyseaurchin.com, then function:document and function:thread, and help me set up a proposal on the beach, following its MAKING ONE at 7. The topic: <what you want to propose>. Who decides: <names>. Tell me what you are about to make before you write anything, and write it under my own key.';
       $('copyMake').addEventListener('click', copier('makeLine', 'copiedMake'));
       $('foot').innerHTML = '<p>The list is its own block on the beach, <a href="/explain?block=proposals">proposals</a>: a line for each proposal, added by its keeper when it is shared, and it grows as they come. Every card and every cord above is read live from that proposal’s own blocks. The form: <a href="/explain?block=function:proposal">function:proposal</a>, on <a href="/explain?block=function:document">the document form</a> and <a href="/explain?block=function:thread">the thread</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
@@ -1012,7 +1031,29 @@
     });
   }
 
-  if (NAME) proposalPage(); else indexPage();
+  /* ════════ one person's arrangement of the proposals, a page of its own (function:arrangement 5) ════════ */
+  function arrangementPage() {
+    $('quipu').remove(); document.querySelector('.band').classList.add('solo');
+    $('bar-name').textContent = ARR;
+    $('bandText').innerHTML = '<div class="eyebrow">Proposals · as each person nests them</div><h1 id="arrHead">Reading the beach…</h1>' +
+      '<p class="lede">Each person nests the proposals their own way, in their own block and under their own key. Nothing is written onto a proposal by nesting it, and nobody’s arrangement is the structure.</p>' +
+      '<div class="actions"><a class="btn line" href="/proposal">Every proposal</a></div>';
+    $('main').innerHTML = '<section id="arranged"><div id="arrangePanel"><p class="note">Reading the arrangement…</p></div></section>';
+    $('foot').innerHTML = '<p>Each arrangement is its holder’s own block on the beach, <code>arrangement:&lt;handle&gt;</code>, kept whole under their own key, each position a proposal by its name. The law: <a href="/explain?block=function:arrangement">function:arrangement</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
+    if (!window.beachArrange) { $('arrangePanel').innerHTML = '<p class="note">The arrangement couldn’t be drawn just now. Try again in a moment.</p>'; return; }
+    beachArrange.draw($('arrangePanel'), { handle: ARR, onShow: function (roots, who, how) {
+      var me = beachVoice.name ? beachVoice.name() : ME, whose = who === beachArrange.DEFAULT ? 'David' : who;
+      var title = how === 'list' ? 'The proposals, as the list stands' : how === 'arranging' ? 'Arranging yours' : who === me ? 'Your arrangement' : whose + '’s arrangement';
+      $('arrHead').textContent = title;
+      $('bar-name').textContent = how === 'list' ? 'the list' : how === 'arranging' || who === me ? 'yours' : whose + '’s';
+      document.title = title + ' · proposals';
+      /* the address says whose arrangement is drawn, so it is handed on as it stands */
+      var at = '/proposals/' + encodeURIComponent(who);
+      if ((how === 'kept' || how === 'said') && location.pathname.replace(/\/$/, '') !== at) history.replaceState(null, '', at);
+    } });
+  }
+
+  if (NAME) proposalPage(); else if (ARR) arrangementPage(); else indexPage();
 })();
 </script>
 <script>if (window.siteDoors) siteDoors({ here: location.pathname.replace(/^\//, '').replace(/\/$/, '') === 'proposal' ? 'proposal' : 'proposal/x', site: true });</script>
