@@ -1,0 +1,2098 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/games/bridge.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ghost Racer</title>
+<meta name="description" content="Ghost Racer: drag your car round a racetrack with one finger, three laps, against everyone else racing it live and the ghosts of the best runs. Nine racetracks to choose from. happyseaurchin's game, built by keel.">
+<meta name="theme-color" content="#9fcfd8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#080b14" media="(prefers-color-scheme: dark)">
+<style>
+  /* Ghost Racer: a racetrack seen from above, the whole of it on one phone screen; a timing strip along the
+     top; cards that rise from the edge away from your car. By day a seaside circuit, by night a floodlit one:
+     the phone's own light or dark decides, and the foot of the page can change it. */
+  :root {
+    color-scheme: light;
+    --ground: #9fcfd8;      /* the sea around the board */
+    --infield: #efe4c6;     /* sand inside it */
+    --tarmac: #5a6170;      /* the track */
+    --paint: #fbfaf5;       /* white lines on the track */
+    --kerb: #d63b32;        /* kerb red */
+    --you: #f2b400;         /* your car */
+    --ghost: #7656d8;       /* a kept run, replayed */
+    --live: #0f9f88;        /* someone racing right now */
+    --hurt: #e0453b;
+    --warn: #e5861a;
+    --mend: #2c9a57;        /* the pit */
+    --glow: rgba(255, 255, 255, 0.22);
+    --shade: rgba(255, 255, 255, 0.92);   /* behind words drawn on the track */
+    --ink: #1c232b;         /* words */
+    --dim: #5d6773;
+    --panel: rgba(251, 249, 243, 0.97);
+    --rule: rgba(28, 35, 43, 0.14);
+    --field: rgba(28, 35, 43, 0.06);
+    --on-you: #241a00;
+    --display: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", system-ui, sans-serif;
+    --body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --data: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #080b14; --infield: #0d1220; --tarmac: #1d2436; --paint: #e9edf5; --kerb: #e2463e; --you: #ffc83d;
+      --ghost: #b38dff; --live: #3fe0c3; --hurt: #ff5b4f; --warn: #ffa63e; --mend: #62e08d; --glow: rgba(255, 238, 205, 0.06);
+      --shade: rgba(8, 11, 20, 0.88); --ink: #e9edf5; --dim: #929bb0; --panel: rgba(10, 14, 25, 0.96); --rule: rgba(233, 237, 245, 0.14);
+      --field: rgba(233, 237, 245, 0.07); --on-you: #1b1404;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #080b14; --infield: #0d1220; --tarmac: #1d2436; --paint: #e9edf5; --kerb: #e2463e; --you: #ffc83d;
+    --ghost: #b38dff; --live: #3fe0c3; --hurt: #ff5b4f; --warn: #ffa63e; --mend: #62e08d; --glow: rgba(255, 238, 205, 0.06);
+    --shade: rgba(8, 11, 20, 0.88); --ink: #e9edf5; --dim: #929bb0; --panel: rgba(10, 14, 25, 0.96); --rule: rgba(233, 237, 245, 0.14);
+    --field: rgba(233, 237, 245, 0.07); --on-you: #1b1404;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--ground); color: var(--ink); font: 15px/1.42 var(--body); -webkit-text-size-adjust: 100%; }
+  html.racing, html.racing body { overflow: hidden; overscroll-behavior: none; }
+  button, input { font: inherit; color: inherit; }
+  button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:focus-visible, input:focus-visible, a:focus-visible { outline: 2px solid var(--you); outline-offset: 2px; }
+  a { color: inherit; }
+  [hidden] { display: none !important; }
+
+  /* the race: one screen, the board fitted inside it */
+  .race { position: relative; height: 100vh; height: 100dvh; min-height: 460px; overflow: hidden; background: var(--ground);
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  canvas#game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+  /* the timing strip */
+  .hud { position: absolute; left: 0; right: 0; top: 0; z-index: 5; pointer-events: none;
+    padding: calc(6px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 4px max(16px, env(safe-area-inset-left, 0px));
+    background: linear-gradient(to bottom, var(--ground) 72%, transparent); }
+  .hud-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+  .name { margin: 0; font: 800 20px/1 var(--display); font-stretch: condensed; letter-spacing: 0.03em; text-transform: uppercase; white-space: nowrap; }
+  .name span { color: var(--ghost); }
+  .trk { margin-left: auto; font: 700 12.5px/1 var(--display); font-stretch: condensed; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .trk + .tools { margin-left: 0; }
+  .lap { margin-left: auto; font: 700 14px/1 var(--display); font-stretch: condensed; letter-spacing: 0.08em; color: var(--dim); white-space: nowrap; }
+  .lap b { color: var(--ink); font-weight: 800; }
+  .clock { font: 24px/1 var(--data); font-variant-numeric: tabular-nums; min-width: 5.2ch; text-align: right; }
+  .meter { display: flex; align-items: center; gap: 7px; font: 700 12.5px/1 var(--display); font-stretch: condensed; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+  .meter .bar { width: 72px; height: 7px; border-radius: 4px; background: var(--field); overflow: hidden; }
+  .meter .bar i { display: block; height: 100%; width: 100%; background: var(--mend); border-radius: 4px; transition: width 0.25s, background-color 0.25s; }
+  .meter b { font: 400 12.5px/1 var(--data); color: var(--ink); min-width: 4ch; letter-spacing: 0; }
+  .hud .tools { margin-left: auto; display: flex; gap: 6px; pointer-events: auto; }
+  .chip { border: 1px solid var(--rule); background: var(--panel); border-radius: 999px; padding: 5px 11px; font-size: 13px; line-height: 1.1; font-weight: 600; white-space: nowrap; }
+  .ghostline { margin: 2px 0 0; font-size: 12.5px; color: var(--dim); min-height: 1.3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ghostline b { font-weight: 650; color: var(--ink); }
+
+  /* a word in the middle when something happens, and the count before a heat */
+  .flash { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 6; pointer-events: none;
+    font: 800 30px/1 var(--display); font-stretch: condensed; letter-spacing: 0.08em; text-transform: uppercase;
+    text-shadow: 0 0 14px var(--shade), 0 0 3px var(--shade); opacity: 0; white-space: nowrap; }
+  .flash.on { animation: flash 0.9s ease-out forwards; }
+  @keyframes flash { 0% { opacity: 0; transform: translate(-50%, -40%) scale(0.92); } 12% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -58%); } }
+  .count { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; pointer-events: none; }
+  .count div { display: grid; justify-items: center; gap: 6px; text-shadow: 0 0 18px var(--shade), 0 0 4px var(--shade); }
+  .count b { font: 800 96px/1 var(--display); font-stretch: condensed; color: var(--you); }
+  .count span { font: 700 15px/1.2 var(--display); font-stretch: condensed; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); text-align: center; }
+  .count button { pointer-events: auto; margin-top: 10px; }
+  @media (prefers-reduced-motion: reduce) { .flash.on { animation: still 0.9s linear forwards; } @keyframes still { 0%, 75% { opacity: 1; } 100% { opacity: 0; } } }
+
+  /* the cards: choosing a track at the line, and the finish */
+  .card { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; max-height: 78%; overflow-y: auto; overscroll-behavior: contain;
+    background: var(--panel); border-top: 1px solid var(--rule); border-radius: 18px 18px 0 0;
+    padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(14px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    -webkit-user-select: text; user-select: text; box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.12); }
+  .card.top { top: var(--card-top, 84px); bottom: auto; border-radius: 0 0 18px 18px; border-top: 0; border-bottom: 1px solid var(--rule); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12); }
+  .card .inner { max-width: 470px; margin: 0 auto; display: grid; gap: 8px; }
+  .card p { margin: 0; }
+  .when { font: 700 12.5px/1.2 var(--display); font-stretch: condensed; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+  .title { font: 800 26px/1.05 var(--display); font-stretch: condensed; letter-spacing: 0.02em; text-transform: uppercase; }
+  .pick { display: flex; align-items: flex-end; gap: 10px; }
+  .pick .which { min-width: 0; margin-right: auto; }
+  .strip { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 6px; scroll-snap-type: x proximity; scrollbar-width: thin; }
+  .strip button { flex: 0 0 auto; width: 68px; padding: 4px 3px 3px; border: 1px solid var(--rule); border-radius: 10px; background: transparent;
+    display: grid; justify-items: center; gap: 2px; scroll-snap-align: start; }
+  .strip button[aria-selected="true"] { border-color: var(--you); box-shadow: 0 0 0 1px var(--you) inset; }
+  .strip canvas { width: 46px; height: 74px; display: block; }
+  .strip span { font: 600 11px/1.1 var(--body); white-space: nowrap; max-width: 64px; overflow: hidden; text-overflow: ellipsis; }
+  .note { font-size: 13.5px; color: var(--dim); }
+  .note b { color: var(--ink); font-weight: 650; }
+  .note .live { color: var(--live); font-weight: 650; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .go { border: 0; border-radius: 999px; padding: 10px 18px; background: var(--you); color: var(--on-you); font-weight: 700; font-size: 15px; }
+  .plain { border: 1px solid var(--rule); border-radius: 999px; padding: 8px 14px; background: transparent; font-size: 14px; font-weight: 550; text-decoration: none; display: inline-block; }
+  .plain[aria-pressed="true"] { border-color: var(--you); box-shadow: 0 0 0 1px var(--you) inset; font-weight: 650; }
+  .row.bump { flex-wrap: nowrap; align-items: center; }
+  .row.bump .note { flex: 1 1 auto; min-width: 0; font-size: 12.5px; line-height: 1.3; }
+  .row.bump .plain { flex: 0 0 auto; }
+  .livebox { border-top: 1px solid var(--rule); padding-top: 8px; display: grid; gap: 6px; }
+  .livebox .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--live); margin-right: 6px; vertical-align: 1px; }
+  .brief { font-size: 14.5px; line-height: 1.4; }
+  .brief b { font-weight: 650; }
+  .big { font: 46px/1 var(--data); font-variant-numeric: tabular-nums; }
+  .big small { font: 700 20px/1 var(--display); color: var(--dim); }
+  .heat { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; border-top: 1px solid var(--rule); padding-top: 6px; }
+  .heat li { display: grid; grid-template-columns: 1.6em 1fr auto; gap: 8px; align-items: baseline; font-size: 14.5px; }
+  .heat .rk { font-family: var(--data); color: var(--dim); }
+  .heat .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .heat .tm { font-family: var(--data); font-variant-numeric: tabular-nums; }
+  .heat li.me .nm { color: var(--you); font-weight: 650; }
+  input[type="text"] { padding: 8px 10px; border: 1px solid var(--rule); border-radius: 8px; background: transparent; width: 11em; max-width: 100%; }
+
+  /* below the race: the board, the room, how it plays */
+  .below { max-width: 560px; margin: 0 auto; padding: 18px 16px 40px; background: var(--ground); }
+  .below h2 { font: 800 18px/1.1 var(--display); font-stretch: condensed; letter-spacing: 0.06em; text-transform: uppercase; margin: 22px 0 8px; }
+  .below p { margin: 0 0 10px; }
+  .sheet { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 12px 14px; }
+  footer { margin-top: 24px; font-size: 13px; color: var(--dim); display: grid; gap: 8px; }
+  footer .row button { padding: 6px 12px; font-size: 13px; }
+</style>
+</head>
+<body>
+<section class="race" id="race" aria-label="The race">
+  <canvas id="game" aria-label="The racetrack: touch your car on the line and drag it round three laps"></canvas>
+
+  <header class="hud" id="hud">
+    <div class="hud-row">
+      <h1 class="name">Ghost <span>Racer</span></h1>
+      <div class="lap">LAP <b id="lap-n">1</b>/3</div>
+      <div class="clock" id="clock">0.00</div>
+    </div>
+    <div class="hud-row">
+      <div class="meter" title="Damage takes top speed"><span>Car</span><span class="bar"><i id="car-fill"></i></span><b id="car-pct">100%</b></div>
+      <span class="trk" id="hud-track"></span>
+      <div class="tools"><button class="chip" id="restart" type="button" hidden>Back to the line</button></div>
+    </div>
+    <p class="ghostline" id="ghost-line"></p>
+  </header>
+
+  <div class="flash" id="flash" aria-live="polite"></div>
+  <div class="count" id="count" hidden><div><span id="count-who"></span><b id="count-n">3</b><button class="chip" id="count-off" type="button">Not this one</button></div></div>
+
+  <section class="card" id="dock" aria-label="Choose a racetrack">
+    <div class="inner">
+      <div class="pick">
+        <div class="which">
+          <p class="when" id="trk-num">Racetrack 1 of 9</p>
+          <p class="title" id="trk-name">Promenade</p>
+        </div>
+        <button class="plain" id="random" type="button">Random</button>
+      </div>
+      <div class="strip" id="strip" role="listbox" aria-label="The nine racetracks"></div>
+      <p class="note" id="trk-words"></p>
+      <div class="row bump"><button class="plain" id="bump" type="button" aria-pressed="false">Bumping off</button><span class="note" id="bump-note"></span></div>
+      <div class="livebox" id="livebox" hidden>
+        <p class="note" id="live-line"></p>
+        <div class="row" id="room-name-row" hidden><input type="text" id="room-name" maxlength="32" placeholder="your name" autocomplete="nickname"><button class="plain" id="room-name-btn" type="button">Use it</button></div>
+        <div class="row"><button class="go" id="call" type="button" hidden>Race them now</button></div>
+      </div>
+      <p class="brief" id="brief"><b>Your car waits on the line. Touch it and drag it round three laps with one finger, as fast as you can.</b> It goes where your finger goes, up to its top speed. The kerbs slow it; a hard hit costs top speed, and the pit box mends it.</p>
+      <div class="row"><button class="plain" id="bring" type="button">Bring someone</button><a class="plain" href="#below">The board ↓</a></div>
+      <p class="note" id="bring-note"></p>
+    </div>
+  </section>
+
+  <section class="card" id="end" hidden aria-label="Your finish">
+    <div class="inner">
+      <p class="when" id="fin-what"></p>
+      <p class="big"><span id="fin-time">0.00</span><small id="fin-unit"> s</small></p>
+      <p id="fin-detail"></p>
+      <p class="note" id="fin-compare"></p>
+      <ol class="heat" id="heat" hidden></ol>
+      <div id="keep" hidden>
+        <div class="row"><input type="text" id="who" maxlength="32" placeholder="your name" autocomplete="nickname"><button class="go" id="keep-btn" type="button">Put it on the board</button></div>
+        <p class="note" id="keep-state"></p>
+      </div>
+      <p class="note" id="made" hidden></p>
+      <div class="row">
+        <button class="go" id="again" type="button">Race again</button>
+        <button class="plain" id="change" type="button">Choose a track</button>
+        <button class="plain" id="challenge" type="button" hidden>Challenge someone</button>
+        <button class="plain" id="bring-2" type="button">Bring someone</button>
+      </div>
+      <p class="note" id="share-note"></p>
+    </div>
+  </section>
+</section>
+
+<main class="below" id="below">
+  <h2 id="board-title">The board</h2>
+  <div class="sheet" id="board-sheet"></div>
+  <h2>The room</h2>
+  <div class="sheet"><beach-room n="6" placeholder="Say something to the other racers"></beach-room></div>
+  <h2>How it plays</h2>
+  <div class="sheet">
+    <p>Your finger is the throttle and the wheel: the car goes where your finger is, as far as its top speed takes it. Healthy, it keeps up with anything you can trace. When it can't keep up it falls behind and heads straight for your finger, across the corner if your finger is round one.</p>
+    <p>Ride a kerb and the car runs at half speed while it's on it. Hit a wall hard and it stops dead and takes damage, and damage takes top speed one for one: a car at 70% runs at 70% of its speed, and falls behind a finger it used to follow. A wreck stops at 10%, enough to crawl to the pit. Lift your finger and the car stops; touch it to go on. Stand still in the pit box beside the main straight and it mends.</p>
+    <p>Everyone in the room races live: their cars run beside yours as they drive, at the same moment of their own race as yours, and <b>Race them now</b> counts you all down together. The board keeps each player's best on each track, and every time on it is re-run here from its kept moves before it counts.</p>
+  </div>
+  <footer>
+    <div class="row"><button class="plain" id="sound" type="button">Sound on</button><button class="plain" id="theme" type="button">Day</button></div>
+    <p>Ghost Racer is happyseaurchin's game: the idea is David's, and keel (Claude) built it. The drag-the-dot comes from Matthew's Ghost Wire. Nine racetracks, the same for everyone; runs re-run in whole numbers, so a time on the board is a time that was driven.</p>
+    <p><a href="https://happyseaurchin.com/games" target="_top">The games played here</a> · <a href="https://happyseaurchin.com/arcade" target="_top">the arcade</a></p>
+  </footer>
+</main>
+
+<!-- THE BEACH'S TAGS, in this order: the voice, the plug, and the room plug that races everyone here live -->
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+<script src="https://beach.happyseaurchin.com/button/game.js" data-game="ghost-racer"></script>
+<script src="https://beach.happyseaurchin.com/button/room.js" data-game="ghost-racer"></script>
+<script>
+// ENGINE BEGIN — Ghost Racer's engine: everything a run depends on, in whole numbers, with no page, no clock and no chance
+var ENGINE = (function () {
+  'use strict';
+  /* Ghost Racer's engine (grc3, 27 October 2026): happyseaurchin's game, David's idea, built by keel (Claude). The racetracks, the
+   * car a finger drags round them, and a run kept as the finger's places and re-run to count. Everything a run depends
+   * on is whole numbers and + - * /: positions in units of a board 100000 wide, directions at length ONE, a square root
+   * found by whole numbers, every division truncated. Nothing here touches a page, a clock or chance.
+   *
+   * THE MOVE on a step is one whole number: 0, no finger on the screen; 1 + cx + cy * GX, a finger on cell (cx, cy) of
+   * a fine grid over the board, GX across and GY down, read on every step. A finger that touched the car holds it, and
+   * the car goes where the finger is, as far as its top speed takes it in a step: that one number is the whole of how it
+   * handles. A healthy car keeps up with any finger a racer can trace; damage takes top speed, and a kerb halves it while
+   * the car rides one, so a car that cannot keep up falls behind the finger and heads straight for it, across the corner
+   * if the finger is round one. A wall touched holds the car against it; a wall hit hard stops it a moment and takes
+   * damage. Lifted, the finger leaves the car where it stands, until a finger touches it again. Stopped in the pit box,
+   * the car is mended.
+   *
+   * A RUN is kept as the steps where the move changed: each a whole number step * M + move, and last the finish,
+   * steps * M. */
+  var RATE = 60, VERSION = 'grc4', LIMIT = 45 * 60, LAPS = 3;
+  var W = 100000, H = 160000;                  // the board, upright
+  var GX = 200, GY = 320, CELL = 500;          // the finger's places
+  var M = GX * GY + 1;                         // the moves there are: no finger, or one of the cells
+  var SAMPLE = 1;                              // the page reads the finger on every step
+  var ONE = 16384;                             // a direction's length
+  var DS = 200;                                // spacing of a track's tables
+  var BIG = 1000000000;                        // the radius of a straight
+
+  // THE CAR, grc4: one number, its top speed; damage takes from it one for one, and the kerbs halve it
+  var TOP = 6000;           // the most it moves in a step, healthy: 3.6 board widths a second
+  var KERB = 50;            // riding a kerb, it keeps this much of it, in hundredths
+  var KERB_W = 1800;        // how far in from the wall a corner's kerb reaches the car
+  var KERB_R = 38000;       // a bend tighter than this is a corner, with kerbs on both sides
+  var PICK = 9000;          // a finger this near takes hold of it
+  var CR = 1600;            // its reach against a wall
+  var STUN = 24;            // a crash stops it this many steps
+  var CRASH_VN = 1600;      // moving into a wall this fast, or faster, is a crash
+  var FULL = 10000;         // damage counts to this: a car with 20% damage has 80% of its top speed
+  var WORST = 9000;         // and stops here, so a wreck still crawls to the pit at a tenth of its speed
+  var CRASH_BASE = 1800;    // the damage every crash does (18%)
+  var CRASH_K = 2700;       // and up to this much more (27%), the harder the hit
+  var PIT_V = 300;          // moving less than this a step, the car stands in the box
+  var PIT_RATE = 120;       // and is mended this much a step (72% a second)
+  var HOUSE = 1050;         // the house's finger, units a step: half a steady racer's pace, there to be beaten
+  var GOOD = 5400;          // a good player's finger
+
+  // CARS THAT BUMP, where a race is run with bumping: one world, every car in it stepped together
+  var CONTACT = 3200;       // two cars' middles nearer than this touch, and are pushed apart
+  var BUMP_VN = 600;        // closing faster than this, a touch is a knock
+  var BUMP_BASE = 500;      // the damage a knock does to both cars (5%)
+  var BUMP_K = 2000;        // and up to this much more (20%), reached when they close at a whole top speed
+  var GRID_FRONT = 2500, GRID_ROW = 4500;   // the starting grid behind the line: two cars a row
+  var SUB = 4;              // a step is looked at in quarters for touches: no car closes 12800 in one
+
+  // THE TRACKS: nine to choose, at the stops 1 to 9 of spine:ghost-racer
+  var TRACKS = [null,
+    { name: 'Promenade',  c: 1, seed: 'promenade' },
+    { name: 'Pier Loop',  c: 1, seed: 'pier39' },
+    { name: 'Lighthouse', c: 2, seed: 'lighthouse' },
+    { name: 'Dunes',      c: 2, seed: 'dunes' },
+    { name: 'Rockpools',  c: 3, seed: 'rockpools' },
+    { name: 'Breakwater', c: 3, seed: 'breakwater' },
+    { name: 'Saltmarsh',  c: 4, seed: 'saltmarsh' },
+    { name: 'Sea Caves',  c: 4, seed: 'seacaves' },
+    { name: 'The Wreck',  c: 5, seed: 'wreck' }
+  ];
+  // THE CHALLENGES a track is drawn at: more corners, tighter, narrower
+  var LEVELS = [null,
+    { name: 'Gentle',  hw: 8200, carve: [0, 1], jitter: 4200, minR: 15000, maxR: 30000, corners: [4, 6],   len: [260000, 600000] },
+    { name: 'Flowing', hw: 7600, carve: [1, 2], jitter: 3600, minR: 12000, maxR: 26000, corners: [6, 10],  len: [280000, 640000] },
+    { name: 'Twisty',  hw: 7000, carve: [2, 4], jitter: 2600, minR: 9500,  maxR: 22000, corners: [8, 14],  len: [300000, 700000] },
+    { name: 'Tight',   hw: 6500, carve: [3, 5], jitter: 2300, minR: 9000,  maxR: 20000, corners: [10, 16], len: [320000, 760000] },
+    { name: 'Knotted', hw: 6000, carve: [5, 8], jitter: 2000, minR: 8500,  maxR: 18000, corners: [12, 22], len: [340000, 840000], grid: [3, 6] }
+  ];
+  var PIT_RAMP = 8000, PIT_BOX = 13000, PIT_DEPTH = 7000, PIT_GAP = 3500;   // the lay-by beside the main straight
+  var LINE_GAP = 5000;     // the line stands this far before the main straight ends
+  var MAIN = 43000;        // the least length of the main straight
+  var GAP = 5000;          // the least room between two parts of the track's walls
+  var TURN = 14849;        // a bend whose cosine is below this (25 degrees) is a corner
+  var HAIRPIN = -5603;     // and below this (110 degrees), a hairpin
+  var ARC_C = 16378, ARC_S = 429;   // the turn of an arc's step, 1.5 degrees, at length ONE
+
+  // ── whole numbers ──
+  function div(a, b) { return Math.trunc(a / b); }
+  function isqrt(n) {
+    if (n < 1) return 0;
+    var x = 1;
+    while (x * x <= n) x *= 2;
+    for (;;) { var y = Math.floor((x + Math.floor(n / x)) / 2); if (y >= x) return x; x = y; }
+  }
+  function unit(dx, dy) { var l = isqrt(dx * dx + dy * dy); return l ? [div(dx * ONE, l), div(dy * ONE, l)] : [ONE, 0]; }
+  function fnv1a(s) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return h >>> 0;
+  }
+  function rng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return (t ^ (t >>> 14)) >>> 0;
+    };
+  }
+
+  // ── a track from its name ──
+  // The control polygon: the outline of a block of grid cells with notches carved out of it, more for a harder
+  // challenge; one column is never carved, so its outer side is the main straight, where the pit and the line stand.
+  function polygon(r, P) {
+    var Mg = P.hw + 4200, uw = W - 2 * Mg, uh = H - 2 * Mg, gmin = 2 * P.hw + 11000;
+    var cols = P.grid ? P.grid[0] : Math.max(2, div(uw, gmin)), rows = P.grid ? P.grid[1] : Math.max(3, div(uh, gmin));
+    var gx = div(uw, cols), gy = div(uh, rows), i, j, inn = [];
+    for (j = 0; j < rows; j++) { inn.push([]); for (i = 0; i < cols; i++) inn[j].push(1); }
+    var mainCol = r() % 2 === 0 ? 0 : cols - 1;
+    function at(c, rr) { return c >= 0 && c < cols && rr >= 0 && rr < rows && inn[rr][c] === 1; }
+    function connected() {
+      var seen = {}, stack = [], count = 0, total = 0, c, rr;
+      for (rr = 0; rr < rows; rr++) for (c = 0; c < cols; c++) if (inn[rr][c]) { total++; if (!stack.length) stack.push([c, rr]); }
+      while (stack.length) {
+        var q = stack.pop(), k = q[0] + ',' + q[1];
+        if (seen[k] || !at(q[0], q[1])) continue;
+        seen[k] = 1; count++;
+        stack.push([q[0] + 1, q[1]], [q[0] - 1, q[1]], [q[0], q[1] + 1], [q[0], q[1] - 1]);
+      }
+      return count === total;
+    }
+    function pinched() {
+      for (var rr = -1; rr < rows; rr++) for (var c = -1; c < cols; c++) {
+        var a1 = at(c, rr), b1 = at(c + 1, rr), c1 = at(c, rr + 1), d1 = at(c + 1, rr + 1);
+        if ((a1 && d1 && !b1 && !c1) || (b1 && c1 && !a1 && !d1)) return true;
+      }
+      return false;
+    }
+    var want = P.carve[0] + r() % (P.carve[1] - P.carve[0] + 1), carved = 0;
+    for (var tries = 0; tries < 60 && carved < want; tries++) {
+      var c0 = r() % cols, r0 = r() % rows;
+      if (c0 === mainCol || !at(c0, r0)) continue;
+      if (at(c0 - 1, r0) && at(c0 + 1, r0) && at(c0, r0 - 1) && at(c0, r0 + 1)) continue;
+      inn[r0][c0] = 0;
+      if (!connected() || pinched()) { inn[r0][c0] = 1; continue; }
+      carved++;
+    }
+    var edges = {};
+    for (j = 0; j < rows; j++) for (i = 0; i < cols; i++) {
+      if (!inn[j][i]) continue;
+      if (!at(i, j - 1)) edges[(i + 1) + ',' + j] = [i, j];
+      if (!at(i, j + 1)) edges[i + ',' + (j + 1)] = [i + 1, j + 1];
+      if (!at(i - 1, j)) edges[i + ',' + j] = [i, j + 1];
+      if (!at(i + 1, j)) edges[(i + 1) + ',' + (j + 1)] = [i + 1, j];
+    }
+    var keys = Object.keys(edges).sort();
+    if (!keys.length) return null;
+    var loop = [], k = keys[0], guard = 0;
+    do {
+      var pp = k.split(',');
+      loop.push([+pp[0], +pp[1]]);
+      var nx = edges[k];
+      k = nx[0] + ',' + nx[1];
+      if (++guard > 1000) return null;
+    } while (k !== keys[0]);
+    var turns = [];
+    for (i = 0; i < loop.length; i++) {
+      var A = loop[(i - 1 + loop.length) % loop.length], B = loop[i], C = loop[(i + 1) % loop.length];
+      if ((B[0] - A[0]) * (C[1] - B[1]) - (B[1] - A[1]) * (C[0] - B[0]) !== 0) turns.push(B);
+    }
+    if (turns.length < 4) return null;
+    if (r() % 2 === 0) turns.reverse();
+    var mx = mainCol === 0 ? 0 : cols, a0 = -1;
+    for (i = 0; i < turns.length; i++) {
+      var U = turns[i], V = turns[(i + 1) % turns.length];
+      if (U[0] === mx && V[0] === mx && Math.abs(U[1] - V[1]) === rows) { a0 = i; break; }
+    }
+    if (a0 < 0) return null;
+    turns = turns.slice(a0).concat(turns.slice(0, a0));
+    var J = P.jitter, out = [];
+    for (i = 0; i < turns.length; i++) {
+      var T = turns[i], jx = (r() % (2 * J + 1)) - J, jy = (r() % (2 * J + 1)) - J;
+      if (i < 2) jx = 0;
+      out.push([Mg + T[0] * gx + jx, Mg + T[1] * gy + jy]);
+    }
+    return out;
+  }
+
+  // Straights joined by arcs: each corner of the polygon an arc of a radius drawn for it, tightened where two arcs
+  // would overlap on one side, refused below the least radius; then the curve at equal steps along it.
+  function trace(poly, r, P) {
+    var m = poly.length, cs = [], i;
+    for (i = 0; i < m; i++) {
+      var a = poly[(i - 1 + m) % m], b = poly[i], c = poly[(i + 1) % m];
+      var u = unit(b[0] - a[0], b[1] - a[1]), w = unit(c[0] - b[0], c[1] - b[1]);
+      var cross = div(u[0] * w[1] - u[1] * w[0], ONE), dot = div(u[0] * w[0] + u[1] * w[1], ONE);
+      if (dot < -14254) return null;
+      var half = div(Math.abs(cross) * ONE, ONE + dot);
+      var R = P.minR + r() % (P.maxR - P.minR);
+      cs.push({ b: b, u: u, w: w, dir: cross >= 0 ? 1 : -1, half: half, R: R, t: div(R * half, ONE), dot: dot });
+    }
+    for (var pass = 0; pass < 4; pass++) {
+      for (i = 0; i < m; i++) {
+        var p = cs[i], q = cs[(i + 1) % m], ex = q.b[0] - p.b[0], ey = q.b[1] - p.b[1];
+        var room = isqrt(ex * ex + ey * ey) - (i === 0 ? MAIN : 4000);
+        if (room <= 0) return null;
+        if (p.t + q.t > room) { var sum = p.t + q.t; p.t = div(p.t * room, sum); q.t = div(q.t * room, sum); }
+      }
+    }
+    for (i = 0; i < m; i++) {
+      var k = cs[i];
+      k.R = k.half > 0 ? div(k.t * ONE, k.half) : BIG;
+      if (k.half > 0 && k.R < P.minR) return null;
+      k.A = [k.b[0] - div(k.u[0] * k.t, ONE), k.b[1] - div(k.u[1] * k.t, ONE)];
+      k.B = [k.b[0] + div(k.w[0] * k.t, ONE), k.b[1] + div(k.w[1] * k.t, ONE)];
+      k.C = [k.A[0] - div(k.u[1] * k.dir * k.R, ONE), k.A[1] + div(k.u[0] * k.dir * k.R, ONE)];
+    }
+    var fx = [], fy = [], fr = [];
+    function pt(x, y, rr) { var n = fx.length; if (!n || fx[n - 1] !== x || fy[n - 1] !== y) { fx.push(x); fy.push(y); fr.push(rr); } }
+    function straight(ax, ay, bx, by) {
+      var dx = bx - ax, dy = by - ay, len = isqrt(dx * dx + dy * dy), steps = Math.max(1, div(len + 199, 200));
+      for (var s = 1; s <= steps; s++) pt(ax + div(dx * s, steps), ay + div(dy * s, steps), BIG);
+    }
+    function arc(k2) {
+      if (k2.half <= 0) { pt(k2.B[0], k2.B[1], BIG); return; }
+      var x = k2.A[0] - k2.C[0], y = k2.A[1] - k2.C[1], bx = k2.B[0] - k2.C[0], by = k2.B[1] - k2.C[1], sn = ARC_S * k2.dir;
+      for (var g = 0; g < 400; g++) {
+        var nx = div(x * ARC_C - y * sn, ONE), ny = div(x * sn + y * ARC_C, ONE), l = isqrt(nx * nx + ny * ny);
+        nx = div(nx * k2.R, l); ny = div(ny * k2.R, l);
+        if ((nx * by - ny * bx) * k2.dir <= 0) break;
+        pt(k2.C[0] + nx, k2.C[1] + ny, k2.R * k2.dir);
+        x = nx; y = ny;
+      }
+      pt(k2.B[0], k2.B[1], k2.R * k2.dir);
+    }
+    pt(cs[0].B[0], cs[0].B[1], BIG);
+    for (i = 1; i <= m; i++) { var kk = cs[i % m]; straight(fx[fx.length - 1], fy[fy.length - 1], kk.A[0], kk.A[1]); arc(kk); }
+    if (fx.length > 2 && fx[0] === fx[fx.length - 1] && fy[0] === fy[fy.length - 1]) { fx.pop(); fy.pop(); fr.pop(); }
+    var nf = fx.length, acc = [0];
+    for (i = 1; i <= nf; i++) {
+      var j = i % nf, dx2 = fx[j] - fx[i - 1], dy2 = fy[j] - fy[i - 1];
+      acc.push(acc[i - 1] + isqrt(dx2 * dx2 + dy2 * dy2));
+    }
+    var L = acc[nf], n = div(L + div(DS, 2), DS);
+    var X = new Int32Array(n), Y = new Int32Array(n), RR = new Int32Array(n), S = new Int32Array(n), at2 = 0;
+    for (i = 0; i < n; i++) {
+      var s2 = div(i * L, n);
+      while (at2 < nf - 1 && acc[at2 + 1] < s2) at2++;
+      var seg = acc[at2 + 1] - acc[at2], f = s2 - acc[at2], A2 = at2, B2 = (at2 + 1) % nf;
+      X[i] = fx[A2] + (seg > 0 ? div((fx[B2] - fx[A2]) * f, seg) : 0);
+      Y[i] = fy[A2] + (seg > 0 ? div((fy[B2] - fy[A2]) * f, seg) : 0);
+      RR[i] = fr[B2]; S[i] = s2;
+    }
+    var mx2 = cs[1].A[0] - cs[0].B[0], my2 = cs[1].A[1] - cs[0].B[1];
+    return { n: n, L: L, X: X, Y: Y, R: RR, S: S, cs: cs, mainLen: isqrt(mx2 * mx2 + my2 * my2) };
+  }
+
+  function roomy(sp, hw) {
+    var n = sp.n, X = sp.X, Y = sp.Y, edge = hw + 2600, i, j;
+    for (i = 0; i < n; i++) if (X[i] < edge || X[i] > W - edge || Y[i] < edge || Y[i] > H - edge) return false;
+    var need = 2 * hw + GAP, far = div(175 * need, 100 * DS) + 1;
+    for (i = 0; i < n; i += 3) {
+      for (j = i + far; j < n; j += 3) {
+        if (n - (j - i) < far) continue;
+        var dx = X[i] - X[j], dy = Y[i] - Y[j];
+        if (dx * dx + dy * dy < need * need) return false;
+      }
+    }
+    return true;
+  }
+
+  function draw(text, P) {
+    var r = rng(fnv1a('ghost-racer ' + text)), poly = polygon(r, P);
+    if (!poly) return null;
+    var sp = trace(poly, r, P);
+    if (!sp || sp.L < P.len[0] || sp.L > P.len[1] || sp.mainLen < MAIN - 1) return null;
+    var corners = 0;
+    for (var i = 0; i < sp.cs.length; i++) if (sp.cs[i].dot <= TURN) corners++;
+    if (corners < P.corners[0] || corners > P.corners[1]) return null;
+    if (!roomy(sp, P.hw)) return null;
+    sp.poly = poly;
+    return sp;
+  }
+
+  // The tables a run reads: the line at sample 0, tangents, and the walls, with the pit's lay-by on the side with room.
+  function build(sp, P) {
+    var n = sp.n, L = sp.L, hw = P.hw, i, j;
+    var s0 = div((sp.mainLen - LINE_GAP) * n, L) % n;
+    var X = new Int32Array(n), Y = new Int32Array(n), RR = new Int32Array(n), S = new Int32Array(n);
+    for (i = 0; i < n; i++) { j = (i + s0) % n; X[i] = sp.X[j]; Y[i] = sp.Y[j]; RR[i] = sp.R[j]; S[i] = div(i * L, n); }
+    var TX = new Int32Array(n), TY = new Int32Array(n);
+    for (i = 0; i < n; i++) {
+      var a = (i - 1 + n) % n, b = (i + 1) % n, u = unit(X[b] - X[a], Y[b] - Y[a]);
+      TX[i] = u[0]; TY[i] = u[1];
+    }
+    var zoneEnd = L - PIT_GAP, zoneStart = zoneEnd - (2 * PIT_RAMP + PIT_BOX), boxA = zoneStart + PIT_RAMP, boxB = boxA + PIT_BOX;
+    function smooth(u) { var u2 = div(u * u, ONE); return div(u2 * (3 * ONE - 2 * u), ONE); }
+    function widen(s) {
+      if (s < zoneStart || s > zoneEnd) return [0, 0];
+      var u;
+      if (s < boxA) { u = div((s - zoneStart) * ONE, PIT_RAMP); return [div(PIT_DEPTH * smooth(u), ONE), div(6 * PIT_DEPTH * div(u * (ONE - u), ONE), PIT_RAMP)]; }
+      if (s <= boxB) return [PIT_DEPTH, 0];
+      u = div((s - boxB) * ONE, PIT_RAMP);
+      return [PIT_DEPTH - div(PIT_DEPTH * smooth(u), ONE), -div(6 * PIT_DEPTH * div(u * (ONE - u), ONE), PIT_RAMP)];
+    }
+    var side = 0, nearA = div(4 * hw + PIT_RAMP + PIT_BOX, DS) + 1;
+    for (var trySide = 1; trySide >= -1 && !side; trySide -= 2) {
+      var ok = true;
+      for (i = 0; i < n && ok; i++) {
+        var wd = widen(S[i]);
+        if (!wd[0]) continue;
+        var off = hw + wd[0] + 2000, ox = X[i] - div(TY[i] * trySide * off, ONE), oy = Y[i] + div(TX[i] * trySide * off, ONE);
+        if (ox < 1500 || ox > W - 1500 || oy < 1500 || oy > H - 1500) { ok = false; break; }
+        for (var j2 = 0; j2 < n; j2 += 2) {
+          var along = Math.abs(j2 - i); if (n - along < along) along = n - along;
+          if (along < nearA) continue;
+          var ex = ox - X[j2], ey = oy - Y[j2];
+          if (ex * ex + ey * ey < (hw + 3000) * (hw + 3000)) { ok = false; break; }
+        }
+      }
+      if (ok) side = trySide;
+    }
+    if (!side) return null;
+    var HL = new Int32Array(n), HR = new Int32Array(n), GL = new Int32Array(n), GR = new Int32Array(n);
+    for (i = 0; i < n; i++) {
+      HL[i] = hw; HR[i] = hw;
+      var w2 = widen(S[i]);
+      if (side > 0) { HL[i] += w2[0]; GL[i] = w2[1]; } else { HR[i] += w2[0]; GR[i] = w2[1]; }
+    }
+    var corners = [], hairpins = 0;
+    for (i = 0; i < sp.cs.length; i++) {
+      var k = sp.cs[i];
+      if (k.dot <= TURN) corners.push([k.b[0], k.b[1], k.R, k.dir]);
+      if (k.dot <= HAIRPIN) hairpins++;
+    }
+    return { n: n, L: L, hw: hw, X: X, Y: Y, R: RR, S: S, TX: TX, TY: TY, HL: HL, HR: HR, GL: GL, GR: GR,
+      pit: [side, zoneStart, boxA, boxB, zoneEnd], corners: corners, hairpins: hairpins };
+  }
+
+  // A track's address is a stop, 1 to 9, or a day, ten digits ending 00: the same address draws the same track always.
+  function validAddr(a) { return /^[1-9]$/.test(a) || /^\d{8}00$/.test(a); }
+  var CACHE = {}, KEPT = [];
+  function circuit(addr) {
+    addr = String(addr);
+    if (CACHE[addr]) return CACHE[addr];
+    if (!validAddr(addr)) return null;
+    var stop = addr.length === 1 ? +addr : 0, c = stop ? TRACKS[stop].c : 1 + fnv1a('ghost-racer day ' + addr) % 5;
+    var base = stop ? 'track ' + TRACKS[stop].seed : addr, P = LEVELS[c], made = null, redraws = 0;
+    for (redraws = 0; redraws < 800 && !made; redraws++) {
+      var sp = draw(base + (redraws ? '#' + redraws : ''), P);
+      if (sp) made = build(sp, P);
+      if (made) { made.poly = sp.poly; made.redraws = redraws; }
+    }
+    if (!made) return null;
+    made.addr = addr; made.stop = stop; made.c = c;
+    CACHE[addr] = made; KEPT.push(addr);
+    if (KEPT.length > 12) delete CACHE[KEPT.shift()];
+    return made;
+  }
+  function level(addr) {
+    var t = circuit(addr);
+    if (!t) return null;
+    return { addr: t.addr, stop: t.stop, name: t.stop ? TRACKS[t.stop].name : 'the day’s track', challenge: t.c, n: t.n, L: t.L, hw: t.hw,
+      pit: Array.prototype.slice.call(t.pit), corners: t.corners.length, hairpins: t.hairpins, redraws: t.redraws, poly: t.poly };
+  }
+  function table(lv) { return circuit(lv.addr); }
+
+  // ── the car ──
+  function start(lv) { return startAt(lv, 0); }
+  /* A car on the starting grid: slot 0 on the line, for a race alone; in a world of cars, slots 1 on, two by two behind
+   * the line, so cars that bump start apart. */
+  function startAt(lv, slot) {
+    var T = table(lv), x = T.X[0], y = T.Y[0], i = 0, s = 0, prog = 0;
+    if (slot > 0) {
+      var j = slot - 1, back = GRID_FRONT + (j >> 1) * GRID_ROW, side = j & 1 ? -1 : 1, off = div(T.hw, 2);
+      var p = pointAt(T, T.L - back);
+      i = nearest(T, p[0], p[1], div((T.L - back) * T.n, T.L) % T.n);
+      x = p[0] - div(T.TY[i] * side * off, ONE); y = p[1] + div(T.TX[i] * side * off, ONE);
+      s = T.L - back; prog = -back;
+    }
+    return { step: 0, x: x, y: y, vx: 0, vy: 0, hx: T.TX[i], hy: T.TY[i], i: i, s: s, prog: prog, lap: 1, dmg: 0,
+      grip: 0, stun: 0, tx: x, ty: y, crashes: 0, kerbs: 0, kerb: 0, bumps: 0, tch: 0, pit: 0, scrapes: 0, inBox: 0, hit: 0, ev: 0, done: 0 };
+  }
+  function placeOf(move) {
+    if (typeof move !== 'number' || move < 1 || move >= M || move !== Math.floor(move)) return null;
+    var c = move - 1;
+    return [(c % GX) * CELL + div(CELL, 2), div(c, GX) * CELL + div(CELL, 2)];
+  }
+  function cellOf(x, y) {
+    var cx = div(x, CELL), cy = div(y, CELL);
+    if (cx < 0) cx = 0; if (cx >= GX) cx = GX - 1; if (cy < 0) cy = 0; if (cy >= GY) cy = GY - 1;
+    return cx + cy * GX;
+  }
+  function topSpeed(st) { return TOP - div(TOP * st.dmg, FULL); }
+  function nearest(T, x, y, i0) {
+    var n = T.n, best = i0, bd = -1;
+    for (var o = -40; o <= 40; o++) {
+      var j = i0 + o;
+      if (j < 0) j += n; else if (j >= n) j -= n;
+      var dx = x - T.X[j], dy = y - T.Y[j], d = dx * dx + dy * dy;
+      if (bd < 0 || d < bd) { bd = d; best = j; }
+    }
+    return best;
+  }
+  /* One step. st.ev says what happened: 1 took hold, 4 crashed, 8 scraped, 16 mending, 32 a new lap, 64 finished,
+   * 128 on a kerb. */
+  function step(lv, st, move) {
+    if (st.done) return st;
+    var T = table(lv);
+    st.ev = 0; st.step++;
+    if (st.stun > 0) st.stun--;
+    var f = placeOf(move), mx = 0, my = 0;
+    if (!f) st.grip = 0;
+    else {
+      if (!st.grip && !st.stun) {
+        var gx = f[0] - st.x, gy = f[1] - st.y;
+        if (gx * gx + gy * gy <= PICK * PICK) { st.grip = 1; st.ev |= 1; }
+      }
+      if (st.grip) { st.tx = f[0]; st.ty = f[1]; }
+    }
+    // the car goes to the finger, as far as its top speed takes it
+    if (st.grip && !st.stun) {
+      var top = topSpeed(st);
+      if (st.kerb) top = div(top * KERB, 100);
+      var dx = st.tx - st.x, dy = st.ty - st.y, d = isqrt(dx * dx + dy * dy);
+      if (d <= top) { mx = dx; my = dy; } else { mx = div(dx * top, d); my = div(dy * top, d); }
+    }
+    st.x += mx; st.y += my;
+    // the walls
+    var i = nearest(T, st.x, st.y, st.i), tx = T.TX[i], ty = T.TY[i], nx = -ty, ny = tx;
+    var rx = st.x - T.X[i], ry = st.y - T.Y[i], along = div(rx * tx + ry * ty, ONE), lat = div(rx * nx + ry * ny, ONE);
+    var side = lat >= 0 ? 1 : -1, h = side > 0 ? T.HL[i] : T.HR[i], g = side > 0 ? T.GL[i] : T.GR[i], lim = h - CR;
+    if (side * lat > lim) {
+      st.x = T.X[i] + div(tx * along + nx * side * lim, ONE);
+      st.y = T.Y[i] + div(ty * along + ny * side * lim, ONE);
+      lat = side * lim;
+      var ox = side * nx - div(g * tx, ONE), oy = side * ny - div(g * ty, ONE), ol = isqrt(ox * ox + oy * oy);
+      ox = div(ox * ONE, ol); oy = div(oy * ONE, ol);
+      var vn = div(mx * ox + my * oy, ONE);
+      if (vn >= CRASH_VN) {
+        var hit = CRASH_BASE + div(CRASH_K * (vn - CRASH_VN), TOP - CRASH_VN);
+        if (hit > CRASH_BASE + CRASH_K) hit = CRASH_BASE + CRASH_K;
+        if (hit > WORST - st.dmg) hit = WORST - st.dmg > 0 ? WORST - st.dmg : 0;
+        st.dmg += hit; st.hit = hit; st.stun = STUN; st.crashes++; st.ev |= 4;
+        mx = 0; my = 0;
+      } else if (vn > 0) {
+        mx -= div(ox * vn, ONE); my -= div(oy * vn, ONE);
+        st.scrapes++; st.ev |= 8;
+      }
+    }
+    st.vx = mx; st.vy = my;
+    // a corner's kerbs, both sides: riding one slows the car on the next step
+    st.kerb = Math.abs(T.R[i]) <= KERB_R && side * lat > lim - KERB_W ? 1 : 0;
+    if (st.kerb) { st.kerbs++; st.ev |= 128; }
+    // the pit box: stood in it, the car is mended
+    var s2 = T.S[i] + along, v2 = mx * mx + my * my, P = T.pit;
+    st.inBox = side === P[0] && side * lat >= T.hw && s2 >= P[2] && s2 <= P[3] ? 1 : 0;
+    if (st.inBox && v2 <= PIT_V * PIT_V && st.dmg > 0) { st.dmg -= PIT_RATE; if (st.dmg < 0) st.dmg = 0; st.pit++; st.ev |= 16; }
+    // how far round
+    var ds = s2 - st.s;
+    if (ds > div(T.L, 2)) ds -= T.L; else if (ds < -div(T.L, 2)) ds += T.L;
+    st.prog += ds; st.s = s2; st.i = i;
+    var lap = div(st.prog, T.L) + 1;
+    if (st.prog >= 0 && lap > st.lap && lap <= LAPS) { st.lap = lap; st.ev |= 32; }
+    if (v2 > 1600) { var hu = unit(mx, my); st.hx = hu[0]; st.hy = hu[1]; }
+    if (st.prog >= LAPS * T.L) { st.done = 1; st.ev |= 64; }
+    return st;
+  }
+  function finished(lv, st) { return st.done === 1; }
+
+  /* A car pushed is kept inside the walls, where it stood against the nearest one. */
+  function keepIn(T, st) {
+    var i = nearest(T, st.x, st.y, st.i), tx = T.TX[i], ty = T.TY[i], nx = -ty, ny = tx;
+    var rx = st.x - T.X[i], ry = st.y - T.Y[i], along = div(rx * tx + ry * ty, ONE), lat = div(rx * nx + ry * ny, ONE);
+    var side = lat >= 0 ? 1 : -1, lim = (side > 0 ? T.HL[i] : T.HR[i]) - CR;
+    if (side * lat > lim) { st.x = T.X[i] + div(tx * along + nx * side * lim, ONE); st.y = T.Y[i] + div(ty * along + ny * side * lim, ONE); }
+  }
+  /* The cars of a race with bumping, on its grid: car k in slot k + 1. */
+  function grid(lv, n) { var out = []; for (var k = 0; k < n; k++) out.push(startAt(lv, k + 1)); return out; }
+  /* One step of a world of cars: each car steps with its own finger, in order; then, with bumping, every pair that
+   * touches is pushed apart, half each, and a pair that meets closing faster than a nudge both take damage, once for
+   * each meeting: cars that stay pressed together push, and do no more harm. A step is looked at in quarters, from
+   * where the cars stood to where they stand, so a fast car meets a slow one instead of passing through it, and the
+   * push keeps them in the order they met in. The order is the cars' order, so every phone that knows the moves steps
+   * the same world. st.ev gains 256 for a touch, 512 a knock. */
+  function stepWorld(lv, cars, moves, bump) {
+    var T = table(lv), n = cars.length, i, j, k, was = [], now = [], sx = [], sy = [];
+    for (i = 0; i < n; i++) step(lv, cars[i], moves[i] || 0);
+    if (!bump) return cars;
+    for (i = 0; i < n; i++) { was.push(cars[i].tch); now.push(0); sx.push(cars[i].x - cars[i].vx); sy.push(cars[i].y - cars[i].vy); }
+    for (i = 0; i < n; i++) for (j = i + 1; j < n; j++) {
+      var a = cars[i], b = cars[j];
+      if (a.done || b.done) continue;
+      // b seen from a where they stood, and where they stand; the first quarter in which they touch
+      var r0x = sx[j] - sx[i], r0y = sy[j] - sy[i], r1x = b.x - a.x, r1y = b.y - a.y, px = r0x, py = r0y, met = 0;
+      for (k = 1; k <= SUB; k++) {
+        var qx = r0x + div((r1x - r0x) * k, SUB), qy = r0y + div((r1y - r0y) * k, SUB);
+        if (qx * qx + qy * qy < CONTACT * CONTACT) { met = k; break; }
+        px = qx; py = qy;
+      }
+      if (!met) continue;
+      now[i] |= 1 << j; now[j] |= 1 << i;
+      // they are pushed apart along the line they met on, so neither passes through the other
+      var d = isqrt(px * px + py * py), ux, uy;
+      if (d > 0) { ux = div(px * ONE, d); uy = div(py * ONE, d); } else { ux = -T.TY[a.i]; uy = T.TX[a.i]; }
+      var along = div(r1x * ux + r1y * uy, ONE);
+      if (along < CONTACT) {
+        var push = CONTACT - along, ha = div(push, 2), hb = push - ha;
+        a.x -= div(ux * ha, ONE); a.y -= div(uy * ha, ONE);
+        b.x += div(ux * hb, ONE); b.y += div(uy * hb, ONE);
+        keepIn(T, a); keepIn(T, b);
+      }
+      a.ev |= 256; b.ev |= 256;
+      var vc = div((a.vx - b.vx) * ux + (a.vy - b.vy) * uy, ONE);
+      if (vc > BUMP_VN && !(was[i] & (1 << j))) {
+        var hit = BUMP_BASE + div(BUMP_K * (vc - BUMP_VN), TOP - BUMP_VN);
+        if (hit > BUMP_BASE + BUMP_K) hit = BUMP_BASE + BUMP_K;
+        var da = hit < WORST - a.dmg ? hit : WORST - a.dmg, db = hit < WORST - b.dmg ? hit : WORST - b.dmg;
+        a.dmg += da; b.dmg += db; a.hit = da; b.hit = db; a.bumps++; b.bumps++; a.ev |= 512; b.ev |= 512;
+      }
+    }
+    for (i = 0; i < n; i++) cars[i].tch = now[i];
+    return cars;
+  }
+  /* The house's finger on a car of its own: on the car to take it, then on the middle of the track just ahead of it. */
+  function houseMove(lv, st) {
+    var T = table(lv);
+    if (!st.grip || st.step === 0) return 1 + cellOf(st.x, st.y);
+    var p = pointAt(T, st.s + HOUSE);
+    return 1 + cellOf(p[0], p[1]);
+  }
+
+  // ── a run kept ──
+  /* 'grc3.<address>.<steps in base 36>.<the places>', the places one symbol each of base64url: 0-48 the finger moved by
+   * about as much as last time (the difference, -3 to 3 each way); 49 it moved more (two symbols, -32 to 31 each way);
+   * 50 the next change came after a gap of more than one step (a number in symbols of five bits, the sixth bit saying
+   * more follows); 51 the finger lifted; 52 it landed (its cell, two symbols across and two down); 53 it jumped (the
+   * same); 62 a mark of a run that is not one; 63 the finish. */
+  var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  function put12(out, v) { out.push(div(v, 64), v % 64); }
+  function putGap(out, v) { while (v >= 32) { out.push(32 + v % 32); v = div(v, 32); } out.push(v); }
+  function encode(day, steps, moves) {
+    var out = [], list = moves && moves.length !== undefined ? moves : [], prev = -SAMPLE, down = 0, px = 0, py = 0, vx = 0, vy = 0, ended = 0;
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      if (typeof e !== 'number' || e < 0 || e !== Math.floor(e)) { out.push(62); continue; }
+      var at = div(e, M), mv = e - at * M;
+      if (i === list.length - 1 && at === steps && mv === 0) { ended = 1; break; }
+      var gap = at - prev;
+      if (gap < 0) { out.push(62); gap = 0; }
+      if (gap !== SAMPLE) { out.push(50); putGap(out, gap); }
+      prev = at;
+      if (mv === 0) { out.push(51); down = 0; vx = 0; vy = 0; continue; }
+      var cx = (mv - 1) % GX, cy = div(mv - 1, GX);
+      if (!down) { out.push(52); put12(out, cx); put12(out, cy); down = 1; px = cx; py = cy; vx = 0; vy = 0; continue; }
+      var dx = cx - px, dy = cy - py, ex = dx - vx, ey = dy - vy;
+      if (ex >= -3 && ex <= 3 && ey >= -3 && ey <= 3) out.push((ex + 3) * 7 + ey + 3);
+      else if (ex >= -32 && ex <= 31 && ey >= -32 && ey <= 31) out.push(49, ex + 32, ey + 32);
+      else { out.push(53); put12(out, cx); put12(out, cy); }
+      vx = dx; vy = dy; px = cx; py = cy;
+    }
+    if (ended) out.push(63);
+    var text = '';
+    for (var k = 0; k < out.length; k++) text += B64.charAt(out[k]);
+    return VERSION + '.' + day + '.' + (typeof steps === 'number' && steps >= 0 ? Math.floor(steps).toString(36) : '0') + '.' + text;
+  }
+  function decode(proof) {
+    var p = String(proof || '').split('.');
+    if (p.length !== 4 || p[0] !== VERSION || !validAddr(p[1]) || !/^[0-9a-z]+$/.test(p[2])) return null;
+    var steps = parseInt(p[2], 36);
+    if (!(steps > 0 && steps <= LIMIT)) return null;
+    var sym = [], k;
+    for (k = 0; k < p[3].length; k++) { var c = B64.indexOf(p[3].charAt(k)); if (c < 0) return null; sym.push(c); }
+    var moves = [], prev = -SAMPLE, down = 0, px = 0, py = 0, vx = 0, vy = 0, ended = 0, gap = SAMPLE;
+    function need(n) { return k + n <= sym.length; }
+    k = 0;
+    while (k < sym.length) {
+      var s = sym[k++];
+      if (ended || s === 62) return null;
+      if (s === 63) { ended = 1; continue; }
+      if (s === 50) {
+        var g = 0, mul = 1, more = 1;
+        while (more) { if (!need(1)) return null; var q = sym[k++]; g += (q % 32) * mul; mul *= 32; more = q >= 32; if (mul > 1048576) return null; }
+        if (g === SAMPLE) return null;      // a gap of one step is never written
+        gap = g;
+        if (!need(1)) return null;
+        s = sym[k++];
+        if (s === 50 || s === 62 || s === 63) return null;
+      }
+      var at = prev + gap;
+      gap = SAMPLE;
+      if (at < 0 || at >= steps || (moves.length && at <= prev)) return null;
+      prev = at;
+      var cx, cy;
+      if (s === 51) { if (!down) return null; moves.push(at * M); down = 0; vx = 0; vy = 0; continue; }
+      if (s === 52 || s === 53) {
+        if (!need(4)) return null;
+        cx = sym[k] * 64 + sym[k + 1]; cy = sym[k + 2] * 64 + sym[k + 3]; k += 4;
+        if (cx >= GX || cy >= GY) return null;
+        if (s === 52) { if (down) return null; down = 1; vx = 0; vy = 0; }
+        else {
+          if (!down) return null;
+          var jx = cx - px - vx, jy = cy - py - vy;
+          if (jx >= -32 && jx <= 31 && jy >= -32 && jy <= 31) return null;   // a small move is never written as a jump
+          vx = cx - px; vy = cy - py;
+        }
+        px = cx; py = cy;
+        moves.push(at * M + 1 + cx + cy * GX);
+        continue;
+      }
+      if (!down) return null;
+      var rx, ry;
+      if (s <= 48) { rx = div(s, 7) - 3; ry = s % 7 - 3; }
+      else if (s === 49) {
+        if (!need(2)) return null;
+        rx = sym[k] - 32; ry = sym[k + 1] - 32; k += 2;
+        if (rx >= -3 && rx <= 3 && ry >= -3 && ry <= 3) return null;      // a near move is never written long
+      } else return null;
+      vx += rx; vy += ry; cx = px + vx; cy = py + vy;
+      if (cx < 0 || cx >= GX || cy < 0 || cy >= GY) return null;
+      px = cx; py = cy;
+      moves.push(at * M + 1 + cx + cy * GX);
+    }
+    if (!ended) return null;
+    moves.push(steps * M);
+    return { day: p[1], steps: steps, moves: moves };
+  }
+  function timeWords(steps) { return (steps / RATE).toFixed(2); }
+  /* A proof re-run: it counts only if it finishes on its last step. With keep, where the car stood after each step. */
+  function rerun(proof, keep) {
+    var r = decode(proof);
+    if (!r) return { ok: false, error: 'not a run of Ghost Racer' };
+    var lv = level(r.day);
+    if (!lv) return { ok: false, error: 'no such track' };
+    var s = start(lv), cur = 0, e = 0, ev = r.moves, last = ev.length - 1, i;
+    var xs = keep ? new Int32Array(r.steps + 1) : null, ys = keep ? new Int32Array(r.steps + 1) : null, dm = keep ? new Uint8Array(r.steps + 1) : null, laps = [];
+    if (keep) { xs[0] = s.x; ys[0] = s.y; }
+    for (i = 0; i < r.steps; i++) {
+      while (e < last && div(ev[e], M) === i) { cur = ev[e] % M; e++; }
+      if (s.done) return { ok: false, error: 'it finished before its last step' };
+      step(lv, s, cur);
+      if (keep) { xs[i + 1] = s.x; ys[i + 1] = s.y; dm[i + 1] = div(s.dmg * 100, FULL); if (s.ev & 96) laps.push(i + 1); }
+    }
+    if (!s.done) return { ok: false, error: 'it does not finish' };
+    return { ok: true, day: r.day, steps: r.steps, time: timeWords(r.steps), crashes: s.crashes, kerbs: s.kerbs, pit: s.pit,
+      track: keep ? { xs: xs, ys: ys, dm: dm, laps: laps } : null };
+  }
+
+  // ── a steady finger ──
+  /* It takes the car on the line and traces the middle of the track at speed v a step, never more than a little ahead
+   * of the car: the house ghost at HOUSE, a good player at GOOD. */
+  function pointAt(T, a) {
+    var n = T.n, L = T.L;
+    a = a % L; if (a < 0) a += L;
+    var i = div(a * n, L);
+    while (i + 1 < n && T.S[i + 1] <= a) i++;
+    while (i > 0 && T.S[i] > a) i--;
+    var j = (i + 1) % n, seg = (i + 1 < n ? T.S[i + 1] : L) - T.S[i], f = a - T.S[i];
+    return [T.X[i] + (seg > 0 ? div((T.X[j] - T.X[i]) * f, seg) : 0), T.Y[i] + (seg > 0 ? div((T.Y[j] - T.Y[i]) * f, seg) : 0)];
+  }
+  function drive(lv, v) {
+    var T = table(lv), st = start(lv), moves = [], cur = 0, fs = 0;
+    for (var t = 0; t < LIMIT && !st.done; t++) {
+      var mv;
+      if (t === 0) mv = 1 + cellOf(st.x, st.y);
+      else {
+        if (fs < st.prog + 2 * v) fs += v;
+        var p = pointAt(T, fs);
+        mv = 1 + cellOf(p[0], p[1]);
+      }
+      if (mv !== cur) { moves.push(t * M + mv); cur = mv; }
+      step(lv, st, cur);
+    }
+    if (!st.done) return null;
+    moves.push(st.step * M);
+    return { moves: moves, steps: st.step, crashes: st.crashes, kerbs: st.kerbs };
+  }
+  function bot(lv) { var b = drive(lv, GOOD); return b ? { moves: b.moves, steps: b.steps } : null; }
+
+  return { RATE: RATE, VERSION: VERSION, LIMIT: LIMIT, level: level, start: start, step: step, finished: finished,
+    encode: encode, decode: decode, rerun: rerun, timeWords: timeWords, bot: bot,
+    // for the page's drawing and touch
+    LAPS: LAPS, W: W, H: H, GX: GX, GY: GY, CELL: CELL, M: M, SAMPLE: SAMPLE, ONE: ONE, PICK: PICK, TOP: TOP, CR: CR, FULL: FULL, WORST: WORST,
+    KERB_W: KERB_W, KERB_R: KERB_R, HOUSE: HOUSE, GOOD: GOOD, PIT_DEPTH: PIT_DEPTH, PIT_V: PIT_V, TRACKS: TRACKS, LEVELS: LEVELS,
+    table: table, cellOf: cellOf, topSpeed: topSpeed, drive: drive, validAddr: validAddr,
+    // a world of cars that bump
+    CONTACT: CONTACT, grid: grid, startAt: startAt, stepWorld: stepWorld, houseMove: houseMove };
+})();
+// ENGINE END
+
+// THE PAGE — the touch, the drawing, the live room and the beach through the plug. Nothing here changes what a run is.
+(function () {
+  'use strict';
+  var E = ENGINE, M = E.M, ONE = E.ONE, GAME = 'ghost-racer', PAGE = 'https://happyseaurchin.com/games/ghost-racer';
+  var $ = function (id) { return document.getElementById(id); };
+  var params; try { params = new URLSearchParams(location.search); } catch (e) { params = new URLSearchParams(''); }
+  var plug = function () { return window.beachGame || null; };
+  var hub = function () { return window.beachRoom || null; };
+  function get(k) { try { return localStorage.getItem(GAME + ':' + k); } catch (e) { return null; } }
+  function put(k, v) { try { localStorage.setItem(GAME + ':' + k, v); } catch (e) {} }
+  var reduce = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  function clean(v) { return String(v || '').replace(/[^a-z0-9_\s-]/gi, '').replace(/\s+/g, ' ').trim().slice(0, 32); }
+  function isTrack(t) { return /^[1-9]$/.test(String(t || '')); }
+  function trackName(t) { return isTrack(t) ? E.TRACKS[+t].name : ''; }
+  function rnd(n) { return Math.floor(Math.random() * n); }
+  var now = function () { return performance.now(); };
+
+  // ── the look: the canvas reads its colours from the page's own tokens, light or dark ──
+  var root = document.documentElement, K = {};
+  var TOK = ['ground', 'infield', 'tarmac', 'paint', 'kerb', 'you', 'ghost', 'live', 'hurt', 'warn', 'mend', 'glow', 'shade', 'ink', 'dim', 'panel'];
+  var theme = get('theme');
+  if (theme === 'light' || theme === 'dark') root.setAttribute('data-theme', theme);
+  function dark() { var t = root.getAttribute('data-theme'); return t ? t === 'dark' : !!(window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches); }
+  function colours() { var cs = getComputedStyle(root); TOK.forEach(function (k) { K[k] = cs.getPropertyValue('--' + k).trim(); }); }
+  colours();
+
+  // ── what is going on ──
+  var TRACK = '1', LV = null, T = null, walls = null;
+  var mode = 'line', st = null, moves = [], cur = 0, raceId = '', raceAt = 0, prevX = 0, prevY = 0;
+  var trail = [], parts = [], shake = 0, hint = 0, lastScrape = -99, lastMend = -99;
+  var countAt = 0;
+  var ghosts = [], rival = null, gapWords = '', finished = null, LAW = null;
+  var pointer = { down: false, id: null, x: 0, y: 0 };
+  var view = { w: 0, h: 0, dpr: 1, s: 0.003, ox: 0, oy: 0 };
+  var cv = $('game'), ctx = cv.getContext('2d'), base = document.createElement('canvas');
+
+  // ── the board's check: a line counts only if its run re-runs to a finish on its track, in the time the line says ──
+  window.checkRun = function (p) {
+    var r = E.rerun(p && p.proof || ''), m = /^\s*FINISHED\s+(\d+(?:\.\d+)?)\s*s\b/i.exec(p && p.line || ''), at = String(p && p.at || '').replace(/0+$/, '');
+    return !!(r.ok && m && (+m[1]).toFixed(2) === r.time && (r.day === at || (at.length === 8 && r.day === at + '00')));
+  };
+
+  // ── the racetrack ──
+  function setTrack(addr, why) {
+    if (mode === 'race' || mode === 'count') return false;
+    if (!isTrack(addr)) addr = '1';
+    TRACK = addr; LV = E.level(addr); T = E.table(LV);
+    put('track', addr);
+    var n = T.n, lx = new Float64Array(n), ly = new Float64Array(n), rx = new Float64Array(n), ry = new Float64Array(n);
+    var klx = new Float64Array(n), kly = new Float64Array(n), krx = new Float64Array(n), kry = new Float64Array(n), kin = (E.KERB_W + E.CR * 0.4) / 2;
+    for (var i = 0; i < n; i++) {
+      var nx = -T.TY[i] / ONE, ny = T.TX[i] / ONE;
+      lx[i] = T.X[i] + nx * T.HL[i]; ly[i] = T.Y[i] + ny * T.HL[i];
+      rx[i] = T.X[i] - nx * T.HR[i]; ry[i] = T.Y[i] - ny * T.HR[i];
+      klx[i] = T.X[i] + nx * (T.HL[i] - kin); kly[i] = T.Y[i] + ny * (T.HL[i] - kin);
+      krx[i] = T.X[i] - nx * (T.HR[i] - kin); kry[i] = T.Y[i] - ny * (T.HR[i] - kin);
+    }
+    walls = { lx: lx, ly: ly, rx: rx, ry: ry, klx: klx, kly: kly, krx: krx, kry: kry };
+    drawStatic();
+    $('hud-track').textContent = trackName(addr);
+    $('trk-num').textContent = 'Racetrack ' + addr + ' of 9 · ' + E.LEVELS[LV.challenge].name;
+    $('trk-name').textContent = trackName(addr);
+    markStrip();
+    toLine(true);
+    loadGhosts();
+    boardFor(addr);
+    hello();
+    if (why === 'pick') { var b = $('strip').querySelector('[data-t="' + addr + '"]'); if (b && b.scrollIntoView) try { b.scrollIntoView({ block: 'nearest', inline: 'center', behavior: reduce.matches ? 'auto' : 'smooth' }); } catch (e) {} }
+    return true;
+  }
+  function trackWords() {
+    var bits = [], k = LV.corners;
+    bits.push(k + ' corners');
+    var best = get('best:' + TRACK), r = best ? runOf(best) : null;
+    if (r && r.ok) bits.push('your best ' + r.time + ' s');
+    var top = ghosts.filter(function (g) { return g.kind === 'board'; })[0];
+    if (top) bits.push('the board’s best ' + E.timeWords(top.steps) + ' s, ' + top.name);
+    else { var h = ghosts.filter(function (g) { return g.kind === 'house'; })[0]; if (h) bits.push('the house ghost ' + E.timeWords(h.steps) + ' s'); }
+    $('trk-words').textContent = bits.join(' · ');
+  }
+
+  // the nine as small pictures to choose from, drawn one at a time so the page is never held up
+  var thumbs = {};
+  function strip() {
+    var box = $('strip');
+    for (var t = 1; t <= 9; t++) {
+      var b = document.createElement('button'), c = document.createElement('canvas'), s = document.createElement('span');
+      b.type = 'button'; b.setAttribute('role', 'option'); b.setAttribute('data-t', String(t)); b.setAttribute('aria-label', E.TRACKS[t].name + ', ' + E.LEVELS[E.TRACKS[t].c].name);
+      c.width = 92; c.height = 148; s.textContent = E.TRACKS[t].name;
+      b.appendChild(c); b.appendChild(s); box.appendChild(b);
+      thumbs[t] = c;
+      b.addEventListener('click', (function (tt) { return function () { audioStart(); setTrack(String(tt), 'pick'); }; })(t));
+    }
+    var order = [1, 2, 3, 4, 5, 6, 7, 8, 9], k = 0;
+    order.sort(function (a, b) { return (a === +TRACK ? -1 : 0) - (b === +TRACK ? -1 : 0); });
+    (function next() {
+      if (k >= order.length) return;
+      if (mode === 'race' || mode === 'count') { setTimeout(next, 600); return; }
+      thumb(order[k++]); setTimeout(next, 30);
+    })();
+  }
+  function thumb(t) {
+    var c = thumbs[t]; if (!c) return;
+    var lv = E.level(String(t)), tb = E.table(lv), g = c.getContext('2d'), s = Math.min(c.width / E.W, c.height / E.H);
+    g.clearRect(0, 0, c.width, c.height);
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    g.strokeStyle = K.ink; g.globalAlpha = 0.5; g.lineWidth = Math.max(3, 2 * lv.hw * s);
+    g.beginPath();
+    for (var i = 0; i <= tb.n; i += 4) { var j = i % tb.n, x = tb.X[j] * s, y = tb.Y[j] * s; if (i) g.lineTo(x, y); else g.moveTo(x, y); }
+    g.closePath(); g.stroke(); g.globalAlpha = 1;
+    g.fillStyle = K.you; g.beginPath(); g.arc(tb.X[0] * s, tb.Y[0] * s, 4, 0, Math.PI * 2); g.fill();
+  }
+  function markStrip() {
+    var bs = $('strip').querySelectorAll('button');
+    for (var i = 0; i < bs.length; i++) bs[i].setAttribute('aria-selected', String(bs[i].getAttribute('data-t') === TRACK));
+  }
+
+  // ── the view: the board fitted to the race's screen ──
+  function layout() {
+    var r = $('race').getBoundingClientRect(), w = Math.max(200, r.width), h = Math.max(300, r.height), dpr = Math.min(2, window.devicePixelRatio || 1);
+    var top = $('hud').offsetHeight + 2, bottom = 6;
+    var aw = Math.max(100, w - 10), ah = Math.max(100, h - top - bottom), s = Math.min(aw / E.W, ah / E.H);
+    view = { w: w, h: h, dpr: dpr, s: s, ox: (w - E.W * s) / 2, oy: top + (ah - E.H * s) / 2 };
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    base.width = cv.width; base.height = cv.height;
+    if (T) drawStatic();
+    placeCards();
+  }
+  function X(x) { return view.ox + x * view.s; }
+  function Y(y) { return view.oy + y * view.s; }
+  function hashOf(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+
+  function drawStatic() {
+    if (!T || !walls || !view.w) return;
+    var b = base.getContext('2d'), s = view.s, n = T.n, i;
+    b.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    b.fillStyle = K.ground; b.fillRect(0, 0, view.w, view.h);
+    // the infield: sand by day, the dark under the floodlights by night
+    var bx = X(0), by = Y(0), bw = E.W * s, bh = E.H * s;
+    b.fillStyle = K.infield; roundRect(b, bx, by, bw, bh, 8400 * s); b.fill();
+    var h = hashOf('ghost-racer ' + TRACK);
+    for (var f = 0; f < 4; f++) {
+      var fx = X(15000 + ((h >>> (f * 7)) % 70000)), fy = Y(18000 + ((h >>> (f * 5 + 3)) % 124000)), fr = (42000 + (h >>> (f * 3)) % 26000) * s;
+      var gr = b.createRadialGradient(fx, fy, 0, fx, fy, fr);
+      gr.addColorStop(0, K.glow); gr.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      b.fillStyle = gr; b.fillRect(bx, by, bw, bh);
+    }
+    // the track: everything between its two walls
+    b.beginPath();
+    for (i = 0; i < n; i++) { if (i) b.lineTo(X(walls.lx[i]), Y(walls.ly[i])); else b.moveTo(X(walls.lx[i]), Y(walls.ly[i])); }
+    b.closePath();
+    for (i = 0; i < n; i++) { if (i) b.lineTo(X(walls.rx[i]), Y(walls.ry[i])); else b.moveTo(X(walls.rx[i]), Y(walls.ry[i])); }
+    b.closePath();
+    b.fillStyle = K.tarmac; b.fill('evenodd');
+    // the pit: its lane line across the lay-by's mouth, and the box
+    var p = T.pit, side = p[0], hw = T.hw, tx = function (k) { return T.TX[k] / ONE; }, ty = function (k) { return T.TY[k] / ONE; };
+    b.save();
+    b.setLineDash([6, 6]); b.strokeStyle = K.paint; b.globalAlpha = 0.5; b.lineWidth = 1.2;
+    b.beginPath();
+    var started = false;
+    for (i = 0; i < n; i++) {
+      if (T.S[i] < p[1] || T.S[i] > p[4]) continue;
+      var ex = T.X[i] - ty(i) * side * hw, ey = T.Y[i] + tx(i) * side * hw;
+      if (started) b.lineTo(X(ex), Y(ey)); else { b.moveTo(X(ex), Y(ey)); started = true; }
+    }
+    b.stroke();
+    b.setLineDash([]); b.globalAlpha = 1;
+    var ia = 0, ib = 0;
+    for (i = 0; i < n; i++) { if (!ia && T.S[i] >= p[2]) ia = i; if (T.S[i] <= p[3]) ib = i; }
+    var inner = hw + 600, outer = hw + E.PIT_DEPTH - 700;
+    b.beginPath();
+    for (i = ia; i <= ib; i++) { var ax = T.X[i] - ty(i) * side * inner, ay = T.Y[i] + tx(i) * side * inner; if (i === ia) b.moveTo(X(ax), Y(ay)); else b.lineTo(X(ax), Y(ay)); }
+    for (i = ib; i >= ia; i--) { var ox = T.X[i] - ty(i) * side * outer, oy = T.Y[i] + tx(i) * side * outer; b.lineTo(X(ox), Y(oy)); }
+    b.closePath();
+    b.globalAlpha = 0.14; b.fillStyle = K.mend; b.fill(); b.globalAlpha = 1;
+    b.strokeStyle = K.mend; b.lineWidth = 1.5; b.stroke();
+    var im = Math.round((ia + ib) / 2), mid = (inner + outer) / 2;
+    b.translate(X(T.X[im] - ty(im) * side * mid), Y(T.Y[im] + tx(im) * side * mid));
+    var ang = Math.atan2(ty(im), tx(im));
+    if (Math.cos(ang) < -0.01 || (Math.abs(Math.cos(ang)) < 0.01 && Math.sin(ang) > 0)) ang += Math.PI;
+    b.rotate(ang);
+    b.fillStyle = K.mend; b.textAlign = 'center'; b.textBaseline = 'middle';
+    b.font = '800 ' + Math.max(10, Math.round(3300 * s)) + 'px ' + getComputedStyle(root).getPropertyValue('--display');
+    b.fillText('PIT', 0, 1);
+    b.restore();
+    // white lines, and on the corners the kerbs, as wide as the band where a car rides them and slows
+    var kw = Math.max(3, (E.KERB_W + E.CR * 0.4) * s), kstep = 7;
+    function edge(xs, ys, kx, ky) {
+      b.lineWidth = 1.3; b.strokeStyle = K.paint; b.globalAlpha = 0.85;
+      b.beginPath();
+      for (var j = 0; j <= n; j++) { var k2 = j % n; if (j) b.lineTo(X(xs[k2]), Y(ys[k2])); else b.moveTo(X(xs[k2]), Y(ys[k2])); }
+      b.stroke(); b.globalAlpha = 1;
+      b.lineWidth = kw; b.lineCap = 'butt';
+      for (var j2 = 0; j2 < n; j2 += kstep) {
+        if (Math.abs(T.R[j2]) > E.KERB_R) continue;
+        var j3 = Math.min(j2 + kstep, n - 1);
+        b.strokeStyle = Math.floor(j2 / kstep) % 2 ? K.kerb : K.paint;
+        b.beginPath(); b.moveTo(X(kx[j2]), Y(ky[j2])); b.lineTo(X(kx[j3]), Y(ky[j3])); b.stroke();
+      }
+    }
+    edge(walls.lx, walls.ly, walls.klx, walls.kly); edge(walls.rx, walls.ry, walls.krx, walls.kry);
+    // the line: a chequered band across the track, and an arrow the way you race
+    var t0x = tx(0), t0y = ty(0), n0x = -t0y, n0y = t0x, q = 1200, cols = Math.max(4, Math.round(2 * hw / q)), w2 = 2 * hw / cols;
+    for (var r = 0; r < 2; r++) for (var c = 0; c < cols; c++) {
+      var a0 = -hw + c * w2, l0 = (r - 1) * q, cx0 = T.X[0] + t0x * l0 + n0x * a0, cy0 = T.Y[0] + t0y * l0 + n0y * a0;
+      b.beginPath();
+      b.moveTo(X(cx0), Y(cy0)); b.lineTo(X(cx0 + n0x * w2), Y(cy0 + n0y * w2));
+      b.lineTo(X(cx0 + n0x * w2 + t0x * q), Y(cy0 + n0y * w2 + t0y * q)); b.lineTo(X(cx0 + t0x * q), Y(cy0 + t0y * q));
+      b.closePath();
+      b.fillStyle = (r + c) % 2 ? '#eef1f6' : '#0b0e16'; b.fill();
+    }
+    var ai = Math.round(7000 / E.DS) % n, arx = T.X[ai], ary = T.Y[ai], al = 2600;
+    b.fillStyle = K.paint; b.globalAlpha = 0.22;
+    b.beginPath();
+    b.moveTo(X(arx + t0x * al), Y(ary + t0y * al));
+    b.lineTo(X(arx - t0x * al * 0.6 + n0x * al * 0.7), Y(ary - t0y * al * 0.6 + n0y * al * 0.7));
+    b.lineTo(X(arx - t0x * al * 0.2), Y(ary - t0y * al * 0.2));
+    b.lineTo(X(arx - t0x * al * 0.6 - n0x * al * 0.7), Y(ary - t0y * al * 0.6 - n0y * al * 0.7));
+    b.closePath(); b.fill(); b.globalAlpha = 1;
+  }
+  function roundRect(b, x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    b.beginPath(); b.moveTo(x + r, y); b.arcTo(x + w, y, x + w, y + h, r); b.arcTo(x + w, y + h, x, y + h, r); b.arcTo(x, y + h, x, y, r); b.arcTo(x, y, x + w, y, r); b.closePath();
+  }
+
+  // ── the ghosts: kept runs, re-run here beside yours ──
+  var kept = {};
+  function runOf(proof) { if (!kept[proof]) kept[proof] = E.rerun(proof, true); return kept[proof]; }
+  function addGhost(g) {
+    for (var i = 0; i < ghosts.length; i++) if (ghosts[i].proof === g.proof || ghosts[i].kind === g.kind && g.kind !== 'board') { ghosts.splice(i, 1); i--; }
+    ghosts.push(g);
+    rival = null;
+    ghosts.forEach(function (x) { if (!rival || x.steps < rival.steps) rival = x; });
+    trackWords(); hud(true);
+  }
+  function ghostOf(kind, name, proof, addr) {
+    var r = runOf(proof);
+    if (!r.ok || r.day !== addr) return null;
+    return { kind: kind, name: name, proof: proof, steps: r.steps, track: r.track };
+  }
+  function loadGhosts() {
+    ghosts = []; rival = null;
+    var addr = TRACK;
+    var h = E.drive(LV, E.HOUSE);
+    if (h) { var g = ghostOf('house', 'the house', E.encode(addr, h.steps, h.moves), addr); if (g) addGhost(g); }
+    var best = get('best:' + addr);
+    if (best) { var m = ghostOf('mine', 'your best', best, addr); if (m) addGhost(m); }
+    trackWords();
+    var p = plug(); if (!p) return;
+    p.top({ at: addr, n: 1, verify: window.checkRun }).then(function (b) {
+      if (addr !== TRACK || !b || !b.ok || !b.top[0] || !b.top[0].proof || !b.top[0].proof.text) return;
+      var top = b.top[0], mine = clean(get('name'));
+      if (mine && top.name === mine && ghosts.some(function (x) { return x.kind === 'mine'; })) return;
+      var gb = ghostOf('board', top.name, top.proof.text, addr);
+      if (gb) addGhost(gb);
+    }).catch(function () {});
+  }
+  function ghostAt(g, k) {
+    var t = g.track, m = t.xs.length - 1, i = k < 0 ? 0 : k > m ? m : k, j = Math.max(0, i - 2);
+    return { x: t.xs[i], y: t.ys[i], hx: t.xs[i] - t.xs[j], hy: t.ys[i] - t.ys[j], done: i >= m };
+  }
+
+  // ── the line, the count, the race ──
+  /* With bumping on, a race is run as a world of cars, stepped together so that they push each other apart and a
+   * knock damages both: alone, you and the house car on the grid; in a heat called with bumping, everyone in it. */
+  var bumpOn = get('bump') === 'on';
+  var world = null;      // { kind: 'house' | 'heat', ids, names, me, cars, ... }
+  var heatCall = null;   // the heat being counted down: { h, b, by, caller, joined, rosterAt, waitedTo }
+  function cloneCars(cars) { return cars.map(function (c) { var o = {}, k; for (k in c) o[k] = c[k]; return o; }); }
+  function practiceWorld() {
+    return { kind: 'house', ids: ['house', 'me'], names: ['the house', 'you'], me: 1, cars: E.grid(LV, 2), results: {} };
+  }
+  function heatWorld(h, ids, names) {
+    var cars = E.grid(LV, ids.length);
+    return { kind: 'heat', h: h, ids: ids, names: names, me: ids.indexOf(live.me ? live.me.id : ''), cars: cars, start: cloneCars(cars),
+      conf: { step: 0, cars: cloneCars(cars) }, mine: [], at: {}, results: {} };
+  }
+  function toLine(quiet) {
+    var was = mode;
+    if (was === 'count' && heatCall && heatCall.caller && heatCall.b) callNote('cancel', null);
+    if (was === 'race' && !quiet) { stream(true); farewell(''); }   // the moves so far to everyone, then the word it's left
+    mode = 'line'; moves = []; cur = 0; finished = null; gapWords = ''; heatCall = null;
+    world = bumpOn ? practiceWorld() : null;
+    st = world ? world.cars[world.me] : E.start(LV);
+    prevX = st.x; prevY = st.y; trail = []; parts = []; shake = 0;
+    $('count').hidden = true; $('end').hidden = true; $('dock').hidden = false; $('restart').hidden = true; $('hud-track').hidden = false;
+    root.classList.remove('racing');
+    placeCards(); hud(true); drawLive();
+    if (!quiet) hello();
+  }
+  function startCount(ms, who, call) {
+    if (mode === 'race') return;
+    mode = 'count'; moves = []; cur = 0; finished = null; heatCall = call || null;
+    world = null; st = E.start(LV);
+    prevX = st.x; prevY = st.y; trail = []; parts = [];
+    countAt = now() + ms;
+    $('dock').hidden = true; $('end').hidden = true; $('count').hidden = false;
+    $('count-who').textContent = (who === 'you' ? 'Your heat' : who + '’s heat') + ' · ' + trackName(TRACK) + (call && call.b ? ' · bumping' : '');
+    root.classList.add('racing');
+    if (window.scrollY > 0) try { window.scrollTo(0, 0); } catch (e) {}
+    audioStart(); hello();
+  }
+  function begin() {
+    mode = 'race'; moves = []; cur = 0; raceId = Math.random().toString(36).slice(2, 8); raceAt = now();
+    if (heatCall && heatCall.b && world && world.kind === 'heat') {
+      world.cars = cloneCars(world.start); world.conf = { step: 0, cars: cloneCars(world.start) }; world.mine = []; world.at = {}; world.results = {};
+    } else if (bumpOn && !heatCall) world = practiceWorld();
+    else world = null;
+    st = world ? world.cars[world.me] : E.start(LV);
+    prevX = st.x; prevY = st.y; trail = []; parts = []; finished = null; gapWords = ''; sent = {};
+    var t = (+get('tries:' + TRACK) || 0) + 1; put('tries:' + TRACK, String(t));
+    $('dock').hidden = true; $('end').hidden = true; $('count').hidden = true; $('restart').hidden = false; $('hud-track').hidden = true;
+    root.classList.add('racing');
+    audioStart(); hello();
+  }
+  function tick() {
+    if (mode === 'count') {
+      var left = countAt - now(), label = left > 2000 ? '3' : left > 1000 ? '2' : left > 0 ? '1' : 'GO';
+      if (heatCall && heatCall.b) {
+        if (heatCall.caller && !world && now() >= heatCall.rosterAt) sendRoster();
+        if (world) { st = world.start[world.me]; }
+        if (left <= 0 && !world) {
+          label = '…';
+          if (now() - countAt > 4000) { toLine(); gapWords = 'The heat’s grid never came: race again when you’re ready.'; return; }
+        }
+      }
+      if ($('count-n').textContent !== label) $('count-n').textContent = label;
+      if (left > 0 || label === '…') return;
+      begin(); flash('Go', K.you); sfx('go');
+    }
+    if (mode === 'line') {
+      if (!pointer.down) return;
+      var dx = pointer.x - st.x, dy = pointer.y - st.y;
+      if (dx * dx + dy * dy > E.PICK * E.PICK) { hint = 1; return; }
+      begin();
+    }
+    if (mode === 'done' && world) { settle(); return; }
+    if (mode !== 'race') return;
+    if (st.step % E.SAMPLE === 0) {
+      var mv = pointer.down ? 1 + E.cellOf(Math.round(pointer.x), Math.round(pointer.y)) : 0;
+      if (mv !== cur) { moves.push(st.step * M + mv); cur = mv; }
+    }
+    prevX = st.x; prevY = st.y;
+    if (!world) E.step(LV, st, cur);
+    else if (world.kind === 'house') E.stepWorld(LV, world.cars, [E.houseMove(LV, world.cars[0]), cur], true);
+    else { heatStep(cur); st = world.cars[world.me]; }
+    happened(st.ev);
+    trail.push([st.x, st.y]); if (trail.length > 16) trail.shift();
+    stream(false);
+    if (st.done) finish();
+    else if (st.step >= E.LIMIT) outOfTime();
+  }
+
+  /* A heat with bumping, on every phone in it: each phone knows its own finger at once and the others' as their moves
+   * come; it keeps the world as far as every move is known (the settled world, the same on every phone), and from
+   * there runs on to now with each missing finger held where it last was. When moves come, it runs on again from the
+   * settled world, so a late knock lands where it happened. */
+  function raceOf(q) { var p = live.peers[world.ids[q]]; return p && p.R && p.R.h === world.h ? p.R : null; }
+  function moveOf(q, k, c) {
+    if (q === world.me) return world.mine[k] !== undefined ? world.mine[k] : (world.mine.length ? world.mine[world.mine.length - 1] : 0);
+    var R = raceOf(q);
+    if (!R) return 1 + E.cellOf(world.start[q].x, world.start[q].y);
+    while (c.e < R.moves.length && Math.floor(R.moves[c.e] / M) <= k && Math.floor(R.moves[c.e] / M) < R.s) { c.cur = R.moves[c.e] % M; c.e++; }
+    return R.final && k >= R.s ? 0 : c.cur;   // a racer who has left lifts their finger where their moves end
+  }
+  function known(q, k) {
+    if (q === world.me) return k < world.mine.length;
+    var R = raceOf(q);
+    return !!(R && (k < R.s || R.final));
+  }
+  function advanceConf() {
+    var w = world, n = w.ids.length, c = w.conf, q, moved = false;
+    while (c.step < E.LIMIT) {
+      var k = c.step, ready = true;
+      for (q = 0; q < n && ready; q++) if (!c.cars[q].done && !known(q, k)) ready = false;
+      if (!ready) break;
+      var inputs = [];
+      for (q = 0; q < n; q++) inputs.push(c.cars[q].done ? 0 : moveOf(q, k, w.at[q] || (w.at[q] = { e: 0, cur: 0 })));
+      E.stepWorld(LV, c.cars, inputs, true);
+      c.step++; moved = true;
+      for (q = 0; q < n; q++) if (c.cars[q].done && w.results[q] === undefined) w.results[q] = c.cars[q].step;
+      if (c.cars.every(function (x) { return x.done; })) break;
+    }
+    return moved;
+  }
+  /* the world now: run on from the settled world to the step `to`, each finger known or held */
+  function predictTo(to) {
+    var w = world, q, k, cars = cloneCars(w.conf.cars), cs = [];
+    for (q = 0; q < w.ids.length; q++) cs.push({ e: w.at[q] ? w.at[q].e : 0, cur: w.at[q] ? w.at[q].cur : 0 });
+    for (k = w.conf.step; k < to && k < E.LIMIT; k++) {
+      var inputs = [];
+      for (q = 0; q < w.ids.length; q++) inputs.push(cars[q].done ? 0 : moveOf(q, k, cs[q]));
+      E.stepWorld(LV, cars, inputs, true);
+    }
+    w.cars = cars;
+  }
+  function heatStep(myMove) {
+    world.mine.push(myMove);
+    advanceConf();
+    predictTo(world.mine.length);
+  }
+  /* After your own finish: the house car races on to its line, and a heat settles as the last moves come in. */
+  var settledAt = 0;
+  function settle() {
+    var w = world, changed = false;
+    if (w.kind === 'house') {
+      var h = w.cars[0];
+      if (!h.done && h.step < E.LIMIT) { E.stepWorld(LV, w.cars, [E.houseMove(LV, h), 0], true); if (h.done) { w.results[0] = h.step; changed = true; } }
+    } else {
+      changed = advanceConf();
+      var front = w.conf.step;
+      w.ids.forEach(function (id, q) { var R = q !== w.me && raceOf(q); if (R && R.s > front) front = R.s; });
+      if (changed || now() - settledAt > 250) { settledAt = now(); predictTo(front); }
+      var mine = w.results[w.me];
+      if (mine !== undefined && finished && finished.steps !== mine) { finished.steps = mine; finished.time = E.timeWords(mine); $('fin-time').textContent = finished.time; changed = true; }
+    }
+    if (changed && !$('end').hidden) showHeat();
+  }
+  var onKerb = false, touching = false;
+  function happened(ev) {
+    if (!(ev & 128)) onKerb = false;
+    if (!ev) return;
+    if (ev & 4) {
+      flash(st.dmg >= E.WORST ? 'Wrecked: crawl to the pit' : 'Crash −' + Math.round(st.hit * 100 / E.FULL) + '%', K.hurt);
+      shake = reduce.matches ? 0 : 0.32; burst(st.x, st.y, 22, K.warn, 1.2); buzz([0, 70]); sfx('crash');
+    }
+    if (ev & 512) { flash(st.dmg >= E.WORST ? 'Wrecked: crawl to the pit' : 'Knock −' + Math.round(st.hit * 100 / E.FULL) + '%', st.dmg >= E.WORST ? K.hurt : K.warn); burst(st.x, st.y, 14, K.warn, 0.9); buzz([0, 40]); sfx('knock'); }
+    else if ((ev & 256) && !touching) sfx('touch');
+    touching = !!(ev & 256);
+    if ((ev & 128) && !onKerb) { sfx('kerb'); buzz(8); }
+    onKerb = !!(ev & 128);
+    if ((ev & 8) && st.step - lastScrape > 3) { lastScrape = st.step; scrapeSparks(); sfx('scrape'); }
+    if (ev & 16) { if (st.step - lastMend > 20) { flash('Mending', K.mend); sfx('mend'); } lastMend = st.step; }
+    if ((ev & 32) && !(ev & 64)) { flash(st.lap === E.LAPS ? 'Last lap' : 'Lap ' + st.lap, K.paint); sfx('lap'); lapGap(st.lap - 1); }
+  }
+  function lapGap(done) {
+    var g = rival && !(world && rival.kind === 'house') ? rival : ghosts.filter(function (x) { return x.kind !== 'house'; }).sort(function (x, y) { return x.steps - y.steps; })[0], at = g && g.track.laps[done - 1];
+    if (!at) { gapWords = ''; return; }
+    var d = (st.step - at) / E.RATE, s = Math.abs(d).toFixed(2), who = g.kind === 'house' ? 'the house ghost' : g.kind === 'mine' ? 'your best' : g.name + '’s ghost';
+    gapWords = 'Lap ' + done + ': ' + (Math.abs(d) < 0.005 ? 'level with ' + who : s + ' s ' + (d < 0 ? 'ahead of ' : 'behind ') + who);
+  }
+  function finish() {
+    mode = 'done'; root.classList.remove('racing');
+    stream(true);
+    moves.push(st.step * M);
+    if (world) {
+      // a race with bumping is the world's, not yours alone: it stays off the board, and is no ghost of yours
+      finished = { bump: world.kind, steps: st.step, time: E.timeWords(st.step), proof: '', crashes: st.crashes, kerbs: st.kerbs, pit: st.pit, bumps: st.bumps, track: TRACK };
+      farewell('');
+      sfx('finish'); flash('Finished', K.you);
+      setTimeout(showEnd, 700);
+      return;
+    }
+    var proof = E.encode(TRACK, st.step, moves), check = E.rerun(proof), ok = check.ok && check.steps === st.step;
+    finished = { steps: st.step, time: E.timeWords(st.step), proof: ok ? proof : '', crashes: st.crashes, kerbs: st.kerbs, pit: st.pit, newBest: false, prev: null, track: TRACK };
+    if (ok) {
+      var best = get('best:' + TRACK), bd = best ? E.decode(best) : null;
+      finished.prev = bd && bd.day === TRACK ? bd.steps : null;
+      if (!finished.prev || st.step < finished.prev) { put('best:' + TRACK, proof); finished.newBest = true; var m = ghostOf('mine', 'your best', proof, TRACK); if (m) addGhost(m); }
+    }
+    farewell(finished.proof);
+    sfx('finish'); flash('Finished', K.you);
+    setTimeout(showEnd, 700);
+  }
+  function outOfTime() {
+    mode = 'done'; root.classList.remove('racing');
+    finished = { out: true, steps: st.step, lap: st.lap, track: TRACK };
+    farewell('');
+    flash('Out of time', K.warn);
+    setTimeout(showEnd, 500);
+  }
+  function showEnd() {
+    if (mode !== 'done' || !finished) return;
+    var f = finished;
+    $('fin-what').textContent = 'Three laps of ' + trackName(f.track) + (f.bump ? ' · bumping' : '');
+    if (f.out) {
+      $('fin-time').textContent = 'Out of time'; $('fin-unit').hidden = true;
+      $('fin-detail').textContent = 'Lap ' + f.lap + ' of 3 when the ' + (E.LIMIT / E.RATE) + ' seconds ran out.';
+      $('fin-compare').textContent = '';
+      $('keep').hidden = true;
+    } else {
+      $('fin-time').textContent = f.time; $('fin-unit').hidden = false;
+      var bits = [];
+      bits.push(f.crashes ? f.crashes + (f.crashes === 1 ? ' crash' : ' crashes') : 'no crashes');
+      if (f.bump) bits.push(f.bumps ? f.bumps + (f.bumps === 1 ? ' knock' : ' knocks') : 'no knocks');
+      if (f.kerbs > 3) bits.push((f.kerbs / E.RATE).toFixed(1) + ' s on the kerbs');
+      if (f.pit > 3) bits.push((f.pit / E.RATE).toFixed(1) + ' s mending in the pit');
+      $('fin-detail').textContent = bits.join(' · ');
+      var cmp = [];
+      if (f.bump) cmp.push(f.bump === 'house' ? 'A bumping race against the house car: it stays off the board.' : 'A heat with bumping: the times below are the heat’s, settled on every phone from everyone’s moves, and stay off the board.');
+      else if (f.newBest && f.prev) cmp.push('Your best here, ' + ((f.prev - f.steps) / E.RATE).toFixed(2) + ' s faster than before.');
+      else if (f.newBest) cmp.push('Your first time on ' + trackName(f.track) + ': your ghost from now on.');
+      else if (f.prev) cmp.push(((f.steps - f.prev) / E.RATE).toFixed(2) + ' s off your best.');
+      if (!f.bump) ghosts.forEach(function (g) {
+        if (g.kind === 'mine') return;
+        var d = (f.steps - g.steps) / E.RATE, who = g.kind === 'house' ? 'the house ghost' : g.name + ' (the board’s best)';
+        cmp.push(Math.abs(d) < 0.005 ? 'Level with ' + who + '.' : Math.abs(d).toFixed(2) + ' s ' + (d < 0 ? 'faster than ' : 'behind ') + who + '.');
+      });
+      $('fin-compare').textContent = cmp.join(' ');
+      $('keep').hidden = !(f.proof && plug());
+      $('keep-btn').disabled = false; $('keep-state').textContent = '';
+      $('who').value = clean(get('name')) || (plug() && plug().name()) || (live.me && !/^guest-\d+$/.test(live.me.name) ? live.me.name : '') || '';
+    }
+    $('made').hidden = true; $('challenge').hidden = true; $('share-note').textContent = ''; $('restart').hidden = true; $('hud-track').hidden = false;
+    showHeat();
+    $('dock').hidden = true; $('end').hidden = false;
+    placeCards();
+  }
+
+  // ── keeping a run: the proof in the room, the line in the player's own mirror ──
+  var keptSlot = '';
+  $('keep-btn').addEventListener('click', function () {
+    var g = plug(), f = finished; if (!g || !f || !f.proof) return;
+    var name = clean($('who').value);
+    $('keep-btn').disabled = true; $('keep-state').textContent = 'Putting it on the board…';
+    g.result({ at: f.track, line: 'FINISHED ' + f.time + 's', proof: f.proof, name: name || undefined,
+      tries: get('tries:' + f.track) || undefined, from: get('from') || undefined }).then(function (r) {
+      $('keep-btn').disabled = false;
+      if (!r || !r.ok) { $('keep-state').textContent = r && r.quiet ? 'Not kept: the key for that name was not given.' : 'That did not reach the beach: ' + ((r && r.error) || 'no answer') + '.'; return; }
+      put('name', r.name); keptSlot = r.slot || '';
+      $('keep').hidden = true;
+      $('share-note').textContent = r.said ? 'Your time is on the board as ' + r.name + '. It catches up in a few seconds.' : 'Kept in the room as ' + r.name + '; your best on ' + trackName(f.track) + ' still stands on the board.';
+      var made = g.made();
+      if (made) { $('made').textContent = 'This phone made you a name, ' + made.name + ', and a key, ' + made.key + '. Note the key to race as ' + made.name + ' on another phone.'; $('made').hidden = false; }
+      $('challenge').hidden = !keptSlot;
+      setTimeout(function () { refreshBoard(); }, 15000);
+    });
+  });
+  function pageLink() { return (LAW && LAW.page) || PAGE; }
+  function share(url, text, where) {
+    var say = function (t) { $(where).textContent = t; };
+    if (navigator.share) { navigator.share({ title: 'Ghost Racer', text: text, url: url }).catch(function () {}); return; }
+    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { say('The link is copied: ' + url); }, function () { say('Send them this link: ' + url); });
+  }
+  function bring(where) {
+    var me = clean(get('name')) || (plug() && plug().name()) || '';
+    share(pageLink() + '?track=' + TRACK + (me ? '&from=' + encodeURIComponent(me) : ''), 'Race me on ' + trackName(TRACK) + ' in Ghost Racer: open it and we race live.', where);
+  }
+  $('bring').addEventListener('click', function () { bring('bring-note'); });
+  $('bring-2').addEventListener('click', function () { bring('share-note'); });
+  $('challenge').addEventListener('click', function () { if (finished) share(pageLink() + '?track=' + finished.track + '&ghost=' + keptSlot, 'Beat my ' + finished.time + ' s on ' + trackName(finished.track) + ' in Ghost Racer.', 'share-note'); });
+  if (params.get('from') && !get('from')) put('from', clean(params.get('from')));
+
+  // ── the board for the track in view ──
+  var board = null;
+  function boardFor(addr) {
+    $('board-title').textContent = 'The board · ' + trackName(addr);
+    if (!window.customElements || !customElements.get('beach-board')) {
+      if (!board) { $('board-sheet').textContent = 'The board can’t be read just now.'; }
+      return;
+    }
+    if (!board) {
+      board = document.createElement('beach-board');
+      board.id = 'board'; board.setAttribute('n', '10'); board.setAttribute('verify', 'checkRun');
+      board.setAttribute('at', addr); board.setAttribute('empty', 'Nobody has a time on this track yet. The first is yours.');
+      $('board-sheet').textContent = ''; $('board-sheet').appendChild(board);
+      return;
+    }
+    board.setAttribute('at', addr);
+    refreshBoard();
+  }
+  function refreshBoard() { if (board && board.refresh) board.refresh(); }
+
+  // ── the live room: everyone here races live, introduced by the beach, then player to player ──
+  var live = { joined: false, me: null, peers: {} }, sent = {};
+  function peerOf(id, name) {
+    var p = live.peers[id];
+    if (!p) p = live.peers[id] = { id: id, name: clean(name) || 'someone', t: '', m: '', direct: false, ping: null, R: null, res: null };
+    else if (name && clean(name)) p.name = clean(name);
+    return p;
+  }
+  function hello(to) {
+    var R = hub(); if (!R || !live.joined) return;
+    R.send('hi', { t: TRACK, m: mode, l: st ? st.lap : 1 }, to ? { to: to } : undefined);
+  }
+  function farewell(proof) {
+    var R = hub(); if (!R || !live.joined || !raceId) return;
+    R.send('end', { r: raceId, t: TRACK, p: proof || '', s: st ? st.step : 0 });
+    hello();
+  }
+  /* a race streams as its moves: to a peer joined directly ten times a second (thirty in a heat with bumping, where a
+   * knock waits on them), to one the wire carries once a second */
+  function stream(force) {
+    var R = hub(); if (!R || !live.joined || mode !== 'race' && !force) return;
+    if (world && world.kind === 'house') return;   // a race against the house car is no one else's to follow
+    var ps = R.peers(), h = world && world.kind === 'heat' ? world.h : '', fast = h ? 2 : 6;
+    for (var i = 0; i < ps.length; i++) {
+      var p = ps[i], q = sent[p.id] || (sent[p.id] = { i: 0, at: -999 });
+      if (!force && st.step - q.at < (p.direct ? fast : 60)) continue;
+      R.send('mv', { r: raceId, t: TRACK, h: h, i: q.i, m: moves.slice(q.i), s: st.step }, { to: p.id });
+      q.i = moves.length; q.at = st.step;
+    }
+  }
+  /* a heat with bumping is settled before its go: who calls it gathers who joins, and sends the grid, in an order of
+   * chance, which every phone in it then runs */
+  function callNote(kind, body, to) {
+    var R = hub(); if (!R || !live.joined || !heatCall) return;
+    var b = body || {}; b.h = heatCall.h;
+    R.send(kind, b, to ? { to: to } : undefined);
+  }
+  function sendRoster() {
+    var ids = [live.me.id].concat(Object.keys(heatCall.joined).filter(function (id) { return live.peers[id]; })), names = {};
+    for (var i = ids.length - 1; i > 0; i--) { var j = rnd(i + 1), t = ids[i]; ids[i] = ids[j]; ids[j] = t; }
+    var list = ids.map(function (id) { return id === live.me.id ? live.me.name : (live.peers[id] ? live.peers[id].name : 'someone'); });
+    callNote('roster', { ids: ids, names: list });
+    world = heatWorld(heatCall.h, ids, list);
+    st = world.start[world.me];
+  }
+  function onMessage(msg) {
+    if (!msg || !msg.from) return;
+    var p = peerOf(msg.from, msg.name), b = msg.body || {};
+    if (msg.kind === 'hi') { if (isTrack(b.t)) p.t = String(b.t); p.m = String(b.m || ''); drawLive(); return; }
+    if (msg.kind === 'mv') { takeMoves(p, b); return; }
+    if (msg.kind === 'end') { takeEnd(p, b); return; }
+    if (msg.kind === 'call') { takeCall(p, b, msg.via); return; }
+    if (msg.kind === 'join') { if (heatCall && heatCall.caller && b.h === heatCall.h && !world) heatCall.joined[msg.from] = p.name; return; }
+    if (msg.kind === 'out') { if (heatCall && heatCall.caller && b.h === heatCall.h) delete heatCall.joined[msg.from]; return; }
+    if (msg.kind === 'cancel') { if (mode === 'count' && heatCall && b.h === heatCall.h) { toLine(); gapWords = p.name + ' called the heat off.'; hud(true); } return; }
+    if (msg.kind === 'roster') {
+      if (mode !== 'count' || !heatCall || b.h !== heatCall.h || !Array.isArray(b.ids) || !live.me) return;
+      var ids = b.ids.map(String).slice(0, 8), names = (Array.isArray(b.names) ? b.names : []).map(function (x) { return clean(x) || 'someone'; });
+      if (ids.indexOf(live.me.id) < 0) { toLine(); gapWords = 'That heat filled without you: call one of your own.'; hud(true); return; }
+      world = heatWorld(heatCall.h, ids, ids.map(function (id, i) { return names[i] || 'someone'; }));
+      st = world.start[world.me];
+      return;
+    }
+  }
+  function newRace(r, t) {
+    var lv = E.level(t), sim = E.start(lv);
+    return { r: r, t: t, moves: [], s: 0, sim: sim, e: 0, cur: 0, xs: [sim.x], ys: [sim.y], ps: [0], laps: [], at: now(), began: now(), end: '', broke: false };
+  }
+  function takeMoves(p, b) {
+    var t = String(b.t || '');
+    if (!isTrack(t) || typeof b.r !== 'string' || !Array.isArray(b.m)) return;
+    p.t = t; p.m = 'race';
+    var R = p.R;
+    if (!R || R.r !== b.r) { R = p.R = newRace(b.r, t); R.h = String(b.h || ''); p.res = null; drawLive(); }
+    var i = b.i | 0;
+    if (i > R.moves.length || i + b.m.length > E.LIMIT) { R.broke = true; return; }
+    for (var k = R.moves.length - i; k < b.m.length; k++) {
+      var v = b.m[k];
+      if (typeof v !== 'number' || v < 0 || v % 1 || (R.moves.length && v <= R.moves[R.moves.length - 1])) { R.broke = true; return; }
+      R.moves.push(v);
+    }
+    if (typeof b.s === 'number' && b.s > R.s) R.s = Math.min(b.s | 0, E.LIMIT);
+    R.at = now();
+  }
+  function advance(R) {
+    if (R.broke) return;
+    var lv = E.level(R.t), guard = 0;
+    while (R.sim.step < R.s && !R.sim.done && guard++ < 4000) {
+      var j = R.sim.step;
+      while (R.e < R.moves.length && Math.floor(R.moves[R.e] / M) <= j) { R.cur = R.moves[R.e] % M; R.e++; }
+      E.step(lv, R.sim, R.cur);
+      R.xs.push(R.sim.x); R.ys.push(R.sim.y); R.ps.push(R.sim.prog);
+      if (R.sim.ev & 32) R.laps.push(R.sim.step);
+    }
+  }
+  /* where a live racer stands at step k of their race: as their moves say where they have come, and a few frames on
+   * with their finger held where it last was, where their moves have not come yet */
+  function liveAt(R, k) {
+    advance(R);
+    if (k <= R.sim.step) { var i = Math.max(0, Math.min(k, R.xs.length - 1)), j = Math.max(0, i - 2); return { x: R.xs[i], y: R.ys[i], hx: R.xs[i] - R.xs[j], hy: R.ys[i] - R.ys[j], prog: R.ps[i], lap: lapOf(R, i), done: R.sim.done && i >= R.sim.step }; }
+    var c = {}, key; for (key in R.sim) c[key] = R.sim[key];
+    var ahead = Math.min(k - R.sim.step, 30), lv = E.level(R.t);
+    for (var a = 0; a < ahead && !c.done; a++) E.step(lv, c, R.cur);
+    return { x: c.x, y: c.y, hx: c.vx, hy: c.vy, prog: c.prog, lap: c.lap, done: !!c.done };
+  }
+  function lapOf(R, i) { var l = 1; for (var q = 0; q < R.laps.length; q++) if (R.laps[q] <= i) l++; return Math.min(l, E.LAPS); }
+  function takeEnd(p, b) {
+    var t = String(b.t || ''); if (!isTrack(t)) return;
+    p.m = 'done';
+    if (p.R && p.R.r === b.r) p.R.final = true;
+    if (b.p && String(b.p).length < 20000) {
+      var r = E.rerun(String(b.p));
+      if (r.ok && r.day === t) p.res = { t: t, steps: r.steps, time: r.time, r: String(b.r || ''), at: now() };
+      else p.res = { t: t, bad: true, r: String(b.r || ''), at: now() };
+      if (p.R && p.R.r === b.r && p.res && !p.res.bad) {
+        var d = E.decode(String(b.p));
+        if (d) { p.R.moves = d.moves.slice(0, -1); p.R.broke = false; }
+        p.R.s = r.steps; p.R.end = 'done'; p.R.at = now();
+      }
+    } else { p.res = { t: t, out: true, r: String(b.r || ''), at: now() }; if (p.R && p.R.r === b.r) p.R.end = 'out'; }
+    drawLive(); if (mode === 'done') showHeat();
+  }
+  var lastCall = -1e9;
+  function takeCall(p, b, via) {
+    var t = String(b.t || ''); if (!isTrack(t) || now() - lastCall < 5000) return;
+    lastCall = now();
+    if (mode === 'race' || mode === 'count') { gapWords = p.name + ' called a heat on ' + trackName(t) + ': after this run'; return; }
+    var wait = Math.max(800, Math.min(6000, +b.in || 3000)) - (via === 'direct' && p.ping ? Math.min(400, p.ping / 2) : 0);
+    setTrack(t);
+    startCount(wait, p.name, { h: String(b.h || ''), b: !!b.b, by: p.id, caller: false });
+    if (b.b) callNote('join', {}, p.id);
+  }
+  function where(p) {
+    var bits = [], tn = trackName(p.t);
+    if (p.m === 'race' || p.m === 'count') bits.push('racing' + (tn ? ' ' + tn : ''));
+    else if (p.res && !p.res.out && !p.res.bad && p.res.t === p.t) bits.push(p.res.time + ' s on ' + tn);
+    else if (tn) bits.push('on ' + tn);
+    if (p.ping != null) bits.push(p.direct ? p.ping + ' ms' : 'slow link');
+    return bits.join(', ');
+  }
+  function drawLive() {
+    var box = $('livebox'), line = $('live-line'), call = $('call');
+    if (away) { box.hidden = false; line.textContent = 'Out of the room while this page sat idle: touch anywhere to come back and race whoever is here.'; call.hidden = true; $('room-name-row').hidden = true; return; }
+    if (!live.joined) { box.hidden = true; return; }
+    box.hidden = false;
+    var ps = Object.keys(live.peers).map(function (id) { return live.peers[id]; });
+    line.textContent = '';
+    var dot = document.createElement('span'); dot.className = 'dot'; line.appendChild(dot);
+    $('room-name-row').hidden = !(live.me && /^guest-\d+$/.test(live.me.name));
+    if (!ps.length) {
+      line.appendChild(document.createTextNode('You are in the room as ' + (live.me ? live.me.name : 'a guest') + '. Nobody else is here just now: bring someone, and race them live.'));
+      call.hidden = true; return;
+    }
+    line.appendChild(document.createTextNode('Here now: '));
+    ps.forEach(function (p, i) {
+      var b = document.createElement('b'); b.textContent = p.name; line.appendChild(b);
+      var w = where(p); line.appendChild(document.createTextNode((w ? ' (' + w + ')' : '') + (i < ps.length - 1 ? ', ' : '.')));
+    });
+    call.hidden = mode === 'race' || mode === 'count';
+    call.textContent = (ps.length === 1 ? 'Race ' + ps[0].name + ' now' : 'Race them all now') + (bumpOn ? ', bumping' : '');
+  }
+  /* the heat: everyone who raced this track while you did, and how they finished */
+  function showHeat() {
+    var f = finished, ol = $('heat');
+    if (!f) { ol.hidden = true; return; }
+    var rows = [];
+    if (f.bump && world) {
+      world.ids.forEach(function (id, q) {
+        var done = world.results[q] !== undefined ? world.results[q] : world.kind === 'house' && world.cars[q].done ? world.cars[q].step : q === world.me ? f.steps : null;
+        var gone = world.kind === 'heat' && q !== world.me && !live.peers[id];
+        rows.push({ name: q === world.me ? 'you' : world.names[q], steps: done !== null ? done : Infinity, me: q === world.me,
+          words: done !== null ? E.timeWords(done) + ' s' : gone ? 'left' : 'racing' });
+      });
+      return drawRows(rows);
+    }
+    if (!f.out) rows.push({ name: 'you', steps: f.steps, words: f.time + ' s', me: true });
+    Object.keys(live.peers).forEach(function (id) {
+      var p = live.peers[id], R = p.R;
+      if (!R || R.t !== f.track || Math.abs(R.began - raceAt) > 40000) return;
+      if (p.res && p.res.r === R.r && !p.res.out && !p.res.bad) rows.push({ name: p.name, steps: p.res.steps, words: p.res.time + ' s' });
+      else if (p.res && p.res.r === R.r) rows.push({ name: p.name, steps: Infinity, words: p.res.out ? 'out of time' : 'not re-run' });
+      else rows.push({ name: p.name, steps: Infinity, words: 'racing, lap ' + lapOf(R, R.sim.step) });
+    });
+    drawRows(rows);
+  }
+  function drawRows(rows) {
+    var ol = $('heat');
+    if (rows.length < 2) { ol.hidden = true; return; }
+    rows.sort(function (a, b) { return a.steps - b.steps; });
+    ol.textContent = '';
+    rows.forEach(function (r, i) {
+      var li = document.createElement('li'); if (r.me) li.className = 'me';
+      var a = document.createElement('span'); a.className = 'rk'; a.textContent = r.steps < Infinity ? String(i + 1) : '–';
+      var b = document.createElement('span'); b.className = 'nm'; b.textContent = r.name;
+      var c = document.createElement('span'); c.className = 'tm'; c.textContent = r.words;
+      li.appendChild(a); li.appendChild(b); li.appendChild(c); ol.appendChild(li);
+    });
+    ol.hidden = false;
+  }
+  var wired = false, away = false, idleAt = 0, awayTimer = 0;
+  function joinRoom(name) {
+    var R = hub(); if (!R) return;
+    if (!wired) {
+      wired = true;
+      R.on('peer', function (v) { var p = peerOf(v.id, v.name); p.direct = v.direct; drawLive(); });
+      R.on('direct', function (v) { var p = peerOf(v.id, v.name); p.direct = v.direct; if (v.direct) hello(v.id); drawLive(); });
+      R.on('ping', function (v) { var p = peerOf(v.id, v.name); p.direct = v.direct; p.ping = v.direct ? v.ping.direct : v.ping.relayed; drawLive(); });
+      R.on('gone', function (v) { delete live.peers[v.id]; delete sent[v.id]; drawLive(); });
+      R.on('message', onMessage);
+    }
+    away = false; idleAt = now();
+    name = name || clean(get('name')) || (plug() && plug().name()) || undefined;
+    return R.join({ name: name }).then(function (j) {
+      live.joined = !!(j && j.ok); live.me = live.joined ? { id: j.id, name: j.name, wire: j.wire } : null;
+      drawLive(); if (live.joined) hello();
+    }, function () { live.joined = false; drawLive(); });
+  }
+  /* a page left open and untouched leaves the room, so the beach is not asked after it for nothing; a touch brings it back */
+  function goAway() {
+    var R = hub(); if (!R || !live.joined || away || mode === 'race' || mode === 'count') return;
+    away = true; live.joined = false; live.peers = {}; sent = {};
+    R.leave(); drawLive();
+  }
+  function active() { idleAt = now(); if (away && !document.hidden) joinRoom(); }
+  ['pointerdown', 'keydown', 'scroll'].forEach(function (t) { window.addEventListener(t, active, { passive: true, capture: true }); });
+  document.addEventListener('visibilitychange', function () {
+    clearTimeout(awayTimer);
+    if (document.hidden) awayTimer = setTimeout(goAway, 60000); else if (away) joinRoom();
+  });
+  setInterval(function () { if (!away && live.joined && now() - idleAt > 600000) goAway(); }, 30000);
+  $('room-name-btn').addEventListener('click', function () {
+    var R = hub(), name = clean($('room-name').value); if (!R || !name) return;
+    put('name', name);
+    R.leave().then(function () { live.peers = {}; sent = {}; return joinRoom(name); }, function () {});
+  });
+  $('call').addEventListener('click', function () {
+    var R = hub(); if (!R || !live.joined || mode === 'race' || mode === 'count') return;
+    audioStart();
+    var h = Math.random().toString(36).slice(2, 8);
+    R.send('call', { t: TRACK, in: 3000, h: h, b: bumpOn ? 1 : 0 });
+    startCount(3000, 'you', { h: h, b: bumpOn, caller: true, joined: {}, rosterAt: now() + 1500 });
+  });
+  $('count-off').addEventListener('click', function () {
+    if (mode !== 'count') return;
+    if (heatCall && heatCall.b && !heatCall.caller) callNote('out', {}, heatCall.by);
+    toLine();
+  });
+  // bumping: one switch, for a race alone (the house car) and for a heat you call
+  function bumpLabel() {
+    $('bump').setAttribute('aria-pressed', String(bumpOn));
+    $('bump').textContent = bumpOn ? 'Bumping on' : 'Bumping off';
+    $('bump-note').textContent = bumpOn ? 'Cars collide, and a knock damages both: 5% for a nudge, up to 25% at full speed. Alone you race the house car; heats you call bump too. Bumping races stay off the board.' : 'Cars pass through each other, as ghosts do.';
+  }
+  $('bump').addEventListener('click', function () {
+    if (mode === 'race' || mode === 'count') return;
+    bumpOn = !bumpOn; put('bump', bumpOn ? 'on' : 'off'); bumpLabel();
+    if (mode === 'line') toLine(true);
+    drawLive();
+  });
+
+  // ── the touch ──
+  function toBoard(e) {
+    var r = cv.getBoundingClientRect();
+    pointer.x = ((e.clientX || 0) - r.left - view.ox) / view.s; pointer.y = ((e.clientY || 0) - r.top - view.oy) / view.s;
+  }
+  cv.addEventListener('pointerdown', function (e) {
+    if (pointer.id !== null && pointer.id !== e.pointerId) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.preventDefault();
+    try { cv.setPointerCapture(e.pointerId); } catch (x) {}
+    pointer.id = e.pointerId; pointer.down = true; toBoard(e);
+    audioStart();
+  });
+  cv.addEventListener('pointermove', function (e) { if (e.pointerId === pointer.id) { e.preventDefault(); toBoard(e); } });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (t) {
+    cv.addEventListener(t, function (e) { if (e.pointerId === pointer.id) { pointer.down = false; pointer.id = null; } });
+  });
+  window.addEventListener('blur', function () { pointer.down = false; pointer.id = null; });
+  document.addEventListener('visibilitychange', function () { last = 0; acc = 0; if (document.hidden) { pointer.down = false; pointer.id = null; } });
+
+  // ── drawing each frame ──
+  function render(alpha) {
+    var s = view.s;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(base, 0, 0);
+    ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+    if (shake > 0) { var m = 6 * shake / 0.32; ctx.translate((Math.random() - 0.5) * m, (Math.random() - 0.5) * m); }
+    if (!st) return;
+    var carR = Math.max(5, E.CR * s * 1.25), racing = mode === 'race', k = racing || mode === 'done' ? st.step : 0;
+    // the ghosts
+    for (var g = 0; g < ghosts.length; g++) {
+      if (world && ghosts[g].kind === 'house') continue;
+      var gh = ghosts[g], at = ghostAt(gh, k), col = gh.kind === 'mine' ? K.you : gh.kind === 'house' ? K.paint : K.ghost;
+      var a = at.done ? 0.22 : gh.kind === 'house' ? 0.42 : 0.58;
+      if (!racing) a *= 0.5;
+      car(at.x, at.y, at.hx, at.hy, carR * 0.9, col, a, gh.kind === 'mine');
+      if (racing && !at.done && (gh === rival || gh.kind === 'board')) tag(at.x, at.y, gh.kind === 'house' ? 'house' : gh.name, col, a + 0.25);
+    }
+    // the other cars of a world with bumping: solid, where the world has them
+    var place = 1, racers = 1;
+    if (world) {
+      var mine = world.cars[world.me];
+      world.cars.forEach(function (c, q) {
+        if (q === world.me) return;
+        var col = world.kind === 'house' ? K.paint : K.live, words = world.kind === 'house' ? K.ink : K.live, a2 = c.done ? 0.45 : 0.95;
+        if (racing && !c.done) { racers++; if (c.prog > mine.prog) place++; }
+        if (racing && c.done && !mine.done) { racers++; place++; }
+        halo(c.x, c.y, carR * 2.1, col, 0.16);
+        car(c.x, c.y, c.hx, c.hy, carR, col, a2, false);
+        tag(c.x, c.y, world.names[q] + (c.done ? ' · in' : ' · lap ' + c.lap), words, 0.95);
+      });
+    }
+    // the live racers on this track, at the same moment of their race as yours
+    var ids = Object.keys(live.peers);
+    for (var i = 0; i < ids.length; i++) {
+      var p = live.peers[ids[i]], R = p.R;
+      if (!R || R.broke || R.t !== TRACK) continue;
+      if (world && world.kind === 'heat' && world.ids.indexOf(ids[i]) >= 0) continue;
+      var kk = racing ? st.step : R.s + Math.min(30, Math.floor((now() - R.at) / 16.7));
+      if (!racing && R.end && now() - R.at > 6000) continue;
+      var q = liveAt(R, kk);
+      if (racing && !R.end) { racers++; if (q.prog > st.prog) place++; }
+      halo(q.x, q.y, carR * 2.1, K.live, 0.18);
+      car(q.x, q.y, q.hx, q.hy, carR, K.live, q.done ? 0.45 : 0.9, false);
+      tag(q.x, q.y, p.name + (q.done ? ' · in' : ' · lap ' + q.lap), K.live, 0.95);
+    }
+    live.place = racers > 1 ? place : 0; live.racers = racers;
+    // your trail, the leash, your car
+    var cx = prevX + (st.x - prevX) * Math.min(1, alpha), cy = prevY + (st.y - prevY) * Math.min(1, alpha);
+    if (mode === 'done' && trail.length) trail.shift();
+    if (trail.length > 1) {
+      for (var t = 1; t < trail.length; t++) {
+        ctx.strokeStyle = K.you; ctx.globalAlpha = 0.05 + 0.4 * t / trail.length; ctx.lineWidth = Math.max(2, carR * 0.9 * t / trail.length);
+        ctx.beginPath(); ctx.moveTo(X(trail[t - 1][0]), Y(trail[t - 1][1])); ctx.lineTo(X(trail[t][0]), Y(trail[t][1])); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    if (st.grip && racing) {
+      // the car has fallen behind the finger: a line to it, warmer the further it trails
+      var lx = st.tx - st.x, ly = st.ty - st.y, gap = Math.sqrt(lx * lx + ly * ly);
+      if (gap > 1500) {
+        var strain = Math.min(1, gap / 16000), lc = strain > 0.6 ? K.hurt : strain > 0.3 ? K.warn : K.paint;
+        ctx.strokeStyle = lc; ctx.globalAlpha = 0.35 + 0.6 * strain; ctx.lineWidth = 1.5 + 2.5 * strain; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(X(cx), Y(cy)); ctx.lineTo(X(st.tx), Y(st.ty)); ctx.stroke();
+        ctx.globalAlpha = 0.9; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(X(st.tx), Y(st.ty), Math.max(4, 600 * s), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+    }
+    var hurt = st.dmg / E.FULL;
+    if (racing && hurt > 0.45 && Math.random() < hurt * 0.5) parts.push({ x: st.x, y: st.y, vx: (Math.random() - 0.5) * 200, vy: (Math.random() - 0.5) * 200, life: 1, c: 'rgba(150, 156, 172, 0.5)', r: 2 + Math.random() * 3, smoke: true });
+    halo(cx, cy, carR * 2.4, K.you, st.grip ? 0.22 : 0.1);
+    car(cx, cy, st.hx, st.hy, carR, K.you, 1, false);
+    if (!st.grip && mode !== 'done') {
+      var pulse = 0.5 + 0.5 * Math.sin(now() / 160);
+      ctx.strokeStyle = mode === 'line' && hint > 0 ? K.you : K.paint; ctx.globalAlpha = 0.35 + 0.5 * pulse; ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.beginPath(); ctx.arc(X(cx), Y(cy), E.PICK * s, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      if (mode !== 'race' || st.fumble === 0) tag(cx, cy - E.PICK * 0.55, mode === 'count' ? 'hold your car' : 'touch your car', K.you, 0.95);
+    }
+    if (st.inBox && st.dmg > 0) {
+      ctx.strokeStyle = K.mend; ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.arc(X(cx), Y(cy), carR * 2.2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - hurt)); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    for (var pi = parts.length - 1; pi >= 0; pi--) {
+      var pt = parts[pi];
+      pt.x += pt.vx; pt.y += pt.vy; pt.vx *= pt.smoke ? 0.96 : 0.9; pt.vy *= pt.smoke ? 0.96 : 0.9; pt.life -= pt.smoke ? 0.02 : 0.045;
+      if (pt.life <= 0) { parts.splice(pi, 1); continue; }
+      ctx.globalAlpha = Math.max(0, pt.life); ctx.fillStyle = pt.c;
+      ctx.beginPath(); ctx.arc(X(pt.x), Y(pt.y), pt.smoke ? pt.r * (2 - pt.life) : pt.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    if (shake > 0) shake = Math.max(0, shake - 1 / 60);
+    if (hint > 0) hint = Math.max(0, hint - 0.01);
+  }
+  function car(x, y, hx, hy, r, color, alpha, hollow) {
+    var l = Math.sqrt(hx * hx + hy * hy) || 1, ux = hx / l, uy = hy / l;
+    if (!hx && !hy && T) { ux = T.TX[0] / ONE; uy = T.TY[0] / ONE; }
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.translate(X(x), Y(y));
+    ctx.rotate(Math.atan2(uy, ux));
+    var len = r * 1.35, wid = r * 0.82;
+    ctx.beginPath();
+    ctx.moveTo(len, 0);
+    ctx.quadraticCurveTo(len * 0.7, -wid, 0, -wid);
+    ctx.lineTo(-len * 0.8, -wid * 0.9); ctx.quadraticCurveTo(-len, 0, -len * 0.8, wid * 0.9);
+    ctx.lineTo(0, wid); ctx.quadraticCurveTo(len * 0.7, wid, len, 0);
+    ctx.closePath();
+    if (hollow) { ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.stroke(); }
+    else {
+      ctx.fillStyle = color; ctx.fill();
+      ctx.fillStyle = 'rgba(8, 11, 20, 0.55)';
+      ctx.beginPath(); ctx.ellipse(len * 0.05, 0, len * 0.32, wid * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+  function halo(x, y, r, color, a) {
+    var gx = X(x), gy = Y(y), gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, r);
+    gr.addColorStop(0, color); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = a; ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(gx, gy, r, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+  }
+  function tag(x, y, text, color, a) {
+    ctx.globalAlpha = Math.min(1, a);
+    ctx.font = '600 11px ' + getComputedStyle(root).getPropertyValue('--body');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+    ctx.lineWidth = 3; ctx.strokeStyle = K.shade;
+    ctx.strokeText(text, X(x), Y(y) - 10);
+    ctx.fillStyle = color; ctx.fillText(text, X(x), Y(y) - 10);
+    ctx.globalAlpha = 1;
+  }
+  function burst(x, y, n, color, power) {
+    if (reduce.matches) n = Math.ceil(n / 3);
+    for (var i = 0; i < n; i++) { var a = Math.random() * Math.PI * 2, v = (300 + Math.random() * 900) * power; parts.push({ x: x, y: y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, c: color, r: 1.4 + Math.random() * 1.8 }); }
+  }
+  function scrapeSparks() {
+    var i = st.i, nx = -T.TY[i] / ONE, ny = T.TX[i] / ONE, lat = (st.x - T.X[i]) * nx + (st.y - T.Y[i]) * ny, sd = lat >= 0 ? 1 : -1;
+    var wx = st.x + nx * sd * E.CR, wy = st.y + ny * sd * E.CR;
+    for (var k = 0; k < (reduce.matches ? 2 : 5); k++) parts.push({ x: wx, y: wy, vx: -st.vx * (0.2 + Math.random() * 0.4) + (Math.random() - 0.5) * 400, vy: -st.vy * (0.2 + Math.random() * 0.4) + (Math.random() - 0.5) * 400, life: 0.8, c: K.warn, r: 1.2 + Math.random() });
+  }
+
+  // ── the strip along the top ──
+  var shown = {};
+  function hud(force) {
+    if (!st) return;
+    var t = mode === 'line' || mode === 'count' ? '0.00' : E.timeWords(st.step);
+    if (force || shown.t !== t) { $('clock').textContent = t; shown.t = t; }
+    var lap = String(Math.min(E.LAPS, st.lap));
+    if (force || shown.lap !== lap) { $('lap-n').textContent = lap; shown.lap = lap; }
+    var pct = Math.round(100 - st.dmg * 100 / E.FULL);
+    if (force || shown.pct !== pct) {
+      $('car-pct').textContent = pct + '%';
+      var fill = $('car-fill'); fill.style.width = pct + '%'; fill.style.backgroundColor = pct > 70 ? K.mend : pct > 40 ? K.warn : K.hurt;
+      shown.pct = pct;
+    }
+    var words = ghostLine();
+    if (force || shown.words !== words) { $('ghost-line').textContent = words; shown.words = words; }
+  }
+  function ghostLine() {
+    var bits = [], racers = Object.keys(live.peers).filter(function (id) { var p = live.peers[id]; return p.R && !p.R.end && p.R.t === TRACK && (p.m === 'race'); }).length;
+    if (mode === 'race') {
+      if (live.place) bits.push('P' + live.place + ' of ' + live.racers + (world && world.kind === 'house' ? '' : ' live'));
+      if (gapWords) bits.push(gapWords);
+      if (st.dmg >= E.WORST) bits.push('wrecked: the pit mends it');
+      else if (st.kerb) bits.push('on the kerb: half speed');
+    } else {
+      if (world && world.kind === 'house') bits.push('Bumping, against the house car');
+      else if (world && world.kind === 'heat') bits.push('A heat with bumping · ' + world.ids.length + ' cars');
+      else if (rival) bits.push('Ghost to beat: ' + (rival.kind === 'house' ? 'the house, ' : rival.kind === 'mine' ? 'your best, ' : rival.name + ', ') + E.timeWords(rival.steps) + ' s');
+      if (racers) bits.push(racers + (racers === 1 ? ' racer' : ' racers') + ' on this track live');
+    }
+    return bits.join(' · ');
+  }
+  var flashT = 0;
+  function flash(text, color) {
+    var el = $('flash');
+    el.textContent = text; el.style.color = color;
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+    clearTimeout(flashT); flashT = setTimeout(function () { el.classList.remove('on'); }, 950);
+  }
+  /* a card rises from the edge away from your car, so the car stays in reach */
+  function placeCards() {
+    if (!st || !view.h) return;
+    var top = Y(st.y) > view.h * 0.5;
+    ['dock', 'end'].forEach(function (id) {
+      var el = $(id);
+      el.classList.toggle('top', top);
+      el.style.setProperty('--card-top', Math.round($('hud').offsetHeight + 2) + 'px');
+    });
+  }
+
+  // ── sound and touch, which can be turned off ──
+  var soundOn = get('sound') !== 'off', ac = null;
+  function soundLabel() { $('sound').textContent = soundOn ? 'Sound on' : 'Sound off'; }
+  $('sound').addEventListener('click', function () { soundOn = !soundOn; put('sound', soundOn ? 'on' : 'off'); soundLabel(); if (soundOn) audioStart(); });
+  soundLabel();
+  function audioStart() {
+    if (ac || !soundOn) return;
+    try { var A = window.AudioContext || window.webkitAudioContext; if (A) ac = new A(); } catch (e) { ac = null; }
+  }
+  function sfx(kind) {
+    if (!soundOn || !ac) return;
+    try {
+      var t = ac.currentTime;
+      if (kind === 'crash' || kind === 'scrape') {
+        var len = kind === 'crash' ? 0.35 : 0.08, buf = ac.createBuffer(1, Math.floor(ac.sampleRate * len), ac.sampleRate), d = buf.getChannelData(0);
+        for (var i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, kind === 'crash' ? 2 : 1);
+        var src = ac.createBufferSource(); src.buffer = buf;
+        var f = ac.createBiquadFilter(); f.type = kind === 'crash' ? 'lowpass' : 'highpass'; f.frequency.value = kind === 'crash' ? 700 : 2600;
+        var g = ac.createGain(); g.gain.value = kind === 'crash' ? 0.5 : 0.07;
+        src.connect(f); f.connect(g); g.connect(ac.destination); src.start(t);
+        if (kind === 'crash') tone(70, 0.25, 'sine', 0.4, t);
+      } else if (kind === 'knock' || kind === 'touch') {
+        var ln = kind === 'knock' ? 0.16 : 0.05, bf = ac.createBuffer(1, Math.floor(ac.sampleRate * ln), ac.sampleRate), dd = bf.getChannelData(0);
+        for (var ii = 0; ii < dd.length; ii++) dd[ii] = (Math.random() * 2 - 1) * Math.pow(1 - ii / dd.length, 2);
+        var sr = ac.createBufferSource(); sr.buffer = bf;
+        var lf = ac.createBiquadFilter(); lf.type = 'lowpass'; lf.frequency.value = kind === 'knock' ? 500 : 900;
+        var gg = ac.createGain(); gg.gain.value = kind === 'knock' ? 0.45 : 0.12;
+        sr.connect(lf); lf.connect(gg); gg.connect(ac.destination); sr.start(t);
+        if (kind === 'knock') tone(110, 0.12, 'sine', 0.25, t);
+      } else if (kind === 'kerb') { tone(95, 0.12, 'square', 0.05, t); tone(120, 0.08, 'square', 0.04, t + 0.05); }
+      else if (kind === 'lap') tone(880, 0.09, 'triangle', 0.12, t);
+      else if (kind === 'beep') tone(520, 0.1, 'triangle', 0.12, t);
+      else if (kind === 'go') tone(1040, 0.18, 'triangle', 0.14, t);
+      else if (kind === 'mend') { tone(1320, 0.05, 'triangle', 0.06, t); tone(1760, 0.05, 'triangle', 0.05, t + 0.07); }
+      else if (kind === 'finish') { tone(660, 0.14, 'triangle', 0.13, t); tone(990, 0.22, 'triangle', 0.12, t + 0.12); }
+    } catch (e) {}
+  }
+  function tone(freq, dur, type, gain, t) {
+    var o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function sweep(f0, f1, dur, type, gain, t) {
+    var o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+    g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function buzz(p) { if (!soundOn) return; try { if (navigator.vibrate) navigator.vibrate(p); } catch (e) {} }
+
+  // ── day and night ──
+  function themeLabel() { $('theme').textContent = dark() ? 'Day' : 'Night'; $('theme').setAttribute('aria-label', dark() ? 'Race by day' : 'Race by night'); }
+  $('theme').addEventListener('click', function () {
+    var next = dark() ? 'light' : 'dark';
+    root.setAttribute('data-theme', next); put('theme', next);
+    colours(); drawStatic(); for (var t = 1; t <= 9; t++) thumb(t); themeLabel();
+  });
+  if (window.matchMedia) { try { matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () { colours(); drawStatic(); for (var t = 1; t <= 9; t++) thumb(t); themeLabel(); }); } catch (e) {} }
+
+  // ── the buttons at the line and the finish ──
+  $('random').addEventListener('click', function () {
+    if (mode === 'race' || mode === 'count') return;
+    audioStart();
+    var pick = TRACK, flips = reduce.matches ? 0 : 6, n = 0;
+    while (pick === TRACK) pick = String(1 + rnd(9));
+    (function spin() {
+      if (n++ < flips) { var t = String(1 + rnd(9)); $('trk-name').textContent = trackName(t); sfx('beep'); setTimeout(spin, 70); return; }
+      setTrack(pick, 'pick');
+    })();
+  });
+  $('restart').addEventListener('click', function (e) { e.currentTarget.blur(); toLine(); });
+  $('again').addEventListener('click', function () { toLine(); });
+  $('change').addEventListener('click', function () { toLine(); var b = $('strip').querySelector('[aria-selected="true"]'); if (b) b.focus(); });
+
+  // ── the loop ──
+  var last = 0, acc = 0, STEP = 1000 / E.RATE, lastCount = '';
+  function frame(t) {
+    if (!last) last = t;
+    var dt = Math.min(100, t - last);
+    last = t; acc += dt;
+    var guard = 0;
+    while (acc >= STEP && guard++ < 8) { tick(); acc -= STEP; }
+    if (guard >= 8) acc = 0;
+    if (mode === 'count') { var c = $('count-n').textContent; if (c !== lastCount) { lastCount = c; if (c !== 'GO') sfx('beep'); } } else lastCount = '';
+    render(acc / STEP);
+    hud(false);
+    requestAnimationFrame(frame);
+  }
+
+  // ── a run named by a link: ?ghost=<slot> races that run's ghost, on its track ──
+  function challengeGhost() {
+    var slot = params.get('ghost'), p = plug();
+    if (!slot || !/^\d{1,12}$/.test(slot) || !p) return;
+    p.room({ n: 500 }).then(function (r) {
+      var hit = r && r.ok ? r.lines.filter(function (x) { return x.slot === slot; })[0] : null;
+      if (!hit || !hit.proof) return;
+      var d = E.decode(hit.proof); if (!d || !isTrack(d.day)) return;
+      if (d.day !== TRACK && !setTrack(d.day)) return;
+      var g = ghostOf('board', hit.name || 'a visitor', hit.proof, d.day);
+      if (g) { g.kind = 'board'; addGhost(g); }
+    }).catch(function () {});
+  }
+
+  function boot() {
+    var asked = params.get('track');
+    TRACK = isTrack(asked) ? asked : isTrack(get('track')) ? get('track') : '1';
+    LV = E.level(TRACK); T = E.table(LV); st = E.start(LV);
+    layout();
+    strip();
+    setTrack(TRACK);
+    themeLabel(); bumpLabel();
+    if (get('seen')) $('brief').hidden = true; else put('seen', '1');
+    window.addEventListener('resize', layout);
+    if (window.ResizeObserver) try { new ResizeObserver(function () { layout(); }).observe($('race')); } catch (e) {}
+    var p = plug();
+    if (p) p.law().then(function (l) { if (l && l.ok !== false) LAW = l; }, function () {});
+    challengeGhost();
+    joinRoom();
+    requestAnimationFrame(frame);
+    window.__racer = { E: E, state: function () { return st; }, mode: function () { return mode; }, track: function () { return TRACK; }, ghosts: function () { return ghosts; },
+      live: function () { return live; }, finished: function () { return finished; },
+      world: function () { return world ? { kind: world.kind, ids: world.ids.slice(), names: world.names.slice(), me: world.me, results: JSON.parse(JSON.stringify(world.results)), conf: world.conf ? world.conf.step : null,
+        cars: world.cars.map(function (c) { return { x: c.x, y: c.y, dmg: c.dmg, bumps: c.bumps, done: c.done, step: c.step, prog: c.prog }; }) } : null; },
+      bump: function (on) { if (on !== undefined && on !== bumpOn) $('bump').click(); return bumpOn; }, view: function () { return view; }, moves: function () { return moves; }, pointer: pointer };
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

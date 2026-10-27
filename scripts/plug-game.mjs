@@ -11,12 +11,13 @@
  *                                                       check, see it is paid for, then write games/<game>/ and games/list.json
  *
  * THE CHECKS, in the kit's order: the page taken whole matches the sha256 its maker gave; it is one file that loads the
- * beach's two tags in order and nothing else from outside; its ENGINE (the code between the lines '// ENGINE BEGIN' and
- * '// ENGINE END') runs with no page, no clock and no Math.random, in whole numbers; the same day always draws the same
- * level, for every day of 2026 and 2027; a good player finishes every third day inside thirty seconds; doing nothing
- * never finishes, nor does making the move on every step, or only far slower than playing; a kept run re-runs to its
- * step and a changed one does not; and on the beach the family stands as the recipe says (spine:<game> at its floor,
- * the law's lines, the room, the page at this site's address). Nothing is written unless every check passes.
+ * beach's two tags in order (and, for a game played live, the room plug after them, ways:plug 2) and nothing else from
+ * outside; its ENGINE (the code between the lines '// ENGINE BEGIN' and '// ENGINE END') runs with no page, no clock and
+ * no Math.random, in whole numbers; the same day always draws the same level, for every day of 2026 and 2027; a good
+ * player finishes every third day inside thirty seconds; doing nothing never finishes, nor does making the move on
+ * every step, or only far slower than playing; a kept run re-runs to its step and a changed one does not; and on the
+ * beach the family stands as the recipe says (spine:<game> at its floor, the law's lines, the room, the page at this
+ * site's address). Nothing is written unless every check passes.
  *
  * PLUGGING writes games/<game>/game.html (the page as handed in, with one line added at the top of its head, the
  * storage bridge /games/bridge.js) and games/<game>/index.html (the frame the game plays in: a sandboxed iframe, so the
@@ -41,6 +42,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
 const VOICE = 'https://beach.happyseaurchin.com/button/voice.js';
 const PLUG = 'https://beach.happyseaurchin.com/button/game.js';
+const ROOM = 'https://beach.happyseaurchin.com/button/room.js';   // the room plug, a third tag for a game played live (lane plug.3)
 const MAX_BYTES = 180000, PART = 60000;
 
 const args = process.argv.slice(2);
@@ -100,7 +102,7 @@ if (!FILE) check('its sha256 is the one its maker gave', () => {
   return SHA;
 });
 
-/* ── 2. ONE FILE, TWO TAGS, NOTHING ELSE FROM OUTSIDE (ways:plug 2 and 6) ── */
+/* ── 2. ONE FILE, TWO TAGS (THREE FOR A GAME PLAYED LIVE), NOTHING ELSE FROM OUTSIDE (ways:plug 2 and 6) ── */
 const html = page;
 check('one file, at most ' + MAX_BYTES + ' bytes (three parts of ' + PART + ')', () => {
   assert(html.trim(), 'the page is empty');
@@ -111,16 +113,23 @@ check('one file, at most ' + MAX_BYTES + ' bytes (three parts of ' + PART + ')',
 });
 const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].map((m) => ({ attrs: m[1], body: m[2], at: m.index }));
 const srcOf = (a) => (/\bsrc\s*=\s*["']([^"']+)["']/i.exec(a) || [])[1] || '';
-check('the beach\'s two tags, in order, and no other script from anywhere', () => {
+const attrOf = (a, name) => (new RegExp('\\b' + name + '\\s*=\\s*["\']([^"\']*)["\']', 'i').exec(a) || [])[1];
+check('the beach\'s two tags, in order (the room plug third, for a game played live), and no other script from anywhere', () => {
   const outside = scripts.filter((s) => srcOf(s.attrs));
-  assert(outside.length === 2, outside.length + ' scripts with a src: ' + outside.map((s) => srcOf(s.attrs)).join(', '));
+  assert(outside.length === 2 || outside.length === 3, outside.length + ' scripts with a src: ' + outside.map((s) => srcOf(s.attrs)).join(', '));
   assert(srcOf(outside[0].attrs) === VOICE, 'the first is not the voice: ' + srcOf(outside[0].attrs));
   assert(srcOf(outside[1].attrs) === PLUG, 'the second is not the plug: ' + srcOf(outside[1].attrs));
-  const named = (/\bdata-game\s*=\s*["']([^"']*)["']/i.exec(outside[1].attrs) || [])[1];
+  const named = attrOf(outside[1].attrs, 'data-game');
   assert(named === GAME, 'the plug\'s tag names data-game="' + named + '", not "' + GAME + '"');
+  if (outside.length === 3) {   // the room plug: the game's players introduced in its own room, pool:<game>, then player to player
+    assert(srcOf(outside[2].attrs) === ROOM, 'the third is not the room plug: ' + srcOf(outside[2].attrs));
+    const live = attrOf(outside[2].attrs, 'data-game'), room = attrOf(outside[2].attrs, 'data-room');
+    assert(live === GAME, 'the room plug\'s tag names data-game="' + live + '", not "' + GAME + '"');
+    assert(room == null || room.toLowerCase() === 'pool:' + GAME, 'the room plug names data-room="' + room + '": a game hosted here plays live in its own room, pool:' + GAME);
+  }
   const engine = scripts.find((s) => !srcOf(s.attrs) && s.body.includes('// ENGINE BEGIN'));
-  assert(engine && engine.at > outside[1].at, 'the page\'s own script stands before the two tags');
-  return 'voice, then plug with data-game="' + GAME + '"';
+  assert(engine && engine.at > outside[outside.length - 1].at, 'the page\'s own script stands before the beach\'s tags');
+  return 'voice, then plug' + (outside.length === 3 ? ', then the room plug,' : '') + ' with data-game="' + GAME + '"';
 });
 check('nothing else loaded from outside', () => {
   const bad = [];
