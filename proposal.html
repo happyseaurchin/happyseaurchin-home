@@ -259,6 +259,8 @@
      /proposal is the list alone, and /proposal/<name> one proposal (David, 27 Oct 2026: "it is all rather messy
      and needs to be cleaned up with /proposal and /proposals/<handle>") */
   var ARR = (/^\/proposals\/([A-Za-z0-9_-]{1,32})\/?$/.exec(location.pathname) || [])[1] || '';
+  /* ?plain: this proposal drawn from its blocks, whatever the reader's look (look.2); in a frame too, an embed being its host's */
+  var PLAIN = new URLSearchParams(location.search).has('plain') || (function () { try { return window.top !== window; } catch (e) { return true; } })();
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('span'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -515,6 +517,44 @@
     if (!L.room) L.room = name;
     return L;
   }
+  /* ── THE PLAIN ADDRESS OPENS THE MAKER'S PAGE (look.2, David, 27 Oct 2026: 'one is at proposals/two-spines and the
+     other is /two-spines. We have got out of sync!!!'). The proposal's own page is where its law names it at 6
+     (function:proposal 4), else at its spine's root side-room 2 ('THE PAGE — …', as game-arcade and character-sheets
+     keep theirs), else on its line in the list (as tronic-glass's stands): read from its blocks, so a new proposal with a
+     page needs no deploy. The reader's look decides (theme.js, siteLook: the maker's, the default, or the standard). ── */
+  function pageOf(L, spine, listed) {
+    var t2 = textOf(spine && spine['2']);
+    var root2 = /^THE PAGE\b/i.test(t2) ? ((/https?:\/\/\S+/.exec(t2) || [''])[0].replace(/[.,;)]+$/, '')) : '';
+    return L.page || root2 || (listed && listed.page) || '';
+  }
+  /* a page's address as this site reads it: a page on happyseaurchin.com at its path on whichever copy of the site this
+     is (a preview stays on its preview), another site's whole; a plain address (/proposal, /proposals) said so */
+  function siteURL(page) {
+    var u; try { u = new URL(page, location.href); } catch (e) { return null; }
+    if (!/^https?:$/.test(u.protocol)) return null;
+    var ours = /^(?:www\.)?happyseaurchin\.com$/i.test(u.hostname) || u.origin === location.origin;
+    if (ours) u = new URL(u.pathname + u.search + u.hash, location.origin);
+    return { href: u.href, ours: ours, plain: ours && /^\/proposals?(?:\.html)?(?:\/|$)/.test(u.pathname) };
+  }
+  /* where the plain address goes: the proposal's own page with the reader's hash, on this site; another site's only for
+     a proposal on the list, which is kept under the shared project lock, so writing a law sends no one off the site;
+     never a plain address, its own or another's, which would only come back */
+  function makersAt(page, listed) {
+    var s = page ? siteURL(page) : null;
+    if (!s || s.plain || (!s.ours && !listed)) return '';
+    var u = new URL(s.href);
+    if (location.hash) u.hash = location.hash;
+    return u.href;
+  }
+  /* the maker's page asked for by name: ?maker keeps a page on this site from sending a reader who chose the standard
+     look straight back here */
+  function makersLink(page) {
+    var s = page ? siteURL(page) : null;
+    if (!s) return page || '';
+    return s.ours && !s.plain && window.siteLook ? siteLook.maker(s.href) : s.href;
+  }
+  /* the reader's look: the maker's, the default, or the standard, as they chose under options */
+  function lookOf() { return window.siteLook ? siteLook.read() : Promise.resolve('maker'); }
   /* an answer: one of the decision's own words first, then a line in the answerer's words */
   function parseAnswer(t, tokens) {
     var words = tokens.map(function (x) { return x[0].replace(/ /g, '\\s+'); }).join('|');
@@ -649,17 +689,23 @@
 
   /* ════════ one proposal, drawn from its blocks ════════ */
   function proposalPage() {
-    var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '';
+    var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '', PAGE = '';
     $('bar-name').textContent = FAM;
-    Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM), readBlock('proposals')]).then(function (three) {
-      SPINE = three[0]; LAW = three[1];
+    Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM), readBlock('proposals'), lookOf()]).then(function (four) {
+      SPINE = four[0]; LAW = four[1];
       if (!SPINE) return nothing();
       L = lawOf(LAW, FAM);
       /* only a proposal is drawn here: one on the list, or one whose law names its phase (function:proposal 1, at
          its 7), as a new one does before it is listed (7, its 5 then 6). Any other family is not one: a person's
          name goes on to their arrangement, and the rest is said plainly (David, 27 Oct 2026: "the
          proposal/happyseaurchin is an abomination") */
-      if (!L.phase && !shelfOf(three[2]).some(function (s) { return s.name === FAM; })) return notOne();
+      var listed = shelfOf(four[2]).filter(function (s) { return s.name === FAM; })[0];
+      if (!L.phase && !listed) return notOne();
+      /* its own page, before anything is drawn: there, unless ?plain or the reader chose the standard look */
+      PAGE = pageOf(L, SPINE, listed);
+      var go = makersAt(PAGE, !!listed);
+      if (go && !PLAIN && four[3] !== 'standard') { location.replace(go); return; }
+      if (go && window.siteLook) siteLook.offer({ name: FAM, page: go.replace(/#.*$/, ''), look: four[3] });
       learnCase(JSON.stringify(SPINE).replace(/\\n/g, ' '));
       if (L.accent) document.documentElement.style.setProperty('--acc', L.accent);
       if (L.look) wearLook(L.look);
@@ -703,12 +749,14 @@
       var root = split(textOf(SPINE));
       TITLE = titleCase(root.title || FAM);
       document.title = TITLE;
-      var lede = sentences(cap(root.rest), 320), page = L.page || (/^THE PAGE\b/i.test(textOf(SPINE['2'])) ? (/https?:\/\/\S+/.exec(textOf(SPINE['2'])) || [''])[0].replace(/[.,;)]+$/, '') : '');
+      /* its own page as a link, where it is not this one: asked for by name, so it opens whatever the reader's look */
+      var own = PAGE ? siteURL(PAGE) : null;
+      var lede = sentences(cap(root.rest), 320), page = own && !own.plain ? makersLink(PAGE) : '';
       var when = (/(\d{1,2} (?:January|February|March|April|May|June|July|August|September|October|November|December) 20\d\d)/.exec(L.provenance || textOf(SPINE['9'])) || [])[1] || '';
       var label = PHASE === 'project' ? 'A project' : PHASE === 'set aside' ? 'Set aside' : 'A proposal';
       var asks = DECS.length ? (DECS.length === 1 ? 'the decision' : 'the ' + count(DECS.length) + ' decisions') : '';
       $('bandText').innerHTML = '<div class="eyebrow">' + label + (when ? ' · ' + esc(when) : '') + '</div>' +
-        '<h1><a href="/proposal/' + esc(FAM) + '">' + esc(TITLE) + '</a></h1>' +
+        '<h1><a href="/proposal/' + esc(FAM) + (PLAIN ? '?plain' : '') + '">' + esc(TITLE) + '</a></h1>' +
         '<p class="lede">' + rich(lede) + '</p>' +
         (asks ? '<p class="sub">Read it, then answer ' + asks + '. Anyone can: each answer goes in your own mirror on the beach, under your own key, beside everyone else’s.</p>' : '') +
         '<div class="actions">' + (DECS.length ? '<a class="btn primary" href="#stands">See where it stands</a>' : '') +
@@ -807,7 +855,7 @@
     function footHTML(page) {
       var prov = L.provenance || textOf(SPINE['9']);
       return '<p>Drawn live from its blocks on the beach: the steps from <a href="/walk/' + esc(FAM) + '">spine:' + esc(FAM) + '</a>, its law from <a href="/explain?block=function:' + esc(FAM) + '">function:' + esc(FAM) + '</a>, every answer from its answerer’s own mirror, and the shared readings from the family’s fold, ' + esc(FAM) + ', which anyone may make again. Revise the spine and this page changes; nothing is written on the page itself.' +
-        (page ? ' Its own page: <a href="' + esc(page) + '">' + esc(page.replace(/^https?:\/\//, '')) + '</a>.' : '') + '</p>' +
+        (page ? ' Its own page: <a href="' + esc(page) + '">' + esc(PAGE.replace(/^https?:\/\//, '')) + '</a>.' : '') + '</p>' +
         (prov ? '<div class="more"><details class="fold"><summary>Where it came from</summary><div class="in src"><p>' + rich(split(prov).rest || prov) + '</p></div></details></div>' : '') +
         '<p>Every proposal on the beach keeps <a href="/explain?block=function:proposal">the proposal form</a>. <a href="/proposal">See them all</a>, or <a href="/proposal#make">make one</a>.</p>' +
         '<p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
@@ -980,7 +1028,8 @@
         '<div class="cards">' + shelf.map(function (s) {
           return '<article class="card" id="c-' + esc(s.name) + '"><div class="txt"><h3 class="nm"><a href="/proposal/' + esc(s.name) + '">' + esc(s.name) + '</a></h3>' +
             '<p>' + esc(cap(s.what)) + '</p><p class="stat" data-stat="' + esc(s.name) + '">reading…</p>' +
-            '<div class="go-links"><a href="/proposal/' + esc(s.name) + '">Drawn from its blocks</a>' + (s.page ? '<a href="' + esc(s.page) + '">Its own page</a>' : '') + '</div></div>' +
+            /* each asked for by name, whatever the reader's look (look.2): the plain address alone opens the maker's page */
+            '<div class="go-links"><a href="/proposal/' + esc(s.name) + '?plain">Drawn from its blocks</a>' + (s.page ? '<a href="' + esc(makersLink(s.page)) + '">Its own page</a>' : '') + '</div></div>' +
             '<figure class="quipu" data-quipu="' + esc(s.name) + '"></figure></article>';
         }).join('') + '</div>' +
         '<p class="note">A crafted page wears a look of its own taken from what it proposes: its own palette and type, a drawing that moves at the top, an instrument for each step, and plain words for someone new to the beach. <a href="/explain?block=ways:proposal">The craft of making one</a>. The page drawn from its blocks needs no code at all, and exists the moment a spine and its law stand.</p></section>');
