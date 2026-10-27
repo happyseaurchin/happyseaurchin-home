@@ -16,6 +16,10 @@ const BLOCKS = {
   'function:bats': { _: 'THE LAW of bats.', 1: 'mode: game', 4: 'board: CAUGHT, highest first, best per player', 6: 'page: https://example.org/bats.html' },
   'pool:bats': { _: 'The room of bats.', 1: { _: 'CAUGHT 14 bats', 1: 'ann, a visitor', 2: DAY, 3: '2026-10-26T10:00:00Z', 7: 'bats1.x' }, 2: { _: 'CAUGHT 9 bats', 1: 'bob, a visitor', 2: DAY, 3: '2026-10-26T11:00:00Z', 7: 'bats1.y' }, 3: { _: 'CAUGHT 20 bats', 1: 'ann, a visitor', 2: '2026414400', 3: '2026-10-25T11:00:00Z', 7: 'bats1.z' } },
   'game:ghost-wire': { _: 'GAME:GHOST-WIRE — trace a neon wire. Played at https://phenomemental.github.io/happyseaurchin-beach/ghost-wire.html; kept runs and notes live in pool:ghost-wire.' },
+  'game:alley': { _: 'GAME:ALLEY — squash rats. Played at https://example.org/alley.html; kept runs and notes live in pool:alley.', 4: "SCORE LAW — as in game:ghost-wire 4, counting rats instead of time. The board is each player's best in an alley, most rats then fewest swings, among runs that re-run; the top five." },
+  'pool:alley': { _: 'The room of alley.', 1: { _: '29 rats squashed in the alley of Monday', 1: 'Julie J, a visitor', 2: DAY, 3: '2026-10-26T10:00:00Z', 7: 'ra1.' + DAY + '.29.31.x' }, 2: { _: '11 rats squashed in the alley of Monday', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T10:05:00Z', 7: 'ra1.' + DAY + '.11.40.y' }, 3: { _: 'fun but my thumb hurts', 1: 'Stacey, a visitor', 2: DAY, 3: '2026-10-26T10:06:00Z' } },
+  'pool:sky': { _: 'The room of sky.', 1: { _: '12 bats in the sky of Monday', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T09:00:00Z', 7: 'bs3.' + DAY + '.12.x' }, 2: { _: '14 bats in the sky of Monday', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T09:10:00Z', 7: 'bs3.' + DAY + '.14.y' }, 3: { _: '9 bats in the sky of Sunday', 1: 'Soraya, a visitor', 2: '2026414400', 3: '2026-10-25T09:10:00Z', 7: 'bs3.2026414400.9.z' } },
+  'pool:chat': { _: 'A parlour.', 1: { _: 'hello', 1: 'someone', 3: '2026-10-26T09:00:00Z' } },
   'pool:ghost-wire': { _: 'The room.', 1: { _: '2.62 s on the wire', 1: 'Darcy, a visitor', 2: DAY, 3: '2026-10-26T09:45:10Z', 7: 'gw1.' + DAY + '.157.AAA', 8: '32' }, 2: { _: '2.03 s', 1: 'Guest 4821', 2: DAY, 3: '2026-10-26T09:50:00Z', 7: 'gw1.' + DAY + '.122.AAA' }, 3: { _: '2.50 s', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T10:00:00Z', 5: 'Guest 4821', 7: 'gw1.' + DAY + '.150.AAA' }, 4: { _: 'a note', 1: 'Jenna, a visitor', 2: DAY, 3: '2026-10-26T10:01:00Z' } }
 };
 // 'old' wrote at the week's address, which the day's board does not gather upward; cat's line stands only at the day
@@ -43,7 +47,8 @@ console.log('\n/api/board as the fold of a plugged game\'s mirrors');
 let b = await boardOf('wire', NOW);
 check('the law is read from function:wire: its page, room and board line', b && b.page === 'https://example.org/wire.html' && b.room === 'pool:wire' && b.law === 'function:wire' && b.board === 'FINISHED, lowest first, best per player', b);
 check('the board is each player\'s line at the day in their own mirror, lowest first, the proof\'s slot named apart', b.source === 'mirrors' && b.top.map((r) => r.name + ' ' + r.line + ' ' + r.slot).join('|') === 'bob FINISHED 0.50s 5|ann FINISHED 1.90s 4|cat FINISHED 2.38s 1' && b.players === 3, b.top);
-check('…read through the beach\'s index and each mirror once, the room never', reads.filter((x) => x === 'index').length === 1 && reads.filter((x) => x === 'wire:ann').length === 1 && !reads.includes('pool:wire'), reads);
+check('…read through the beach\'s index and each mirror once, the room once for its last lines', reads.filter((x) => x === 'index').length === 1 && reads.filter((x) => x === 'wire:ann').length === 1 && reads.filter((x) => x === 'pool:wire').length === 1, reads);
+check('…its runs and players counted at the day', b.runs === 3 && b.players === 3 && b.ranked === true && Array.isArray(b.recent), b);
 check('the day is the beach\'s clock\'s, as the door shows it', b.day === DAY && /^Monday,? 26 October 2026$/.test(b.date) && b.asKept === true, b);
 
 console.log('\n…falling back to the room where no mirror holds a line at the day');
@@ -54,6 +59,15 @@ reads = [];
 b = await boardOf('ghost-wire', NOW);
 check('Ghost Wire, its law at game:ghost-wire naming its page and room in its words, reads its room as before', b.source === 'room' && b.law === 'game:ghost-wire' && b.page === 'https://phenomemental.github.io/happyseaurchin-beach/ghost-wire.html' && b.room === 'pool:ghost-wire' && b.title === 'Ghost Wire', b);
 check('…a run\'s time as the law reads it (steps over sixty), a guest as the name it later took, each player\'s fastest, the note passed by', b.top.map((r) => r.name + ' ' + r.time + ' ' + r.slot + (r.tries ? ' ' + r.tries : '')).join('|') === 'Phenomemental 2.03 2|Darcy 2.62 1 32' && b.runs === 3 && b.players === 2, b.top);
+check('…and the room\'s last three lines ride the answer, newest first, the note among them', b.recent.map((x) => x.name + ' ' + x.slot + (x.run ? ' run' : '')).join('|') === 'Jenna 4|Phenomemental 3 run|Guest 4821 2 run' && b.recent[0].text === 'a note', b.recent);
+
+console.log('\na law with no board line, and a room with no law');
+b = await boardOf('alley', NOW);
+check('a law with no board line is ordered by its score law\'s words: most rats first, the score the line\'s first number', b.ranked && /highest first/.test(b.board) && b.top.map((r) => r.name + ' ' + r.score).join('|') === 'Julie J 29|Phenomemental 11' && b.runs === 2 && b.players === 2, b);
+b = await boardOf('sky', NOW);
+check('a room of runs whose law does not stand is answered unranked: no order, the day\'s runs and players counted, its lines', b && b.ranked === false && b.law === null && b.top.length === 0 && b.runs === 2 && b.players === 1 && b.recent.length === 3 && b.room === 'pool:sky', b);
+b = await boardOf('chat', NOW);
+check('a room that keeps no runs, and no law, is no game\'s', b === null, b);
 
 console.log('\nthe door');
 let r = await call({ game: 'wire' });

@@ -2,8 +2,8 @@
  * /api/board — a game's board for today, read once for a crowd.
  *
  *   GET /api/board?game=<name>
- *       { game, title, page, room, law, day, date, source, top: [{ name, line, score, time, slot, at, tries, proof }],
- *         runs, players, read, asKept }
+ *       { game, title, page, room, law, board, ranked, day, date, source, top: [{ name, line, score, time, slot, at,
+ *         tries, proof }], runs, players, recent: [{ slot, name, text, when, at, run }], read, asKept }
  *
  * The arcade's front door (/arcade) lists every game on the shelf with its top ten today. A game plugged in
  * (spine:game-arcade 1.1111114; the plug button/game.js in pscale-beach, the recipe ways:arcade) keeps each
@@ -17,7 +17,14 @@
  * its law does (steps over sixty), a guest named as the name it later took (by 5), each player's best.
  *
  * No table of games stands here: the game's law (function:<game>, else game:<game> as Matthew's Arcade keeps
- * one) names its page, its room and its board line, and a game with no law on the beach is not on the shelf.
+ * one) names its page, its room and its board line; a law with no board line is read by its SCORE LAW's
+ * words ('fastest first' lowest first, 'most rats' highest first), a room line's score by its time or its
+ * first number. A game whose room keeps runs but whose law does not stand yet (Bat Sky, 27 October 2026) is
+ * answered unranked, ranked: false, its counts and its room only: the door shows it as listed and sends a
+ * reader to its page for the ten. A name with neither a law nor a room of runs is no game's.
+ *
+ * THE ROOM'S LAST LINES ride every answer (recent, the newest three, notes and runs alike), so the door
+ * shows what people are saying about a game from the same one read (spine:game-arcade 1.11111168).
  * The day is the beach's clock's, turning at midnight UTC: the first eight digits of the sundial's ten, then
  * '00'. Nothing is re-run here: a time is as the mirror or the room keeps it, and the answer says so
  * (asKept); the honest board is the plug's, whose verify re-runs each proof on the maker's page.
@@ -58,12 +65,24 @@ export function parseLaw(block, name, game) {
   const lines = [];
   (function walk(n) { if (typeof n === 'string') lines.push(n); else if (n && typeof n === 'object') Object.keys(n).forEach((k) => walk(n[k])); })(block);
   const find = (word) => { for (const l of lines) { const m = new RegExp('^\\s*' + word + '\\s*:\\s*(.+)$', 'i').exec(l); if (m) return m[1].trim(); } return ''; };
-  const b = find('board') || 'FINISHED, lowest first, best per player';
+  const given = find('board'), b = given || scoreLawOrder(lines) || 'FINISHED, lowest first, best per player';
   const word = (/^([A-Za-z][A-Za-z0-9_-]*)/.exec(b) || [, 'FINISHED'])[1].toUpperCase();
   const room = (/^(pool:[a-z0-9][a-z0-9-]*)/i.exec(find('room')) || [, 'pool:' + game])[1].toLowerCase();
   const urls = (lines.join(' ').match(/https?:\/\/[^\s'")\]]+/g) || []).map((u) => u.replace(/[;,.]+$/, ''));
   const page = (/^(https?:\/\/\S+)/.exec(find('page')) || [, urls[0] || ''])[1];
-  return { block: name, mode: find('mode'), room, page, board: { line: b, word, lowest: !/highest first/i.test(b), best: !/last per player/i.test(b) }, title: find('title') || titleOf(game) };
+  return { block: name, mode: find('mode'), room, page, board: { line: b, word, lowest: !/highest first/i.test(b), best: !/last per player/i.test(b), given: !!given }, title: find('title') || titleOf(game) };
+}
+/* a law that keeps no board line (Matthew's game:<name>) says its order in its SCORE LAW's board sentence:
+ * 'The board is each player's best on a wire, fastest first' or '… most rats then fewest swings' — whichever
+ * of the two kinds of word comes first there decides */
+function scoreLawOrder(lines) {
+  const law = lines.find((l) => /^\s*SCORE LAW\b/i.test(l));
+  if (!law) return '';
+  const s = (/the board is ([^.]*)/i.exec(law) || [, ''])[1];
+  const low = s.search(/\b(fastest|quickest|lowest|least|fewest|shortest)\b/i), high = s.search(/\b(most|highest|longest|furthest)\b/i);
+  if (low < 0 && high < 0) return '';
+  const lowest = high < 0 || (low >= 0 && low < high);
+  return (lowest ? 'FINISHED, lowest first' : 'SCORE, highest first') + ', best per player (as its score law reads)';
 }
 
 /* ── addresses in a mirror: the digits walked from the root, a zero stepping into the underscore, the floor's
@@ -92,15 +111,17 @@ const better = (a, b, lowest) => isNaN(b) || (lowest ? a < b : a > b);
 /* ── the fold: each player's line at the day in their own mirror ── */
 export function boardFromMirrors(fold, law, day) {
   const rows = [];
+  let runs = 0;
   Object.keys(fold.mirrors || {}).forEach((h) => {
     const cands = linesUnder(fold.mirrors[h], day).map((x) => ({ name: h, line: x.line, at: x.at, score: scoreOf(x.line, law.board.word) })).filter((x) => !isNaN(x.score));
     if (!cands.length) return;
+    runs += cands.length;
     const pick = law.board.best ? cands.reduce((a, b) => (better(b.score, a.score, law.board.lowest) ? b : a)) : cands[cands.length - 1];
     const p = proofOf(pick.line);
     rows.push({ name: pick.name, line: pick.line.replace(/\s*·\s*proof\s+pool:\S+\s+\d+\s*$/i, ''), score: pick.score, time: pick.score, at: (fold.touched || {})[h] || '', slot: p ? p.slot : '', proof: p ? p.room + ' ' + p.slot : '', tries: '' });
   });
   rows.sort((a, b) => (law.board.lowest ? a.score - b.score : b.score - a.score) || String(a.at).localeCompare(String(b.at)));
-  return { top: rows.slice(0, 10), runs: rows.length, players: rows.length };
+  return { top: rows.slice(0, 10), runs, players: rows.length };
 }
 
 /* ── the room, as Matthew's pages keep a run: every line with its slot, the digits walked from the root ── */
@@ -113,15 +134,27 @@ function roomLines(block) {
   })(block, '');
   return out;
 }
+/* the room's newest lines, notes and runs alike, as the door shows them */
+export function recentOf(block, n = 3) {
+  return roomLines(block || {}).map((x) => ({ slot: x.slot, name: nameOf(voice(x.node['1'])) || 'a visitor', text: voice(x.node._), when: voice(x.node['3']), at: voice(x.node['2']), run: typeof x.node['7'] === 'string' }))
+    .filter((x) => x.text || x.run)
+    .sort((a, b) => String(a.when).localeCompare(String(b.when)) || (+a.slot - +b.slot)).slice(-n).reverse();
+}
+const firstNumber = (line) => { const m = /(-?\d+(?:\.\d+)?)/.exec(line || ''); return m ? +m[1] : NaN; };
 export function boardFromRoom(block, law, day) {
   const all = roomLines(block).filter((x) => voice(x.node['2']) === day && typeof x.node['7'] === 'string');
   const took = {};
   roomLines(block).forEach((x) => { const g = voice(x.node['5']), n = nameOf(voice(x.node['1'])); if (g && n) took[g] = n; });
+  if (!law) {
+    /* no law to rank by: only the day's counts, each run's maker counted once */
+    const names = new Set(all.map((x) => { const w = nameOf(voice(x.node['1'])) || 'someone'; return took[w] || w; }));
+    return { top: [], runs: all.length, players: names.size };
+  }
   const runs = all.map((x) => {
     const gw = /^gw1\.(\d+)\.(\d+)\./.exec(x.node['7']);
     let score = NaN, line = voice(x.node._);
     if (gw) { if (gw[1] !== day) return null; score = Math.round(+gw[2] / 60 * 100) / 100; line = line || law.board.word + ' ' + score.toFixed(2) + 's'; }
-    else score = scoreOf(line, law.board.word);
+    else { score = scoreOf(line, law.board.word); if (isNaN(score) && !law.board.given) score = firstNumber(line); }
     if (isNaN(score)) return null;
     const who = nameOf(voice(x.node['1'])) || 'someone';
     return { name: took[who] || who, line, score, time: score, slot: x.slot, at: voice(x.node['3']) || '', tries: voice(x.node['8']) || '', proof: law.room + ' ' + x.slot };
@@ -134,18 +167,23 @@ export function boardFromRoom(block, law, day) {
 
 export async function boardOf(game, now = new Date()) {
   const law = await readLaw(game);
-  if (!law) return null;
-  const day = dayAddress(now);
+  const day = dayAddress(now), room = law ? law.room : 'pool:' + game;
+  if (!law) {
+    /* a room of runs whose law does not stand yet: its counts and its lines, never an order */
+    const block = await readBlock(room);
+    if (!block || typeof block !== 'object' || !roomLines(block).some((x) => typeof x.node['7'] === 'string')) return null;
+    return { game, title: titleOf(game), page: '', room, law: null, board: '', ranked: false, day, date: dateWords(now), source: 'room', ...boardFromRoom(block, null, day), recent: recentOf(block), read: now.toISOString(), asKept: true };
+  }
   let fold = null;
   try { fold = await mirrorsOf(game); } catch { fold = null; }
   let b = fold && Object.keys(fold.mirrors || {}).length ? boardFromMirrors(fold, law, day) : { top: [], runs: 0, players: 0 };
-  let source = 'mirrors';
+  let source = 'mirrors', block = null;
+  try { block = await readBlock(law.room); } catch { block = null; }
   if (!b.top.length) {
-    const block = await readBlock(law.room);
     b = block ? boardFromRoom(block, law, day) : b;
     source = 'room';
   }
-  return { game, title: law.title, page: law.page, room: law.room, law: law.block, board: law.board.line, day, date: dateWords(now), source, ...b, read: now.toISOString(), asKept: true };
+  return { game, title: law.title, page: law.page, room: law.room, law: law.block, board: law.board.line, ranked: true, day, date: dateWords(now), source, ...b, recent: recentOf(block), read: now.toISOString(), asKept: true };
 }
 
 export default async function handler(req, res) {
@@ -159,7 +197,7 @@ export default async function handler(req, res) {
   if (given !== game || Object.keys(q).some((k) => k !== 'game')) { res.setHeader('Location', '/api/board?game=' + game); return res.status(308).end(); }
   try {
     const b = await boardOf(game);
-    if (!b) return res.status(404).json({ error: 'no law for ' + game + ' stands on the beach (neither function:' + game + ' nor game:' + game + ')' });
+    if (!b) return res.status(404).json({ error: 'no law for ' + game + ' stands on the beach (neither function:' + game + ' nor game:' + game + '), and no room of runs (pool:' + game + ')' });
     res.setHeader('Vercel-CDN-Cache-Control', 'max-age=15, stale-while-revalidate=45');
     return res.status(200).json(b);
   } catch (e) {
