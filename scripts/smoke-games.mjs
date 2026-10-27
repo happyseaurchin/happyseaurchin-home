@@ -135,6 +135,37 @@ try {
     assert(!thrown.length, thrown.join(' | '));
     return '65 s of the game\'s clock';
   });
+  await check('a newcomer keeps a run in one tap, its name and key made and kept through the frame (writes held back)', async () => {
+    const law = await f.evaluate(() => window.beachGame.law());
+    if (!law || law.ok === false) return 'skipped: no law for ' + GAME + ' on the beach yet, so its family is not founded';
+    // every write to the beach is answered here as the beach would answer it, and goes nowhere; every read is the beach's own
+    let writes = 0;
+    await page.route('https://beach.happyseaurchin.com/.well-known/pscale-beach**', (route) => {
+      if (route.request().method() !== 'POST') return route.continue();
+      writes++;
+      const body = JSON.parse(route.request().postData() || '{}');
+      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
+        body: JSON.stringify(body.append ? { ok: true, slot: '99' } : { ok: true, born: !body.spindle }) });
+    });
+    const kept = await f.evaluate(async () => {
+      const g = window.beachGame, E = window.ENGINE, day = g.today(), L = await g.law();
+      const b = E.bot(E.level(day)), proof = E.encode(day, b.steps, b.moves), r = E.rerun(proof);
+      const line = L.board.word === 'FINISHED' ? 'FINISHED ' + r.time + 's' : L.board.word + ' ' + r.steps;
+      const out = await g.result({ at: day, line, proof, tries: '1' });
+      return { out, made: g.made(), again: g.made(), name: g.name() };
+    });
+    await page.unroute('https://beach.happyseaurchin.com/.well-known/pscale-beach**');
+    assert(kept.out && kept.out.ok, 'result: ' + JSON.stringify(kept.out));
+    assert(kept.out.made && kept.out.said, 'not made and said: ' + JSON.stringify(kept.out));
+    assert(kept.made && kept.made.name === kept.out.name && /^[a-z]+-[a-z]+-[a-z]+-\d\d$/.test(kept.made.key || ''), 'made() gave ' + JSON.stringify(kept.made));
+    assert(kept.again === null, 'made() said the key twice');
+    assert(kept.name === kept.out.name, 'the device signs as ' + kept.name);
+    await page.clock.runFor(200);
+    const outside = await page.evaluate(([g, n]) => ({ who: localStorage.getItem('games:' + g + ':render:who'), key: !!localStorage.getItem('games:' + g + ':next-latch:' + g + ':' + n), site: localStorage.getItem('render:who') }), [GAME, kept.out.name]);
+    assert(outside.who === kept.out.name && outside.key, 'the frame page kept ' + JSON.stringify(outside));
+    assert(outside.site === 'site-name', 'the site\'s own name changed to ' + outside.site);
+    return kept.out.name + ' made and keyed in one tap, the run in the room and the line said (' + writes + ' writes held back); the name and key kept under games:' + GAME + ':, the site\'s own name untouched';
+  });
   await check('the board and the room draw', async () => {
     const drawn = await f.evaluate(() => {
       const b = document.querySelector('beach-board'), r = document.querySelector('beach-room');
@@ -149,7 +180,8 @@ try {
 }
 
 console.log('\n' + GAME + ' — played at /games/' + GAME + (FILE ? ' (' + FILE + ', hosted in memory)' : '') + '\n');
-for (const r of results) console.log('  ' + (r.ok ? '✓' : '✗') + ' ' + r.name + (r.note ? '\n      ' + r.note : ''));
-const failed = results.filter((r) => !r.ok);
-console.log('\n  ' + (failed.length ? failed.length + ' of ' + results.length + ' checks failed' : 'all ' + results.length + ' checks pass') + '\n');
+const skipped = (r) => r.ok && /^skipped/.test(r.note || '');
+for (const r of results) console.log('  ' + (skipped(r) ? '–' : r.ok ? '✓' : '✗') + ' ' + r.name + (r.note ? '\n      ' + r.note : ''));
+const failed = results.filter((r) => !r.ok), passed = results.filter((r) => r.ok && !skipped(r));
+console.log('\n  ' + (failed.length ? failed.length + ' of ' + results.length + ' checks failed' : passed.length + ' checks pass' + (passed.length < results.length ? ', ' + (results.length - passed.length) + ' skipped' : '')) + '\n');
 process.exit(failed.length ? 1 : 0);
