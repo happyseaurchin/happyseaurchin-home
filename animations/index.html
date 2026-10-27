@@ -141,7 +141,9 @@
   var esc = function(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});};
   var web = function(u){return (typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/.test(u.trim())) ? u.trim() : '';};
 
-  // A film is one position: {_: 'Title — what it shows', 1: where it plays, 2: its still, 3: who made it}.
+  // A film is one position: {_: 'Title — what it shows', 1: where it plays, 2: its still, 3: when it was added,
+  // 5: who made it}. From 27 October 2026 the append's own stamp stands at 3, so the news notes the film at its
+  // moment (spine:happening 1.11); a film added before then carries its credit at 3, written over its stamp.
   function isFilm(n){return n && typeof n === 'object' && typeof n._ === 'string' && !!web(n['1']);}
   // Oldest first. Once the block supernests, the older films sit beneath the underscore.
   function collect(node, out){
@@ -157,13 +159,18 @@
     try { var x = new URL(u); if (x.host === location.host || x.host === 'happyseaurchin.com') return { href: x.pathname + x.search + x.hash, here: true }; } catch(e){}
     return { href: u, here: false };
   }
+  var stamp = function(v){ return typeof v === 'string' && /^\d{4}-\d\d-\d\dT[\d:.]+Z$/.test(v.trim()); };
+  function credit(f){
+    var said = [f['5'], f['3']].filter(function(v){ return typeof v === 'string' && v.trim() && !stamp(v); })[0];
+    return said ? said.trim() : '';
+  }
   // A film's parts: its title and what it shows (either side of the spaced dash), where it plays, its still, who made it.
   function parts(f){
     var line = f._.trim(), cut = line.indexOf(' — '), to = local(web(f['1']));
     return { title: cut > 0 ? line.slice(0, cut) : line,
       shows: cut > 0 ? line.slice(cut + 3).replace(/^./, function(c){ return c.toUpperCase(); }) : '',
       href: to.href, here: to.here, still: web(f['2']) ? local(web(f['2'])).href : '',
-      who: typeof f['3'] === 'string' ? f['3'] : '' };
+      who: credit(f) };
   }
   function tile(f){
     var p = parts(f);
