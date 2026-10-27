@@ -890,9 +890,23 @@ footer p { color: var(--muted); font-size: 0.92rem; max-width: var(--measure); }
   }
   function answerBy(dec, h) { return answersAt(dec).filter(function (a) { return a.by === h; })[0] || null; }
 
+  /* the reader's own answer, once the beach is read: its word chosen, its line in the box and the form saying so,
+     because answering again replaces the one answer they have here (David, 27 Oct 2026: "otherwise people will add more and find they have just replaced the single slot they have") */
+  function ownAnswer(card) {
+    var form = card.form; if (!form) return;
+    var mine = ME ? answerBy(card.dec, ME) : null, send = form.querySelector('.btn.primary');
+    form.querySelector('summary').textContent = mine ? 'Change your answer' : 'Add your answer';
+    if (canSay()) send.textContent = mine ? 'Change my answer' : 'Say it on the beach';
+    if (!mine || form.hasAttribute('data-filled')) return;
+    form.setAttribute('data-filled', mine.line || '');
+    var ta = form.querySelector('textarea');
+    if (ta && !ta.value) ta.value = mine.line || '';
+    form.querySelectorAll('.choices button').forEach(function (b) { if (b.textContent === mine.token && b.getAttribute('aria-pressed') !== 'true') b.click(); });
+  }
   function paintAnswers(card) {
     var list = card.list, got = answersAt(card.dec);
     list.textContent = '';
+    ownAnswer(card);
     if (!got.length) { list.appendChild(el('li', 'none', 'No answers yet.')); return; }
     got.forEach(function (a) {
       var li = el('li');
@@ -965,7 +979,7 @@ footer p { color: var(--muted); font-size: 0.92rem; max-width: var(--measure); }
         ME = clean(r.name || me);
         if (ME) store.set('render:who', ME);
         as.hidden = true;
-        ta.value = '';
+        add.setAttribute('data-filled', line);
         tell('ok', 'Answered. It stands in your own mirror, ' + FAM + ':' + ME + '.');
         return readMirrors().then(function (m) { MIRRORS = m; CARDS.forEach(paintAnswers); paintNow(); });
       }, function (e) { tell('err', 'The beach could not be reached: ' + e.message); })
@@ -1380,7 +1394,8 @@ footer p { color: var(--muted); font-size: 0.92rem; max-width: var(--measure); }
         var c = { dec: s.decide, list: list };
         CARDS.push(c);
         paintAnswers(c);
-        card.appendChild(answerForm(s.decide));
+        card.appendChild(c.form = answerForm(s.decide));
+        ownAnswer(c);
       }
       return card;
     });
