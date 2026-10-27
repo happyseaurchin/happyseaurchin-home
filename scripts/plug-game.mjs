@@ -295,7 +295,7 @@ if (failed.length) process.exit(1);
 /* ── 5. PLUG IT: the page hosted in its frame (scripts/plug-host.mjs), and its line on the shelf ── */
 if (PLUGGING) {
   const title = ((/<title>([^<]*)<\/title>/i.exec(html) || [])[1] || GAME).trim();
-  const what = ((/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i.exec(html) || [])[1] || '').trim();
+  const what = ((/<meta[^>]+name=["']description["'][^>]+content=(["'])([\s\S]*?)\1/i.exec(html) || [])[2] || '').trim();   // a description may hold the other quote
   const dir = join(ROOT, 'games', GAME);
   mkdirSync(dir, { recursive: true });
   const hosted = hostedPage(html);
