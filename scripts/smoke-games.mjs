@@ -9,11 +9,13 @@
  * It proves the frame does what the service promises: the game runs in its own opaque origin and cannot read what
  * this site keeps (a name and a key set beforehand at the site's origin read as nothing inside); what the game keeps
  * lands with the frame page under games:<game>: and comes back after a reload; it can reach the beach and nowhere else;
- * the beach's two tags load under the sandbox and the plug answers; a touch starts a run and a minute of the game's
- * clock passes with nothing thrown. It reads the beach (the law, the board) and writes nothing to it. Exits 1 if any
- * check fails. Needs playwright and chromium, as the beach's own smoke tests do. This is where the bridge is proven before
- * production: on a protected Vercel preview a sandboxed frame carries no login cookie, so the preview's sign-in answers
- * /games/bridge.js and the header refuses it, and a game there keeps nothing between visits (27 Oct 2026, cairn). */
+ * the beach's two tags load under the sandbox and the plug answers (and the room plug, for a game played live); a touch
+ * starts a run and a minute of the game's clock passes with nothing thrown. It reads the beach (the law, the board) and
+ * writes nothing to it: every write, a live game's slot in its room's liquid among them, is answered here and goes
+ * nowhere. Exits 1 if any check fails. Needs playwright and chromium, as the beach's own smoke tests do. This is where
+ * the bridge is proven before production: on a protected Vercel preview a sandboxed frame carries no login cookie, so
+ * the preview's sign-in answers /games/bridge.js and the header refuses it, and a game there keeps nothing between
+ * visits (27 Oct 2026, cairn). */
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
@@ -76,7 +78,17 @@ const page = await context.newPage();
 const errors = [];
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', (e) => errors.push(String(e && e.message || e)));
+let writes = 0;
 try {
+  // every write to the beach is answered here as the beach would answer it, and goes nowhere; every read is the beach's
+  // own (a game played live joins its room as it opens, through the room plug, and writes its slot in the room's liquid)
+  await page.route('https://beach.happyseaurchin.com/.well-known/pscale-beach**', (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    writes++;
+    const body = JSON.parse(route.request().postData() || '{}');
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
+      body: JSON.stringify(body.append ? { ok: true, slot: '99' } : { ok: true, born: !body.spindle }) });
+  });
   // what this site keeps for its own pages, which a game must never read
   await page.goto(ORIGIN + '/games/bridge.js');
   await page.evaluate(() => { localStorage.setItem('render:who', 'site-name'); localStorage.setItem('next-latch:now:site-name', 'site-key'); });
@@ -114,12 +126,14 @@ try {
     return 'kept, read back after a reload, and removed';
   });
   const f = await (await page.waitForSelector('iframe#game')).contentFrame();
-  await check('the beach\'s two tags load under the sandbox, and the plug answers', async () => {
-    const got = await f.evaluate(() => ({ game: window.beachGame && window.beachGame.game, voice: !!window.beachVoice, today: window.beachGame && window.beachGame.today() }));
+  await check('the beach\'s tags load under the sandbox, and the plug answers', async () => {
+    const got = await f.evaluate(() => ({ game: window.beachGame && window.beachGame.game, voice: !!window.beachVoice, today: window.beachGame && window.beachGame.today(),
+      live: [...document.scripts].some((s) => /\/button\/room\.js$/.test(s.src)), room: !!window.beachRoom }));
     assert(got.game === GAME, 'beachGame.game is ' + got.game);
     assert(got.voice, 'no beachVoice');
     assert(/^\d{8}00$/.test(got.today || ''), 'today() is ' + got.today);
-    return 'beachGame.game ' + got.game + ', today ' + got.today;
+    assert(!got.live || got.room, 'the page carries the room plug, and no beachRoom stands');
+    return 'beachGame.game ' + got.game + ', today ' + got.today + (got.live ? ', and beachRoom from the room plug' : '');
   });
   await check('it can reach the beach, and nowhere else', async () => {
     const beach = await f.evaluate(() => fetch('https://beach.happyseaurchin.com/.well-known/pscale-beach?block=function:' + window.beachGame.game).then((r) => r.status, (e) => 'refused: ' + e.message));
@@ -140,15 +154,7 @@ try {
   await check('a newcomer keeps a run in one tap, its name and key made and kept through the frame (writes held back)', async () => {
     const law = await f.evaluate(() => window.beachGame.law());
     if (!law || law.ok === false) return 'skipped: no law for ' + GAME + ' on the beach yet, so its family is not founded';
-    // every write to the beach is answered here as the beach would answer it, and goes nowhere; every read is the beach's own
-    let writes = 0;
-    await page.route('https://beach.happyseaurchin.com/.well-known/pscale-beach**', (route) => {
-      if (route.request().method() !== 'POST') return route.continue();
-      writes++;
-      const body = JSON.parse(route.request().postData() || '{}');
-      return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' },
-        body: JSON.stringify(body.append ? { ok: true, slot: '99' } : { ok: true, born: !body.spindle }) });
-    });
+    const before = writes;
     const kept = await f.evaluate(async () => {
       const g = window.beachGame, E = window.ENGINE, day = g.today(), L = await g.law();
       const b = E.bot(E.level(day)), proof = E.encode(day, b.steps, b.moves), r = E.rerun(proof);
@@ -156,7 +162,7 @@ try {
       const out = await g.result({ at: day, line, proof, tries: '1' });
       return { out, made: g.made(), again: g.made(), name: g.name() };
     });
-    await page.unroute('https://beach.happyseaurchin.com/.well-known/pscale-beach**');
+    const held = writes - before;
     assert(kept.out && kept.out.ok, 'result: ' + JSON.stringify(kept.out));
     assert(kept.out.made && kept.out.said, 'not made and said: ' + JSON.stringify(kept.out));
     assert(kept.made && kept.made.name === kept.out.name && /^[a-z]+-[a-z]+-[a-z]+-\d\d$/.test(kept.made.key || ''), 'made() gave ' + JSON.stringify(kept.made));
@@ -166,7 +172,7 @@ try {
     const outside = await page.evaluate(([g, n]) => ({ who: localStorage.getItem('games:' + g + ':render:who'), key: !!localStorage.getItem('games:' + g + ':next-latch:' + g + ':' + n), site: localStorage.getItem('render:who') }), [GAME, kept.out.name]);
     assert(outside.who === kept.out.name && outside.key, 'the frame page kept ' + JSON.stringify(outside));
     assert(outside.site === 'site-name', 'the site\'s own name changed to ' + outside.site);
-    return kept.out.name + ' made and keyed in one tap, the run in the room and the line said (' + writes + ' writes held back); the name and key kept under games:' + GAME + ':, the site\'s own name untouched';
+    return kept.out.name + ' made and keyed in one tap, the run in the room and the line said (' + held + ' writes held back); the name and key kept under games:' + GAME + ':, the site\'s own name untouched';
   });
   await check('the board and the room draw', async () => {
     const drawn = await f.evaluate(() => {
