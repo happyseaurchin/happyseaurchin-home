@@ -1079,6 +1079,9 @@
     /* every proposal on the beach, each drawn from its own blocks, and the form that makes one
      * (function:proposal, 2026-10-22: "build the proposal-package") */
     ['proposal',    'proposals'],
+    /* one screen for what is live and what asks of David, every lane, project and decision in four colours
+     * (spine:loom 1.1; David's GO at the build order and 'loom sounds good', 27 Oct 2026) */
+    ['loom',        'the loom'],
     ['dashboard',   'the beach, live'],
     /* the window as it is compiled — ribbons of what entered each call (David, 2026-10-13: "if only it were included in the go dropdown") */
     ['mindflow/flow', 'semantic flow'],
