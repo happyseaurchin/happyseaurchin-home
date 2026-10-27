@@ -6,16 +6,16 @@ import { FEE, pairOf, ticketFor, feeOf, boundTo } from './plug-ticket.mjs';
 const NOW = new Date('2026-10-27T18:00:00Z');
 const BLOCKS = {};
 // a ticket as the machine issues it: one side reached by the issuer, its envelope at that side's underscore
-function sold(maker, envelope, revoked) {
+function issued(maker, envelope, revoked) {
   const side = FEE.issuer < maker ? '1' : '2';
   BLOCKS['grain:' + pairOf(FEE.issuer, maker)] = { _: 'Ticket: ' + FEE.product + ' for ' + maker, [side]: revoked ? { _: envelope, 1: revoked } : { _: envelope }, 9: { [side]: FEE.issuer } };
 }
 const ticket = (o = {}) => '[ticket face=author scope=' + (o.scope || FEE.scope) + ' expires=' + (o.expires || '2126-10-03T18:00:00Z') + (o.nonce === null ? '' : ' nonce=' + (o.nonce || 'n-ann')) + ']';
-sold('ann', ticket());
-sold('Bea', ticket({ nonce: 'n-bea', expires: '2026-10-01T00:00:00Z' }));
-sold('cy', ticket({ nonce: 'n-cy' }), '[ticket-revoked at=2026-10-27T12:00:00Z reason=refund]');
-sold('dee', ticket({ nonce: 'n-dee', scope: 'frame:brackenfoot' }));
-sold('eve', ticket({ nonce: null }));
+issued('ann', ticket());
+issued('Bea', ticket({ nonce: 'n-bea', expires: '2026-10-01T00:00:00Z' }));
+issued('cy', ticket({ nonce: 'n-cy' }), '[ticket-revoked at=2026-10-27T12:00:00Z reason=refund]');
+issued('dee', ticket({ nonce: 'n-dee', scope: 'frame:brackenfoot' }));
+issued('eve', ticket({ nonce: null }));
 BLOCKS['grain:' + pairOf(FEE.issuer, 'fay')] = { _: 'Ticket: arcade-plug for fay', 2: { _: ticket({ nonce: 'n-fay' }) }, 9: { 2: 'someone-else' } };
 globalThis.fetch = async (url) => {
   const b = BLOCKS[new URL(url).searchParams.get('block')];
@@ -30,7 +30,7 @@ check('pair ids as bsp-mcp derives them: the genus-hatch ticket of 9 July 2026 s
 
 console.log('\na ticket in the maker\'s name, read as the payway\'s verifier reads one');
 let t = await ticketFor('ann', NOW);
-check('a ticket the machine issued, for this product, not run out: paid, its sale named', t.ok && t.nonce === 'n-ann' && t.grain === 'grain:' + pairOf(FEE.issuer, 'ann') && t.side === '2', t);
+check('a ticket the machine issued, for this product, not run out: paid, its payment named', t.ok && t.nonce === 'n-ann' && t.grain === 'grain:' + pairOf(FEE.issuer, 'ann') && t.side === '2', t);
 t = await ticketFor('Bea', NOW);
 check('a capital sorts before the issuer, so the issuer holds side 2 and a handle is read as typed', !t.ok && t.side === '2' && /ran out/.test(t.why), t);
 t = await ticketFor('cy', NOW);
@@ -38,7 +38,7 @@ check('a refunded ticket, revoked beneath its envelope, does not pay', !t.ok && 
 t = await ticketFor('dee', NOW);
 check('a ticket for another product (a seat) does not pay for a plug', !t.ok && /frame:brackenfoot/.test(t.why), t);
 t = await ticketFor('eve', NOW);
-check('a ticket naming no sale cannot be bound to a game', !t.ok && /no sale/.test(t.why), t);
+check('a ticket naming no payment cannot be bound to a game', !t.ok && /no payment/.test(t.why), t);
 t = await ticketFor('fay', NOW);
 check('a grain the issuer did not reach is no ticket', !t.ok && /not reached by/.test(t.why), t);
 t = await ticketFor('gus', NOW);

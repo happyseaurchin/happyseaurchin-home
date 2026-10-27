@@ -1,6 +1,6 @@
 /* The plug service's fee (ways:plug 8.8; lane plug.2, 27 Oct 2026): five pounds a game, David's word ('£5 for us to do
  * the plug and play', spine:game-arcade 1.1168), paid with a ticket from the beach's ticket machine, the product
- * arcade-plug, bought in the maker's own name. The ticket is a grain between the maker's handle and the product's
+ * arcade-plug, taken in the maker's own name. The ticket is a grain between the maker's handle and the product's
  * issuer, arcade-plug-tickets, read here as the payway's own verifier reads one (pscale://payway 5.4): the grain stands,
  * its issuer's side was reached by the issuer and holds a [ticket …] envelope for this product's scope, not run out,
  * with no [ticket-revoked …] beneath it (a refund writes one). The shelf, games/list.json, binds each ticket to the one
@@ -43,7 +43,7 @@ export async function ticketFor(maker, now = new Date()) {
   if (!(Date.parse(f.expires || '') > now.getTime())) return no('the ticket on ' + grain + ' ran out at ' + f.expires);
   if (held && typeof held === 'object' && '123456789'.split('').some((d) => String(held[d] || '').startsWith('[ticket-revoked')))
     return no('the ticket on ' + grain + ' was revoked, as a refund revokes it');
-  if (!f.nonce) return no('the ticket on ' + grain + ' names no sale');
+  if (!f.nonce) return no('the ticket on ' + grain + ' names no payment');
   return { ok: true, grain, side, nonce: f.nonce, expires: f.expires };
 }
 
