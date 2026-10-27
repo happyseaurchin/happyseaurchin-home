@@ -62,6 +62,13 @@
     return m ? m[1] : t.slice(0, 88).replace(/\s+\S*$/, '') + '…';
   }
   function whose(h) { return h === DEFAULT ? 'David' : h; }
+  /* a person's arrangement is drawn at /proposals/<handle>, so its block's name links there, never to a page that
+     explains it as a convention (David, 27 Oct 2026: "not 'arrangement:happyseaurchin' which takes me to a
+     spurious page"), and on a page of arrangements it is plain words, the page already being the one */
+  function where(h) {
+    var name = esc(FAMILY + ':' + h);
+    return /^\/proposals\//.test(location.pathname) ? name : '<a href="/proposals/' + esc(encodeURIComponent(h)) + '">' + name + '</a>';
+  }
   function clone(roots) { return JSON.parse(JSON.stringify(roots || [])); }
   function rel(iso) {
     var t = Date.parse(iso); if (!t) return '';
@@ -311,9 +318,9 @@
     }
     function source() {
       var h = st.who;
-      if (st.how === 'list') return 'the list as it was shared · <a href="/explain?block=proposals">proposals</a>';
+      if (st.how === 'list') return 'the list as it was shared · <a href="/proposal">proposals</a>';
       if (st.how === 'said') return 'as David said it on 24 and 27 October — not yet kept in a block of his';
-      return 'kept at <a href="/explain?block=' + esc(FAMILY + ':' + h) + '">' + esc(FAMILY + ':' + h) + '</a>' + (st.touched ? ' · changed ' + esc(rel(st.touched)) : '');
+      return 'kept at ' + where(h) + (st.touched ? ' · changed ' + esc(rel(st.touched)) : '');
     }
     function chips() {
       var me = mine(), hs = [DEFAULT];
@@ -632,7 +639,7 @@
           kept = kept.filter(function (k) { return k.handle !== who; });
           kept.unshift({ handle: who, touched: new Date().toISOString() });
           return show(who).then(function () {
-            var s = el.querySelector('.arr-src'); if (s) s.innerHTML = 'kept just now at <a href="/explain?block=' + esc(FAMILY + ':' + who) + '">' + esc(FAMILY + ':' + who) + '</a>, under your own key';
+            var s = el.querySelector('.arr-src'); if (s) s.innerHTML = 'kept just now at ' + where(who) + ', under your own key';
           });
         }
         if (r && r.quiet) { ed.said = ''; return paintEdit(); }
