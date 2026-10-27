@@ -21,6 +21,25 @@
   var saved = stored();
   apply(saved === 'light' || saved === 'dark' ? saved : (prefersLight() ? 'light' : 'dark'));
 
+  /* A DROPPED STYLESHEET IS ASKED FOR ONCE MORE. On a weak phone signal theme.css can
+   * fail while the page and its reads arrive, and the page then stands bare: every button
+   * plain text, the dictation glyph as wide as the screen (a phone on /walk/leros-timeline,
+   * 2026-10-27). A sheet that loaded has rules; one that failed has none. */
+  window.addEventListener('load', function(){
+    var links = document.querySelectorAll('link[rel="stylesheet"]');
+    for (var i = 0; i < links.length; i++){
+      var l = links[i];
+      if (!/(^|\/)theme\.css(\?|$)/.test(l.getAttribute('href') || '')) continue;
+      var ok = false;
+      try { ok = !!(l.sheet && l.sheet.cssRules && l.sheet.cssRules.length); } catch(e){ ok = true; }
+      if (ok) return;
+      var again = document.createElement('link');
+      again.rel = 'stylesheet'; again.href = '/theme.css?again=' + Date.now();
+      l.parentNode.insertBefore(again, l.nextSibling);
+      return;
+    }
+  });
+
   function toggle(){
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     apply(next);
@@ -656,7 +675,9 @@
   var MARK = '…';                      /* after the phrase still being revised */
   var SIZE = 22, INSET = 5;                 /* the glyph, and its distance from the corner */
   var TITLE = 'dictate — Chrome transcribes on this device or sends audio to Google; Safari transcribes mostly on device';
-  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  /* its own size rides the glyph, so a page whose stylesheet never arrived shows a small
+   * microphone, never one as wide as the screen; theme.css sets the same */
+  var ICON = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false">' +
     '<path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4z"/>' +
     '<path d="M18 10a1 1 0 0 1 1 1 7 7 0 0 1-6 6.93V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 0 1 1-1z"/></svg>';
   var TERMINAL = { 'not-allowed':1, 'service-not-allowed':1, 'audio-capture':1, 'network':1, 'language-not-supported':1 };
