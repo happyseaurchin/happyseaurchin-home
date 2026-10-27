@@ -11,7 +11,9 @@
  * lands with the frame page under games:<game>: and comes back after a reload; it can reach the beach and nowhere else;
  * the beach's two tags load under the sandbox and the plug answers; a touch starts a run and a minute of the game's
  * clock passes with nothing thrown. It reads the beach (the law, the board) and writes nothing to it. Exits 1 if any
- * check fails. Needs playwright and chromium, as the beach's own smoke tests do. */
+ * check fails. Needs playwright and chromium, as the beach's own smoke tests do. This is where the bridge is proven before
+ * production: on a protected Vercel preview a sandboxed frame carries no login cookie, so the preview's sign-in answers
+ * /games/bridge.js and the header refuses it, and a game there keeps nothing between visits (27 Oct 2026, cairn). */
 import http from 'node:http';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
