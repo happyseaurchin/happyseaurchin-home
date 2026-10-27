@@ -1097,7 +1097,10 @@
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
-    ['news',        'news']
+    ['news',        'news'],
+    /* what people are sharing: a link and a line of why, each in its sharer's own mirror at the second it was shared
+     * (function:string; David's GO at spine:happening 1.1118, 27 Oct 2026) */
+    ['string',      'the string']
   ];
 
   /* THE NAME THIS DEVICE SIGNS WITH — render:who, kept by whichever page last wrote
