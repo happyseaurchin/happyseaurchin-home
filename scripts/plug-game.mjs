@@ -6,8 +6,9 @@
  *   node scripts/plug-game.mjs <game>                   check the submission at files:<game> (reads only)
  *   node scripts/plug-game.mjs <game> --file <page>     check a page on this computer instead (a draft, the kit's stub)
  *   node scripts/plug-game.mjs <game> --no-beach        leave out the family's checks on the beach (a draft not yet founded)
- *   node scripts/plug-game.mjs <game> --plug --by <handle> [--thread spine:<game>-plug]
- *                                                       check, then write games/<game>/ and games/list.json
+ *   node scripts/plug-game.mjs <game> --by <handle>     check, and read the ticket in the maker's name
+ *   node scripts/plug-game.mjs <game> --plug --by <handle> [--thread spine:<game>-plug] [--free '<where David said so>']
+ *                                                       check, see it is paid for, then write games/<game>/ and games/list.json
  *
  * THE CHECKS, in the kit's order: the page taken whole matches the sha256 its maker gave; it is one file that loads the
  * beach's two tags in order and nothing else from outside; its ENGINE (the code between the lines '// ENGINE BEGIN' and
@@ -21,13 +22,20 @@
  * storage bridge /games/bridge.js) and games/<game>/index.html (the frame the game plays in: a sandboxed iframe, so the
  * game runs in its own opaque origin and can read nothing this site keeps in the browser; vercel.json gives the game
  * file the same sandbox and its connections, the beach and this site's reads). games/list.json is the shelf /games
- * reads. Exits 1 if any check fails. */
+ * reads. Exits 1 if any check fails.
+ *
+ * THE FEE (ways:plug 8.8; lane plug.2, 27 Oct 2026, David: '£5 for us to do the plug and play'): the checks cost nothing,
+ * and the plugging is five pounds a game, a ticket from the beach's ticket machine (arcade-plug) in the maker's own name.
+ * Plugging reads that ticket on the beach (scripts/plug-ticket.mjs) and writes nothing without it, unless the game is
+ * already paid for on the shelf (a new version of it needs no other ticket) or --free names where David said it is free;
+ * the shelf's line for the game keeps which, so one ticket plugs one game. */
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { hostedPage, framePage, SITE } from './plug-host.mjs';
+import { FEE, ticketFor, feeOf, boundTo } from './plug-ticket.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
@@ -39,13 +47,14 @@ const args = process.argv.slice(2);
 const opt = (name) => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : null; };
 const GAME = String(args[0] || '').toLowerCase();
 if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(GAME)) {
-  console.error('usage: node scripts/plug-game.mjs <game> [--file <page>] [--no-beach] [--plug --by <handle> [--thread spine:<game>-plug]]');
+  console.error('usage: node scripts/plug-game.mjs <game> [--file <page>] [--no-beach] [--by <handle>] [--plug --by <handle> [--thread spine:<game>-plug] [--free \'<where David said so>\']]');
   process.exit(2);
 }
 const FILE = opt('--file'), ON_BEACH = !args.includes('--no-beach'), PLUGGING = args.includes('--plug');
-const BY = opt('--by'), THREAD = opt('--thread') || 'spine:' + GAME + '-plug';
+const BY = opt('--by'), THREAD = opt('--thread') || 'spine:' + GAME + '-plug', FREE = opt('--free');
 if (PLUGGING && (FILE || !ON_BEACH)) { console.error('plugging takes the page from files:' + GAME + ' on the beach, checked whole'); process.exit(2); }
 if (PLUGGING && !/^[A-Za-z0-9_ -]{1,32}$/.test(BY || '')) { console.error('plugging names its maker: --by <handle>'); process.exit(2); }
+if (args.includes('--free') && !(FREE && FREE.trim() && !FREE.startsWith('--'))) { console.error('--free names where David said this game is free'); process.exit(2); }
 
 const results = [];
 function check(name, fn) {
@@ -292,7 +301,27 @@ console.log('\n  sha256 ' + SHA + ' · ' + bytes(page) + ' bytes');
 console.log('  ' + (failed.length ? failed.length + ' of ' + results.length + ' checks failed' : 'all ' + results.length + ' checks pass') + '\n');
 if (failed.length) process.exit(1);
 
-/* ── 5. PLUG IT: the page hosted in its frame (scripts/plug-host.mjs), and its line on the shelf ── */
+/* ── 5. THE FEE (ways:plug 8.8): paid for already on the shelf, a ticket in the maker's name, or David's word it is free ── */
+const listPath = join(ROOT, 'games', 'list.json');
+const list = existsSync(listPath) ? JSON.parse(readFileSync(listPath, 'utf8')) : [];
+let fee = feeOf(list, GAME), unpaid = '';
+if (fee) console.log('  the fee: settled on the shelf, ' + fee + ' (a new version of the game needs no other ticket)');
+else if (FREE) { fee = 'free — ' + FREE.trim(); console.log('  the fee: none, at David\'s word: ' + FREE.trim()); }
+else if (FILE || !ON_BEACH) console.log('  the fee: ' + FEE.words + ', read on the beach once the game is handed in (ways:plug 8.8)');
+else if (BY) {
+  try {
+    const t = await ticketFor(BY);
+    const other = t.ok ? boundTo(list, t.nonce, GAME) : '';
+    if (t.ok && !other) { fee = 'ticket ' + t.nonce + ' · ' + t.grain + ':' + t.side; console.log('  the fee: paid, a ticket in ' + BY + '\'s name, ' + fee); }
+    else unpaid = other ? 'the ticket in ' + BY + '\'s name (' + t.grain + ') already plugged ' + other + ', and one ticket plugs one game' : t.why;
+  } catch (e) { unpaid = 'the ticket could not be read: ' + e.message; }
+} else unpaid = 'the maker\'s ticket is read with --by <their handle>';
+if (unpaid) console.log('  the fee: not paid yet — ' + unpaid + '.\n      ' + FEE.words + ', a ticket in the maker\'s own name, their handle in the box: ' + FEE.share +
+  '\n      it plugs once the ticket stands, or with --free \'<where David said this game is free>\'');
+console.log('');
+if (PLUGGING && !fee) { console.log('  nothing plugged: ' + GAME + ' is not paid for\n'); process.exit(1); }
+
+/* ── 6. PLUG IT: the page hosted in its frame (scripts/plug-host.mjs), and its line on the shelf ── */
 if (PLUGGING) {
   const title = ((/<title>([^<]*)<\/title>/i.exec(html) || [])[1] || GAME).trim();
   const what = ((/<meta[^>]+name=["']description["'][^>]+content=(["'])([\s\S]*?)\1/i.exec(html) || [])[2] || '').trim();   // a description may hold the other quote
@@ -301,10 +330,8 @@ if (PLUGGING) {
   const hosted = hostedPage(html);
   writeFileSync(join(dir, 'game.html'), hosted);
   writeFileSync(join(dir, 'index.html'), framePage({ game: GAME, title, what, by: BY }));
-  const listPath = join(ROOT, 'games', 'list.json');
-  const list = existsSync(listPath) ? JSON.parse(readFileSync(listPath, 'utf8')) : [];
   const entry = { game: GAME, title, what, by: BY, page: SITE + '/games/' + GAME, law: law ? 'function:' + GAME : '', room: 'pool:' + GAME,
-    files: 'files:' + GAME, sha256: SHA, bytes: bytes(page), hosted: sha256(hosted), thread: THREAD, plugged: new Date().toISOString().slice(0, 10) };
+    files: 'files:' + GAME, sha256: SHA, bytes: bytes(page), hosted: sha256(hosted), thread: THREAD, plugged: new Date().toISOString().slice(0, 10), fee };
   const at = list.findIndex((g) => g.game === GAME);
   if (at >= 0) list[at] = entry; else list.push(entry);
   writeFileSync(listPath, JSON.stringify(list, null, 2) + '\n');
