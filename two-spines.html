@@ -1191,6 +1191,27 @@ footer p { margin: 0; max-width: 54rem; }
     show($('wholeReading'), '1', 'The shared reading, so far');
     each(document.querySelectorAll('.decide'), function (card) { var r = card.querySelector('.reading'); if (r) show(r, card.getAttribute('data-at'), 'The shared reading'); });
   }
+  /* the reader's own answer at a decision, once the beach is read: their word chosen, their line in the box and the
+     card saying so, because answering again replaces the one answer they have here (David, 27 Oct 2026: "otherwise people will add more and find they have just replaced the single slot they have") */
+  function ownLine(card, list) {
+    var mine = ME ? list.filter(function (a) { return a.who === ME; })[0] : null;
+    var sum = card.querySelector('details.add > summary'), send = card.querySelector('.send');
+    if (sum) sum.textContent = mine ? 'Change your answer' : 'Add your answer';
+    if (send) send.textContent = mine ? 'Change my answer' : 'Answer';
+    if (!mine || card.hasAttribute('data-filled')) return;
+    card.setAttribute('data-filled', mine.line || '');
+    var box = card.querySelector('textarea');
+    if (box && !box.value) box.value = mine.line || '';
+    each(card.querySelectorAll('.choices button'), function (b) { if (b.getAttribute('data-tok') === mine.token && b.getAttribute('aria-pressed') !== 'true') b.click(); });
+  }
+  /* not you? the next reader starts from an empty box, and from their own answer once they are known */
+  function forgetOwn() {
+    each(document.querySelectorAll('[data-filled]'), function (el) {
+      var box = el.querySelector('textarea');
+      if (box && box.value === el.getAttribute('data-filled')) box.value = '';
+      el.removeAttribute('data-filled');
+    });
+  }
   function paintAnswers() {
     paintReadings();
     each(document.querySelectorAll('.tally[data-at]'), function (el) {
@@ -1201,6 +1222,7 @@ footer p { margin: 0; max-width: 54rem; }
     });
     each(document.querySelectorAll('.decide'), function (card) {
       var list = answersAt(card.getAttribute('data-at')), ul = card.querySelector('.answers');
+      ownLine(card, list);
       if (!ul) return;
       ul.innerHTML = list.length ? list.map(function (a) {
         return '<li class="' + (a.who === ME ? 'mine' : '') + '"><span class="chip ' + kindOf(a.token) + '">' + esc(a.token || 'NOTE') + '</span>' +
@@ -1216,7 +1238,7 @@ footer p { margin: 0; max-width: 54rem; }
       if (ME) { el.innerHTML = 'Answering as <b>' + esc(ME) + '</b> · <button type="button" class="linkish notme">not you?</button>'; return; }
       if (!el.querySelector('input')) el.innerHTML = '<label>Your name on the beach<input class="me" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="your handle"></label>';
     });
-    each(document.querySelectorAll('.decide .notme'), function (b) { b.onclick = function () { ME = ''; store.del('render:who'); paintAnswers(); }; });
+    each(document.querySelectorAll('.decide .notme'), function (b) { b.onclick = function () { ME = ''; store.del('render:who'); forgetOwn(); paintAnswers(); }; });
     $('askLine').value = 'Read the proposal spine:two-spines on https://beach.happyseaurchin.com (its law is function:two-spines) and help me answer its four decision points under my own handle' +
       (ME ? ', ' + ME : '') + '. Each answer goes in my own mirror, two-spines:' + (ME || '<my handle>') + ', at the decision’s address, starting with GO, NOT YET or CHANGE and then a line in my own words.';
     $('foldLine').value = 'Sum up the answers to the proposal spine:two-spines on https://beach.happyseaurchin.com. For each decision, at ' + DECISIONS.slice(0, -1).join(', ') + ' and ' + DECISIONS[DECISIONS.length - 1] + ', call pscale_stream_engage with field two-spines, handle ' +
@@ -1259,7 +1281,7 @@ footer p { margin: 0; max-width: 54rem; }
       beachVoice.say({ field: FAM, at: at, text: token + (line ? ' — ' + line : ''), name: me || undefined }).then(function (r) {
         if (!r || !r.ok) { say(r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
         ME = clean(r.name || me); if (ME) store.set('render:who', ME);
-        clear(); box.value = '';
+        clear(); card.setAttribute('data-filled', line);
         say('ok', 'Answered. It stands in your own mirror on the beach.');
         return readMirrors().then(paintAnswers);
       }, function (e) { say('err', 'Couldn’t reach the beach: ' + e.message); }).then(function () { send.disabled = false; });

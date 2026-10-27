@@ -719,9 +719,34 @@ footer .src a { margin-right: 10px; }
       var at = sec.getAttribute('data-step'), box = sec.querySelector('.step-readings ul');
       if (!box) return;
       var list = linesAt(at);
+      ownLine(sec.querySelector('.step-readings'), list, READING);
       box.innerHTML = list.length ? list.map(function (a) {
         return '<li><span class="name">' + esc(a.who) + '</span>' + (a.sealed ? '<span class="note">a sealed reading</span>' : esc(a.line)) + '</li>';
       }).join('') : '<li class="note">' + (STANDING === false ? 'Readings open once this proposal stands on the beach.' : 'No readings of this step yet.') + '</li>';
+    });
+  }
+  /* the reader's own line at a point, once the beach is read: in its box, its word chosen, and the form saying so,
+     because saying again replaces the one line they have there (David, 27 Oct 2026: "otherwise people will add more and find they have just replaced the single slot they have"); a sealed line stays sealed */
+  var ANSWER = ['Add your answer', 'Answer', 'Change your answer', 'Change my answer'];
+  var READING = ['Add your reading of this step', 'Say it', 'Change your reading of this step', 'Change my reading'];
+  function ownLine(el, list, words) {
+    if (!el) return;
+    var mine = ME ? list.filter(function (a) { return a.who === ME && !a.sealed; })[0] : null;
+    var sum = el.querySelector('details > summary'), send = el.querySelector('.send');
+    if (sum) sum.textContent = mine ? words[2] : words[0];
+    if (send) send.textContent = mine ? words[3] : words[1];
+    if (!mine || el.hasAttribute('data-filled')) return;
+    el.setAttribute('data-filled', mine.line || '');
+    var box = el.querySelector('textarea');
+    if (box && !box.value) box.value = mine.line || '';
+    el.querySelectorAll('.choices button').forEach(function (b) { if (b.getAttribute('data-tok') === mine.token && b.getAttribute('aria-pressed') !== 'true') b.click(); });
+  }
+  /* not you? the next reader starts from an empty box, and from their own line once they are known */
+  function forgetOwn() {
+    document.querySelectorAll('[data-filled]').forEach(function (el) {
+      var box = el.querySelector('textarea');
+      if (box && box.value === el.getAttribute('data-filled')) box.value = '';
+      el.removeAttribute('data-filled');
     });
   }
   function paintAnswers() {
@@ -737,6 +762,7 @@ footer .src a { margin-right: 10px; }
     });
     document.querySelectorAll('.decide').forEach(function (card) {
       var at = card.getAttribute('data-at'), list = linesAt(at, WORDS[at]);
+      ownLine(card, list, ANSWER);
       var empty = STANDING === false ? 'Answers open once this proposal stands on the beach.' : 'No answers yet. Be the first.';
       card.querySelector('.answers').innerHTML = list.length ? list.map(function (a) {
         return '<li class="' + (a.who === ME ? 'mine' : '') + '"><span class="chip ' + (a.sealed ? 'none' : kindOf(a.token)) + '">' + esc(a.sealed ? 'SEALED' : (a.token || 'NOTE')) + '</span>' +
@@ -752,7 +778,7 @@ footer .src a { margin-right: 10px; }
       if (ME) { el.innerHTML = 'Answering as <b>' + esc(ME) + '</b> · <button type="button" class="linkish notme">not you?</button>'; return; }
       if (!el.querySelector('input')) el.innerHTML = '<label>Your name on the beach<input class="me" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="your handle"></label>';
     });
-    document.querySelectorAll('.notme').forEach(function (b) { b.onclick = function () { ME = ''; store.del('render:who'); paintAnswers(); }; });
+    document.querySelectorAll('.notme').forEach(function (b) { b.onclick = function () { ME = ''; store.del('render:who'); forgetOwn(); paintAnswers(); }; });
     document.querySelectorAll('.send').forEach(function (s) { s.disabled = !PREVIEW && STANDING !== true; });
     $('askLine').value = 'Read the proposal spine:coloured-stigmergy on https://beach.happyseaurchin.com (its law is function:coloured-stigmergy) and help me answer its six decisions under my own handle' +
       (ME ? ', ' + ME : '') + '. Each answer goes in my own mirror, coloured-stigmergy:' + (ME || '<my handle>') + ', at the decision’s address (' + DECISIONS.join(', ') + '), starting with one of the words the decision names and then a line in my own words. A reading of a whole step goes at the step’s own address (' + STEPS.join(', ') + ').';
@@ -812,7 +838,7 @@ footer .src a { margin-right: 10px; }
       if (!token) { hint.className = 'hint err'; hint.textContent = 'Choose ' + words.slice(0, -1).join(', ') + ' or ' + words[words.length - 1] + ' first.'; return; }
       var line = box.value.trim().replace(/\s+/g, ' ');
       send.disabled = true;
-      sayFrom(at, token + (line ? ' — ' + line : ''), typedName(card), hint, function () { clear(); box.value = ''; }).then(function () { send.disabled = !PREVIEW && STANDING !== true; });
+      sayFrom(at, token + (line ? ' — ' + line : ''), typedName(card), hint, function () { clear(); card.setAttribute('data-filled', line); }).then(function () { send.disabled = !PREVIEW && STANDING !== true; });
     });
   }
   /* a reading of a whole step, in the reader's own words, at the step's own address */
@@ -831,7 +857,7 @@ footer .src a { margin-right: 10px; }
       var line = box.value.trim().replace(/\s+/g, ' ');
       if (!line) { hint.className = 'hint err'; hint.textContent = 'Write your reading first.'; return; }
       send.disabled = true;
-      sayFrom(at, line, typedName(wrap), hint, function () { clear(); box.value = ''; }).then(function () { send.disabled = !PREVIEW && STANDING !== true; });
+      sayFrom(at, line, typedName(wrap), hint, function () { clear(); wrap.setAttribute('data-filled', line); }).then(function () { send.disabled = !PREVIEW && STANDING !== true; });
     });
   }
   /* the room's latest lines, newest first */

@@ -835,6 +835,27 @@ footer p { font-size: 0.98rem; color: var(--muted); }
     show($('wholeReading'), '1', 'The shared reading, so far');
     document.querySelectorAll('.decide').forEach(function (card) { show(card.querySelector('.reading'), card.getAttribute('data-at'), 'The shared reading'); });
   }
+  /* the reader's own answer at a decision, once the beach is read: their word chosen, their line in the box and the
+     card saying so, because answering again replaces the one answer they have here (David, 27 Oct 2026: "otherwise people will add more and find they have just replaced the single slot they have") */
+  function ownLine(card, list) {
+    var mine = ME ? list.filter(function (a) { return a.who === ME; })[0] : null;
+    var sum = card.querySelector('details.add > summary'), send = card.querySelector('.send');
+    if (sum) sum.textContent = mine ? 'Change your answer' : 'Add your answer';
+    if (send) send.textContent = mine ? 'Change my answer' : 'Answer';
+    if (!mine || card.hasAttribute('data-filled')) return;
+    card.setAttribute('data-filled', mine.line || '');
+    var box = card.querySelector('textarea');
+    if (box && !box.value) box.value = mine.line || '';
+    card.querySelectorAll('.choices button').forEach(function (b) { if (b.getAttribute('data-tok') === mine.token && b.getAttribute('aria-pressed') !== 'true') b.click(); });
+  }
+  /* not you? the next reader starts from an empty box, and from their own answer once they are known */
+  function forgetOwn() {
+    document.querySelectorAll('[data-filled]').forEach(function (el) {
+      var box = el.querySelector('textarea');
+      if (box && box.value === el.getAttribute('data-filled')) box.value = '';
+      el.removeAttribute('data-filled');
+    });
+  }
   function paintAnswers() {
     paintReadings();
     document.querySelectorAll('.tally[data-at]').forEach(function (el) {
@@ -844,6 +865,7 @@ footer p { font-size: 0.98rem; color: var(--muted); }
     });
     document.querySelectorAll('.decide').forEach(function (card) {
       var list = answersAt(card.getAttribute('data-at'));
+      ownLine(card, list);
       card.querySelector('.answers').innerHTML = list.length ? list.map(function (a) {
         return '<li class="' + (a.who === ME ? 'mine' : '') + '"><span class="chip ' + kindOf(a.token) + '">' + esc(a.token || 'NOTE') + '</span>' +
           '<span><span class="name">' + esc(a.who) + '</span>' + (a.line ? ' · ' + esc(a.line) : '') + '</span></li>';
@@ -859,7 +881,7 @@ footer p { font-size: 0.98rem; color: var(--muted); }
       if (!el.querySelector('input')) el.innerHTML = '<label>Your name on the beach<input class="me" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="your handle"></label>';
     });
     document.querySelectorAll('.decide .notme').forEach(function (b) {
-      b.onclick = function () { ME = ''; store.del('render:who'); paintAnswers(); };
+      b.onclick = function () { ME = ''; store.del('render:who'); forgetOwn(); paintAnswers(); };
     });
     $('askLine').value = 'Read the proposal spine:visual-consistency on https://beach.happyseaurchin.com (its law is function:visual-consistency) and help me answer its five decision points under my own handle' +
       (ME ? ', ' + ME : '') + '. Each answer goes in my own mirror, visual-consistency:' + (ME || '<my handle>') + ', at the decision’s address, starting GO, NOT YET or CHANGE and then a line in my own words.';
@@ -911,7 +933,7 @@ footer p { font-size: 0.98rem; color: var(--muted); }
       beachVoice.say({ field: FAM, at: at, text: token + (line ? ' — ' + line : ''), name: me || undefined }).then(function (r) {
         if (!r || !r.ok) { say(r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
         ME = clean(r.name || me); if (ME) store.set('render:who', ME);
-        clear(); box.value = '';
+        clear(); card.setAttribute('data-filled', line);
         say('ok', 'Answered. It stands in your own mirror on the beach.');
         return readMirrors().then(paintAnswers);
       }, function (e) { say('err', 'Couldn’t reach the beach: ' + e.message); }).then(function () { send.disabled = false; });
