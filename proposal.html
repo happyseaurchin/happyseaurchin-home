@@ -204,7 +204,8 @@
   .card .nm a{color:var(--foam);text-decoration:none} .card .nm a:hover{color:var(--acc)}
   .card p{margin:0;font-size:0.97rem;overflow-wrap:anywhere}
   .card .stat{font-family:var(--mono);font-size:11.5px;letter-spacing:0.03em;color:var(--vapour-dim)}
-  .card .go-links{display:flex;flex-wrap:wrap;gap:0.4rem 1rem;font-size:0.95rem}
+  .card .two{display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.15rem}
+  .card .two .btn{padding:0.45rem 0.95rem;font-size:0.9rem}
   .steps{padding-left:1.4rem;display:grid;gap:0.45rem}
   .steps li::marker{font-family:var(--display);font-weight:800;color:var(--acc)}
 
@@ -260,7 +261,6 @@
      and needs to be cleaned up with /proposal and /proposals/<handle>") */
   var ARR = (/^\/proposals\/([A-Za-z0-9_-]{1,32})\/?$/.exec(location.pathname) || [])[1] || '';
   /* ?plain: this proposal drawn from its blocks, whatever the reader's look (look.2); in a frame too, an embed being its host's */
-  var PLAIN = new URLSearchParams(location.search).has('plain') || (function () { try { return window.top !== window; } catch (e) { return true; } })();
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('span'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -517,11 +517,12 @@
     if (!L.room) L.room = name;
     return L;
   }
-  /* ── THE PLAIN ADDRESS OPENS THE MAKER'S PAGE (look.2, David, 27 Oct 2026: 'one is at proposals/two-spines and the
-     other is /two-spines. We have got out of sync!!!'). The proposal's own page is where its law names it at 6
-     (function:proposal 4), else at its spine's root side-room 2 ('THE PAGE — …', as game-arcade and character-sheets
-     keep theirs), else on its line in the list (as tronic-glass's stands): read from its blocks, so a new proposal with a
-     page needs no deploy. The reader's look decides (theme.js, siteLook: the maker's, the default, or the standard). ── */
+  /* ── THE PROPOSAL'S OWN PAGE, its snazzy view: where its law names it at 6 (function:proposal 4), else at its spine's root
+     side-room 2 ('THE PAGE — …', as game-arcade and character-sheets keep theirs), else on its line in the list (as
+     tronic-glass's stands): read from its blocks, so a new proposal with a page needs no deploy. Two addresses, each always
+     itself (David, 28 Oct 2026: "two paths and the user can choose, and there's no logic which is being tripped"): the
+     page is the snazzy view, /proposal/<name> the standard one drawn here, and nothing sends a reader from one to the
+     other; the cards on /proposal carry a button to each. (Until then look.2's rule sent the plain address to the page.) ── */
   function pageOf(L, spine, listed) {
     var t2 = textOf(spine && spine['2']);
     var root2 = /^THE PAGE\b/i.test(t2) ? ((/https?:\/\/\S+/.exec(t2) || [''])[0].replace(/[.,;)]+$/, '')) : '';
@@ -536,25 +537,13 @@
     if (ours) u = new URL(u.pathname + u.search + u.hash, location.origin);
     return { href: u.href, ours: ours, plain: ours && /^\/proposals?(?:\.html)?(?:\/|$)/.test(u.pathname) };
   }
-  /* where the plain address goes: the proposal's own page with the reader's hash, on this site; another site's only for
-     a proposal on the list, which is kept under the shared project lock, so writing a law sends no one off the site;
-     never a plain address, its own or another's, which would only come back */
-  function makersAt(page, listed) {
+  /* the snazzy view's address, or nothing: a page on this site, or another site's only for a proposal on the list, which is
+     kept under the shared project lock, so writing a law puts no link off the site; never a plain address, which is
+     the standard view already */
+  function snazzyAt(page, listed) {
     var s = page ? siteURL(page) : null;
-    if (!s || s.plain || (!s.ours && !listed)) return '';
-    var u = new URL(s.href);
-    if (location.hash) u.hash = location.hash;
-    return u.href;
+    return s && !s.plain && (s.ours || listed) ? s.href : '';
   }
-  /* the maker's page asked for by name: ?maker keeps a page on this site from sending a reader who chose the standard
-     look straight back here */
-  function makersLink(page) {
-    var s = page ? siteURL(page) : null;
-    if (!s) return page || '';
-    return s.ours && !s.plain && window.siteLook ? siteLook.maker(s.href) : s.href;
-  }
-  /* the reader's look: the maker's, the default, or the standard, as they chose under options */
-  function lookOf() { return window.siteLook ? siteLook.read() : Promise.resolve('maker'); }
   /* an answer: one of the decision's own words first, then a line in the answerer's words */
   function parseAnswer(t, tokens) {
     var words = tokens.map(function (x) { return x[0].replace(/ /g, '\\s+'); }).join('|');
@@ -691,7 +680,7 @@
   function proposalPage() {
     var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '', PAGE = '';
     $('bar-name').textContent = FAM;
-    Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM), readBlock('proposals'), lookOf()]).then(function (four) {
+    Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM), readBlock('proposals')]).then(function (four) {
       SPINE = four[0]; LAW = four[1];
       if (!SPINE) return nothing();
       L = lawOf(LAW, FAM);
@@ -701,11 +690,8 @@
          proposal/happyseaurchin is an abomination") */
       var listed = shelfOf(four[2]).filter(function (s) { return s.name === FAM; })[0];
       if (!L.phase && !listed) return notOne();
-      /* its own page, before anything is drawn: there, unless ?plain or the reader chose the standard look */
-      PAGE = pageOf(L, SPINE, listed);
-      var go = makersAt(PAGE, !!listed);
-      if (go && !PLAIN && four[3] !== 'standard') { location.replace(go); return; }
-      if (go && window.siteLook) siteLook.offer({ name: FAM, page: go.replace(/#.*$/, ''), look: four[3] });
+      /* its snazzy page, named in the band and the foot: a reader goes there by choosing it, never sent */
+      PAGE = snazzyAt(pageOf(L, SPINE, listed), !!listed);
       learnCase(JSON.stringify(SPINE).replace(/\\n/g, ' '));
       if (L.accent) document.documentElement.style.setProperty('--acc', L.accent);
       if (L.look) wearLook(L.look);
@@ -749,19 +735,17 @@
       var root = split(textOf(SPINE));
       TITLE = titleCase(root.title || FAM);
       document.title = TITLE;
-      /* its own page as a link, where it is not this one: asked for by name, so it opens whatever the reader's look */
-      var own = PAGE ? siteURL(PAGE) : null;
-      var lede = sentences(cap(root.rest), 320), page = own && !own.plain ? makersLink(PAGE) : '';
+      var lede = sentences(cap(root.rest), 320), page = PAGE;
       var when = (/(\d{1,2} (?:January|February|March|April|May|June|July|August|September|October|November|December) 20\d\d)/.exec(L.provenance || textOf(SPINE['9'])) || [])[1] || '';
       var label = PHASE === 'project' ? 'A project' : PHASE === 'set aside' ? 'Set aside' : 'A proposal';
       var asks = DECS.length ? (DECS.length === 1 ? 'the decision' : 'the ' + count(DECS.length) + ' decisions') : '';
       $('bandText').innerHTML = '<div class="eyebrow">' + label + (when ? ' · ' + esc(when) : '') + '</div>' +
-        '<h1><a href="/proposal/' + esc(FAM) + (PLAIN ? '?plain' : '') + '">' + esc(TITLE) + '</a></h1>' +
+        '<h1><a href="/proposal/' + esc(FAM) + '">' + esc(TITLE) + '</a></h1>' +
         '<p class="lede">' + rich(lede) + '</p>' +
         (asks ? '<p class="sub">Read it, then answer ' + asks + '. Anyone can: each answer goes in your own mirror on the beach, under your own key, beside everyone else’s.</p>' : '') +
         '<div class="actions">' + (DECS.length ? '<a class="btn primary" href="#stands">See where it stands</a>' : '') +
           '<a class="btn line" href="https://mirror.onen.ai/?pool=' + encodeURIComponent(L.room) + '">Talk in the room</a>' +
-          (page ? '<a class="btn line" href="' + esc(page) + '">Its own page</a>' : '') + '</div>' +
+          (page ? '<a class="btn line" href="' + esc(page) + '">Snazzy</a>' : '') + '</div>' +
         (PHASE === 'set aside' ? '<p class="phase"><b>Set aside.</b> The work now lives in its own blocks; this is the proposal as it last stood.</p>' : '');
       var parts = [];
       parts.push(standsHTML());
@@ -855,7 +839,7 @@
     function footHTML(page) {
       var prov = L.provenance || textOf(SPINE['9']);
       return '<p>Drawn live from its blocks on the beach: the steps from <a href="/walk/' + esc(FAM) + '">spine:' + esc(FAM) + '</a>, its law from <a href="/explain?block=function:' + esc(FAM) + '">function:' + esc(FAM) + '</a>, every answer from its answerer’s own mirror, and the shared readings from the family’s fold, ' + esc(FAM) + ', which anyone may make again. Revise the spine and this page changes; nothing is written on the page itself.' +
-        (page ? ' Its own page: <a href="' + esc(page) + '">' + esc(PAGE.replace(/^https?:\/\//, '')) + '</a>.' : '') + '</p>' +
+        (page ? ' The snazzy view: <a href="' + esc(page) + '">' + esc(PAGE.replace(/^https?:\/\//, '')) + '</a>.' : '') + '</p>' +
         (prov ? '<div class="more"><details class="fold"><summary>Where it came from</summary><div class="in src"><p>' + rich(split(prov).rest || prov) + '</p></div></details></div>' : '') +
         '<p>Every proposal on the beach keeps <a href="/explain?block=function:proposal">the proposal form</a>. <a href="/proposal">See them all</a>, or <a href="/proposal#make">make one</a>.</p>' +
         '<p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
@@ -1026,10 +1010,13 @@
       sections.push('<section id="shelf"><div class="addr">live from the beach · the list, at <b>proposals</b></div><h2>The proposals</h2>' +
         (shelf.length ? '<p class="qcap">' + LEGEND + '</p>' : '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>') +
         '<div class="cards">' + shelf.map(function (s) {
+          var snazzy = snazzyAt(s.page, true);
           return '<article class="card" id="c-' + esc(s.name) + '"><div class="txt"><h3 class="nm"><a href="/proposal/' + esc(s.name) + '">' + esc(s.name) + '</a></h3>' +
             '<p>' + esc(cap(s.what)) + '</p><p class="stat" data-stat="' + esc(s.name) + '">reading…</p>' +
-            /* each asked for by name, whatever the reader's look (look.2): the plain address alone opens the maker's page */
-            '<div class="go-links"><a href="/proposal/' + esc(s.name) + '?plain">Drawn from its blocks</a>' + (s.page ? '<a href="' + esc(makersLink(s.page)) + '">Its own page</a>' : '') + '</div></div>' +
+            /* two buttons, two addresses, each always itself (David, 28 Oct 2026): the snazzy page where it has one, and the
+               standard view drawn from its blocks */
+            '<div class="two">' + (snazzy ? '<a class="btn primary" href="' + esc(snazzy) + '">Snazzy</a>' : '') +
+              '<a class="btn line" href="/proposal/' + esc(s.name) + '">Standard</a></div></div>' +
             '<figure class="quipu" data-quipu="' + esc(s.name) + '"></figure></article>';
         }).join('') + '</div>' +
         '<p class="note">A crafted page wears a look of its own taken from what it proposes: its own palette and type, a drawing that moves at the top, an instrument for each step, and plain words for someone new to the beach. <a href="/explain?block=ways:proposal">The craft of making one</a>. The page drawn from its blocks needs no code at all, and exists the moment a spine and its law stand.</p></section>');
@@ -1073,6 +1060,12 @@
             th.length + (th.length === 1 ? ' thread' : ' threads')].join(' · ') + (latest ? ' · the latest answer ' + rel(latest) : '');
           var el = document.querySelector('[data-stat="' + s.name + '"]');
           if (el) el.textContent = stat;
+          /* the snazzy page as the standard view finds it (its law's 6, its spine's root 2, then its line), so a card whose
+             line names none, as leros-on-the-commons's, still offers it */
+          var snazzy = snazzyAt(pageOf(L2, spine, s), true), card = document.getElementById('c-' + s.name);
+          var two = card && card.querySelector('.two'), btn = two && two.querySelector('.btn.primary');
+          if (snazzy && btn) btn.setAttribute('href', snazzy);
+          else if (snazzy && two) two.insertAdjacentHTML('afterbegin', '<a class="btn primary" href="' + esc(snazzy) + '">Snazzy</a>');
           drawn[s.name] = { g: quipuGroup(s.name, steps, mirrors, th), label: s.name + ': ' + stat + '. Each step links to its section on the proposal’s page.' };
           drawCard(s.name);
         }, function () { var el = document.querySelector('[data-stat="' + s.name + '"]'); if (el) el.textContent = 'couldn’t be read just now'; });
