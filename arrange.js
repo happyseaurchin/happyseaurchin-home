@@ -209,6 +209,7 @@
     '.arr-txt{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;padding:6px 8px 6px 2px}' +
     '.arr-lab{color:inherit;font-weight:650}' +
     'a.arr-lab{text-decoration:none;border-bottom:1px solid rgba(var(--liquid-rgb,27,90,108),0.45)}' +
+    'a.arr-snazzy{font-size:0.8rem;font-weight:650;line-height:1.5;text-decoration:none;color:inherit;padding:0 9px;border-radius:999px;border:1px solid rgba(var(--liquid-rgb,27,90,108),0.45)}' +
     '.arr button.arr-lab{border:0;background:none;padding:0;text-align:left;font-weight:650}' +
     '.arr-item .w,.arr-item .note{color:var(--vapour-dim,#526571);font-size:0.875rem}' +
     '.arr-item .note{font-style:italic}' +
@@ -296,8 +297,13 @@
       if (!roots.length) return '';
       return '<ul>' + roots.map(function (r) {
         var p = info(r.id, lst), cls = 'arr-item' + (ed && ed.held ? (ed.held === r.id ? ' held' : ' target') : '');
+        /* a proposal's name goes to its standard view, and a Snazzy button beside it to its page where it has one: two
+           addresses, each always itself (David, 28 Oct 2026) */
+        var std = '/proposal/' + r.id, listed = lst.some(function (x) { return x.id === r.id; });
+        var snazzy = listed && p.href !== std ? p.href : '';
         var name = ed ? '<button type="button" class="arr-lab" data-tap="' + esc(r.id) + '">' + esc(label(r.id)) + '</button>'
-          : '<a class="arr-lab" href="' + esc(p.href) + '">' + esc(label(r.id)) + '</a>';
+          : '<a class="arr-lab" href="' + esc(listed ? std : p.href) + '">' + esc(label(r.id)) + '</a>' +
+            (snazzy ? '<a class="arr-snazzy" href="' + esc(snazzy) + '">Snazzy</a>' : '');
         return '<li><div class="' + cls + '" data-id="' + esc(r.id) + '" data-depth="' + depth + '">' +
           (grips ? '<button type="button" class="arr-grip" data-grip="' + esc(r.id) + '" aria-label="Move ' + esc(label(r.id)) +
             ': drag it, tap it to hold it, or use the arrow keys">' + GRIP + '</button>' : '') +
