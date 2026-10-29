@@ -308,7 +308,9 @@
           (grips ? '<button type="button" class="arr-grip" data-grip="' + esc(r.id) + '" aria-label="Move ' + esc(label(r.id)) +
             ': drag it, tap it to hold it, or use the arrow keys">' + GRIP + '</button>' : '') +
           '<span class="arr-txt">' + name +
-          (r.note ? '<span class="note">' + esc(r.note) + '</span>' : (p.what && !r.kids.length ? '<span class="w">' + esc(brief(p.what)) + '</span>' : '')) +
+          /* every row keeps its proposal's line, a row with others nested inside it too: a title alone does not say
+             what a proposal is about (David, 29 Oct 2026) */
+          (r.note ? '<span class="note">' + esc(r.note) + '</span>' : (p.what ? '<span class="w">' + esc(brief(p.what)) + '</span>' : '')) +
           '</span></div>' + rows(r.kids, depth + 1, grips) + '</li>';
       }).join('') + '</ul>';
     }
