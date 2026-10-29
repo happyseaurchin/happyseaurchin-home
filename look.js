@@ -11,10 +11,11 @@
  * 'ground #eee7d5', 'measure: 46rem' or 'text measure 30rem'. Every property is cleared before it is set again, so
  * nothing good in light lingers in dark, and all of it is set again when ◐ switches the theme. Reads only.
  *
- * window.beachLook = { wear({ look, accent }), of(block) } — wear once the family's law is read. A page that wants the
- * measure (the longest line of running text), the corner (its cards' radius), the scale (the body's size) and the
- * headings' weight uses --measure, --radius, --body-size and --display-weight in its own CSS, each falling back to its
- * standard, as proposal.html does.
+ * window.beachLook = { wear({ look, accent, map }), of(block) } — wear once the family's law is read. Without a map the
+ * tokens go to theme.css's names (THEME, below), and a page that wants the measure (the longest line of running text),
+ * the corner (its cards' radius), the scale (the body's size) and the headings' weight uses --measure, --radius,
+ * --body-size and --display-weight in its own CSS, each falling back to its standard, as proposal.html does. A page that
+ * keeps its own vocabulary passes a map naming its own properties, and the same checks run over them.
  */
 (function () {
   'use strict';
@@ -32,7 +33,16 @@
 
   var LOOK_FACES = { 'Syne': '', 'Newsreader': '', 'Space Mono': '', 'Cormorant Garamond': 'Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500', 'JetBrains Mono': 'JetBrains+Mono:wght@400;700', 'Georgia': '', 'system-ui': '' };
   var LOOK_KEYS = ['ground', 'ink', 'muted', 'panel', 'line', 'light', 'dark', 'display', 'body', 'mono', 'scale', 'weights', 'step', 'radius', 'rule', 'measure'];
-  var DRESSED = ['--abyss', '--deep', '--ground-top', '--foam', '--vapour', '--vapour-rgb', '--vapour-dim', '--card', '--card-hi', '--card-rgb', '--line', '--line-strong', '--acc', '--liquid', '--liquid-rgb', '--display', '--body', '--mono', '--display-weight', '--body-size', '--measure', '--radius'];
+  /* where each token goes: theme.css's names unless the page passes its own map, each key naming the properties it sets
+     (the plain schematic page: ground ['--paper', '--sheet'], ink ['--ink'], muted ['--ink-2'], line ['--rule'], accent
+     ['--proc'], …). The first property of ground and of ink is what the accent is checked on when a look sets neither;
+     lawAccent is where the law's 'look: accent #rrggbb' goes, accent where it has no place of its own */
+  var THEME = {
+    ground: ['--abyss', '--deep', '--ground-top'], ink: ['--foam', '--vapour'], inkRgb: ['--vapour-rgb'], muted: ['--vapour-dim'],
+    panel: ['--card', '--card-hi'], panelRgb: ['--card-rgb'], line: ['--line', '--line-strong'],
+    accent: ['--acc', '--liquid'], accentRgb: ['--liquid-rgb'], lawAccent: ['--acc'],
+    display: ['--display'], body: ['--body'], mono: ['--mono'], weight: ['--display-weight'], size: ['--body-size'], measure: ['--measure'], radius: ['--radius']
+  };
   function lookKV(node) {
     var out = {}; if (!node || typeof node !== 'object') return out;
     for (var d = 1; d <= 9; d++) {
@@ -62,28 +72,29 @@
     };
   }
   function dress(L, look) {
-    var root = document.documentElement, st = root.style, scheme = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    DRESSED.forEach(function (p) { st.removeProperty(p); });
+    var root = document.documentElement, st = root.style, scheme = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark', M = L.map || THEME;
+    function put(k, v) { (M[k] || []).forEach(function (p) { st.setProperty(p, v); }); }
+    Object.keys(M).forEach(function (k) { M[k].forEach(function (p) { st.removeProperty(p); }); });
     var t = look ? look.sets[scheme] : {}, ground = hexIn(t.ground), ink = hexIn(t.ink);
     if (!(ground && ink && contrast(ink, ground) >= 4.5)) ground = ink = '';
     if (ground) {
-      st.setProperty('--abyss', ground); st.setProperty('--deep', ground); st.setProperty('--ground-top', ground);
-      st.setProperty('--foam', ink); st.setProperty('--vapour', ink); st.setProperty('--vapour-rgb', rgbOf(ink));
-      if (hexIn(t.muted) && contrast(hexIn(t.muted), ground) >= 4.5) st.setProperty('--vapour-dim', hexIn(t.muted));
-      if (hexIn(t.panel)) { st.setProperty('--card', hexIn(t.panel)); st.setProperty('--card-hi', hexIn(t.panel)); st.setProperty('--card-rgb', rgbOf(hexIn(t.panel))); }
-      if (hexIn(t.line)) { st.setProperty('--line', hexIn(t.line)); st.setProperty('--line-strong', hexIn(t.line)); }
+      put('ground', ground); put('ink', ink); put('inkRgb', rgbOf(ink));
+      if (hexIn(t.muted) && contrast(hexIn(t.muted), ground) >= 4.5) put('muted', hexIn(t.muted));
+      if (hexIn(t.panel)) { put('panel', hexIn(t.panel)); put('panelRgb', rgbOf(hexIn(t.panel))); }
+      if (hexIn(t.line)) put('line', hexIn(t.line));
     }
     if (look) {
-      ['display', 'body', 'mono'].forEach(function (k) { var f = look.faces[k]; if (f) st.setProperty('--' + k, "'" + f + "'," + (k === 'mono' ? 'ui-monospace,monospace' : k === 'body' ? 'Georgia,serif' : 'system-ui,sans-serif')); });
-      if (look.weight) st.setProperty('--display-weight', look.weight);
-      if (look.size) st.setProperty('--body-size', look.size);
-      if (look.measure) st.setProperty('--measure', look.measure);
-      if (look.radius) st.setProperty('--radius', look.radius);
+      ['display', 'body', 'mono'].forEach(function (k) { var f = look.faces[k]; if (f) put(k, "'" + f + "'," + (k === 'mono' ? 'ui-monospace,monospace' : k === 'body' ? 'Georgia,serif' : 'system-ui,sans-serif')); });
+      if (look.weight) put('weight', look.weight);
+      if (look.size) put('size', look.size);
+      if (look.measure) put('measure', look.measure);
+      if (look.radius) put('radius', look.radius);
     }
-    var cs = getComputedStyle(root), base = ground || hexIn(cs.getPropertyValue('--abyss')), fg = ink || hexIn(cs.getPropertyValue('--foam'));
+    var cs = getComputedStyle(root), first = function (k) { return hexIn(cs.getPropertyValue((M[k] || [])[0] || '')); };
+    var base = ground || first('ground'), fg = ink || first('ink');
     var own = look && look.acc[scheme] && readable(look.acc[scheme], base, fg), law = L.accent && readable(L.accent, base, fg);
-    if (own) { st.setProperty('--acc', own); st.setProperty('--liquid', own); st.setProperty('--liquid-rgb', rgbOf(own)); }
-    else if (law) st.setProperty('--acc', law);
+    if (own) { put('accent', own); put('accentRgb', rgbOf(own)); }
+    else if (law) put(M.lawAccent ? 'lawAccent' : 'accent', law);
   }
   /* an accent that does not read on its ground at AA is moved toward that ground's ink a tenth at a time, its hue kept, so
      one colour named for both themes ('look: accent #c21d4e') stays the maker's in each; one that never reads keeps the standard */
