@@ -22,6 +22,16 @@
  * end, two options taken a fork, a knot that names another thread's place a crossing.
  * window.beachThreads.quipu(threads) draws a project's threads as one quipu, its main cord across
  * the top and each thread a pendant hanging from it.
+ *
+ * PHASE 2 (function:thread re-cut 29 October 2026 evening, bsp-mcp proposals/2026-10-29-threads-
+ * phase-2.md): an act and an option are told apart by the closing clause — every act closes
+ * ' · waits on <handle>' or ' · complete' before its reads, an option never does — so an option is
+ * taken when an act stands at it or anything beneath it, and its offerer is the hand whose act stands
+ * at the knot above. Each option is set in beneath the knot that offered it, and each open option of
+ * a live end carries a tap for the hand that end waits on, which says the option's words and
+ * ' · waits on <offerer>' in that hand's own mirror at the option's address, through the beach's
+ * voice (window.siteVoice, the loom's word chips). window.beachThreads.waiting(handle) reads every
+ * live end in the registry that waits on a hand, for the page that is theirs (the loom).
  */
 (function () {
   'use strict';
@@ -126,6 +136,25 @@
   function raise(b, floor) { while (floorOf(b) < floor) b = { _: b }; return b; }
   function walk(b, ds) { var n = b; for (var i = 0; i < ds.length; i++) { if (!n || typeof n !== 'object') return undefined; n = n[ds[i] === '0' ? '_' : ds[i]]; } return n; }
   function dotted(ds, floor) { var l = ds.slice(0, floor).join('').replace(/^0+(?=\d)/, ''), r = ds.slice(floor).join(''); return r ? l + '.' + r : l; }
+  /* an act closes ' · waits on <handle>' or ' · complete' before its reads, an option never does
+     (function:thread 2); a line tied before that law is still an act by its reads, a time or a word
+     (function:thread 7), as the thread battery's checker reads it */
+  var READS = ' · read: ';
+  var CLAUSE = /\s·\s(?:waits on ([A-Za-z0-9_.\-]+(?:(?:,\s*|\s+and\s+)[A-Za-z0-9_.\-]+)*)|complete)\s*$/;
+  function bodyOf(t) { return String(t || '').split(READS)[0]; }
+  function closes(t) { return CLAUSE.test(bodyOf(t)); }
+  function actBefore(t) {
+    var b = bodyOf(t);
+    return String(t || '').indexOf(READS) >= 0 || /\bwait(?:s|ing)?\s+(?:on|for)\b|\bcomplete\b/i.test(b) ||
+      /\bat [A-Za-z0-9_.\-]+'s word\b/i.test(b) || /\b20\d\d-\d\d-\d\dT\d\d:\d\d/.test(b);
+  }
+  /* whom an act waits on: its closing clause, or, tied before the law, the last 'waits on' it says */
+  function waitsOn(t) {
+    var m = CLAUSE.exec(bodyOf(t));
+    if (m) return m[1] ? m[1].split(/,\s*|\s+and\s+/) : [];
+    var all = bodyOf(t).match(/\bwaits? on ([A-Za-z0-9_\-]+)/gi) || [];
+    return all.length ? [all[all.length - 1].replace(/^waits? on /i, '')] : [];
+  }
   var indexP = null;
   function indexNames() {
     if (!indexP) indexP = fetch(BEACH, { headers: { Accept: 'application/json' }, cache: 'no-store' }).then(function (r) { return r.json(); })
@@ -158,24 +187,32 @@
       });
     });
   }
-  /* each address a node: the lines standing there, the hand that offered it (whose line stands at the
-     knot above too), whether it was taken (a hand other than its offerer stands there, or the work
-     went on beneath it), the live ends, and any other thread's place a line names */
+  /* each address a node: the lines standing there, each an act or an option by the closing clause; the
+     hand that offered it (whose act stands at the knot above, and whose option stands here); whether it
+     was taken (an act stands here, or the work went on beneath it); the live ends, acts with nothing
+     taken beneath them, and whom each waits on; and any other thread's place a line names */
   function treeOf(at, nd, floor, number) {
-    var keys = Object.keys(at).map(function (a) { return at[a].ds.join(''); });
+    var all = Object.keys(at).map(function (a) { return at[a]; });
+    function beneath(key, who) {
+      return all.some(function (x) { var k = x.ds.join(''); return k.length > key.length && k.indexOf(key) === 0 && (!who || x.lines.some(function (l) { return l.who === who; })); });
+    }
     function node(ds, parent) {
       var key = ds.join(''), a = dotted(ds, floor), here = at[a] || { lines: [] };
-      var me = { addr: a, ds: ds, lines: here.lines, kids: [], depth: parent ? parent.depth + 1 : 0 };
-      me.offerer = '';
-      if (parent) parent.lines.forEach(function (pl) { if (!me.offerer && here.lines.some(function (l) { return l.who === pl.who; })) me.offerer = pl.who; });
+      var me = { addr: a, ds: ds, lines: here.lines, kids: [], depth: parent ? parent.depth + 1 : 0, parent: parent };
+      here.lines.forEach(function (l) { l.act = !parent || closes(l.text) || actBefore(l.text) || beneath(key, l.who); });
+      var offering = parent ? parent.lines.filter(function (l) { return l.act; }).map(function (l) { return l.who; }) : [];
+      var opt = parent ? (here.lines.filter(function (l) { return !l.act && offering.indexOf(l.who) >= 0; })[0] || here.lines.filter(function (l) { return !l.act; })[0]) : null;
+      me.offerer = opt ? opt.who : offering[0] || '';
+      me.option = opt ? opt.text : '';
       for (var d = 1; d <= 9; d++) {
         var ck = key + d;
-        if (keys.some(function (k) { return k === ck || k.indexOf(ck) === 0; })) me.kids.push(node(ds.concat(String(d)), me));
+        if (all.some(function (x) { return x.ds.join('').indexOf(ck) === 0; })) me.kids.push(node(ds.concat(String(d)), me));
       }
-      me.hands = me.lines.filter(function (l) { return !parent || l.who !== me.offerer; });
-      me.option = parent ? (me.lines.filter(function (l) { return l.who === me.offerer; })[0] || {}).text || '' : '';
-      me.taken = !parent || me.hands.length > 0 || me.kids.some(function (k) { return k.lines.length > 0; });
-      me.live = me.taken && !me.kids.some(function (k) { return k.taken; });
+      me.hands = me.lines.filter(function (l) { return l.act; });
+      me.taken = !parent || me.hands.length > 0 || beneath(key);
+      me.live = me.hands.length > 0 && !me.kids.some(function (k) { return k.taken; });
+      me.waits = [];
+      if (me.live) me.hands.forEach(function (l) { waitsOn(l.text).forEach(function (w) { if (me.waits.indexOf(w) < 0) me.waits.push(w); }); });
       me.crosses = [];
       me.lines.forEach(function (l) { var m, re = /\bthread:(\d+(?:\.\d+)?)\b/g; while ((m = re.exec(l.text))) if (m[1].split('.')[0] !== String(number)) me.crosses.push(m[1]); });
       return me;
@@ -192,12 +229,21 @@
       if (node && typeof node === 'object') for (var d = 1; d <= 9; d++) { var t = parseThread(textOf(node[String(d)])); if (t) list.push(t); }
       return Promise.all(list.map(function (th) {
         if (th.registry) return readRegistry(th).then(function (t) { t.rungs = []; return t; }, function () { th.rungs = []; th.unread = true; return th; });
-        return Promise.all([get('spine:' + th.name).catch(function () { return null; }), get('function:' + th.name).catch(function () { return null; })]).then(function (two) {
+        /* a keeper's ladder is read only where the beach's index holds its blocks, so a thread a law names
+           and nobody founded asks for nothing that is not there */
+        return indexNames().catch(function () { return null; }).then(function (names) {
+          var has = function (n) { return !names || names.indexOf(n) >= 0; };
+          return Promise.all([has('spine:' + th.name) ? get('spine:' + th.name).catch(function () { return null; }) : null,
+            has('function:' + th.name) ? get('function:' + th.name).catch(function () { return null; }) : null]);
+        }).then(function (two) {
           th.rungs = ladder(two[0]);
           th.who = two[1] ? textOf(two[1]['2']).replace(/^WHO\s*[:—–-]\s*/i, '') : '';
           return Promise.all(th.rungs.map(function (r) {
             if (r.url || !r.block) { r.said = ''; r.links = r.url ? [{ url: r.url, label: r.url.replace(/^https?:\/\//, '').slice(0, 56), kind: 'page' }] : []; return null; }
-            return get(r.block, r.addr).then(function (n) {
+            return indexNames().catch(function () { return null; }).then(function (names) {
+              if (names && names.indexOf(r.block) < 0) return null;
+              return get(r.block, r.addr);
+            }).then(function (n) {
               r.said = textOf(n); r.when = whenOf(n, r.said); r.links = linksIn(r.said); r.missing = n == null;
             }, function () { r.said = ''; r.links = []; r.unread = true; });
           })).then(function () { return th; });
@@ -268,7 +314,12 @@
     '.th-knots li.th-not{color:var(--vapour-dim)}' +
     '.th-knots .th-addr{font-family:var(--mono);font-size:0.76rem;color:var(--vapour-dim);margin-right:0.45rem}' +
     '.th-knots .th-hand{font-weight:600}' +
-    '.th-knots .th-dot{display:inline-block;width:0.55rem;height:0.55rem;border-radius:50%;margin-right:0.35rem;vertical-align:0.05rem}';
+    '.th-knots .th-dot{display:inline-block;width:0.55rem;height:0.55rem;border-radius:50%;margin-right:0.35rem;vertical-align:0.05rem}' +
+    /* a tap on an open option: the word chip the loom's tiles wear */
+    '.th-tap{font-family:var(--mono);font-size:0.72rem;font-weight:700;letter-spacing:0.04em;border:1px solid rgba(var(--liquid-rgb),0.6);background:rgba(var(--liquid-rgb),0.1);color:var(--liquid);border-radius:5px;padding:0.15rem 0.55rem;cursor:pointer;white-space:nowrap;margin-left:0.25rem}' +
+    '.th-tap:hover{background:rgba(var(--liquid-rgb),0.24)}.th-tap:disabled{cursor:progress;opacity:0.55}' +
+    '.th-tap:focus-visible{outline:2px solid var(--liquid);outline-offset:1px}' +
+    '.th-sn{font-family:var(--mono);font-size:0.7rem;color:var(--vapour-dim);margin-left:0.35rem}';
   function style() {
     if (document.getElementById('threads-css')) return;
     var s = document.createElement('style'); s.id = 'threads-css'; s.textContent = CSS;
@@ -285,7 +336,10 @@
   function handColour(who) { var h = 0; for (var i = 0; i < who.length; i++) h = (h * 31 + who.charCodeAt(i)) >>> 0; return HANDS[h % HANDS.length]; }
   var ROWH = 38, LANE = 24, TOP = 30, WORDS = 276;
   /* a knot's words without its hand's name, which the row already gives */
-  function said(l) { var t = String(l.text || ''), w = l.who.toLowerCase(); return t.toLowerCase().indexOf(w) === 0 ? t.slice(w.length).replace(/^\s*(\([^)]{0,40}\))?\s*[:—–-]\s*/, '') : t; }
+  function said(l) {
+    var t = String(l.text || ''), w = l.who.toLowerCase(), m = t.toLowerCase().indexOf(w) === 0 && /^\s*(\([^)]{0,40}\))?\s*[:—–-]\s*/.exec(t.slice(w.length));
+    return m ? t.slice(w.length + m[0].length) : t;   /* 'weft (lane x): built' reads 'built'; 'weft takes 2.41' keeps its name */
+  }
   function rowsOf(t) {
     var rows = [], lanes = 1;
     (function rec(n, lane) {
@@ -360,11 +414,25 @@
       '<div class="q-pendants">' + ps.join('') + '</div></div>';
   }
   var LEGEND = '<p class="th-legend"><span><i class="lk"></i>a knot tied — its colour is the hand that tied it</span><span><i class="lo"></i>an option offered, not taken</span><span><i class="ln"></i>next, untied</span><span>⨯ a knot naming another thread\u2019s place</span></p>';
+  /* a tap on an open option, for each hand the live end above it waits on: it says the option's words,
+     then that the taking waits on the hand that offered it, in the tapper's own mirror at the option's
+     address (function:thread 5) */
+  function tapsHTML(n) {
+    var p = n.parent;
+    if (!p || n.taken || !p.live || !p.waits.length || !n.option) return '';
+    var text = n.option + ' · waits on ' + (n.offerer || p.hands[0].who);
+    return ' ' + p.waits.map(function (w) {
+      return '<button type="button" class="th-tap" data-at="' + esc(n.addr) + '" data-who="' + esc(w) + '" data-say="' + esc(text) + '" title="' +
+        esc('says this in thread:' + w + ' at ' + n.addr + ': ' + text) + '">take this' + (p.waits.length > 1 ? ', as ' + esc(w) : '') + '</button>';
+    }).join(' ') + '<span class="th-sn" aria-live="polite"></span>';
+  }
+  /* every knot, each option set in beneath the knot that offered it (function:thread 8) */
   function knotsHTML(th) {
     var out = [];
     (function rec(n) {
-      if (n.taken) n.hands.forEach(function (l) { out.push('<li><span class="th-addr">' + esc(n.addr) + '</span><span class="th-dot" style="background:' + handColour(l.who) + '"></span><span class="th-hand">' + esc(l.who) + '</span> · ' + esc(said(l)) + '</li>'); });
-      else out.push('<li class="th-not"><span class="th-addr">' + esc(n.addr) + '</span>offered by ' + esc(n.offerer) + ', not taken · ' + esc(n.option) + '</li>');
+      var pad = n.depth ? ' style="margin-left:' + (n.depth * 1.1).toFixed(1) + 'rem"' : '';
+      if (n.taken) n.hands.forEach(function (l) { out.push('<li' + pad + '><span class="th-addr">' + esc(n.addr) + '</span><span class="th-dot" style="background:' + handColour(l.who) + '"></span><span class="th-hand">' + esc(l.who) + '</span> · ' + esc(said(l)) + '</li>'); });
+      else out.push('<li class="th-not"' + pad + '><span class="th-addr">' + esc(n.addr) + '</span>offered by ' + esc(n.offerer) + ', not taken · ' + esc(n.option) + tapsHTML(n) + '</li>');
       n.kids.forEach(rec);
     })(th.tree);
     return '<ol class="th-knots">' + out.join('') + '</ol>';
@@ -418,9 +486,11 @@
 
   /* opts.step: only the threads serving that step, drawn small (the step's own section);
      opts.stepHref(addr): where a thread's step lives on this page; opts.empty: the words when none stand */
+  var drawn = new WeakMap();
   function draw(el, family, opts) {
     opts = opts || {};
     style();
+    if (!opts.step) { el.setAttribute('data-threads-family', family); drawn.set(el, opts); }
     if (!opts.step) el.innerHTML = '<p class="th-empty">Reading the threads from the beach…</p>';
     return read(family).then(function (got) {
       var list = got.threads.filter(function (t) { return !opts.step || t.step === opts.step; });
@@ -448,7 +518,54 @@
     });
   }
 
-  window.beachThreads = { read: read, draw: draw, quipu: quipu, legend: LEGEND, style: style, parseRung: parseRung, parseThread: parseThread, linksIn: linksIn };
+  /* what this page read is forgotten once a tap has written, so the next read is the beach's */
+  function forget() { got = {}; reads = {}; indexP = null; }
+
+  /* every live end in the registry that waits on a hand, with the options still open beneath it: what a
+     person's own page shows them (function:thread 5), whether or not a proposal's law names the thread */
+  function waiting(handle, fresh) {
+    if (fresh) forget();
+    return get('spine:thread').then(function (reg) {
+      if (!reg || typeof reg !== 'object') return [];
+      var floor = Math.max(1, floorOf(reg)), nums = [];
+      (function rec(n, ds) {
+        if (ds.length === floor) { if (textOf(n)) nums.push(ds.join('').replace(/^0+(?=\d)/, '')); return; }
+        if (!n || typeof n !== 'object') return;
+        if (ds.length < floor - 1 && n._ && typeof n._ === 'object') rec(n._, ds.concat('0'));   /* a supernested root keeps 1 to 9 at 01 to 09 */
+        for (var d = 1; d <= 9; d++) if (n[String(d)] != null) rec(n[String(d)], ds.concat(String(d)));
+      })(reg, []);
+      return Promise.all(nums.map(function (num) { return readRegistry({ name: 'thread:' + num, registry: num, carries: '' }).catch(function () { return null; }); }));
+    }).then(function (ths) {
+      var out = [];
+      (ths || []).forEach(function (th) {
+        if (!th || !th.tree) return;
+        (function rec(x) {
+          if (x.live && x.waits.indexOf(handle) >= 0) out.push({ number: th.registry, line: th.line, end: x, options: x.kids.filter(function (k) { return !k.taken && k.option; }) });
+          x.kids.forEach(rec);
+        })(th.tree);
+      });
+      return out;
+    });
+  }
+
+  /* a tap says the option in the tapper's own mirror, through the beach's voice, then draws again from the beach */
+  document.addEventListener('click', function (ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('.th-tap') : null;
+    if (!b || b.disabled) return;
+    var host = b.closest('[data-threads-family]'), note = b.parentNode.querySelector('.th-sn');
+    b.disabled = true; if (note) { note.className = 'th-sn'; note.textContent = 'saying…'; }
+    (window.siteVoice ? window.siteVoice() : Promise.reject(new Error('the beach’s voice did not load'))).then(function (v) {
+      return v.say({ field: 'thread', at: b.getAttribute('data-at'), text: b.getAttribute('data-say'), name: b.getAttribute('data-who') });
+    }).then(function (r) {
+      if (!r || !r.ok) { b.disabled = false; if (note) note.textContent = r && r.quiet ? '' : 'not said: ' + ((r && r.error) || 'the beach did not take it'); return; }
+      if (note) note.textContent = r.name && r.name !== b.getAttribute('data-who') ? 'said, as ' + r.name : 'said';
+      forget();
+      if (host) draw(host, host.getAttribute('data-threads-family'), drawn.get(host) || {});
+    }, function (e) { b.disabled = false; if (note) note.textContent = 'not said: ' + ((e && e.message) || 'the beach could not be reached'); });
+  });
+
+  window.beachThreads = { read: read, draw: draw, quipu: quipu, legend: LEGEND, style: style, parseRung: parseRung, parseThread: parseThread, linksIn: linksIn,
+    waiting: waiting, forget: forget, waitsOn: waitsOn };
 
   function auto() {
     document.querySelectorAll('[data-threads]').forEach(function (el) {
