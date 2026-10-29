@@ -16,12 +16,12 @@
 <style>
   /* AVAILABILITY — the reader of the availability family (function:availability, founded 2026-10-10).
      spine:availability is the floor-10 clock and never anyone's content; availability:<handle> is each
-     holder's own, filled by their own AI from whatever calendar they keep. A line at a BEAT is a block,
-     opening with how — busy, in person (where), virtual — then what, if the holder chooses; the DAY's line
-     opens with the hours kept open in the holder's own place. A beat inside those hours with no line is
-     open; a day with no line is not known, never free. This page draws a traditional week in the viewer's
-     own time, a lane per person, and marks where everyone shown keeps open. Read-only: a holder writes
-     through their own AI (pscale_stream_engage, field='availability'). /availability[/<handle>]. */
+     holder's own, filled by their own AI from whatever calendar they keep. Everyone is available unless
+     they say otherwise: a line says what its holder's time is at its rung, most out of reach, some open,
+     in their own words. What holds at every time ('Wednesdays are open') is the holder's STANDING WORD,
+     their mirror's root voice (function:availability 1.2), shown above the days. This page draws the
+     clock's periods in the viewer's own time, a lane per person. A holder writes through their own AI
+     (pscale_stream_engage, field='availability') or by hand here. /availability[/<handle>]. */
   :root{
     --p1:#3987e5; --p2:#d95926; --p3:#199e70; --p4:#c98500; --p5:#d55181; --p6:#2f9e2f; --p7:#9085e9; --p8:#e66767;
     --free:#2bb673; --wkend-bg:rgba(237,161,0,0.08); --wkend-ink:#e3a845;
@@ -60,6 +60,13 @@
   .zone{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim)}
   button:focus-visible,.blk:focus-visible,.dh:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
   .people{display:flex;flex-wrap:wrap;gap:6px}
+  /* THE STANDING WORD — what holds at every time, one line per holder above the days, in their colour */
+  .standing{margin:12px 0 0;display:grid;gap:6px;max-width:72ch}
+  .standing p,.standing summary{margin:0;font-size:14px;line-height:1.45;color:var(--vapour)}
+  .standing summary{cursor:pointer}
+  .standing details p{margin-top:4px}
+  .standing b{font-family:var(--mono);font-size:12px;font-weight:400;color:var(--foam)}
+  .standing .sw{display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--pc);margin-right:7px}
   .who{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12px;color:var(--vapour);
     border:1px solid var(--line-strong);border-radius:999px;padding:5px 12px 5px 9px;background:none;cursor:pointer}
   .who .sw{width:10px;height:10px;border-radius:50%;background:var(--pc);flex:none}
@@ -269,6 +276,7 @@
       <span class="zone" id="zone"></span>
     </div>
     <div class="people" id="people" role="group" aria-label="People shown"></div>
+    <div class="standing" id="standing" aria-label="What holds at every time" hidden></div>
   </header>
   <p class="formnote" id="note" hidden></p>
   <div class="legend" aria-label="Key">
@@ -393,7 +401,7 @@ function voiceOf(node){
 const RUNGS = ['year', 'season', 'month', 'week', 'day'];
 const DEPTH = { year: 4, season: 5, month: 6, week: 7, day: 8, gathering: 9, beat: 10 };
 const PARTS = ['deep night', 'dawn', 'early morning', 'morning', 'midday', 'afternoon', 'late afternoon', 'evening', 'night'];
-const S = { people: [], shown: new Set(), follows: [], lines: {}, read: {}, rung: innerWidth < 760 ? 'day' : 'week', focus: null, hours: 'work', sel: null, others: false, open: null };
+const S = { people: [], shown: new Set(), follows: [], lines: {}, read: {}, word: {},rung: innerWidth < 760 ? 'day' : 'week', focus: null, hours: 'work', sel: null, others: false, open: null };
 /* what a read of the node at prefix p brings: every line from p down to the beats, by address */
 function absorb(h, p, node){
   const L = S.lines[h] = S.lines[h] || {};
@@ -527,8 +535,20 @@ async function load(){
     for (let t = first; t <= last; t += DAY / 2) months.add(addrOf(t).slice(0, 6));
     for (const m of months) if (!has(h, m) && !has(h, m.slice(0, 5)) && !has(h, m.slice(0, 4))) asks.push(readNode(h, m));
     if (!has(h, 'c' + P.pre.season) && !has(h, P.pre.year) && !has(h, P.pre.season)){ (S.read[h] = S.read[h] || new Set()).add('c' + P.pre.season); asks.push(readCoarse(h, P)); }
+    if (!(h in S.word)) asks.push(readWord(h));
   }
   await Promise.all(asks);
+}
+/* THE STANDING WORD (function:availability 1.2) — what holds at every time, at the mirror's own root, read once;
+   the label the mirror was born with is the door's, not the holder's, so it is taken off */
+async function readWord(h){
+  S.word[h] = '';
+  try {
+    const r = await fetch(ORIGIN + '?block=' + encodeURIComponent(FIELD + ':' + h) + '&spindle=0', { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    let w = r.ok ? (voiceOf(await r.json()) || '') : '';
+    for (const label of [BORN(h), FIELD + ':' + h + ' at beach.happyseaurchin.com.']) if (w.indexOf(label) === 0) w = w.slice(label.length).trim();
+    S.word[h] = w;
+  } catch(e){}
 }
 /* the lines above a month — the season's and the year's — read as points, so a week or a day still shows them */
 async function readCoarse(h, P){
@@ -616,6 +636,19 @@ function draw(){
   else if (!hs.length) msg.textContent = on.length ? 'Nobody switched on is in scope; the line under the names says how many are out of it.' : 'Nobody is switched on. Tap a name above to show what they have said.';
   drawWords(P, hs);
   drawYours();
+  drawStanding(hs);
+}
+/* each shown holder's standing word above the days; a long one opens from its first words */
+function drawStanding(hs){
+  const rows = hs.filter(h => S.word[h]);
+  $('standing').hidden = !rows.length;
+  $('standing').innerHTML = rows.map(h => {
+    const w = S.word[h], head = '<span class="sw"></span><b>' + esc(h) + (isMe(h) ? ' (you)' : '') + '</b> — ';
+    const cut = w.length > 180 ? w.slice(0, 150).replace(/\s+\S*$/, '') + '…' : '';
+    return '<div style="--pc:' + colourOf(h) + '">' + (cut
+      ? '<details><summary>' + head + esc(cut) + '</summary><p>' + esc(w) + '</p></details>'
+      : '<p>' + head + esc(w) + '</p>') + '</div>';
+  }).join('');
 }
 
 /* a day or a week of the clock: hours down, a lane per person; a day's line as a wash down the lane, a
