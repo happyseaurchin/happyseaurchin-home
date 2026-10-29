@@ -85,6 +85,9 @@ body.addr-on span.addr-only, body.addr-on code.addr-only, body.addr-on b.addr-on
 .bar .spacer { flex: 1; }
 .bar button { background: var(--sheet); border: 1px solid var(--rule-2); border-radius: 4px; color: var(--ink-2); font-family: var(--mono); font-size: 12px; padding: 5px 9px; cursor: pointer; }
 .bar button:hover { color: var(--ink); border-color: var(--proc); }
+/* the words, folded as the house folds them on /lanes and /ring: on a schematic's own page the sheets below the drawing
+   wait until the reader asks for them, and this device remembers the choice; the drawing and its part card stay */
+html.hud #main.words, html.hud #foot .wd { display: none !important; }
 
 /* the title block at the head of the drawing */
 .top .wrap { padding-block: 0.6rem 2rem; }
@@ -311,10 +314,11 @@ footer a { color: var(--ink-2); }
   .flow, .blink, .dictate.on { animation: none !important; }
 }
 </style>
+<script>try { if (localStorage.getItem('schematic:words') !== '1') document.documentElement.classList.add('hud'); } catch (e) { document.documentElement.classList.add('hud'); }</script>
 </head>
 <body>
 
-<div class="bar"><span class="dot"></span><span>schematics · <b id="bar-name">every one</b></span><span class="spacer"></span><a href="/schematic" id="bar-all">every schematic</a><button type="button" id="btn-theme" title="light or dark" aria-label="Switch between light and dark">◐</button></div>
+<div class="bar"><span class="dot"></span><span>schematics · <b id="bar-name">every one</b></span><span class="spacer"></span><a href="/schematic" id="bar-all">every schematic</a><button type="button" id="btn-words" aria-controls="main" aria-expanded="false" title="The words below the drawing: where it stands, the proposals pinned, every part in words, the room's talk and the lines for your own AI. This device remembers the choice" hidden>show words</button><button type="button" id="btn-theme" title="light or dark" aria-label="Switch between light and dark">◐</button></div>
 
 <header class="top">
   <div class="wrap">
@@ -659,7 +663,7 @@ footer a { color: var(--ink-2); }
       TITLE = titleCase(WHOLE.title || ROOTP.title || NAME);
       PAGE = L.page ? siteURL(L.page) : '';
       dress(L);
-      paintHead(); paintMain(); Band.start();
+      paintHead(); paintMain(); Band.start(); words();
       G.onRead(function () { COUNTS = G.counts(); paintStands(); paintRows(); Band.later(); if (CUR) paintCard(); });
       G.read().then(function () { readPins(); });
       if (window.beachThreads && $('threadsBody')) beachThreads.draw($('threadsBody'), FAM).then(function (got) { if (!got || !got.threads || !got.threads.length) $('threads').hidden = true; }, function () { $('threads').hidden = true; });
@@ -701,6 +705,23 @@ footer a { color: var(--ink-2); }
         '<div><span>Status</span><b class="stamp' + (built ? ' built' : '') + '">' + esc(phaseWord()) + '</b></div>';
     }
 
+    /* ── the words: the reading column folded until the reader asks, as /lanes and /ring fold theirs; the choice is kept
+       on this device, and a link straight to one of its sheets opens the words for that visit ── */
+    function words() {
+      var b = $('btn-words'), root = document.documentElement;
+      function draw() { var hud = root.classList.contains('hud'); b.textContent = hud ? 'show words' : 'hide words'; b.setAttribute('aria-expanded', hud ? 'false' : 'true'); }
+      function toSheet(id) { var el = id && document.getElementById(id); if (!el || !$('main').contains(el)) return; if (root.classList.contains('hud')) { root.classList.remove('hud'); draw(); } el.scrollIntoView({ block: 'start' }); }
+      b.hidden = false; draw();
+      b.addEventListener('click', function () {
+        var hud = root.classList.toggle('hud');
+        try { localStorage.setItem('schematic:words', hud ? '0' : '1'); } catch (e) {}
+        draw();
+        if (!hud) $('main').scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
+      });
+      window.addEventListener('hashchange', function () { toSheet(location.hash.slice(1)); });
+      toSheet(location.hash.slice(1));
+    }
+
     /* ── the reading column: where it stands, every part in words, the threads, the room, one's own AI ── */
     function paintMain() {
       var root3 = SP['3'] != null ? parseLine(textOf(SP['3'])) : null;
@@ -722,7 +743,8 @@ footer a { color: var(--ink-2); }
         ((root3 || SP['9'] != null) ? '<section class="sec" id="came-from" data-sheet="Sheet 06 · where it came from"><h2>Where it came from</h2>' +
           (root3 ? '<p>' + rich(cap(root3.body || root3.title)) + '</p>' : '') +
           (SP['9'] != null ? '<p class="note">' + rich(cap(parseLine(textOf(SP['9'])).body)) + '</p>' : '') + '</section>' : '');
-      $('foot').innerHTML = '<p>Drawn live from its blocks on the beach: the parts from <a href="/walk/' + esc(FAM) + '">spine:' + esc(FAM) + '</a>, its law from <a href="/explain?block=function:' + esc(FAM) + '">function:' + esc(FAM) + '</a>, and every comment from its writer’s own mirror, ' + esc(FAM) + ':&lt;their name&gt;, at the address of the part it is about. Write the spine again and this page changes; nothing is written on the page itself.' +
+      $('main').classList.add('words');
+      $('foot').innerHTML = '<p class="wd">Drawn live from its blocks on the beach: the parts from <a href="/walk/' + esc(FAM) + '">spine:' + esc(FAM) + '</a>, its law from <a href="/explain?block=function:' + esc(FAM) + '">function:' + esc(FAM) + '</a>, and every comment from its writer’s own mirror, ' + esc(FAM) + ':&lt;their name&gt;, at the address of the part it is about. Write the spine again and this page changes; nothing is written on the page itself.' +
         (PAGE ? ' Its maker’s own version: <a href="' + esc(PAGE) + '">' + esc(PAGE.replace(/^https?:\/\//, '')) + '</a>.' : '') + '</p>' +
         '<p>Every schematic keeps <a href="/explain?block=function:schematic">the schematic form</a>. <a href="/schematic">See them all</a>.</p><p><a href="/">happyseaurchin.com</a></p>';
       $('copyMark').addEventListener('click', copier('markLine', 'copiedMark'));
