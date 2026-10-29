@@ -670,14 +670,14 @@
       STEPS = stepsOf(SPINE); DECS = decisionsOf(STEPS);
       PHASE = L.phase || (STEPS.some(function (s) { return s.state; }) ? 'project' : 'proposal');
       paint();
-      readMirrors(FAM).then(function (m) { MIRRORS = m.mirrors || {}; FOLD = m.fold; TOUCHED = m.touched || {}; paintAnswers(); }, function () {
+      readMirrors(FAM).then(function (m) { MIRRORS = m.mirrors || {}; FOLD = m.fold; TOUCHED = m.touched || {}; paintAnswers(); landOnHash(); }, function () {
         document.querySelectorAll('.decide .answers').forEach(function (u) { u.innerHTML = '<li><span></span><span class="empty">The beach couldn’t be read just now.</span></li>'; });
       });
       if (window.beachThreads) {
         beachThreads.draw($('threadsBody'), FAM, { stepHref: function (a) { return '#s-' + a.replace('.', ''); } }).then(function (got) {
           THREADS = (got && got.threads) || []; drawQuipu();
-          STEPS.forEach(function (s) { var el = document.querySelector('.th-under[data-step="' + s.addr + '"]'); if (el) beachThreads.draw(el, FAM, { step: s.addr }); });
-        });
+          return Promise.all(STEPS.map(function (s) { var el = document.querySelector('.th-under[data-step="' + s.addr + '"]'); return el ? beachThreads.draw(el, FAM, { step: s.addr }) : null; }));
+        }).then(landOnHash, landOnHash);
       }
       paintTalk();
       onResize(drawQuipu);
@@ -739,7 +739,15 @@
       });
       paintAs();
       drawQuipu();
-      if (location.hash) { var t = document.getElementById(location.hash.slice(1)); if (t) setTimeout(function () { t.scrollIntoView(); }, 60); }
+      landOnHash();
+    }
+    /* a link to a card (the loom's decision lines) lands on it, and lands again as what stands above it is drawn, its
+       answers and its threads, until the reader moves: a browser that keeps no scroll anchor would slide the card away */
+    var moved = false;
+    ['wheel', 'touchmove', 'keydown', 'mousedown'].forEach(function (e) { window.addEventListener(e, function () { moved = true; }, { once: true, passive: true }); });
+    function landOnHash() {
+      var t = location.hash && !moved && document.getElementById(location.hash.slice(1));
+      if (t) setTimeout(function () { if (!moved) t.scrollIntoView(); }, 60);
     }
 
     function standsHTML() {

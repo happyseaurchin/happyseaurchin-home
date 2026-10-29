@@ -1421,18 +1421,28 @@ async function start(){
   if (run !== RUN) return;
   $('msg').hidden = true;
   draw();
+  openFromHash();
   await Promise.all([askGitHub(), askParts(), askPages()]);
   if (run !== RUN) return;
   draw();
-  openFromHash();
+  openFromHash(true);
   await refill(run);
 }
-/* #lane=<name> opens that lane's story, so a tile on /loom lands on the lane it names */
-function openFromHash(){
-  const m = location.hash.match(/^#lane=(.+)$/); if (!m) return;
-  let name = ''; try { name = laneKey(decodeURIComponent(m[1])); } catch(e){ return; }
-  const L = [...S.lanes.values()].filter(L => laneKey(L.name) === name).sort((a, b) => b.turns[b.turns.length - 1].at - a.turns[a.turns.length - 1].at)[0];
-  if (L) openLane(L.key);
+/* #lane=<name> opens that lane's story, so a tile on /loom lands on the lane it names: its place opens at once, saying
+   the story is coming, fills the moment the lanes are drawn, and again once GitHub has said how its pull requests stand */
+function hashLane(){ const m = location.hash.match(/^#lane=(.+)$/); if (!m) return ''; try { return decodeURIComponent(m[1]); } catch(e){ return ''; } }
+function comingFromHash(){
+  const name = hashLane(); if (!name) return;
+  $('pop-in').innerHTML = `<button class="x" type="button" id="pop-x" aria-label="close">close ×</button><p class="eyebrow">a lane</p><h3 id="pop-title">${esc(name)}</h3><p class="meta" id="pop-coming">reading its story from the beach…</p>`;
+  const pop = $('pop'); pop.hidden = false; pop.classList.remove('hidden');
+  $('pop-x').addEventListener('click', closeLane);
+}
+function openFromHash(again){
+  const name = hashLane(); if (!name || $('pop').hidden) return;   /* closed by the reader meanwhile: left closed */
+  const L = [...S.lanes.values()].filter(L => laneKey(L.name) === laneKey(name)).sort((a, b) => b.turns[b.turns.length - 1].at - a.turns[a.turns.length - 1].at)[0];
+  if (again && (!L || ($('pop-title') || {}).textContent !== L.name)) return;   /* another lane opened since: left as it is */
+  if (L){ const kept = $('pop-in').scrollTop; openLane(L.key); if (again) $('pop-in').scrollTop = kept; return; }
+  if ($('pop-coming')) $('pop-coming').textContent = 'No lane called ' + name + ' has given an account in the days read here; “earlier days”, at the foot of the page, reads further back.';
 }
 async function refill(run){
   run = run || RUN;
@@ -1458,8 +1468,8 @@ $('btn-words').addEventListener('click', () => {
   kept.set('lanes:words', hud ? '0' : '1');
   drawWords();
 });
-function fail(e){ $('msg').hidden = false; $('msg').textContent = 'The beach could not be read: ' + (e && e.message || e); }
-drawWords(); drawHands(); drawFoot(); setView(F.view);
+function fail(e){ if ($('pop-coming')) closeLane(); $('msg').hidden = false; $('msg').textContent = 'The beach could not be read: ' + (e && e.message || e); }
+drawWords(); drawHands(); drawFoot(); setView(F.view); comingFromHash();
 start().catch(fail);
 if (window.siteDoors) siteDoors({ handle: HANDS[0], here: 'lanes' });
 })();
