@@ -167,7 +167,7 @@
   .act{background:none;border:0;color:var(--vapour);display:inline-flex;align-items:center;gap:6px;padding:8px 10px;border-radius:999px;font-family:var(--mono);font-size:13px;cursor:pointer;min-height:42px;min-width:42px;justify-content:center}
   .act svg{width:22px;height:22px;flex:none}
   button.act:hover{background:rgba(var(--wash-rgb),0.07);color:var(--foam)}
-  .act.still{cursor:default;opacity:.75}
+  .act.still{opacity:.75}
   .act.on{color:var(--solid)} .act.on svg{fill:currentColor}
   .act.pop svg{animation:pop .36s cubic-bezier(.2,1.6,.4,1)}
   @keyframes pop{0%{transform:scale(.6)}60%{transform:scale(1.28)}100%{transform:scale(1)}}
@@ -261,7 +261,7 @@
     <summary>How the String works</summary>
     <p>Everyone has their own string: a mirror on the beach, <code>string:&lt;handle&gt;</code>, locked to their key. A share is one line in it, at the second it was shared (<code>SHARE &lt;link&gt; — why it caught me</code>), so it has one address and a link of its own, and nobody can change or remove anyone else’s. The String is every mirror read together, newest first.</p>
     <p>A share made for someone on the beach is public like any other, and waits at the top of their string until they answer it. <b>Pass on</b> does that with a card already here: your line points at the card’s own address, so nothing is copied and its answers stay with it.</p>
-    <p>Following changes nothing in anyone’s mirror: it chooses which mirrors you read. Your list stands at <code>lists:&lt;your name&gt;</code> 4, so it follows you to every device, and like everything on the beach anyone can read it. An answer is one line in your own mirror at the share’s address: a ♥, words, or both, and saying again replaces it.</p>
+    <p>Following changes nothing in anyone’s mirror: it chooses which mirrors you read. Your list stands at <code>lists:&lt;your name&gt;</code> 4, so it follows you to every device, and like everything on the beach anyone can read it. An answer is one line in your own mirror at the share’s address: a ♥, words, or both, and saying again replaces it. Your own share is already your line at its address, so your own card takes no answer: you change the line instead.</p>
     <p>Nothing shared is copied. A card’s picture and words are read from the link’s own site, where it gives them; a post on X with a picture shows in X’s own frame, loaded from X as you reach it. The law is <a href="/explain?block=function:string">function:string</a>.</p>
     <p>From any AI with the beach connected, a share is one say: <code>pscale_stream_engage(field 'string', at 'now', say 'SHARE &lt;link&gt; — why')</code>. Added to an Android home screen, the String stands in the share sheet; on an iPhone, a Shortcut that opens <code>happyseaurchin.com/string?add=&lt;the link&gt;</code> does the same.</p>
     <p>Why the String is, and what is decided: <a href="/proposal/happening">the happening proposal</a>, and <a href="/proposal/the-string">the String’s own</a>. Talk about it in <a href="https://mirror.onen.ai/?pool=the-string">its room</a>.</p>
@@ -575,7 +575,7 @@ function actsHTML(s, own, open){
   const list = answersTo(s.a), hearts = list.filter(x => isHeart(x.mark)).length, said = list.filter(x => x.words || (x.mark && !isHeart(x.mark))).length;
   const mine = mineAt(s.a), on = !!mine && isHeart(mine.mark), pop = POP === s.a;
   const heart = own
-    ? '<span class="act still" title="♥ from others">' + HEART + '<span>' + (hearts || '') + '</span></span>'
+    ? '<button type="button" class="act still" data-act="own-heart" title="♥ from others" aria-label="♥ from others: this is your card">' + HEART + '<span>' + (hearts || '') + '</span></button>'
     : '<button type="button" class="act' + (on ? ' on' : '') + (pop ? ' pop' : '') + '" data-act="heart" aria-pressed="' + on + '" aria-label="♥ this share">' + HEART + '<span>' + (hearts || '') + '</span></button>';
   return heart + '<button type="button" class="act" data-act="talk" aria-expanded="' + !!open + '" aria-label="Answers">' + BUBBLE + '<span>' + (said || '') + '</span></button><span class="grow"></span>' +
     (own ? '<button type="button" class="act" data-act="own" aria-label="Change or withdraw">' + DOTS + '</button>' : '') +
@@ -589,10 +589,22 @@ function saidHTML(a){
       (x.mark ? '<span class="mark">' + esc(isHeart(x.mark) ? '♥' : x.mark) + '</span>' : '') + esc(x.words) + '</div></li>').join('') + '</ul>' : '') +
     (!list.length ? '<p class="none">No answers yet.</p>' : '');
 }
+/* a hand has one line at an address and its own share is that line, so its own card takes no answer (function:string 2):
+   the heart and the comment say so, with the way to change the line */
+const OWN_CARD = 'Your card: your line is already on it. Hearts and answers come from others.';
+function ownNote(s){ toast(OWN_CARD, { label: 'Change', fn: () => changeShare(s) }); }
+function changeShare(s){
+  EDITING[s.a] = true; paint();
+  const box = $(VIEW.kind === 'feed' ? 'feed' : 'other').querySelector('.card[data-a="' + s.a + '"] .e-why');
+  if (box) box.focus();
+}
 /* the box starts from the reader's own line where they have one (CLAUDE.md rule 6): a say replaces it */
 function drawBox(li, s, own){
   const box = li.querySelector('.box');
-  if (own){ box.innerHTML = ''; box._for = ''; return; }
+  if (own){
+    if (box._for !== '#own'){ box._for = '#own'; box.innerHTML = '<p class="none">' + esc(OWN_CARD) + ' <button type="button" class="linkish" data-act="change">Change</button></p>'; }
+    return;
+  }
   const mine = mineAt(s.a), who = ME || '-';
   if (box._for !== who){
     box._for = who;
@@ -930,16 +942,43 @@ async function landShare(url, why, whom){
   } catch(e){ hintMain('err', 'Couldn’t reach the beach: ' + e.message); }
   finally { BUSY = false; $('send').disabled = false; }
 }
-/* an answer: one line in the reader's own mirror at the share's own address, showing at once */
-function answer(s, text, onDone){
-  withName(async () => {
-    if (low(s.by) === low(ME)) return;   // their own share stands at that address: an answer there would write over it
-    patchOwn(s.a, text); paint();
-    const r = await sayLine(s.a, text, ME);
-    if (!r || !r.ok){ if (!(r && r.quiet)) toast(errText(r)); await refresh(true); return; }
-    if (onDone) onDone();
-    await refresh(true);
+/* whose line an answer would be, known before it is written. With the beach button on it is the button's holder, whatever
+   name this device last signed with, and the button tells a page that name only when the holder lets it: hello when it is
+   already allowed, asked here when it is not */
+let HELD = '', ASKING = null;
+function heldBy(h){
+  HELD = clean(h);
+  if (HELD && HELD !== ME){ ME = HELD; store.set('render:who', ME); loadFollows().then(paint); }
+}
+document.addEventListener('beachbutton:hello', e => heldBy(e.detail && e.detail.handle));
+async function answeringAs(){
+  if (!buttonShown()) return { name: ME };
+  let h = HELD;
+  if (!h){
+    ASKING = ASKING || window.beachButton.request({ kind: 'who' }).catch(e => ({ ok: false, error: e && e.message }));
+    const r = await ASKING; ASKING = null;
+    if (!r || !r.ok || !r.handle) return { error: r && /unlocked/.test(r.error || '') ? 'Unlock your beach button first, at the corner of the page, then tap again.' : 'Not said: this page needs your name from the beach button first, so an answer can’t land on a share of your own.' };
+    h = r.handle;
+  }
+  heldBy(h);
+  return { name: HELD };
+}
+/* every answer comes through here: a hand's own share stands at that address, so its line there would write over the share */
+function answering(s, then){
+  return withName(async () => {
+    const as = await answeringAs();
+    if (as.error){ toast(as.error); return; }
+    if (low(s.by) === low(as.name)){ paint(); ownNote(s); return; }
+    return then();
   });
+}
+/* an answer: one line in the reader's own mirror at the share's own address, showing at once */
+async function answer(s, text, onDone){
+  patchOwn(s.a, text); paint();
+  const r = await sayLine(s.a, text, ME);
+  if (!r || !r.ok){ if (!(r && r.quiet)) toast(errText(r)); await refresh(true); return; }
+  if (onDone) onDone();
+  await refresh(true);
 }
 
 /* a reader with no name yet: one is proposed or theirs is taken, then what they meant to do goes on */
@@ -1058,20 +1097,21 @@ document.addEventListener('click', e => {
   if (act === 'pass') return passOn('/string/' + s.a, s.by + '’s share on the String');
   if (act === 'passon') return openBox(true, true, s);
   if (act === 'talk'){ TALKING[s.a] = !TALKING[s.a]; paint(); const ta = li.querySelector('.box textarea'); if (TALKING[s.a] && ta && !ta.value) ta.focus({ preventScroll: true }); return; }
-  if (act === 'heart'){
+  if (act === 'own-heart') return ownNote(s);
+  if (act === 'heart') return answering(s, () => {
     const mine = mineAt(s.a), on = !!mine && isHeart(mine.mark), words = mine ? mine.words : '';
     POP = on ? '' : s.a;
     return answer(s, on ? (words || 'WITHDRAWN') : lineOf('♥', words));
-  }
+  });
   if (act === 'say'){
-    const box = li.querySelector('.box'), ta = box.querySelector('textarea'), hint = box.querySelector('.hint'), mine = mineAt(s.a);
-    const words = ta.value.trim(), mark = mine && mine.mark ? mine.mark : '';
-    if (!words && !mark){ hint.className = 'hint err'; hint.textContent = 'Say a line first.'; ta.focus(); return; }
+    const box = li.querySelector('.box'), ta = box.querySelector('textarea'), hint = box.querySelector('.hint');
+    const words = ta.value.trim(), markNow = () => { const mine = mineAt(s.a); return mine && mine.mark ? mine.mark : ''; };
+    if (!words && !markNow()){ hint.className = 'hint err'; hint.textContent = 'Say a line first.'; ta.focus(); return; }
     hint.className = 'hint'; hint.textContent = '';
-    return answer(s, lineOf(mark, words), () => { if (box._clear) box._clear(); ta.value = words; });
+    return answering(s, () => answer(s, lineOf(markNow(), words), () => { if (box._clear) box._clear(); ta.value = words; }));
   }
   if (act === 'own'){ OWNOPEN[s.a] = !OWNOPEN[s.a]; paint(); return; }
-  if (act === 'change'){ EDITING[s.a] = true; paint(); const box = li.querySelector('.e-why'); if (box) box.focus(); return; }
+  if (act === 'change') return changeShare(s);
   if (act === 'e-cancel'){ if (li._clearUrl) li._clearUrl(); if (li._clearWhy) li._clearWhy(); delete EDITING[s.a]; paint(); return; }
   if (act === 'e-save') return saveEdit(li, s);
   if (act === 'withdraw'){
