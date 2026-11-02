@@ -15,6 +15,8 @@ at(ann, '2026421258.114', 'SHARE ' + HOP + ' — it redirects inward');
 at(ann, '2026421258.115', 'SHARE ' + YT + ' — a film');
 at(ann, '2026421258.116', 'SHARE ' + LOCAL + ' — inward');
 at(ann, '2026421258.117', 'WITHDRAWN');
+at(ann, '2026421258.118', 'SHARE https://happyseaurchin.com/string/2026421258.111 for bob — you should see this');
+at(ann, '2026421258.119', 'SHARE https://happyseaurchin.com/string/2026421258.117 — gone since');
 const BLOCKS = { 'string:ann': ann };
 const asked = [];
 globalThis.fetch = async (url) => {
@@ -86,9 +88,14 @@ ok('a share’s page: the sharer and the post in its title', r.code === 200 && r
 ok('a share’s page: its why in the preview, escaped', r.body.includes('<meta property="og:description" content="this &lt;caught&gt; me &amp; &quot;stayed&quot;">'));
 ok('a share’s page: its own address', r.body.includes('<meta property="og:url" content="https://happyseaurchin.com/string/2026421258.111">'));
 r = await call({ page: '2026421258.112' });
-ok('a share’s page: the link’s own picture', r.body.includes('<meta property="og:image" content="https://example.org/pic.jpg">') && r.body.includes('<title>ann shared The &amp; title</title>'));
+ok('a share’s page: the link’s own picture', r.body.includes('<meta property="og:image" content="https://example.org/pic.jpg">') && r.body.includes('<title>ann shared The &amp; title for bob</title>'));
 r = await call({ page: '2026421258.117' });
 ok('a withdrawn share says only that', r.body.includes('<title>A share withdrawn by its sharer</title>') && r.body.includes('assets/string/card.png'));
+r = await call({ page: '2026421258.118' });
+ok('a card passed on says who passed it, whose it is and for whom', r.body.includes('<title>ann passed on ann’s share for bob</title>') && r.body.includes('content="you should see this"'), r.body.match(/<title>.*<\/title>/));
+r = await call({ page: '2026421258.119' });
+ok('a card passed on after it was withdrawn gives away nothing of it', r.body.includes('<title>ann passed on a share</title>') && !r.body.includes('Some One'));
+ok('a share for someone is told from its why', (() => { const s = shareAt({ ann }, '2026421258.118'); return s.for === 'bob' && s.why === 'you should see this'; })());
 r = await call({ page: 'ann' });
 ok('someone’s string', r.body.includes('<title>ann’s string</title>') && r.body.includes('content="https://happyseaurchin.com/string/ann"'));
 r = await call({ page: '../../etc' });

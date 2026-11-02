@@ -28,6 +28,7 @@ import { mirrorsOf } from './mirrors.js';
 const SITE = 'https://happyseaurchin.com';
 const AGENT = 'happyseaurchin-string/1.0 (+https://happyseaurchin.com/string)';
 const ADDRESS = /^\d{10}(\.\d{1,9})?$/, HANDLE = /^[A-Za-z0-9_][A-Za-z0-9_ -]{0,31}$/;
+const CARD_LINK = /^https?:\/\/(?:www\.)?happyseaurchin\.com\/string\/(\d{10}(?:\.\d{1,9})?)\/?$/i;
 const MOST_READ = 400000;   // bytes of a page read at most, looking for the end of its head
 export const dns = { lookup };   // a check swaps this; nothing else does
 
@@ -174,8 +175,9 @@ export function shareAt(mirrors, address) {
     if (!m) continue;
     const url = m[1].replace(/^<(.*)>$/, '$1');
     if (!/^https?:\/\//i.test(url)) continue;
-    const why = m[2].trim().replace(/^for\s+[A-Za-z0-9_][A-Za-z0-9_ -]{0,40}?\s*(?=[—–]|$)/i, '').replace(/^[—–-]+\s*/, '').trim();
-    return { by, url, why };
+    const f = /^for\s+([A-Za-z0-9_][A-Za-z0-9_ -]{0,40}?)\s*(?=[—–]|$)/i.exec(m[2].trim());
+    const why = (f ? m[2].trim().slice(f[0].length) : m[2].trim()).replace(/^[—–-]+\s*/, '').trim();
+    return { by, url, why, for: f ? f[1].trim() : '' };
   }
   return withdrawn ? { withdrawn: true } : null;
 }
@@ -209,9 +211,14 @@ async function previewOf(slug) {
   const room = await mirrorsOf('string'), url = SITE + '/string/' + slug, s = shareAt(room.mirrors, slug);
   if (!s) return Object.assign({}, THE_STRING, { url });
   if (s.withdrawn) return Object.assign({}, THE_STRING, { title: 'A share withdrawn by its sharer', url });
-  const c = await cardOf(s.url).catch(() => ({ site: new URL(s.url).hostname }));
+  const whom = s.for ? ' for ' + s.for : '';
+  /* a card passed on: its link is the card's own address, so what it shows is that card's thing */
+  const passed = CARD_LINK.exec(s.url), inner = passed ? shareAt(room.mirrors, passed[1]) : null;
+  if (passed && !(inner && inner.url)) return { title: s.by + ' passed on a share' + whom, text: clip(s.why, 200) || THE_STRING.text, image: THE_STRING.image, url };
+  const c = await cardOf(inner ? inner.url : s.url).catch(() => ({ site: new URL(s.url).hostname }));
   const what = c.x && c.author ? 'a post by ' + c.author : c.title || c.site.replace(/^www\./, '');
-  return { title: s.by + ' shared ' + clip(what, 90), text: clip(s.why, 200) || clip(c.text, 200) || THE_STRING.text, image: c.image || THE_STRING.image, url };
+  const title = inner ? s.by + ' passed on ' + inner.by + '’s share' + whom : s.by + ' shared ' + clip(what, 90) + whom;
+  return { title, text: clip(s.why, 200) || clip(c.text, 200) || THE_STRING.text, image: c.image || THE_STRING.image, url };
 }
 
 /* ── the door ── */
