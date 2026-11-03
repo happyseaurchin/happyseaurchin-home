@@ -29,7 +29,7 @@ knot(dana, '1.12', 'dana asks for another pass');                         // wre
 knot(rook, '2', 'started the moorings list');
 knot(rook, '2.1', 'wren checks it, complete the list later');             // before 29 October: an act by its word
 knot(rook, '3', 'opened the glossary · waits on dana');                   // the closing clause, 29 October to 3 November
-knot(rook, '4', 'started the berths list');
+knot(rook, '4', 'started the berths list, as archive:ways:thread:2026-11-03 says');   // a block's name, never a place
 knot(rook, '4.1', 'wren checks it and completes the list');               // after 3 November: an option, whatever its words
 const BLOCKS = {
   'spine:thread': { _: 'THE REGISTRY',
@@ -76,6 +76,7 @@ check(n('1.121').live && n('1.121').hands[0].who === 'rook', '1.121 is rook\'s a
 check(n('2.1').taken && n('2.1').hands.length === 1, '2.1, in a thread opened before 29 October, is an act by its word "complete"');
 check(!n('4.1').taken && n('4.1').option === 'wren checks it and completes the list', '4.1, in a thread opened after 3 November, is an option whatever its words');
 check(n('3').live && n('3').waits.join() === 'dana', 'thread 3\'s knot waits on dana by its closing clause');
+check(n('4').crosses.length === 0, 'a block\'s name, archive:ways:thread:2026-11-03, names no other thread\'s place');
 
 check(JSON.stringify(await cards('dana')) === JSON.stringify(['1.121 [1.1211] from rook', '3 by its clause']),
   'dana waits on draft 3 at 1.121, put in her room by rook, and on the glossary by its clause; 1.1 no longer, an option of it taken');
@@ -87,6 +88,11 @@ check(JSON.stringify(await cards('dana')) === JSON.stringify(['3 by its clause']
 tree = await trees();
 check(n('1.1211').taken && n('1.1211').hands.map((l) => l.who).join() === 'dana' && !n('1.121').live && n('1.1211').live,
   'her line at 1.1211 is an act, and the live end moves to it');
+
+BLOCKS['thread:rook'] = knot(JSON.parse(JSON.stringify(rook)), '1.21', 'dana decided without a review, in chat: published');   // its own option taken one deeper, nothing after
+tree = await trees();
+check(!n('1.2').hands.length && n('1.2').taken && n('1.21').hands.map((l) => l.who).join() === 'rook' && n('1.21').live,
+  'rook\'s own option 1.2, taken one deeper with nothing after, stays an option, and 1.21 is the act and the live end');
 
 const h = await T.handOn('rook', '1.1211', 'dana publishes draft 3', 'dana');
 const p = posted[posted.length - 1];

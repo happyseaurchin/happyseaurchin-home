@@ -147,6 +147,8 @@
   var READS = ' · read: ';
   var CLAUSE = /\s·\s(?:waits on ([A-Za-z0-9_.\-]+(?:(?:,\s*|\s+and\s+)[A-Za-z0-9_.\-]+)*)|complete)\s*$/;
   var PHASE2 = '2026-10-29T17:13:14Z';   /* the law of the closing clause, the battery's V2_SINCE */
+  /* a place, thread:<address>, standing on its own: never the tail of a block's name, archive:ways:thread:2026-11-03 */
+  var PLACE = /(^|[^\w:])thread:(\d+(?:\.\d+)?)\b/;
   function bodyOf(t) { return String(t || '').split(READS)[0]; }
   function closes(t) { return CLAUSE.test(bodyOf(t)); }
   function actBefore(t) {
@@ -197,30 +199,31 @@
     });
   }
   /* each address a node: the lines standing there, each an act or an option by where it stands — a line
-     at the thread's number, a hand's line where it holds no act just above (an answer to another hand,
-     or what came of its own option, one deeper), and a line with work tied beneath it are acts, and the
-     other lines a hand puts beneath its own act are its options (function:thread 3); the hand that
-     offered it (whose act stands at the knot above, and whose option stands here); whether it was taken
-     (an act stands here, or the work went on beneath it); the live ends, acts with nothing taken beneath
-     them, and whom a closing clause says each waits on; and any other thread's place a line names. One
-     reading position cannot make: a hand's own last line beneath its own act, with nothing beneath it,
-     reads as an option it offered. before: the thread was opened before 29 October (function:thread 7) */
+     at the thread's number is an act; beneath another hand's line, or beneath its own option (taken one
+     deeper), a hand's line is an act; beneath its own act it is an option, unless it offers two or more
+     of its own beneath it (a step that went on) (function:thread 3), as the thread battery's form pass
+     reads it; the hand that offered it (whose act stands at the knot above, and whose option stands
+     here); whether it was taken (an act stands here, or the work went on beneath it); the live ends,
+     acts with nothing taken beneath them, and whom a closing clause says each waits on; and any other
+     thread's place a line names. What position cannot tell: a hand's own step beneath its own act that
+     offers one option or none reads as an option. before: the thread was opened before 29 October, when a
+     line was also an act by a word, or by any line of its own one digit beneath (function:thread 7) */
   function treeOf(at, nd, floor, number, before) {
     var all = Object.keys(at).map(function (a) { return at[a]; });
     function beneath(key) {
       return all.some(function (x) { var k = x.ds.join(''); return k.length > key.length && k.indexOf(key) === 0; });
     }
-    /* the hand's own lines one digit beneath (its options, or the work it went on with), never deeper:
-       a hand's answer far down a thread says nothing of the option it offered near the top */
+    /* how many of the hand's own lines stand one digit beneath, never deeper: a hand's answer far down a
+       thread says nothing of the option it offered near the top */
     function offers(key, who) {
-      return all.some(function (x) { var k = x.ds.join(''); return k.length === key.length + 1 && k.indexOf(key) === 0 && x.lines.some(function (l) { return l.who === who; }); });
+      return all.filter(function (x) { var k = x.ds.join(''); return k.length === key.length + 1 && k.indexOf(key) === 0 && x.lines.some(function (l) { return l.who === who; }); }).length;
     }
     function node(ds, parent) {
       var key = ds.join(''), a = dotted(ds, floor), here = at[a] || { lines: [] };
       var me = { addr: a, ds: ds, lines: here.lines, kids: [], depth: parent ? parent.depth + 1 : 0, parent: parent };
       here.lines.forEach(function (l) {
-        l.act = !parent || closes(l.text) || (before && actBefore(l.text)) || offers(key, l.who) ||
-          !parent.lines.some(function (p) { return p.act && p.who === l.who; });
+        var above = parent && parent.lines.some(function (p) { return p.act && p.who === l.who; });
+        l.act = !parent || closes(l.text) || !above || offers(key, l.who) >= (before ? 1 : 2) || !!(before && actBefore(l.text));
       });
       var offering = parent ? parent.lines.filter(function (l) { return l.act; }).map(function (l) { return l.who; }) : [];
       var opt = parent ? (here.lines.filter(function (l) { return !l.act && offering.indexOf(l.who) >= 0; })[0] || here.lines.filter(function (l) { return !l.act; })[0]) : null;
@@ -236,7 +239,7 @@
       me.waits = [];
       if (me.live) me.hands.forEach(function (l) { waitsOn(l.text, !!before).forEach(function (w) { if (me.waits.indexOf(w) < 0) me.waits.push(w); }); });
       me.crosses = [];
-      me.lines.forEach(function (l) { var m, re = /\bthread:(\d+(?:\.\d+)?)\b/g; while ((m = re.exec(l.text))) if (m[1].split('.')[0] !== String(number)) me.crosses.push(m[1]); });
+      me.lines.forEach(function (l) { var m, re = new RegExp(PLACE.source, 'g'); while ((m = re.exec(l.text))) if (m[2].split('.')[0] !== String(number)) me.crosses.push(m[2]); });
       return me;
     }
     return node(nd, null);
@@ -551,8 +554,8 @@
       (function rec(n) {
         if (!n || typeof n !== 'object') return;
         if (typeof n._ === 'string' && typeof n['1'] === 'string' && typeof n['3'] === 'string') {
-          var m, re = /\bthread:(\d+(?:\.\d+)?)\b/g;
-          while ((m = re.exec(n._))) out.push({ place: m[1], by: n['1'].trim() });
+          var m, re = new RegExp(PLACE.source, 'g');
+          while ((m = re.exec(n._))) out.push({ place: m[2], by: n['1'].trim() });
         } else if (n._ && typeof n._ === 'object') rec(n._);
         for (var d = 1; d <= 9; d++) if (n[String(d)] && typeof n[String(d)] === 'object') rec(n[String(d)]);
       })(room);
