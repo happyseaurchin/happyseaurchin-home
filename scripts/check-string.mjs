@@ -101,5 +101,18 @@ ok('someone’s string', r.body.includes('<title>ann’s string</title>') && r.b
 r = await call({ page: '../../etc' });
 ok('anything else is the String itself', r.code === 200 && r.body.includes('<title>The String — what people are sharing</title>'));
 
+/* a members' door: the page served with that beach's own voice and manifest, a preview that says only whose string it is,
+   and nothing of the String read for it */
+asked.length = 0;
+r = await call({ page: '', door: 'salt' });
+ok('a members’ door: whose string it is, and nothing read for it', r.code === 200 && r.body.includes('<title>SALT — the String</title>') && r.body.includes('<meta property="og:url" content="https://happyseaurchin.com/salt">') && !asked.length, r.code);
+ok('a members’ door: that beach’s own voice, and its own manifest', r.body.includes('<script id="voice" src="https://beach.bringingtheflavour.com/button/voice.js"></script>') && r.body.includes('href="/salt.webmanifest"') && !r.body.includes('beach.happyseaurchin.com/button/voice.js'));
+r = await call({ page: '2026421258.111', door: 'salt' });
+ok('a share’s page at a members’ door says no more than the door', r.body.includes('<title>SALT — the String</title>') && r.body.includes('content="https://happyseaurchin.com/salt/2026421258.111"') && !r.body.includes('Some One') && !asked.length, r.body.match(/<title>.*<\/title>/));
+r = await call({ page: 'x', door: 'nowhere' });
+ok('a door that is not one', r.code === 404);
+r = await call({ page: '' });
+ok('the open String’s own page is unchanged', r.code === 200 && r.body.includes('beach.happyseaurchin.com/button/voice.js') && r.body.includes('href="/string.webmanifest"'));
+
 console.log(bad ? bad + ' failed' : 'all well');
 process.exit(bad ? 1 : 0);
