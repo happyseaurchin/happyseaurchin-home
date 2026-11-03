@@ -6,6 +6,9 @@
  *       { url, site, title, text, author, when, image, x: { id, media } }, each only where the thing gives it
  *   GET /api/string?page=<address or handle>     (the rewrite from /string/<address>, /string/<handle>)
  *       the page itself, its title and preview saying this share or this person
+ *   GET /api/string?page=<slug or nothing>&door=<name>     (the rewrite from /salt, /salt/<slug>)
+ *       the same page at a members' door, with that beach's own voice in it and a preview saying only whose
+ *       string it is: a members' string is never read here, so nothing of it reaches a preview or a crowd's cache
  *
  * WhatsApp shows the title and picture a page gives without running it, so a share's link needs its preview
  * in the page as served (the-string 1.1115). And a browser cannot read another site's card, so the sites
@@ -26,6 +29,11 @@ import { lookup } from 'node:dns/promises';
 import { mirrorsOf } from './mirrors.js';
 
 const SITE = 'https://happyseaurchin.com';
+/* THE MEMBERS' DOORS: the same page at a door of its own, on a members' beach (3 Nov 2026; the first SALT's, David's own
+   community, 'We are SALT — Bringing the flavour!'). The page holds the same table; a door served here carries that beach's
+   voice, so the page's writes land there, and its manifest, so a phone installs it as that string. */
+const DOORS = { salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT' } };
+const OPEN_VOICE = 'https://beach.happyseaurchin.com/button/voice.js';
 const AGENT = 'happyseaurchin-string/1.0 (+https://happyseaurchin.com/string)';
 const ADDRESS = /^\d{10}(\.\d{1,9})?$/, HANDLE = /^[A-Za-z0-9_][A-Za-z0-9_ -]{0,31}$/;
 const CARD_LINK = /^https?:\/\/(?:www\.)?happyseaurchin\.com\/string\/(\d{10}(?:\.\d{1,9})?)\/?$/i;
@@ -192,7 +200,7 @@ const THE_STRING = {
   text: 'Links people bring from anywhere, each with a line of why it caught them, in their own words and their own name.',
   image: SITE + '/assets/string/card.png', url: SITE + '/string'
 };
-export function withPreview(html, p) {
+export function withPreview(html, p, door) {
   const q = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const set = (attr, key, value) => { html = html.replace(new RegExp('<meta ' + attr + '="' + key + '" content="[^"]*">'), () => '<meta ' + attr + '="' + key + '" content="' + q(value) + '">'); };
   html = html.replace(/<title>[\s\S]*?<\/title>/, () => '<title>' + q(p.title) + '</title>');
@@ -201,7 +209,14 @@ export function withPreview(html, p) {
   set('property', 'og:description', p.text);
   set('property', 'og:image', p.image);
   set('property', 'og:url', p.url);
+  if (door) html = html.replace(OPEN_VOICE, DOORS[door].beach + '/button/voice.js').replace('/string.webmanifest', '/' + door + '.webmanifest');
   return html;
+}
+/* a members' door says whose string it is, and no more: a share there is its members' to read */
+export function doorPreview(door, slug) {
+  const d = DOORS[door];
+  return { title: d.name + ' — the String', text: 'What ' + d.name + '’s members are sharing, each link with a line of why it caught them. Members read and write it; anyone reads what a member marks beyond.',
+    image: THE_STRING.image, url: SITE + '/' + door + (slug ? '/' + slug : '') };
 }
 async function previewOf(slug) {
   if (HANDLE.test(slug) && !ADDRESS.test(slug)) {
@@ -226,14 +241,16 @@ export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).json({ error: 'GET only' });
   const q = req.query || {};
   if (q.page != null) {
-    const slug = String(q.page);
+    const slug = String(q.page), door = q.door != null ? String(q.door) : '';
+    if (door && !DOORS[door]) return res.status(404).send('no such door');
     let page = '', p = THE_STRING, cached = 'max-age=300, stale-while-revalidate=3600';
     try { page = readFileSync(join(process.cwd(), 'string.html'), 'utf8'); }
     catch (e) { return res.status(500).send('the page could not be read'); }
-    try { p = await previewOf(slug); } catch (e) { cached = 'max-age=30'; }
+    if (door) p = doorPreview(door, HANDLE.test(slug) || ADDRESS.test(slug) ? slug : '');
+    else try { p = await previewOf(slug); } catch (e) { cached = 'max-age=30'; }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Vercel-CDN-Cache-Control', cached);
-    return res.status(200).send(withPreview(page, p));
+    return res.status(200).send(withPreview(page, p, door));
   }
   const url = String(q.url || '');
   if (!/^https?:\/\/\S{3,1500}$/i.test(url)) return res.status(400).json({ error: 'give a url, or a page' });
