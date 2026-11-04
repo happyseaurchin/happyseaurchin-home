@@ -36,7 +36,11 @@
      Installed, it stands in Android's share sheet (string.webmanifest, which opens ?add=). The law: function:string.
      A MEMBERS' BEACH (3 Nov 2026): the same page at a door of its own, the first SALT's, /salt, reads and writes
      beach.bringingtheflavour.com behind its members' gate: a member keys in once for a pass this device keeps twelve
-     hours, a stranger reads what a member marks beyond, and no link shared there is read by this site's own function. */
+     hours, a stranger reads what a member marks beyond, and no link shared there is read by this site's own function.
+     THE PORTAL (3 Nov 2026, the same evening): the door's home is the community's own site, www.bringingtheflavour.com/string
+     (a rewrite there to /api/string, the page told its door as served); a member's Invite someone makes a link of an
+     invitation the beach mints under their pass, and a newcomer opening it gives a name and joins: their passport founded
+     through the voice with the invitation, keyed on their device, proved at once, and they land in the string a member. */
   :root{ --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace; --tabs:60px; }
   *{box-sizing:border-box}
   [hidden],.hidden{display:none!important}
@@ -307,6 +311,34 @@
     <div class="row"><button type="button" class="go" id="key-copy">Copy it</button><button type="button" class="quiet" id="key-done">Done</button></div>
   </section>
 </div>
+<div class="sheet-back hidden" id="invite-back">
+  <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="inviteHead">
+    <div class="grip"></div>
+    <div class="head"><h2 id="inviteHead">Invite someone</h2><button type="button" class="linkish" id="invite-close">close</button></div>
+    <div id="invite-ask">
+      <p>A link that lets someone join <span class="whose"></span>’s string as a member. It lives seven days. Name them, and it founds their passport and no other; leave the name empty, and whoever has the link founds one under a name they choose.</p>
+      <label class="f">Their name on the beach, if you know how they’ll be called<input id="invite-for" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="leave empty to let them choose"></label>
+      <div class="row"><button type="button" class="go" id="invite-go">Make the link</button></div>
+      <p class="hint" id="invite-hint" aria-live="polite"></p>
+    </div>
+    <div id="invite-made" hidden>
+      <p id="invite-says"></p>
+      <code class="keyline" id="invite-link"></code>
+      <div class="row"><button type="button" class="go" id="invite-send">Send it</button><button type="button" class="quiet" id="invite-copy">Copy it</button></div>
+    </div>
+  </section>
+</div>
+<div class="sheet-back hidden" id="join-back">
+  <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="joinHead">
+    <div class="grip"></div>
+    <div class="head"><h2 id="joinHead">You’re invited</h2><button type="button" class="linkish" id="join-close">close</button></div>
+    <p id="join-says"></p>
+    <label class="f">Your name<input id="join-name" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="how your shares will be signed"></label>
+    <p class="as" id="join-as">Your passport is founded on the beach in that name, locked to a key made for you and kept on this device: it is shown once, for your other devices.</p>
+    <div class="row"><button type="button" class="go" id="join-go">Join</button></div>
+    <p class="hint" id="join-hint" aria-live="polite"></p>
+  </section>
+</div>
 <div class="toast" id="toast" role="status" hidden></div>
 
 <script>
@@ -317,8 +349,13 @@
    access to the gated private beach"). The door names the beach; /api/string serves a door's page with that beach's own
    voice in it, so its writes land there, and a voice from any other beach is not spoken through. Served from this computer
    the beach is the one the page's voice names (its data-beach), a builder's test, as the voice itself allows. */
-const DOORS = { string: { beach: 'https://beach.happyseaurchin.com' }, salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT' } };
-const DOOR = (/^\/(salt)(\/|$)/.exec(location.pathname) || [0, 'string'])[1], PATH = '/' + DOOR, MEMBERS = DOOR !== 'string', WHOSE = DOORS[DOOR].name || '';
+const DOORS = { string: { beach: 'https://beach.happyseaurchin.com', home: 'https://happyseaurchin.com/string' }, salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT', home: 'https://www.bringingtheflavour.com/string' } };
+/* THE DOOR IS WHAT THE PAGE AS SERVED SAYS (data-door, set by /api/string), else what the path says; a door's string lives at
+   its HOME, the community's own site (SALT's is www.bringingtheflavour.com/string, the same page by a rewrite there to
+   /api/string), and the PATH is wherever this door is served, since the same door stands at happyseaurchin.com/salt too */
+const SAID = document.documentElement.getAttribute('data-door') || '';
+const DOOR = DOORS[SAID] ? SAID : (/^\/(salt)(\/|$)/.exec(location.pathname) || [0, 'string'])[1];
+const PATH = '/' + (location.pathname.split('/')[1] || DOOR), MEMBERS = DOOR !== 'string', WHOSE = DOORS[DOOR].name || '', HOME = DOORS[DOOR].home;
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
 const ROOT = (LOCAL && window.beachVoice && beachVoice.beach) || DOORS[DOOR].beach;
 /* the voice, or, where it could not be reached or speaks to another beach, a stand-in that says so */
@@ -764,9 +801,12 @@ async function loadThing(el){
   if (c.x && c.x.media) frameX(el, c.x.id);
 }
 const NEAR = 'IntersectionObserver' in window ? new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting){ NEAR.unobserve(e.target); loadThing(e.target); } }), { rootMargin: '900px 0px' }) : null;
-/* a link to a share on this string is that card, read from its own address, one level deep: a pointer, never a copy */
-const CARD_LINK = new RegExp('^https?://(?:www\\.)?happyseaurchin\\.com' + PATH + '/(\\d{10}(?:\\.\\d+)?)/?$', 'i');
-const linkToCard = a => 'https://happyseaurchin.com' + PATH + '/' + a;
+/* a link to a share on this string is that card, read from its own address, one level deep: a pointer, never a copy. A card
+   passed on points at the string's home; a link is a card's at the home, at this door on happyseaurchin.com, or here */
+const rx = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const HOMES = Array.from(new Set([HOME, 'https://happyseaurchin.com/' + DOOR, location.origin + PATH])).map(u => u.replace(/^https?:\/\/(www\.)?/, ''));
+const CARD_LINK = new RegExp('^https?://(?:www\\.)?(?:' + HOMES.map(rx).join('|') + ')/(\\d{10}(?:\\.\\d+)?)/?$', 'i');
+const linkToCard = a => HOME + '/' + a;
 function innerHTML(s){
   const ms = startOf(s.a), page = 'href="' + PATH + '/' + esc(s.a) + '" data-nav';
   return '<div class="t-inner"><a class="t-innerwho" ' + page + '>' + ava(s.by, false) + '<span><b>' + esc(s.by) + '</b> · ' + esc(whenWords(ms)) + '</span></a>' +
@@ -807,7 +847,7 @@ function paintFeed(){
     else if (!list.length) noneRow(feed, 'Nothing shared yet by the people you follow.');
     return list;
   }
-  const intro = MEMBERS ? '<p class="intro">' + esc(WHOSE) + '’s string: what its members are sharing. Members read and write it; what a member marks beyond is open to anyone.</p>' + (!ME ? keyinHTML() : '')
+  const intro = MEMBERS ? '<p class="intro">' + esc(WHOSE) + '’s string: what its members are sharing. Members read and write it; what a member marks beyond is open to anyone.</p>' + (!ME ? keyinHTML() : inviteHTML())
     : '<p class="intro">Links people bring from anywhere, each with a line of why it caught them.</p>';
   draw($('top'), (!ME || MEMBERS ? intro : '') + (new Set(READ.shares.map(s => low(s.by))).size > 1 ? peopleHTML() : ''));
   const wait = ME ? waitingFor(ME) : [], list = wait.concat(READ.shares.filter(s => !wait.includes(s)));
@@ -841,6 +881,8 @@ function paintShare(a){
 }
 /* the way in at a members' beach: a member's name, and the browser's own question for its key */
 const keyinHTML = () => '<div class="keyin"><button type="button" class="pill lead" data-act="keyin">Key in as a member</button>' + (INSTALL ? '<button type="button" class="pill" data-act="install">Add to home screen</button>' : '') + '</div>';
+/* a member's way of bringing someone in: a link the page makes of an invitation the beach mints under their pass */
+const inviteHTML = () => '<div class="keyin"><button type="button" class="pill" data-act="invite">Invite someone</button>' + (INSTALL ? '<button type="button" class="pill" data-act="install">Add to home screen</button>' : '') + '</div>';
 function paintMe(){
   draw($('top'), MEMBERS ? '<div class="soft">Your name is how your shares and answers are signed, and your pass is how you read. ' + keyinHTML() + '</div>'
     : '<div class="soft">Your name is how your shares and answers are signed. Nothing is needed to read.<br><button type="button" class="pill lead" data-act="who">Choose my name</button>' + (INSTALL ? ' <button type="button" class="pill" data-act="install">Add to home screen</button>' : '') + '</div>');
@@ -890,8 +932,8 @@ function go(path){
 window.addEventListener('popstate', e => { VIEW = routeOf(); SHOW = 30; paint(); window.scrollTo(0, (e.state && e.state.y) || 0); });
 
 /* ── a share's own link, and someone's string, sent on ── */
-async function passOn(path, title){
-  const url = location.origin + path;
+const passOn = (path, title) => sendLink(location.origin + path, title);
+async function sendLink(url, title){
   if (navigator.share){
     try { await navigator.share({ title, url }); return; }
     catch(e){ if (e && e.name === 'AbortError') return; }
@@ -1120,6 +1162,76 @@ function notMe(){
   paintAs(); paint();
 }
 
+/* ── THE PORTAL (3 Nov 2026): a member's invitation, and a newcomer's way in by it. The beach mints an invitation under a
+   member's pass, seven days, founding one passport; the page makes a link of it with the invitation after #, which no
+   server log sees; the newcomer opens it here, gives their name (fixed where the member named them), and Join founds their
+   passport through the voice, keeps the key it made and proves it at once for their pass: they land in the string a
+   member, and the key is said once at the end, as a newcomer's is on the open String ── */
+const inviteLink = t => location.origin + PATH + '#invite=' + t;
+function openInvite(){
+  if (typeof beachVoice.invite !== 'function' || typeof beachVoice.join !== 'function'){ toast(WHOSE + '’s beach is renewing its voice: try again in a little while.'); return; }
+  $('invite-ask').hidden = false; $('invite-made').hidden = true; $('invite-hint').textContent = ''; $('invite-link').textContent = '';
+  document.querySelectorAll('#invite-back .whose').forEach(e => { e.textContent = WHOSE; });
+  sheet('invite-back', true); $('invite-for').focus();
+}
+async function makeInvite(){
+  const hint = $('invite-hint'), whom = clean($('invite-for').value);
+  $('invite-go').disabled = true; hint.className = 'hint'; hint.textContent = 'Asking the beach…';
+  try {
+    const r = await beachVoice.invite(whom ? { name: ME, for: whom } : { name: ME });
+    if (!r || !r.ok){ hint.className = r && r.quiet ? 'hint' : 'hint err'; hint.textContent = r && r.quiet ? '' : errText(r); return; }
+    const until = new Date(r.expires).toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+    $('invite-says').innerHTML = (r.for ? 'For <b>' + esc(r.for) + '</b> alone: the link founds their passport and no other.' : 'For whoever has it: the link founds a passport under the name they choose.') + ' It lives until ' + esc(until) + '.';
+    $('invite-link').textContent = inviteLink(r.invite);
+    $('invite-ask').hidden = true; $('invite-made').hidden = false;
+  } finally { $('invite-go').disabled = false; }
+}
+let INVITE = '';
+/* a newcomer arrives by an invitation's link: who it is from, for and until is read from it here, the beach not asked */
+function arrive(){
+  const m = /(?:^#|&)invite=([^&]+)/.exec(location.hash);
+  if (!m) return false;
+  INVITE = m[1];
+  try { history.replaceState(null, '', location.pathname + location.search); } catch(e){}
+  const says = beachVoice.invited ? beachVoice.invited(INVITE) : null;
+  if (!says){ toast('That link is not an invitation to ' + WHOSE + '’s string.'); return false; }
+  if (ME){ toast('You’re keyed in as ' + ME + ' already. This invitation is for someone new: send them the link.'); return false; }
+  const ran = Date.parse(says.expires) < Date.now(), hint = $('join-hint');
+  $('join-says').innerHTML = '<b>' + esc(says.by) + '</b> invites you to ' + esc(WHOSE) + '’s string: what its members are sharing, each link with a line of why. ' + (says.for ? 'This invitation is for <b>' + esc(says.for) + '</b>.' : 'Your name is how your shares and answers are signed.');
+  $('join-name').value = says.for || clean(store.get('render:who') || '');
+  $('join-name').readOnly = !!says.for;
+  hint.className = ran ? 'hint err' : 'hint';
+  hint.textContent = ran ? 'This invitation ran out on ' + new Date(says.expires).toLocaleDateString([], { day: 'numeric', month: 'long' }) + '. Ask ' + says.by + ' for another.' : '';
+  $('join-go').disabled = ran;
+  sheet('join-back', true);
+  if (!says.for && !ran) $('join-name').focus();
+  return true;
+}
+function joinErr(r){
+  const code = r && r.code, by = (r && r.by) || 'the member who sent it';
+  if (code === 'members_only') return (r.for ? r.for + ' already stands' : 'That name already stands') + ' on ' + WHOSE + '’s beach, so this invitation can’t found it. If it is yours, close this and key in with its key; if not, ' + (r.for ? 'ask ' + by + ' for an invitation under another name.' : 'choose another name, or ask ' + by + ' for another invitation.');
+  if (code === 'expired' || code === 'for' || code === 'invite') return r.error;
+  if (code === 'people_keeping') return 'Not founded: that name reads as ' + ((r && r.found) || 'something the beach keeps out of plain words') + ', which ' + WHOSE + '’s beach keeps out of anyone’s words. Choose another.';
+  return errText(r);
+}
+async function joinGo(){
+  const typed = clean($('join-name').value), hint = $('join-hint'), says = beachVoice.invited(INVITE) || {};
+  if (!typed){ hint.className = 'hint err'; hint.textContent = 'Give a name: up to 32 letters, digits, - or _.'; return; }
+  $('join-go').disabled = true; hint.className = 'hint'; hint.textContent = 'Founding your passport on the beach…';
+  try {
+    const line = typed + ' — joined ' + WHOSE + '’s beach on ' + new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) + ' at ' + says.by + '’s invitation.';
+    const r = await beachVoice.join({ invite: INVITE, name: typed, passport: line });
+    if (!r || !r.ok){ hint.className = 'hint err'; hint.textContent = joinErr(Object.assign({ for: says.for }, r)); return; }
+    ME = clean(r.name); store.set('render:who', ME);
+    sheet('join-back', false); hint.textContent = ''; paintAs();
+    const made = beachVoice.made ? beachVoice.made({ field: 'passport', name: ME }) : null;
+    await loadFollows();
+    await refresh(true);
+    if (made){ $('key-name').textContent = made.name; $('key-line').textContent = made.key; sheet('key-back', true); }
+    else toast('Welcome, ' + ME + ': you’re a member of ' + WHOSE + '’s string.');
+  } finally { $('join-go').disabled = false; }
+}
+
 /* ── a reader's own shares, back to them to change or withdraw (CLAUDE.md rule 6): saying again at a share's own
    address replaces its line, so the box starts from the words that stand there ── */
 function wireEdit(li, s){
@@ -1158,6 +1270,7 @@ document.addEventListener('click', e => {
   if (act === 'again') return refresh(true);
   if (act === 'who') return withName(() => { VIEW = { kind: 'hand', h: ME }; try { history.replaceState(null, '', PATH + '/' + encodeURIComponent(ME)); } catch(_){} paint(); });
   if (act === 'keyin') return withName(() => refresh(true));
+  if (act === 'invite') return openInvite();
   if (act === 'not-me') return notMe();
   if (act === 'install') return install();
   if (act === 'follow') return toggleFollow(b.dataset.h);
@@ -1255,7 +1368,7 @@ async function init(){
     document.body.setAttribute('data-beach-button', 'off');
     $('bar-title').innerHTML = '<b>' + esc(low(WHOSE)) + '</b><span class="sub"> · the string</span>';
     const host = ROOT.replace(/^https?:\/\//, '');
-    $('how-members').innerHTML = 'This string stands on ' + esc(WHOSE) + '’s own beach, <code>' + esc(host) + '</code>, behind its members’ gate. A member proves their passport once, through the beach’s own voice, for a pass this device keeps for twelve hours, and every read and write carries it; the key is asked for by the browser and kept only as a write keeps it. A stranger reads what a member has marked beyond in their own index, and nothing else. No link shared here is read by this site’s own function: a card shows its link’s site and path, never a picture fetched on a member’s behalf. Who you follow is kept on this device.';
+    $('how-members').innerHTML = 'This string stands on ' + esc(WHOSE) + '’s own beach, <code>' + esc(host) + '</code>, behind its members’ gate. A member proves their passport once, through the beach’s own voice, for a pass this device keeps for twelve hours, and every read and write carries it; the key is asked for by the browser and kept only as a write keeps it. A stranger reads what a member has marked beyond in their own index, and nothing else. A member brings someone in with <b>Invite someone</b>: a link that lives seven days and founds one passport, the newcomer’s, keyed on their own device. No link shared here is read by this site’s own function: a card shows its link’s site and path, never a picture fetched on a member’s behalf. Who you follow is kept on this device.';
     $('how-members').hidden = false;
     $('how-cards').hidden = true;
   }
@@ -1276,12 +1389,21 @@ async function init(){
   $('who-close').addEventListener('click', () => { afterName = null; sheet('who-back', false); });
   $('key-done').addEventListener('click', () => { $('key-line').textContent = ''; sheet('key-back', false); });
   $('key-copy').addEventListener('click', async e => { try { await navigator.clipboard.writeText($('key-line').textContent); e.target.textContent = 'Copied'; } catch(_){ e.target.textContent = 'Select it above'; } });
+  $('invite-go').addEventListener('click', makeInvite);
+  $('invite-close').addEventListener('click', () => sheet('invite-back', false));
+  $('invite-send').addEventListener('click', () => sendLink($('invite-link').textContent, 'An invitation to ' + WHOSE + '’s string'));
+  $('invite-copy').addEventListener('click', async e => { try { await navigator.clipboard.writeText($('invite-link').textContent); e.target.textContent = 'Copied'; } catch(_){ e.target.textContent = 'Select it above'; } });
+  $('join-go').addEventListener('click', joinGo);
+  $('join-close').addEventListener('click', () => sheet('join-back', false));
   document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.id === 'follow-name') followByName();
     if (e.key === 'Enter' && e.target.id === 'who') nameGo();
+    if (e.key === 'Enter' && e.target.id === 'invite-for') makeInvite();
+    if (e.key === 'Enter' && e.target.id === 'join-name') joinGo();
     if (e.key !== 'Escape') return;
     if (!$('compose-back').classList.contains('hidden')) openBox(false);
     else if (!$('who-back').classList.contains('hidden')){ afterName = null; sheet('who-back', false); }
+    else ['invite-back', 'join-back'].forEach(id => { if (!$(id).classList.contains('hidden')) sheet(id, false); });
   });
   document.querySelectorAll('.sheet-back').forEach(back => back.addEventListener('click', e => { if (e.target === back && back.id !== 'key-back'){ if (back.id === 'who-back') afterName = null; sheet(back.id, false); } }));
   paintAs();
@@ -1291,6 +1413,7 @@ async function init(){
   if (FURTHER) FURTHER.observe($('sentinel'));
   /* a member whose pass has run out, their key kept on this device by a write, is proved again without a question */
   if (GATED && !ME){ const was = clean(store.get('render:who') || ''); if (was){ const p = await beachVoice.prove({ name: was, ask: false }).catch(() => null); if (p && p.ok){ ME = clean(p.name); paintAs(); } } }
+  if (GATED) arrive();
   await loadFollows();
   await refresh(true);
   /* a feed stays fresh while it is looked at: read again every minute, never under a box being changed */

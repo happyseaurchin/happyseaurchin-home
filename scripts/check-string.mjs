@@ -105,10 +105,12 @@ ok('anything else is the String itself', r.code === 200 && r.body.includes('<tit
    and nothing of the String read for it */
 asked.length = 0;
 r = await call({ page: '', door: 'salt' });
-ok('a members’ door: whose string it is, and nothing read for it', r.code === 200 && r.body.includes('<title>SALT — the String</title>') && r.body.includes('<meta property="og:url" content="https://happyseaurchin.com/salt">') && !asked.length, r.code);
-ok('a members’ door: that beach’s own voice, and its own manifest', r.body.includes('<script id="voice" src="https://beach.bringingtheflavour.com/button/voice.js"></script>') && r.body.includes('href="/salt.webmanifest"') && !r.body.includes('beach.happyseaurchin.com/button/voice.js'));
+ok('a members’ door: whose string it is, its home on the community’s own site, and nothing read for it', r.code === 200 && r.body.includes('<title>SALT — the String</title>') && r.body.includes('<meta property="og:url" content="https://www.bringingtheflavour.com/string">') && !asked.length, r.code);
+ok('a members’ door: that beach’s own voice, its own manifest, and the door said on the page as served', r.body.includes('<script id="voice" src="https://beach.bringingtheflavour.com/button/voice.js"></script>') && r.body.includes('href="/salt.webmanifest"') && r.body.includes('<html lang="en" class="no-js" data-door="salt">') && !r.body.includes('beach.happyseaurchin.com/button/voice.js'));
+r = await call({ page: '', door: '' });
+ok('the open String says no door', r.code === 200 && r.body.includes('<html lang="en" class="no-js">') && !r.body.includes(' data-door="'));
 r = await call({ page: '2026421258.111', door: 'salt' });
-ok('a share’s page at a members’ door says no more than the door', r.body.includes('<title>SALT — the String</title>') && r.body.includes('content="https://happyseaurchin.com/salt/2026421258.111"') && !r.body.includes('Some One') && !asked.length, r.body.match(/<title>.*<\/title>/));
+ok('a share’s page at a members’ door says no more than the door, at its home', r.body.includes('<title>SALT — the String</title>') && r.body.includes('content="https://www.bringingtheflavour.com/string/2026421258.111"') && !r.body.includes('Some One') && !asked.length, r.body.match(/<title>.*<\/title>/));
 r = await call({ page: 'x', door: 'nowhere' });
 ok('a door that is not one', r.code === 404);
 r = await call({ page: '' });

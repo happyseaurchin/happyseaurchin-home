@@ -31,8 +31,11 @@ import { mirrorsOf } from './mirrors.js';
 const SITE = 'https://happyseaurchin.com';
 /* THE MEMBERS' DOORS: the same page at a door of its own, on a members' beach (3 Nov 2026; the first SALT's, David's own
    community, 'We are SALT — Bringing the flavour!'). The page holds the same table; a door served here carries that beach's
-   voice, so the page's writes land there, and its manifest, so a phone installs it as that string. */
-const DOORS = { salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT' } };
+   voice, so the page's writes land there, and its manifest, so a phone installs it as that string. A door's HOME is where its
+   string lives on the community's own site (SALT's at www.bringingtheflavour.com/string, a rewrite there to this function),
+   so a share's preview and a card passed on name that address; the page is told its door as served (data-door on <html>),
+   since served there its path says nothing of it. */
+const DOORS = { salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT', home: 'https://www.bringingtheflavour.com/string' } };
 const OPEN_VOICE = 'https://beach.happyseaurchin.com/button/voice.js';
 const AGENT = 'happyseaurchin-string/1.0 (+https://happyseaurchin.com/string)';
 const ADDRESS = /^\d{10}(\.\d{1,9})?$/, HANDLE = /^[A-Za-z0-9_][A-Za-z0-9_ -]{0,31}$/;
@@ -209,14 +212,15 @@ export function withPreview(html, p, door) {
   set('property', 'og:description', p.text);
   set('property', 'og:image', p.image);
   set('property', 'og:url', p.url);
-  if (door) html = html.replace(OPEN_VOICE, DOORS[door].beach + '/button/voice.js').replace('/string.webmanifest', '/' + door + '.webmanifest');
+  if (door) html = html.replace(OPEN_VOICE, DOORS[door].beach + '/button/voice.js').replace('/string.webmanifest', '/' + door + '.webmanifest')
+    .replace('<html lang="en" class="no-js">', '<html lang="en" class="no-js" data-door="' + door + '">');
   return html;
 }
 /* a members' door says whose string it is, and no more: a share there is its members' to read */
 export function doorPreview(door, slug) {
   const d = DOORS[door];
   return { title: d.name + ' — the String', text: 'What ' + d.name + '’s members are sharing, each link with a line of why it caught them. Members read and write it; anyone reads what a member marks beyond.',
-    image: THE_STRING.image, url: SITE + '/' + door + (slug ? '/' + slug : '') };
+    image: THE_STRING.image, url: (d.home || SITE + '/' + door) + (slug ? '/' + slug : '') };
 }
 async function previewOf(slug) {
   if (HANDLE.test(slug) && !ADDRESS.test(slug)) {
