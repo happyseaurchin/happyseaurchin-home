@@ -12,6 +12,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script id="voice" src="https://beach.happyseaurchin.com/button/voice.js"></script>
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   body{font-family:var(--body);color:var(--foam);font-size:16px;line-height:1.5;background:var(--abyss);overflow:hidden;min-height:100dvh;-webkit-font-smoothing:antialiased}
@@ -94,6 +95,8 @@
   .write input{margin-bottom:8px}
   .write .row{display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;flex-wrap:wrap}
   .write .why{font:10.5px/1.5 var(--mono);color:var(--vapour-dim);margin-right:auto}
+  .write .seal{display:flex;gap:6px;align-items:center;font:10.5px/1.5 var(--mono);color:var(--vapour-dim);cursor:pointer}
+  .msg .by .gray.opened{color:var(--liquid)}
   .write button{appearance:none;font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;border-radius:9px;padding:7px 12px;cursor:pointer;border:1px solid var(--line-strong);background:rgba(var(--liquid-rgb),.12);color:var(--foam)}
   .write button:hover{background:rgba(var(--liquid-rgb),.22)}
   .write button:disabled{opacity:.5;cursor:default}
@@ -187,6 +190,19 @@ document.documentElement.classList.remove('no-js');
    to draw — a handle in the address picks the VANTAGE, and unlocks writing to
    the channels that handle holds. Gray darkens content, never the edge.
 
+   THE SEAL (4 Nov 2026, coloured stigmergy step 4): a message to the other
+   party may be sealed, so that the two of them read it and nobody else — the
+   beach included. It is sealed through the beach's own voice (button/voice.js
+   and the seal beside it), never with a copy of the cipher here: the pair is
+   derived from the handle's one word, the key their passport uses, with the
+   handle as the salt, the halves published at passport 9, and the line is boxed
+   to the partner's published half as the connector seals a grain (bsp-mcp
+   src/keys.ts, the shared vectors). It lands one zero deeper than an open
+   message — the envelope at the entry's underscore, the author kept at 1
+   (the design's §2.3) — and an envelope the connector landed whole reads the
+   same. A party standing here with their key opens them; everyone else sees
+   that a sealed line stands, and nothing of it.
+
    THE ECONOMICS: one reading of the index and every grain block per visit,
    then stillness — no polling. Writes are the visitor's own: a message
    appended beneath their side of a grain (the beach allocates the slot), an
@@ -239,6 +255,9 @@ const when = ts => ts ? String(ts).slice(0, 10) : '';
 const voice = n => typeof n === 'string' ? n : (isObj(n) && typeof n._ === 'string' ? n._ : '');
 const MACHINE = h => /\d{4}-\d{2}-\d{2}[tT]?\d/.test(h) || /^(probe-|e2e-|revtest|ps-iss|tickets-test|test[-_]|hatch-tickets)/i.test(h);
 const isGray = n => isObj(n) && (String(n._ || '').startsWith('Encrypted (gray)') || (isObj(n['9']) && n['9']._ === 'gray'));
+/* a sealed entry is an envelope itself (as the connector lands one), or a line whose author stands at 1 and whose
+   envelope stands one zero deeper, at its underscore (coloured-stigmergy §2.3) */
+const envelopeOf = n => isGray(n) ? n : (isObj(n) && isGray(n._) ? n._ : null);
 function riderOf(n){
   const s9 = isObj(n) && isObj(n['9']) ? n['9'] : null;
   if (!s9 || s9._ === 'gray') return null;
@@ -336,12 +355,12 @@ function parseGrain(name, blk){
       /* a gray SIDE is an envelope — ciphertext at 1, nonce at 2, the marker at 9 — not a conversation */
       const envelope = isGray(s);
       for (const k of Object.keys(s).filter(k => /^[1-9]\d*$/.test(k) && !(envelope && (k === '1' || k === '2' || k === '9'))).sort((x, y) => x.length - y.length || x.localeCompare(y))){
-        const e = s[k];
-        /* a gray envelope carries ciphertext at 1, not an author — the side's holder wrote it */
-        entries.push({ at: side + '.' + k, side, by: (!isGray(e) && isObj(e) && typeof e['1'] === 'string' ? e['1'] : null) || (side === '1' ? a : b), ts: isObj(e) ? e['3'] : null, gray: isGray(e), rider: riderOf(e), text: isGray(e) ? null : voice(e) });
+        const e = s[k], env = envelopeOf(e);
+        /* a gray envelope carries ciphertext at 1, not an author — the side's holder wrote it; one sealed a zero deeper keeps its author at 1 */
+        entries.push({ at: side + '.' + k, side, by: (!isGray(e) && isObj(e) && typeof e['1'] === 'string' ? e['1'] : null) || (side === '1' ? a : b), ts: isObj(e) ? e['3'] : null, gray: !!env, env, rider: riderOf(e), text: env ? null : voice(e) });
       }
     }
-    for (const k of Object.keys(blk).filter(k => /^[3-7]$/.test(k))){ const e = blk[k]; entries.push({ at: k, side: null, by: !isGray(e) && isObj(e) && typeof e['1'] === 'string' ? e['1'] : null, ts: isObj(e) ? e['3'] : null, gray: isGray(e), rider: riderOf(e), text: isGray(e) ? null : voice(e), stray: true }); }
+    for (const k of Object.keys(blk).filter(k => /^[3-7]$/.test(k))){ const e = blk[k], env = envelopeOf(e); entries.push({ at: k, side: null, by: !isGray(e) && isObj(e) && typeof e['1'] === 'string' ? e['1'] : null, ts: isObj(e) ? e['3'] : null, gray: !!env, env, rider: riderOf(e), text: env ? null : voice(e), stray: true }); }
     const g = { pid, a, b, root: voice(blk), side1: isGray(blk['1']) ? null : voice(blk['1']), side2: isGray(blk['2']) ? null : voice(blk['2']), gray1: isGray(blk['1']), gray2: isGray(blk['2']),
                 has1: blk['1'] !== undefined, has2: blk['2'] !== undefined, entries, lastTs: entries.reduce((m, e) => e.ts && e.ts > m ? e.ts : m, ''), hint: null, since: '' };
     if (!(a && b)){
@@ -608,9 +627,21 @@ function bubble(en, mine, opening){
   const cls = 'msg ' + (mine ? (me ? 'right you' : 'left') : (left ? 'left' : 'right')) + (opening ? ' open' : '');
   const by = `<div class="by"><b>${esc(en.by || '?')}</b>${en.ts ? `<span>${esc(when(en.ts))}</span>` : ''}${en.at ? `<span>at ${esc(en.at)}</span>` : ''}` +
     (en.rider ? `<span class="rider">sand rider${en.rider.probe ? ' · ' + esc(en.rider.probe) : ''}${en.rider.topic ? ' · topic ' + esc(en.rider.topic) : ''}${en.rider.hops.length ? ' · ' + en.rider.hops.length + ' hop' + (en.rider.hops.length > 1 ? 's' : '') : ''}</span>` : '') +
-    (en.gray ? '<span class="gray">gray</span>' : '') + (en.stray ? '<span>at the block root</span>' : '') + (opening ? `<span>${esc(opening)}</span>` : '') + '</div>';
-  const txt = en.gray ? '<div class="txt private">private — an encrypted entry, readable by the two parties</div>' : `<div class="txt">${esc(en.text || '')}</div>`;
+    (en.gray ? '<span class="gray' + (en.text != null ? ' opened' : '') + '">' + (en.text != null ? 'sealed · opened with your key' : 'sealed') + '</span>' : '') + (en.stray ? '<span>at the block root</span>' : '') + (opening ? `<span>${esc(opening)}</span>` : '') + '</div>';
+  const txt = en.gray && en.text == null ? `<div class="txt private">private — ${esc(sealedLine(en))}</div>` : `<div class="txt">${esc(en.text || '')}</div>`;
   return `<div class="${cls}">${by}${txt}</div>`;
+}
+/* the one line shown for a sealed entry that does not open here, as the router draws it */
+const sealedLine = en => (window.beachVoice && beachVoice.grey && en.env ? beachVoice.grey(en.env) : '') || 'sealed · readable by the two parties';
+/* THE READER'S DOOR: a party standing here opens the grain's sealed entries through the voice with their own key — the
+   word their passport uses, asked for once (wear) and held for the tab — and nothing is asked of anyone else */
+async function openSealed(g, ask){
+  if (!window.beachVoice || !beachVoice.open || !standing() || sideOf(g, HANDLE) === null) return false;
+  const other = sideOf(g, HANDLE) === '1' ? g.b : g.a;
+  if (ask){ const r = await beachVoice.wear({ name: HANDLE }); if (!r || !r.ok){ if (!r.quiet) toast(r && r.error ? r.error : 'the key did not open'); return false; } }
+  let opened = 0;
+  for (const en of g.entries) if (en.env && en.text == null){ const t = await beachVoice.open(en.env, { name: HANDLE, with: other }); if (t != null){ en.text = t; opened++; } }
+  return opened;
 }
 function dialogueHtml(g){
   const mine = standing() && sideOf(g, HANDLE) !== null;
@@ -621,14 +652,16 @@ function dialogueHtml(g){
   return '<div class="dlg">' + opens.map(o => bubble(o, mine, o.open)).join('') + entries.map(en => bubble(en, mine)).join('') + '</div>';
 }
 function writeBoxHtml(kind, other){
-  const why = kind === 'send' ? 'appended beneath your side · latched by your side key · public unless you gray it elsewhere'
+  const why = kind === 'send' ? 'appended beneath your side · latched by your side key · public unless you seal it'
             : kind === 'accept' ? 'completes the grain — your side written and latched with a key of your own'
             : 'opens a channel — one block, two sides, yours latched now, theirs when they answer';
   return `<div class="write" id="write">` +
     (kind === 'reach' ? `<label for="w-desc">what this channel is for — one line, shared</label><input id="w-desc" placeholder="${esc(HANDLE)} ↔ ${esc(other)} — …" autocomplete="off">` : '') +
     `<label for="w-text">${kind === 'send' ? 'to ' + esc(other) : kind === 'accept' ? 'your side — the acceptance' : 'your first words to ' + esc(other)}</label>` +
     `<textarea id="w-text" placeholder="in your own words…"></textarea>` +
-    `<div class="row"><span class="why">${why}</span><button id="w-send">${kind === 'send' ? 'send' : kind === 'accept' ? 'accept' : 'reach out'}</button></div><p class="refuse hidden" id="w-refuse"></p></div>`;
+    `<div class="row"><span class="why">${why}</span>` +
+    (kind === 'send' && window.beachVoice && beachVoice.seal ? `<label class="seal" title="sealed through the beach's voice with the key your passport uses: ${esc(other)} and you read it, nobody else"><input type="checkbox" id="w-seal"> seal it</label>` : '') +
+    `<button id="w-send">${kind === 'send' ? 'send' : kind === 'accept' ? 'accept' : 'reach out'}</button></div><p class="refuse hidden" id="w-refuse"></p></div>`;
 }
 function wireWrite(kind, opts){
   const box = $('w-text'), btn = $('w-send'), refuse = $('w-refuse');
@@ -641,7 +674,7 @@ function wireWrite(kind, opts){
     btn.disabled = true; btn.textContent = 'writing…'; refuse.classList.add('hidden');
     let w;
     try {
-      if (kind === 'send') w = await sendMessage(opts.pid, opts.side, text);
+      if (kind === 'send') w = await sendMessage(opts.pid, opts.side, text, $('w-seal') && $('w-seal').checked ? opts.other : '');
       else if (kind === 'accept') w = await reachGrain(opts.pid, opts.side, opts.other, '', text);
       else { const desc = ($('w-desc').value || '').trim() || (HANDLE + ' ↔ ' + opts.other); w = await reachGrain(opts.pid, opts.side, opts.other, desc, text); }
     } catch(e){ w = { ok:false, data:{ error: String(e && e.message || e) } }; }
@@ -661,10 +694,22 @@ function wireWrite(kind, opts){
 
 /* the writes — each latched by the SIDE key, kept on this device per grain side */
 const sideLatch = (pid, side) => 'grain-latch:' + pid + ':' + side;
-async function sendMessage(pid, side, text){
+async function sendMessage(pid, side, text, sealTo){
   const lk = sideLatch(pid, side);
   let latch = null; try { latch = localStorage.getItem(lk); } catch(e){}
-  const body = { block: 'grain:' + pid, spindle: side, append: true, content: { '_': text, '1': HANDLE } };
+  let line = text;
+  if (sealTo){
+    /* THE WRITER'S DOOR seals before the line leaves: the voice asks once for the key the handle's passport uses, publishes
+       its halves where none stand, and boxes the words to the partner's published half; the envelope lands one zero deeper,
+       the author kept beside it */
+    if (!window.beachVoice || !beachVoice.seal) return { ok:false, data:{ error: 'the beach’s voice did not load, so nothing can be sealed' } };
+    const worn = await beachVoice.wear({ name: HANDLE });
+    if (!worn || !worn.ok) return worn && worn.quiet ? { ok:false, quiet:true } : { ok:false, data:{ error: (worn && worn.error) || 'the key did not open' } };
+    const s = await beachVoice.seal(text, { gray: { grain: sealTo }, name: HANDLE });
+    if (!s || !s.ok) return { ok:false, data:{ error: (s && s.error) || 'the line could not be sealed' } };
+    line = s.envelope;
+  }
+  const body = { block: 'grain:' + pid, spindle: side, append: true, content: { '_': line, '1': HANDLE } };
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -701,6 +746,16 @@ function cardEdge(ei){
   html += `<p class="note">public substrate — read it yourself: ${esc(BEACH)}?block=grain:${esc(g.pid)}</p>`;
   openCard(html);
   if (mySide) wireWrite('send', { pid: g.pid, side: mySide, other });
+  if (mySide && g.entries.some(en => en.env && en.text == null)) sealedOpen(g, ei);
+}
+/* a card's sealed entries, opened where the key is already held; else one button asks for it, once */
+async function sealedOpen(g, ei){
+  if (await openSealed(g, false)) return cardEdge(ei);
+  const dlg = body.querySelector('.dlg'); if (!dlg || $('w-open')) return;
+  const p = document.createElement('p'); p.className = 'note';
+  p.innerHTML = `sealed lines here open with the key ${esc(HANDLE)}’s passport uses — <button id="w-open" style="all:unset;color:var(--liquid);cursor:pointer;border-bottom:1px solid rgba(var(--liquid-rgb),.35)">open them</button>`;
+  dlg.after(p);
+  $('w-open').addEventListener('click', async () => { if (await openSealed(g, true)) cardEdge(ei); });
 }
 function cardNode(i){
   const N = G.nodes[i];

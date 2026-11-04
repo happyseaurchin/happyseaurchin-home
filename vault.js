@@ -6,12 +6,13 @@
  * lets a page do what only the router (bsp-mcp) could do until now: seal and open those entries in
  * the browser, so a key goes from the beach to this page to the service it pays, and nowhere else.
  *
- * THE CIPHER is bsp-mcp's own (src/keys.ts), byte for byte, so what a page seals the router opens and
- * the other way round: Argon2id(sovereign, salt = the beach's URL form, padded to eight bytes;
- * 3 iterations, 64 MB, parallelism 1, 64 bytes out) — the first 32 bytes are the X25519 secret key,
- * and a SELF envelope is nacl.secretbox under that key: {_: note, 1: ciphertext, 2: nonce,
- * 9: {_: 'gray', 1: 'self'}} — spine-legal, so the beach's shape gate admits it and a keyless
- * reader sees opaque structure and nothing else.
+ * THE CIPHER IS THE BEACH'S OWN SEAL (4 Nov 2026, coloured stigmergy step 4): this file seals and opens
+ * through button/seal.js, served by the beach beside its voice, and keeps no copy of the cipher — the
+ * one module every page seals through, byte for byte as bsp-mcp's src/keys.ts seals, proved by the
+ * shared test vectors (bsp-mcp scripts/smoke-gray-vectors.ts). A SELF envelope is nacl.secretbox under
+ * the key Argon2id derives from the sovereign and the salt: {_: note, 1: ciphertext, 2: nonce,
+ * 9: {_: 'gray', 1: 'self'}} — spine-legal, so the beach's shape gate admits it and a keyless reader
+ * sees opaque structure and nothing else.
  *
  * THE SALT IS THE ADDRESSING FORM (ways:vault 2.3): a vault decrypts only under the exact string it
  * was sealed with. The recipe founds a vault as bsp(agent_id='<beach-url>', …), so the salt here is
@@ -22,69 +23,33 @@
  * The label IS the list, readable without the key; the key is never plain. Every write carries the
  * sovereign as the latch (secret) and never a per-spindle lock (ways:vault 1.2).
  *
- * Libraries: tweetnacl (nacl-fast) and hash-wasm's argon2, vendored at /vendor/, loaded on first use.
- * In node (tests) they are required.
+ * The seal is loaded on first use from the beach the page's voice names, else the home beach; in node
+ * (the vectors smoke) it is handed in as globalThis.beachSeal.
  */
 (function (root) {
   'use strict';
   var NOTE = 'Encrypted (gray); readable only with the author secret.';
+  var HOME = 'https://beach.happyseaurchin.com';
   var libs = null;
   function need() {
     if (libs) return libs;
-    if (typeof module !== 'undefined' && module.exports && typeof require === 'function') {
-      libs = Promise.resolve({ nacl: require('tweetnacl'), argon2id: require('hash-wasm').argon2id });
-      return libs;
-    }
+    if (root.beachSeal) return libs = Promise.resolve(root.beachSeal);
+    if (typeof module !== 'undefined' && module.exports && typeof require === 'function') return Promise.reject(new Error('in node the beach\'s seal is handed in as globalThis.beachSeal'));
     libs = new Promise(function (res, rej) {
-      var want = [['nacl', '/vendor/nacl-fast.min.js'], ['hashwasm', '/vendor/argon2.umd.min.js']];
-      var left = want.length;
-      want.forEach(function (w) {
-        if (root[w[0]]) { if (!--left) done(); return; }
-        var s = document.createElement('script'); s.src = w[1]; s.async = true;
-        s.onload = function () { if (!--left) done(); };
-        s.onerror = function () { rej(new Error('could not load ' + w[1])); };
-        document.head.appendChild(s);
-      });
-      function done() { res({ nacl: root.nacl, argon2id: root.hashwasm.argon2id }); }
+      var from = ((root.beachVoice && root.beachVoice.beach) || HOME).replace(/\/+$/, '') + '/button/seal.js';
+      var s = document.createElement('script'); s.src = from; s.async = true;
+      s.onload = function () { if (root.beachSeal) res(root.beachSeal); else { libs = null; rej(new Error('the seal did not load')); } };
+      s.onerror = function () { libs = null; rej(new Error('could not load ' + from)); };
+      document.head.appendChild(s);
     });
     return libs;
   }
-  var enc = new TextEncoder(), dec = new TextDecoder();
-  function b64(u8) { var s = ''; for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]); return btoa(s); }
-  function unb64(s) { var b = atob(s), u = new Uint8Array(b.length); for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
-  if (typeof btoa === 'undefined') { /* node */
-    b64 = function (u8) { return Buffer.from(u8).toString('base64'); };
-    unb64 = function (s) { return new Uint8Array(Buffer.from(s, 'base64')); };
-  }
-
-  /* the key: Argon2id as bsp-mcp derives it, remembered for the sitting so a vault opens once */
-  var derived = {};
-  function keyFor(secret, salt) {
-    var k = salt + '\u0000' + secret;
-    if (derived[k]) return derived[k];
-    derived[k] = need().then(function (L) {
-      var saltStr = salt.length >= 8 ? salt : salt + Array(8 - salt.length + 1).join('\u0000');
-      return L.argon2id({ password: secret, salt: saltStr, parallelism: 1, iterations: 3, memorySize: 65536, hashLength: 64, outputType: 'binary' });
-    }).then(function (hash) { return new Uint8Array(hash).slice(0, 32); });
-    return derived[k];
-  }
-  function forget() { derived = {}; }
-
+  function forget() { need().then(function (S) { S.forget(); }, function () {}); }
   function isEnvelope(n) { return !!(n && typeof n === 'object' && typeof n['1'] === 'string' && typeof n['2'] === 'string' && n['9'] && typeof n['9'] === 'object' && n['9']['_'] === 'gray'); }
-  function seal(plaintext, secret, salt) {
-    return Promise.all([need(), keyFor(secret, salt)]).then(function (r) {
-      var nacl = r[0].nacl, key = r[1];
-      var nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
-      var ct = nacl.secretbox(enc.encode(plaintext), nonce, key);
-      return { _: NOTE, '1': b64(ct), '2': b64(nonce), '9': { _: 'gray', '1': 'self' } };
-    });
-  }
+  function seal(plaintext, secret, salt) { return need().then(function (S) { return S.self.seal(plaintext, secret, salt); }); }
   function open(envelope, secret, salt) {
     if (!isEnvelope(envelope) || envelope['9']['1'] !== 'self') return Promise.resolve(null);
-    return Promise.all([need(), keyFor(secret, salt)]).then(function (r) {
-      var pt = r[0].nacl.secretbox.open(unb64(envelope['1']), unb64(envelope['2']), r[1]);
-      return pt ? dec.decode(pt) : null;
-    });
+    return need().then(function (S) { return S.self.open(envelope, secret, salt); });
   }
 
   /* ── the block on the wire ── */
