@@ -40,7 +40,12 @@
      THE PORTAL (3 Nov 2026, the same evening): the door's home is the community's own site, www.bringingtheflavour.com/string
      (a rewrite there to /api/string, the page told its door as served); a member's Invite someone makes a link of an
      invitation the beach mints under their pass, and a newcomer opening it gives a name and joins: their passport founded
-     through the voice with the invitation, keyed on their device, proved at once, and they land in the string a member. */
+     through the voice with the invitation, keyed on their device, proved at once, and they land in the string a member.
+     A COLOUR AT THE DOOR (4 Nov 2026, coloured stigmergy step 4): a member may share in a colour the beach offers them (the
+     colours whose copy their one word opens, as the box opens: Who reads it), the open share the default; sealed through
+     the voice before the line leaves, it stands at its address as an envelope — the card's who and when open, its line and
+     link sealed. A member holding the colour reads it as any share, marked with the colour; everyone else sees one grey
+     card, the line the router draws (sealed · colour · salt · turn 1), and nothing of the link. The open String is untouched. */
   :root{ --display:'Syne',system-ui,sans-serif; --body:'Newsreader',Georgia,serif; --mono:'Space Mono',ui-monospace,Menlo,Consolas,monospace; --tabs:60px; }
   *{box-sizing:border-box}
   [hidden],.hidden{display:none!important}
@@ -131,6 +136,10 @@
   .when:hover,.name:hover{text-decoration:underline}
   .why{margin:0 14px 10px;font-size:18.5px;line-height:1.4;overflow-wrap:anywhere;white-space:pre-wrap}
   .why.shut{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;line-clamp:6;overflow:hidden}
+  .why.sealed{font-family:var(--mono);font-size:13px;letter-spacing:0.04em;color:var(--vapour-dim);padding:6px 0 4px}
+  .name .colour{font-weight:400;color:var(--liquid)}
+  .said .sealedline{font-family:var(--mono);font-size:12.5px;color:var(--vapour-dim)}
+  .f select{font-family:var(--body);font-size:16px;letter-spacing:normal;text-transform:none;color:var(--foam);background:rgba(var(--well-rgb),0.6);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
   .linkish{background:none;border:0;padding:2px 0;color:var(--liquid);font-family:inherit;font-size:inherit;text-decoration:underline;text-underline-offset:3px;cursor:pointer}
   .more{display:block;margin:-6px 14px 10px;font-family:var(--mono);font-size:12px}
 
@@ -287,6 +296,7 @@
     <label class="f">For someone on the beach, if you like<input id="for" list="names" autocomplete="off" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="their name"></label>
     <datalist id="names"></datalist>
     <label class="f">Why it caught you<textarea id="why" rows="3" maxlength="1200" data-dictate placeholder="a line in your own words"></textarea></label>
+    <label class="f" id="colour-row" hidden>Who reads it<select id="colour"><option value="">Every member</option></select></label>
     <div class="as" id="as"></div>
     <div class="row"><button type="button" class="go" id="send">Share</button></div>
     <p class="hint" id="hint" aria-live="polite"></p>
@@ -361,7 +371,8 @@ const ROOT = (LOCAL && window.beachVoice && beachVoice.beach) || DOORS[DOOR].bea
 /* the voice, or, where it could not be reached or speaks to another beach, a stand-in that says so */
 if (!window.beachVoice || beachVoice.beach !== ROOT){
   const away = () => Promise.resolve({ ok: false, error: 'the beach could not be reached just now' });
-  window.beachVoice = { say: away, keep: away, ask: away, drop: away, enter: away, prove: away, propose: () => Promise.resolve(''), known: () => Promise.resolve(''), made: () => null, name: () => '', pass: () => null, leave(){}, button: { shown: () => false, set: away }, onButton(){}, beach: ROOT };
+  window.beachVoice = { say: away, keep: away, ask: away, drop: away, enter: away, prove: away, propose: () => Promise.resolve(''), known: () => Promise.resolve(''), made: () => null, name: () => '', pass: () => null, leave(){}, button: { shown: () => false, set: away }, onButton(){}, beach: ROOT,
+    open: () => Promise.resolve(null), grey: () => '', colours: () => Promise.resolve([]) };
 }
 /* a members' beach needs a voice that carries its gate; until the beach serves one, the page reads and says so */
 const GATED = MEMBERS && typeof beachVoice.prove === 'function' && typeof beachVoice.pass === 'function';
@@ -499,10 +510,30 @@ async function readRoom(){
       if (own.addr) got.now = { iso: own.iso, address: own.addr };
     } catch(e){}
   }
+  await openSealed(got.mirrors);
   return got;
 }
 
 /* ── the lines ── */
+/* THE SEAL AT THE DOOR (4 Nov 2026, coloured stigmergy step 4): a share sealed in a colour stands at its address as an
+   envelope ({_: note, 1: ciphertext, 2: nonce, 9: {_: 'gray', 1: 'colour', 2: 'colour:<name>', 3: <turn>}}), or one zero
+   deeper, at the underscore of a line with fields of its own. Read through the voice it opens for a member whose word
+   opens the colour's turn, tried once per reader, hand and address (OPENED), and is then parsed as any line, marked with its
+   colour; for everyone else it is the one grey line the router draws, and nothing of the link. */
+const isEnv = n => !!(n && typeof n === 'object' && typeof n['1'] === 'string' && typeof n['2'] === 'string' && n['9'] && typeof n['9'] === 'object' && n['9']._ === 'gray');
+const OPENED = new Map();
+const openedKey = (h, a) => low(ME) + '|' + h + '@' + a;
+const colourOf = env => env && env['9'] && env['9']['1'] === 'colour' ? String(env['9']['2'] || '').replace(/^colour:/, '') : '';
+/* every sealed line in the string tried once for this reader, through the voice, which opens what their colours open and
+   asks nothing; one at a time, so a colour's turn is read once and worn for the rest */
+async function openSealed(mirrors){
+  if (!MEMBERS || !ME || !beachVoice.open) return;
+  for (const h of Object.keys(mirrors)) for (const l of linesOf(mirrors[h])){
+    if (!l.env || OPENED.has(openedKey(h, l.a))) continue;
+    let t = null; try { t = await beachVoice.open(l.env, { name: ME }); } catch(e){}
+    OPENED.set(openedKey(h, l.a), t);
+  }
+}
 /* every line in a mirror on the clock, with its address (ten digits, then beneath the beat after a point) */
 function linesOf(b){
   const out = [];
@@ -510,11 +541,13 @@ function linesOf(b){
     if (n == null) return;
     if (typeof n === 'string'){ if (a.length >= FLOOR) out.push({ a, t: n }); return; }
     if (typeof n !== 'object' || Array.isArray(n)) return;
+    const env = isEnv(n) ? n : (n._ && typeof n._ === 'object' && isEnv(n._) ? n._ : null);
+    if (env){ if (a.length >= FLOOR) out.push({ a, env }); return; }
     if (typeof n._ === 'string'){ if (a.length >= FLOOR) out.push({ a, t: n._ }); }
     else if (n._ && typeof n._ === 'object') go(n._, a + '0');
     for (let d = 1; d <= 9; d++) go(n[String(d)], a + d);
   })(b, '');
-  return out.map(l => ({ a: l.a.length > FLOOR ? l.a.slice(0, FLOOR) + '.' + l.a.slice(FLOOR) : l.a, t: l.t }));
+  return out.map(l => ({ a: l.a.length > FLOOR ? l.a.slice(0, FLOOR) + '.' + l.a.slice(FLOOR) : l.a, t: l.t, env: l.env }));
 }
 /* a share's line: 'SHARE <url> — why', or 'SHARE <url> for <handle> — why' (function:string 1) */
 const URL_OK = /^https?:\/\/[^\s<>"]+$/i;
@@ -543,21 +576,32 @@ const lineOf = (mark, words) => mark && words ? mark + ' — ' + words : mark ||
    beat with the latest line said in it (function:string 1.2 and 4). A WITHDRAWN line with no share beside it is a share
    withdrawn, whose answers stand (function:string 3). */
 function digest(){
-  const shares = [], others = [];
+  const shares = [], others = [], sealed = [];
   Object.keys((ROOM && ROOM.mirrors) || {}).forEach(h => {
     const lines = linesOf(ROOM.mirrors[h]), deep = lines.filter(l => l.a.length > FLOOR);
     lines.forEach(l => {
       if (l.a.length === FLOOR && deep.some(x => x.a.indexOf(l.a + '.') === 0)) return;
+      if (l.env){
+        /* a sealed line: its words where this reader's colours opened it, else the grey line */
+        const words = OPENED.get(openedKey(h, l.a));
+        if (words == null){ sealed.push({ by: h, a: l.a, grey: (beachVoice.grey && beachVoice.grey(l.env)) || 'sealed' }); return; }
+        const s = parseShare(words);
+        if (s) shares.push(Object.assign(s, { by: h, a: l.a, colour: colourOf(l.env) })); else others.push({ by: h, a: l.a, t: words });
+        return;
+      }
       const s = parseShare(l.t);
       if (s) shares.push(Object.assign(s, { by: h, a: l.a })); else others.push({ by: h, a: l.a, t: l.t });
     });
   });
+  /* a sealed line where no open share stands is a sealed share — one grey card; where one does, a sealed answer */
+  const open = new Set(shares.map(s => s.a));
+  sealed.forEach(l => { if (open.has(l.a)) others.push({ by: l.by, a: l.a, t: '', sealed: l.grey }); else shares.push({ by: l.by, a: l.a, url: '', why: '', for: '', sealed: l.grey }); });
   shares.sort((x, y) => x.a < y.a ? 1 : x.a > y.a ? -1 : (x.by < y.by ? -1 : 1));
   const at = new Map(shares.map(s => [s.a, s])), answers = new Map(), gone = new Set();
   others.forEach(l => { if (!at.has(l.a) && /^WITHDRAWN\b/.test(String(l.t).trim())) gone.add(l.a); });
   others.forEach(l => {
     if (!at.has(l.a) && !gone.has(l.a)) return;
-    const a = parseAnswer(l.t);
+    const a = l.sealed ? { mark: '', words: '', sealed: l.sealed } : parseAnswer(l.t);
     if (!a) return;
     if (!answers.has(l.a)) answers.set(l.a, []);
     answers.get(l.a).push(Object.assign(a, { by: l.by }));
@@ -629,10 +673,11 @@ function draw(el, html){ if (el._was !== html){ el._was = html; el.innerHTML = h
 
 function whoHTML(s, own, opts){
   const ms = startOf(s.a), follow = !own && !followed(s.by) && low(opts.sameHand) !== low(s.by) ? '<button type="button" class="pill" data-act="follow" data-h="' + esc(s.by) + '">Follow</button>' : '';
-  return ava(s.by) + '<div class="whotext"><a class="name" href="' + PATH + '/' + encodeURIComponent(s.by) + '" data-nav>' + esc(s.by) + (s.for ? ' <span class="for">for ' + (low(s.for) === low(ME) ? 'you' : esc(s.for)) + '</span>' : '') + '</a>' +
+  return ava(s.by) + '<div class="whotext"><a class="name" href="' + PATH + '/' + encodeURIComponent(s.by) + '" data-nav>' + esc(s.by) + (s.for ? ' <span class="for">for ' + (low(s.for) === low(ME) ? 'you' : esc(s.for)) + '</span>' : '') + (s.colour ? ' <span class="colour" title="sealed in this colour: its members read it">· ' + esc(s.colour) + '</span>' : '') + '</a>' +
     '<a class="when" href="' + PATH + '/' + esc(s.a) + '" data-nav><time datetime="' + new Date(ms).toISOString() + '" title="' + esc(fullWhen(ms)) + '">' + esc(whenWords(ms)) + '</time>' + (own ? ' · yours' : '') + '</a></div>' + follow;
 }
 function bodyHTML(s, whole){
+  if (s.sealed) return '<p class="why sealed">' + esc(s.sealed) + '</p>';
   if (!s.why) return '';
   const long = !whole && !WHOLE[s.a] && (s.why.length > 300 || s.why.split('\n').length > 6);
   return '<p class="why' + (long ? ' shut' : '') + '">' + esc(s.why) + '</p>' + (long ? '<button type="button" class="linkish more" data-act="more">more</button>' : '');
@@ -644,6 +689,7 @@ function editHTML(){
     '<p class="hint e-hint" aria-live="polite"></p></div>';
 }
 function actsHTML(s, own, open){
+  if (s.sealed) return '';
   const list = answersTo(s.a), hearts = list.filter(x => isHeart(x.mark)).length, said = list.filter(x => x.words || (x.mark && !isHeart(x.mark))).length;
   const mine = mineAt(s.a), on = !!mine && isHeart(mine.mark), pop = POP === s.a;
   const heart = own
@@ -658,7 +704,7 @@ function saidHTML(a){
   const list = answersTo(a), hearts = list.filter(x => isHeart(x.mark) && !x.words), said = list.filter(x => x.words || !isHeart(x.mark));
   return (hearts.length ? '<p class="hearts"><b>♥</b> ' + hearts.map(x => '<a href="' + PATH + '/' + encodeURIComponent(x.by) + '" data-nav>' + esc(x.by) + '</a>').join(', ') + '</p>' : '') +
     (said.length ? '<ul class="said">' + said.map(x => '<li>' + ava(x.by) + '<div class="line"><a href="' + PATH + '/' + encodeURIComponent(x.by) + '" data-nav>' + esc(x.by) + '</a>' +
-      (x.mark ? '<span class="mark">' + esc(isHeart(x.mark) ? '♥' : x.mark) + '</span>' : '') + esc(x.words) + '</div></li>').join('') + '</ul>' : '') +
+      (x.sealed ? '<span class="sealedline">' + esc(x.sealed) + '</span>' : (x.mark ? '<span class="mark">' + esc(isHeart(x.mark) ? '♥' : x.mark) + '</span>' : '') + esc(x.words)) + '</div></li>').join('') + '</ul>' : '') +
     (!list.length ? '<p class="none">No answers yet.</p>' : '');
 }
 /* a hand has one line at an address and its own share is that line, so its own card takes no answer (function:string 2):
@@ -707,7 +753,7 @@ function drawCard(li, s, opts){
   } else {
     draw(li.querySelector('.body'), bodyHTML(s, opts.open));
   }
-  setThing(li.querySelector('.thing'), s.url);
+  if (s.sealed) draw(li.querySelector('.thing'), ''); else setThing(li.querySelector('.thing'), s.url);
   draw(li.querySelector('.acts'), actsHTML(s, own, open));
   const row = li.querySelector('.ownrow');
   row.hidden = !(own && (OWNOPEN[s.a] || FLASH[s.a])) || !!EDITING[s.a];
@@ -962,9 +1008,11 @@ function errText(r){
   return 'Not said: ' + ((r && r.error) || 'the beach did not answer') + '.';
 }
 const introFor = me => 'MIRROR — ' + me + '’s string (spine:string, function:string): each thing they shared, at the second they shared it, and each answer they gave, at the address of what they answered. Sovereign to them; nobody else writes here.';
-function sayLine(at, text, me){
+function sayLine(at, text, me, colour){
   const op = { field: FAM, at, text };
   if (me){ op.name = me; op.intro = introFor(me); }
+  /* a colour: the voice seals the line in it before it leaves, with the current turn's key from the member's own copy */
+  if (colour) op.gray = 'colour:' + colour;
   return beachVoice.say(op).then(r => {
     if (r && r.ok){ const was = ME; ME = clean(r.name || me || ''); if (ME) store.set('render:who', ME); if (ME !== was) loadFollows().then(paint); }
     return r;
@@ -1018,9 +1066,10 @@ async function landShare(url, why, whom){
   try {
     const at = await cellFor(me);
     if (!at){ hintMain('err', 'The beach didn’t say what time it is: try again in a moment.'); return; }
-    const r = await sayLine(at, 'SHARE ' + url + (whom ? ' for ' + whom : '') + ' — ' + why, btn ? '' : me);
+    const colour = MEMBERS && !$('colour-row').hidden ? $('colour').value : '';
+    const r = await sayLine(at, 'SHARE ' + url + (whom ? ' for ' + whom : '') + ' — ' + why, btn ? '' : me, colour);
     if (!r || !r.ok){ hintMain(r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
-    clearUrl(); clearWhy(); $('url').value = ''; $('why').value = ''; $('for').value = ''; hintMain('', '');
+    clearUrl(); clearWhy(); $('url').value = ''; $('why').value = ''; $('for').value = ''; $('colour').value = ''; hintMain('', '');
     openBox(false);
     /* a link brought with ?add= is shared now: the address forgets it, so a reload does not bring it again */
     const qs = new URLSearchParams(location.search);
@@ -1029,7 +1078,7 @@ async function landShare(url, why, whom){
     if (VIEW.kind !== 'feed') go(PATH);
     await refresh(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    toast(whom ? 'Shared for ' + whom + ': it waits at the top of their string.' : 'Shared.', { label: 'Send its link', fn: () => passOn(PATH + '/' + at, 'A share on the String') });
+    toast(colour ? 'Shared in ' + colour + ': members holding that colour read it.' : whom ? 'Shared for ' + whom + ': it waits at the top of their string.' : 'Shared.', { label: 'Send its link', fn: () => passOn(PATH + '/' + at, 'A share on the String') });
     clearTimeout(justTimer); justTimer = setTimeout(() => { JUST = ''; paint(); }, 9000);
   } catch(e){ hintMain('err', 'Couldn’t reach the beach: ' + e.message); }
   finally { BUSY = false; $('send').disabled = false; }
@@ -1099,7 +1148,7 @@ function withName(then){
 async function keyIn(typed, hint){
   const r = await beachVoice.prove({ name: typed });
   if (!r || !r.ok){ hint.className = r && r.quiet ? 'hint' : 'hint err'; hint.textContent = r && r.quiet ? '' : errText(r); return false; }
-  ME = clean(r.name); store.set('render:who', ME);
+  ME = clean(r.name); store.set('render:who', ME); COLOURS = null;
   sheet('who-back', false); hint.textContent = ''; paintAs();
   await loadFollows();
   await refresh(true);
@@ -1133,8 +1182,21 @@ function openBox(on, focus, card){
   $('send').textContent = PASSING ? 'Pass it on' : 'Share';
   hintMain('', '');
   sheet('compose-back', on);
-  if (on) paintAs();
+  if (on){ paintAs(); fillColours(); }
   if (on && focus) (PASSING ? $('for') : $('url').value ? $('why') : $('url')).focus();
+}
+/* the colours the beach offers this member — those whose copy their word opens, read through the voice as the box opens;
+   the open share stays the default, and a stranger or the open String sees no choice */
+let COLOURS = null;
+async function fillColours(){
+  const row = $('colour-row');
+  if (!MEMBERS || !ME || !beachVoice.colours){ row.hidden = true; return; }
+  if (!COLOURS) COLOURS = await beachVoice.colours({ name: ME }).catch(() => []);
+  row.hidden = !COLOURS.length;
+  if (!COLOURS.length) return;
+  const sel = $('colour'), was = sel.value;
+  sel.innerHTML = '<option value="">Every member</option>' + COLOURS.map(c => '<option value="' + esc(c.name) + '">' + esc(c.name) + ' · sealed</option>').join('');
+  sel.value = COLOURS.some(c => c.name === was) ? was : '';
 }
 /* the names on the beach, offered as they type: everyone with a passport, and whoever is on the String */
 let NAMED = false;
@@ -1153,7 +1215,7 @@ function paintAs(){
   el.innerHTML = ME ? 'Sharing as <b>' + esc(ME) + '</b>' + (MEMBERS ? ', a member' : '') + ' · <button type="button" class="linkish" data-act="not-me">not you?</button>' : MEMBERS ? 'You’ll key in as a member when you share.' : 'You’ll choose a name when you share.';
 }
 function notMe(){
-  ME = ''; store.del('render:who');
+  ME = ''; store.del('render:who'); COLOURS = null;
   if (GATED) beachVoice.leave();   // the pass is this member's: it goes with them
   Object.keys(EDITING).forEach(a => delete EDITING[a]);   // a box still holding the last reader's line is emptied with it
   document.querySelectorAll('.box').forEach(b => { b._for = ''; b.innerHTML = ''; });
@@ -1249,7 +1311,7 @@ async function saveEdit(li, s){
   if (!u){ say('err', 'The link must be a whole address, starting https://'); li.querySelector('.e-url').focus(); return; }
   if (!w){ say('err', 'Say in a line why it caught you.'); li.querySelector('.e-why').focus(); return; }
   save.disabled = true; say('', 'Changing it on the beach…');
-  const r = await sayLine(a, 'SHARE ' + u + (s.for ? ' for ' + s.for : '') + ' — ' + w, ME);
+  const r = await sayLine(a, 'SHARE ' + u + (s.for ? ' for ' + s.for : '') + ' — ' + w, ME, s.colour);
   save.disabled = false;
   if (!r || !r.ok){ say(r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
   li._clearUrl(); li._clearWhy(); delete EDITING[a]; OWNOPEN[a] = true;
@@ -1368,7 +1430,7 @@ async function init(){
     document.body.setAttribute('data-beach-button', 'off');
     $('bar-title').innerHTML = '<b>' + esc(low(WHOSE)) + '</b><span class="sub"> · the string</span>';
     const host = ROOT.replace(/^https?:\/\//, '');
-    $('how-members').innerHTML = 'This string stands on ' + esc(WHOSE) + '’s own beach, <code>' + esc(host) + '</code>, behind its members’ gate. A member proves their passport once, through the beach’s own voice, for a pass this device keeps for twelve hours, and every read and write carries it; the key is asked for by the browser and kept only as a write keeps it. A stranger reads what a member has marked beyond in their own index, and nothing else. A member brings someone in with <b>Invite someone</b>: a link that lives seven days and founds one passport, the newcomer’s, keyed on their own device. No link shared here is read by this site’s own function: a card shows its link’s site and path, never a picture fetched on a member’s behalf. Who you follow is kept on this device.';
+    $('how-members').innerHTML = 'This string stands on ' + esc(WHOSE) + '’s own beach, <code>' + esc(host) + '</code>, behind its members’ gate. A member proves their passport once, through the beach’s own voice, for a pass this device keeps for twelve hours, and every read and write carries it; the key is asked for by the browser once and kept on this device wrapped under a key the browser will not hand out, so your string reads and seals for you after a reload. A stranger reads what a member has marked beyond in their own index, and nothing else. A member brings someone in with <b>Invite someone</b>: a link that lives seven days and founds one passport, the newcomer’s, keyed on their own device. A share may be sealed in a colour its keeper has given you (<b>Who reads it</b>, as you share): members holding that colour read it, and everyone else sees that a sealed share stands, and nothing of it. No link shared here is read by this site’s own function: a card shows its link’s site and path, never a picture fetched on a member’s behalf. Who you follow is kept on this device.';
     $('how-members').hidden = false;
     $('how-cards').hidden = true;
   }
