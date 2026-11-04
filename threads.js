@@ -36,6 +36,14 @@
  * hand: it says the option's words in that hand's own mirror at the option's address, through the
  * beach's voice (window.siteVoice, the loom's word chips), and puts the place in the room of the hand
  * that offered it (window.beachThreads.handOn).
+ *
+ * THE ENDINGS BACK (function:thread re-cut 4 November 2026, bsp-mcp proposals/2026-11-04-threads-keep-their-
+ * endings.md): every act closes ' · waits on <handle>', ' · waits on <handle> from <date>' or ' · complete',
+ * and an option never does, so whose move it is stands in the thread again. A live end that waits on a hand
+ * from a date not yet come stays off their cards until that day, and waiting(handle).later lists it for a
+ * 'later' row; a place in a room is the doorbell, and makes a card only where the place's own lines carry no
+ * ending (the threads tied from 3 to 4 November). The tap writes the option's words and ' · waits on <the
+ * hand that offered it>' again, and still rings that hand's room.
  */
 (function () {
   'use strict';
@@ -145,7 +153,9 @@
      November, is an act wherever it stands (function:thread 7); in a thread opened before 29 October a
      line is also an act by its reads, a time or a word, as the thread battery's checker reads it */
   var READS = ' · read: ';
-  var CLAUSE = /\s·\s(?:waits on ([A-Za-z0-9_.\-]+(?:(?:,\s*|\s+and\s+)[A-Za-z0-9_.\-]+)*)|complete)\s*$/;
+  var CLAUSE = /\s·\s(?:waits on ([A-Za-z0-9_.\-]+(?:(?:,\s*|\s+and\s+)[A-Za-z0-9_.\-]+)*)(?:\s+from\s+(\d{4}-\d\d-\d\d))?|complete)\s*$/;
+  /* the day a waiting is put off to, ' · waits on <handle> from 2026-11-07', or '' */
+  function fromOf(t) { var m = CLAUSE.exec(bodyOf(t)); return (m && m[2]) || ''; }
   var PHASE2 = '2026-10-29T17:13:14Z';   /* the law of the closing clause, the battery's V2_SINCE */
   /* a place, thread:<address>, standing on its own: never the tail of a block's name, archive:ways:thread:2026-11-03 */
   var PLACE = /(^|[^\w:])thread:(\d+(?:\.\d+)?)\b/;
@@ -236,8 +246,9 @@
       me.hands = me.lines.filter(function (l) { return l.act; });
       me.taken = !parent || me.hands.length > 0 || beneath(key);
       me.live = me.hands.length > 0 && !me.kids.some(function (k) { return k.taken; });
-      me.waits = [];
+      me.waits = []; me.from = '';
       if (me.live) me.hands.forEach(function (l) { waitsOn(l.text, !!before).forEach(function (w) { if (me.waits.indexOf(w) < 0) me.waits.push(w); }); });
+      if (me.live) me.hands.forEach(function (l) { var f = fromOf(l.text); if (f > me.from) me.from = f; });
       me.crosses = [];
       me.lines.forEach(function (l) { var m, re = new RegExp(PLACE.source, 'g'); while ((m = re.exec(l.text))) if (m[2].split('.')[0] !== String(number)) me.crosses.push(m[2]); });
       return me;
@@ -445,7 +456,7 @@
   function tapsHTML(n) {
     var p = n.parent;
     if (!p || n.taken || !p.live || !p.waits.length || !n.option) return '';
-    var text = n.option, to = n.offerer || p.hands[0].who;
+    var to = n.offerer || p.hands[0].who, text = n.option + ' · waits on ' + to;
     return ' ' + p.waits.map(function (w) {
       return '<button type="button" class="th-tap" data-at="' + esc(n.addr) + '" data-who="' + esc(w) + '" data-to="' + esc(to) + '" data-say="' + esc(text) + '" title="' +
         esc('says this in thread:' + w + ' at ' + n.addr + ', and puts thread:' + n.addr + ' in ' + to + '’s room: ' + text) + '">take this' + (p.waits.length > 1 ? ', as ' + esc(w) : '') + '</button>';
@@ -575,7 +586,9 @@
   }
   /* everything in the registry that waits on a hand, with the options still open beneath it: what a
      person's own page shows them (function:thread 5), whether or not a proposal's law names the thread —
-     each place in their room that still waits on them, and each live end whose closing clause names them */
+     each live end whose ending names them, and each place in their room that still waits on them where the
+     place's own lines carry no ending. A live end that waits on them from a day not yet come is not a card:
+     the list's .later holds it, with its day, for a 'later' row */
   function waiting(handle, fresh) {
     if (fresh) forget();
     var places = roomPlaces(handle);
@@ -591,11 +604,13 @@
       return Promise.all(nums.map(function (num) { return readRegistry({ name: 'thread:' + num, registry: num, carries: '' }).catch(function () { return null; }); }));
     }).then(function (ths) {
       return places.then(function (ps) {
-        var out = [], seen = {}, byNum = {};
+        var out = [], seen = {}, byNum = {}, today = new Date().toISOString().slice(0, 10);
+        out.later = [];
         function card(th, x, from) {
           if (seen[th.registry + ' ' + x.addr]) return;
           seen[th.registry + ' ' + x.addr] = 1;
-          out.push({ number: th.registry, line: th.line, end: x, from: from, options: x.kids.filter(function (k) { return !k.taken && k.option; }) });
+          (x.from > today ? out.later : out).push({ number: th.registry, line: th.line, end: x, from: from, day: x.from,
+            options: x.kids.filter(function (k) { return !k.taken && k.option; }) });
         }
         (ths || []).forEach(function (th) {
           if (!th || !th.tree) return;
@@ -604,7 +619,8 @@
         });
         ps.forEach(function (p) {
           var th = byNum[p.place.split('.')[0]], x = th && nodeAt(th.tree, p.place);
-          if (x && x.lines.length && stillWaits(x, handle, p.by)) card(th, x, p.by);
+          var ended = x && x.lines.some(function (l) { return closes(l.text); });   /* an ending holds the state; the room line was its doorbell */
+          if (x && x.lines.length && !ended && stillWaits(x, handle, p.by)) card(th, x, p.by);
         });
         return out;
       });
@@ -615,6 +631,7 @@
      one append, as any hand may append to an open room, dated by the beach */
   function handOn(to, at, words, from) {
     if (!to) return Promise.resolve({ ok: false, error: 'no hand offered it' });
+    words = bodyOf(words).replace(CLAUSE, '');   /* the room line rings; the ending stands in the thread */
     return fetch(BEACH, { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ block: 'pool:' + to, append: true, content: { _: 'thread:' + at + ' — ' + words, 1: from || '', 2: '' } }) })
       .then(function (r) {

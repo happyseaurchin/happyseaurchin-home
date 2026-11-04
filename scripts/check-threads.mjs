@@ -3,7 +3,9 @@
 // options and every other line is an act, and a place put in a hand's room waits on that hand until one of its options
 // is taken or, where none was offered, until that hand ties at or beneath it, as the thread battery's short.py reads a
 // card. A line that closes ' · waits on <handle>' still waits on that handle; a thread opened before 29 October keeps
-// its old reading by a word; a tap's place is appended to the room of the hand that offered it.
+// its old reading by a word; a tap's place is appended to the room of the hand that offered it. And from 4 November the
+// endings are back: a live end waits on the hand its ending names, from a day not yet come only in the list's .later,
+// a room line is only its doorbell, and a tap writes ' · waits on <the hand that offered it>' with the option's words.
 //   node scripts/check-threads.mjs
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
@@ -98,6 +100,35 @@ const h = await T.handOn('rook', '1.1211', 'dana publishes draft 3', 'dana');
 const p = posted[posted.length - 1];
 check(h.ok && p.block === 'pool:rook' && p.append === true && p.content._ === 'thread:1.1211 — dana publishes draft 3' && p.content[1] === 'dana',
   'a tap\'s place is appended to the offerer\'s room: ' + JSON.stringify(p));
+
+// the endings back (function:thread re-cut 4 November 2026): threads tied with them, a room line only their doorbell
+const day = (k) => new Date(Date.now() + k * 864e5).toISOString().slice(0, 10);
+const T4 = '2026-11-04T13:00:00Z';
+Object.assign(BLOCKS['spine:thread'], { 5: { _: 'the berths page · opened by rook', 3: T4 }, 6: { _: 'the board\'s minutes · opened by rook', 3: T4 }, 7: { _: 'the slipway notice · opened by rook', 3: T4 } });
+Object.assign(BLOCKS['function:harbour'][5], { 5: 'thread:5 — the berths page', 6: 'thread:6 — the board\'s minutes', 7: 'thread:7 — the slipway notice' });
+const rook2 = BLOCKS['thread:rook'];
+knot(rook2, '5', 'drafted the berths page (berths:draft 1) · waits on dana');
+knot(rook2, '5.1', 'dana publishes it');
+knot(rook2, '5.2', 'dana asks for changes');
+knot(rook2, '6', 'the minutes wait on the board, which meets first · waits on dana from ' + day(3));
+knot(rook2, '7', 'the notice is drafted; the slipway reopened · waits on dana from ' + day(-1));
+Object.assign(BLOCKS['pool:dana'], { 3: entry('rook', 'rook: thread:5 — the berths page is yours to decide', T4), 4: entry('rook', 'rook: thread:6 — after the board meets', T4) });
+const all = await T.waiting('dana', true);
+check(JSON.stringify(all.map((w) => w.end.addr + (w.options.length ? ' [' + w.options.map((o) => o.addr).join(' ') + ']' : '')).filter((s) => /^[567]/.test(s)).sort()) === JSON.stringify(['5 [5.1 5.2]', '7']),
+  'by their endings, thread 5 waits on dana with its options open, once though her room rings it too, and thread 7, put off to a day passed, is hers again');
+check(all.later.length === 1 && all.later[0].end.addr === '6' && all.later[0].day === day(3),
+  'thread 6, put off to ' + day(3) + ', is no card yet though her room names it: it waits in .later with its day');
+
+const fake = () => { let t = ''; return { set textContent(v) { t = String(v); }, get innerHTML() { return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); } }; };
+Object.assign(document, { createElement: fake, getElementById: () => ({}), head: { appendChild() {} } });
+const el = { innerHTML: '', setAttribute() {} };
+T.forget();
+await T.draw(el, 'harbour');
+check(el.innerHTML.includes('data-say="dana publishes it · waits on rook"') && el.innerHTML.includes('data-to="rook"'),
+  'a tap on thread 5\'s open option says its words and \' · waits on rook\', the hand that offered it');
+const h2 = await T.handOn('rook', '5.1', 'dana publishes it · waits on rook', 'dana');
+const p2 = posted[posted.length - 1];
+check(h2.ok && p2.content._ === 'thread:5.1 — dana publishes it', 'the room line it rings carries the place and the words, the ending left in the thread');
 
 console.log(bad ? `${bad} NOT as expected` : 'all as expected');
 process.exit(bad ? 1 : 0);
