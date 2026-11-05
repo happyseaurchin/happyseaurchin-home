@@ -392,6 +392,13 @@ function layoutLive(nodes, edges, pending){
     for (const p of pending) spring(nodes[p.a], nodes[p.p], 0.32, 0.08);
     for (const n of nodes){ const g = n.deg ? 0.012 : 0.004; n.x *= 1 - g * k; n.y *= 1 - g * k; n.z *= 1 - g * k; }
   }
+  /* the forces settle at a size that grows with the count of handles, and the camera assumes the unit sphere: 103 handles on
+     5 November 2026 settled near radius 7, the unconnected near 17, behind the camera's near plane, and one arc with a negative
+     radius stopped every frame before the neurons. So the settled cloud is brought back to the sphere, its shape kept — the
+     committed handles' root-mean-square radius becomes 0.9 and phantoms and the unconnected ride along. */
+  const core = nodes.filter(n => !n.phantom && n.deg), ref = core.length ? core : nodes.filter(n => !n.phantom);
+  const rms = Math.sqrt(ref.reduce((t, n) => t + n.x * n.x + n.y * n.y + n.z * n.z, 0) / (ref.length || 1));
+  if (rms > 0){ const s = 0.9 / rms; for (const n of nodes){ n.x *= s; n.y *= s; n.z *= s; } }
 }
 
 /* after a message lands: re-read THAT grain only and patch it in place — the figure is untouched, nothing resets */
@@ -518,22 +525,22 @@ function draw(t){
     }
     for (const [k, list] of buckets){
       ctx.strokeStyle = `rgba(${k[0] === 'l' ? PAL.liquid : PAL.vapour},${(+k.slice(1)) / 20})`; ctx.lineWidth = k[0] === 'l' ? 1.6 : (syn ? (big ? 0.6 : 0.9) : 1.2); ctx.beginPath();
-      for (const i of list){ const e = G.edges[i]; ctx.moveTo(PX[e.a], PY[e.a]); ctx.lineTo(PX[e.b], PY[e.b]); }
+      for (const i of list){ const e = G.edges[i]; if (PS[e.a] <= 0 || PS[e.b] <= 0) continue; ctx.moveTo(PX[e.a], PY[e.a]); ctx.lineTo(PX[e.b], PY[e.b]); }
       ctx.stroke();
     }
   }
   if (LAYER.reaches && G.pending.length){
     ctx.setLineDash([3, 4]); ctx.strokeStyle = `rgba(${PAL.vapour},0.5)`; ctx.lineWidth = 1; ctx.beginPath();
-    for (const p of G.pending){ ctx.moveTo(PX[p.a], PY[p.a]); ctx.lineTo(PX[p.p], PY[p.p]); }
+    for (const p of G.pending){ if (PS[p.a] <= 0 || PS[p.p] <= 0) continue; ctx.moveTo(PX[p.a], PY[p.a]); ctx.lineTo(PX[p.p], PY[p.p]); }
     ctx.stroke(); ctx.setLineDash([]);
-    for (const p of G.pending){ ctx.strokeStyle = `rgba(${PAL.vapour},0.7)`; ctx.beginPath(); ctx.arc(PX[p.p], PY[p.p], 3.5 * PS[p.p], 0, Math.PI * 2); ctx.stroke(); }
+    for (const p of G.pending){ if (PS[p.p] <= 0) continue; ctx.strokeStyle = `rgba(${PAL.vapour},0.7)`; ctx.beginPath(); ctx.arc(PX[p.p], PY[p.p], Math.max(0.5, 3.5 * PS[p.p]), 0, Math.PI * 2); ctx.stroke(); }
   }
 
   ORDER.sort((i, j) => PZ[j] - PZ[i]);
   if (!flash || flash.length !== n) flash = new Float32Array(n);
   const YOU = (!syn && HANDLE && G.byId.has(HANDLE)) ? G.byId.get(HANDLE) : -1;
   for (const i of ORDER){
-    const N = G.nodes[i]; if (N.phantom) continue;
+    const N = G.nodes[i]; if (N.phantom || PS[i] <= 0) continue;
     const d = depthA(i), p = PS[i];
     let r = (syn ? (1.1 + 0.75 * Math.sqrt(N.deg)) * p : (N.deg ? (5 + 2.6 * Math.sqrt(N.deg)) : 3.4) * p) * (syn ? zoomK() : Math.min(1.6, zoomK()));
     if (big) r *= 0.8;
@@ -558,6 +565,7 @@ function draw(t){
       const P = pulses[k], e = G.edges[P.e]; P.t += P.v * dt / 16;
       if (P.t >= 1){ flash[P.rev ? e.a : e.b] = 1; pulses.splice(k, 1); continue; }
       const A = P.rev ? e.b : e.a, B = P.rev ? e.a : e.b, tt = P.t;
+      if (PS[A] <= 0 || PS[B] <= 0) continue;
       const x = PX[A] + (PX[B] - PX[A]) * tt, y = PY[A] + (PY[B] - PY[A]) * tt, s = (PS[A] + (PS[B] - PS[A]) * tt) * (syn ? 6 : 10);
       ctx.globalAlpha = 0.9; ctx.drawImage(SPR.liquid, x - s, y - s, s * 2, s * 2); ctx.globalAlpha = 1;
       ctx.fillStyle = PAL.foam; ctx.beginPath(); ctx.arc(x, y, syn ? 1.1 : 1.8, 0, Math.PI * 2); ctx.fill();
@@ -566,7 +574,7 @@ function draw(t){
 
   if (LAYER.labels){
     ctx.font = '11px "Space Mono", ui-monospace, monospace'; ctx.textBaseline = 'middle';
-    const label = (i, col) => { const N = G.nodes[i]; const r = syn ? 4 : (6 + 2.6 * Math.sqrt(N.deg)) * PS[i]; ctx.fillStyle = col; ctx.fillText(N.id, PX[i] + r + 5, PY[i]); };
+    const label = (i, col) => { if (PS[i] <= 0) return; const N = G.nodes[i]; const r = syn ? 4 : (6 + 2.6 * Math.sqrt(N.deg)) * PS[i]; ctx.fillStyle = col; ctx.fillText(N.id, PX[i] + r + 5, PY[i]); };
     if (!syn){
       for (let i = 0; i < n; i++){ const N = G.nodes[i];
         if (N.phantom){ if (LAYER.reaches) label(i, `rgba(${PAL.vapour},0.6)`); continue; }
@@ -606,8 +614,8 @@ canvas.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') tou
 canvas.addEventListener('pointermove', e => { if (!touches.has(e.pointerId)) return; touches.set(e.pointerId, [e.clientX, e.clientY]); if (touches.size === 2 && pinch0){ const [p, q] = [...touches.values()]; const d = Math.hypot(p[0] - q[0], p[1] - q[1]) || 1; cam.dist = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinch0.dist * pinch0.d / d)); } });
 const endTouch = e => { touches.delete(e.pointerId); if (touches.size < 2) pinch0 = null; };
 canvas.addEventListener('pointerup', endTouch); canvas.addEventListener('pointercancel', endTouch);
-function hitNode(x, y){ let best = -1, bd = 1e9; const zk = G.synthetic ? zoomK() : 1; for (let i = 0; i < G.nodes.length; i++){ const r = ((G.synthetic ? 6 : 12) + 2 * Math.sqrt(G.nodes[i].deg)) * zk; const d = Math.hypot(PX[i] - x, PY[i] - y); if (d < r && d < bd){ bd = d; best = i; } } return best; }
-function hitEdge(x, y){ if (!LAYER.grains) return -1; let best = -1, bd = 7; for (let i = 0; i < G.edges.length; i++){ const e = G.edges[i]; const ax = PX[e.a], ay = PY[e.a], bx = PX[e.b], by = PY[e.b]; const L2 = (bx - ax) ** 2 + (by - ay) ** 2 || 1; let t = ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L2; t = Math.max(0, Math.min(1, t)); const d = Math.hypot(ax + (bx - ax) * t - x, ay + (by - ay) * t - y); if (d < bd){ bd = d; best = i; } } return best; }
+function hitNode(x, y){ let best = -1, bd = 1e9; const zk = G.synthetic ? zoomK() : 1; for (let i = 0; i < G.nodes.length; i++){ if (PS[i] <= 0) continue; const r = ((G.synthetic ? 6 : 12) + 2 * Math.sqrt(G.nodes[i].deg)) * zk; const d = Math.hypot(PX[i] - x, PY[i] - y); if (d < r && d < bd){ bd = d; best = i; } } return best; }
+function hitEdge(x, y){ if (!LAYER.grains) return -1; let best = -1, bd = 7; for (let i = 0; i < G.edges.length; i++){ const e = G.edges[i]; if (PS[e.a] <= 0 || PS[e.b] <= 0) continue; const ax = PX[e.a], ay = PY[e.a], bx = PX[e.b], by = PY[e.b]; const L2 = (bx - ax) ** 2 + (by - ay) ** 2 || 1; let t = ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L2; t = Math.max(0, Math.min(1, t)); const d = Math.hypot(ax + (bx - ax) * t - x, ay + (by - ay) * t - y); if (d < bd){ bd = d; best = i; } } return best; }
 function setFocus(i){
   FOCUS = i; computeHops();
   if (i >= 0){ const N = G.nodes[i]; cam.gx = N.x; cam.gy = N.y; cam.gz = N.z; } else { cam.gx = cam.gy = cam.gz = 0; }
