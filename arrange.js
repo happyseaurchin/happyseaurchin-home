@@ -13,7 +13,8 @@
  *
  * window.beachArrange = { read(handle), list(), others(), parse(block), toBlock(roots, name), label(id),
  *   info(id, list), said(handle), draw(el, opts) }. draw() makes the panel: whose arrangement is shown, the
- *   tree with links, the ones not placed, and 'Arrange yours'. opts: { handle, onShow(roots, who, how) }.
+ *   tree with links, the ones not placed, and 'Arrange yours'. opts: { handle, layout, onShow(roots, who, how) };
+ *   it returns { ready, show(handle), layout('list' | 'cards') }.
  *
  * DRAGGING (y-ray.3, 27 Oct 2026, after David asked 'how do I actually rearrange them??'): every row of an
  * arrangement carries a grip, ⠿. Dragged, by touch or the mouse, it carries its proposal and whatever
@@ -21,6 +22,13 @@
  * down among the ones not placed to take it out; the place it would land is drawn while it moves, and nine
  * at a rung is held. The first move on someone's arrangement starts yours from it. Tapped, the grip holds
  * its proposal, the tap way that stays beneath for anyone who cannot drag; its arrow keys move it.
+ *
+ * CARDS (proposal-views step 3, 5 Nov 2026, after David asked for 'a more graphical version where I can drag
+ * and drop cards into other cards to show the "nesting", rather than a list'): layout 'cards' draws the same
+ * arrangement as cards, each holding what stands inside it as smaller cards, side by side at the top and one
+ * beneath another inside. The same moves, refusals, undo, keeping and tap way serve both layouts: dropped on a
+ * card it goes inside it; at a card's edge, or in the space between cards, it goes before or after that card
+ * among its own; down among the ones not placed, it is taken out. The block is the same either way.
  *
  * Drawn in the tokens every page here keeps (--foam, --vapour-dim, --line, --line-strong, --liquid,
  * --liquid-rgb, --mono, --card, --err), so it wears whichever palette the page has. Needs the beach's voice
@@ -188,6 +196,7 @@
      INDENT px further in, its guide line standing under the grip of the row it is inside. */
   var GRIP = '⠿', INDENT = 26;
   var HOW = 'Drag <b>' + GRIP + '</b> to arrange: up or down to reorder, onto another to put it inside, left to lift it out a level.';
+  var HOW_CARDS = 'Drag <b>' + GRIP + '</b> to arrange: onto a card to put it inside, to a card’s edge to put it beside, down to Not placed yet to take it out.';
   var CSS = '.arr{position:relative;box-sizing:border-box;max-width:100%;border:1px solid var(--line-strong,#b3c3cb);border-radius:12px;padding:14px 16px;background:rgba(var(--liquid-rgb,27,90,108),0.04);color:var(--foam,inherit)}' +
     '.arr-head{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}' +
     '.arr-who{font-weight:700;font-size:1.05rem;margin:0}' +
@@ -240,7 +249,28 @@
     '.arr-say{margin:8px 0;min-height:1.4em;font-size:0.9375rem}' +
     '.arr-say.err{color:var(--err,#b3261e)}' +
     '.arr-name{font:inherit;border:1px solid var(--line-strong,#b3c3cb);border-radius:8px;padding:6px 10px;min-height:40px;background:transparent;color:inherit;max-width:12rem}' +
-    '.arr-look{display:flex;gap:6px;align-items:center;flex-wrap:wrap}';
+    '.arr-look{display:flex;gap:6px;align-items:center;flex-wrap:wrap}' +
+    /* the cards: side by side at the top, one beneath another inside a card, each rung's well a shade deeper */
+    '.arr-cards{display:grid;gap:10px;align-items:start}' +
+    '.arr-top{grid-template-columns:repeat(auto-fill,minmax(min(100%,17rem),1fr));gap:14px}' +
+    '.arr-small{grid-template-columns:repeat(auto-fill,minmax(min(100%,12rem),1fr));gap:8px}' +
+    '.arr-in{margin:8px 0 2px 4px;padding:8px;border-radius:10px;border:1px solid var(--line,#d3dee4);background:rgba(var(--liquid-rgb,27,90,108),0.07)}' +
+    '.arr-card{position:relative;box-sizing:border-box;min-width:0;border:1px solid var(--line-strong,#b3c3cb);border-radius:12px;background:var(--card,#fff);padding:4px 10px 10px 4px;box-shadow:0 1px 3px rgba(0,0,0,0.08)}' +
+    '.arr-in>.arr-card,.arr-small>.arr-card{border-radius:10px;padding:2px 8px 8px 2px;box-shadow:none}' +
+    '.arr-card-head{display:flex;align-items:flex-start}' +
+    '.arr-card .arr-grip{width:30px;min-height:40px;padding-top:11px}' +
+    '.arr-card .arr-txt{padding:9px 0 2px 2px}' +
+    '.arr-card .w,.arr-card .note{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;line-clamp:3;overflow:hidden;margin:0 0 0 32px;color:var(--vapour-dim,#526571);font-size:0.875rem;line-height:1.4}' +
+    '.arr-small .w{-webkit-line-clamp:2;line-clamp:2}' +
+    '.arr-card .note{font-style:italic}' +
+    '.arr-card.held{border-color:var(--liquid,#1b5a6c);box-shadow:0 0 0 2px rgba(var(--liquid-rgb,27,90,108),0.35)}' +
+    '.arr-card.target{border-style:dashed}' +
+    '.arr-card.into{border-color:var(--liquid,#1b5a6c);background:rgba(var(--liquid-rgb,27,90,108),0.14);box-shadow:0 0 0 2px rgba(var(--liquid-rgb,27,90,108),0.35)}' +
+    '.arr-card.into.full{border-color:var(--err,#b3261e);background:var(--card,#fff);box-shadow:0 0 0 2px rgba(179,38,30,0.25)}' +
+    '.arr-card.arr-lifted{opacity:0.35}' +
+    '.arr-card.bare{padding-left:10px}.arr-card.bare .w,.arr-card.bare .note{margin-left:2px}' +
+    '.arr-line.v{width:3px;margin:0 0 0 -1.5px}' +
+    '.arr-line.v::before{left:-3.5px;top:-5px}';
   function style() {
     if (document.getElementById('arrange-css')) return;
     var s = document.createElement('style'); s.id = 'arrange-css'; s.textContent = CSS; document.head.appendChild(s);
@@ -289,40 +319,63 @@
     style();
     var lst = [], kept = [], st = { who: opts.handle || DEFAULT, roots: [], how: 'list', touched: '' };
     var ed = null;     // while arranging: { roots, held, name, said, err, how, prior, undo }
-    var drag = null;   // while a grip is down: { id, depth, row, pid, touch, x0, y0, x, y, on, t, line, ghost, tgt, raf }
+    var drag = null;   // while a grip is down: { id, depth, row, lifted, pid, touch, x0, y0, x, y, on, t, line, ghost, tgt, raf }
+    var lay = opts.layout === 'cards' ? 'cards' : 'list', painted = false;
     var mine = function () { return window.beachVoice && beachVoice.name ? beachVoice.name() : ''; };
 
+    function gripOf(id) {
+      return '<button type="button" class="arr-grip" data-grip="' + esc(id) + '" aria-label="Move ' + esc(label(id)) +
+        ': drag it, tap it to hold it, or use the arrow keys">' + GRIP + '</button>';
+    }
+    /* a proposal's name goes to its standard view, and a Snazzy button beside it to its page where it has one: two
+       addresses, each always itself (David, 28 Oct 2026); while arranging, the name is the tap way's target */
+    function nameOf(r, p) {
+      var std = '/proposal/' + r.id, listed = lst.some(function (x) { return x.id === r.id; });
+      var snazzy = listed && p.href !== std ? p.href : '';
+      return ed ? '<button type="button" class="arr-lab" data-tap="' + esc(r.id) + '">' + esc(label(r.id)) + '</button>'
+        : '<a class="arr-lab" href="' + esc(listed ? std : p.href) + '">' + esc(label(r.id)) + '</a>' +
+          (snazzy ? '<a class="arr-snazzy" href="' + esc(snazzy) + '">Snazzy</a>' : '');
+    }
+    /* every row and card keeps its proposal's line, one with others nested inside it too: a title alone does not say
+       what a proposal is about (David, 29 Oct 2026); a card has room for the whole line, and keeps it in its title */
+    function lineOf(r, p, whole) {
+      if (r.note) return '<span class="note">' + esc(r.note) + '</span>';
+      if (!p.what) return '';
+      return whole ? '<span class="w" title="' + esc(p.what) + '">' + esc(p.what) + '</span>' : '<span class="w">' + esc(brief(p.what)) + '</span>';
+    }
+    function heldCls(id) { return ed && ed.held ? (ed.held === id ? ' held' : ' target') : ''; }
     /* the rows: each proposal's grip, its name and its line, and beneath it what stands inside it */
     function rows(roots, depth, grips) {
       if (!roots.length) return '';
       return '<ul>' + roots.map(function (r) {
-        var p = info(r.id, lst), cls = 'arr-item' + (ed && ed.held ? (ed.held === r.id ? ' held' : ' target') : '');
-        /* a proposal's name goes to its standard view, and a Snazzy button beside it to its page where it has one: two
-           addresses, each always itself (David, 28 Oct 2026) */
-        var std = '/proposal/' + r.id, listed = lst.some(function (x) { return x.id === r.id; });
-        var snazzy = listed && p.href !== std ? p.href : '';
-        var name = ed ? '<button type="button" class="arr-lab" data-tap="' + esc(r.id) + '">' + esc(label(r.id)) + '</button>'
-          : '<a class="arr-lab" href="' + esc(listed ? std : p.href) + '">' + esc(label(r.id)) + '</a>' +
-            (snazzy ? '<a class="arr-snazzy" href="' + esc(snazzy) + '">Snazzy</a>' : '');
-        return '<li><div class="' + cls + '" data-id="' + esc(r.id) + '" data-depth="' + depth + '">' +
-          (grips ? '<button type="button" class="arr-grip" data-grip="' + esc(r.id) + '" aria-label="Move ' + esc(label(r.id)) +
-            ': drag it, tap it to hold it, or use the arrow keys">' + GRIP + '</button>' : '') +
-          '<span class="arr-txt">' + name +
-          /* every row keeps its proposal's line, a row with others nested inside it too: a title alone does not say
-             what a proposal is about (David, 29 Oct 2026) */
-          (r.note ? '<span class="note">' + esc(r.note) + '</span>' : (p.what ? '<span class="w">' + esc(brief(p.what)) + '</span>' : '')) +
-          '</span></div>' + rows(r.kids, depth + 1, grips) + '</li>';
+        var p = info(r.id, lst);
+        return '<li><div class="arr-item' + heldCls(r.id) + '" data-id="' + esc(r.id) + '" data-depth="' + depth + '">' +
+          (grips ? gripOf(r.id) : '') + '<span class="arr-txt">' + nameOf(r, p) + lineOf(r, p) + '</span></div>' +
+          rows(r.kids, depth + 1, grips) + '</li>';
       }).join('') + '</ul>';
     }
+    /* the cards: each proposal's grip, its name and its line, and inside it, as smaller cards, what stands inside it */
+    function boxes(roots, depth, grips, small) {
+      return '<div class="arr-cards ' + (depth ? 'arr-in' : small ? 'arr-small' : 'arr-top') + '">' + roots.map(function (r) {
+        var p = info(r.id, lst);
+        return '<div class="arr-card' + heldCls(r.id) + (grips ? '' : ' bare') + '" data-id="' + esc(r.id) + '" data-depth="' + depth + '">' +
+          '<div class="arr-card-head">' + (grips ? gripOf(r.id) : '') + '<span class="arr-txt">' + nameOf(r, p) + '</span></div>' +
+          lineOf(r, p, true) + (r.kids.length ? boxes(r.kids, depth + 1, grips) : '') + '</div>';
+      }).join('') + '</div>';
+    }
+    function drawn(roots, grips, small) {
+      return lay === 'cards' ? boxes(roots, 0, grips, small) : '<div class="arr-tree">' + rows(roots, 0, grips) + '</div>';
+    }
+    function howTo() { return lay === 'cards' ? HOW_CARDS : HOW; }
     function loose(roots) {
       var named = ids(roots);
       return lst.filter(function (p) { return !named[p.id]; });
     }
-    /* where an arrangement is drawn: the placed tree, and beneath it the ones not placed */
+    /* where an arrangement is drawn: the placed tree or cards, and beneath them the ones not placed */
     function zones(roots, empty) {
       var lo = loose(roots);
-      return '<div class="arr-zone" data-box="placed">' + (roots.length ? '<div class="arr-tree">' + rows(roots, 0, true) + '</div>' : '<p class="arr-empty">' + empty + '</p>') + '</div>' +
-        (lo.length ? '<div class="arr-zone" data-box="loose"><p class="arr-h">Not placed yet</p><div class="arr-tree">' + rows(lo.map(leaf), 0, true) + '</div></div>' : '');
+      return '<div class="arr-zone" data-box="placed">' + (roots.length ? drawn(roots, true) : '<p class="arr-empty">' + empty + '</p>') + '</div>' +
+        (lo.length ? '<div class="arr-zone" data-box="loose"><p class="arr-h">Not placed yet</p>' + drawn(lo.map(leaf), true, true) + '</div>' : '');
     }
     function source() {
       var h = st.who;
@@ -352,12 +405,13 @@
     }
     function paintView(msg) {
       var me = mine(), list = st.how === 'list';
+      painted = true;
       var title = list ? 'The proposals, as the list stands' : (st.who === me ? 'Your arrangement' : whose(st.who) + '’s arrangement');
       el.innerHTML = '<div class="arr"><div class="arr-head"><p class="arr-who">' + esc(title) + '</p><p class="arr-src">' + source() + '</p></div>' +
         chips() +
         (list ? '<p class="arr-how">The list as it was shared. To arrange the proposals, choose an arrangement above and drag them, or tap Arrange yours.</p>' +
-            '<div class="arr-zone" data-box="loose"><div class="arr-tree">' + rows(lst.map(leaf), 0, false) + '</div></div>'
-          : '<p class="arr-how">' + HOW + '</p>' + (msg ? '<p class="arr-say err" aria-live="polite">' + esc(msg) + '</p>' : '') +
+            '<div class="arr-zone" data-box="loose">' + drawn(lst.map(leaf), false, true) + '</div>'
+          : '<p class="arr-how">' + howTo() + '</p>' + (msg ? '<p class="arr-say err" aria-live="polite">' + esc(msg) + '</p>' : '') +
             zones(st.roots, esc(whose(st.who)) + ' keeps no arrangement yet, so every proposal stands loose. Drag one up here to start yours.') +
             '<p class="arr-tapway">Can’t drag? Tap ' + GRIP + ' to hold one, then tap where it goes.</p>') +
         '<div class="arr-acts"><button type="button" class="arr-btn primary" data-act="arrange">' +
@@ -459,8 +513,8 @@
     /* ── dragging: the grip is followed at the document, the place it would land drawn as it goes ── */
     function grab(e) {
       if (drag || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      var row = e.currentTarget.parentNode;
-      drag = { id: e.currentTarget.getAttribute('data-grip'), depth: +row.getAttribute('data-depth') || 0, row: row, pid: e.pointerId,
+      var cards = lay === 'cards', row = cards ? e.currentTarget.closest('.arr-card') : e.currentTarget.parentNode;
+      drag = { id: e.currentTarget.getAttribute('data-grip'), depth: +row.getAttribute('data-depth') || 0, row: row, lifted: cards ? row : row.parentNode, pid: e.pointerId,
         touch: e.pointerType !== 'mouse', x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, on: false };
       if (!drag.touch) e.preventDefault();      // a mouse drag selects no text
       document.addEventListener('pointermove', follow, { passive: false });
@@ -479,7 +533,7 @@
     }
     function lift() {
       drag.on = true; drag.t = Date.now();
-      drag.row.parentNode.classList.add('arr-lifted');
+      drag.lifted.classList.add('arr-lifted');
       document.documentElement.classList.add('arr-dragging');
       drag.line = document.createElement('div'); drag.line.className = 'arr-line';
       el.querySelector('.arr').appendChild(drag.line);
@@ -503,6 +557,7 @@
        drag has moved right or left, between the deepest the row above allows and the row below needs; among
        the ones not placed, out */
     function aimAt(x, y) {
+      if (lay === 'cards') return aimCards(x, y);
       var id = drag.id, roots = ed ? ed.roots : st.roots, f = find(roots, id);
       var boxP = el.querySelector('[data-box="placed"]'), boxL = el.querySelector('[data-box="loose"]');
       function rect(n) { var r = n.getBoundingClientRect(); return { id: n.getAttribute('data-id'), depth: +n.getAttribute('data-depth') || 0, top: r.top, bottom: r.bottom }; }
@@ -537,16 +592,92 @@
       t.y = !rs.length ? null : prev && next ? (prev.bottom + next.top) / 2 : next ? next.top - 2 : prev.bottom + 2;
       return t;
     }
+    /* the same among cards: onto a card, inside it; at its leading edge, before it among its own, and at its trailing
+       edge or in the space beside it, after it; in a card's well, beside the nearest card there; below the well, after
+       that card; among the ones not placed, out. Side by side at the top the edges are left and right, inside a card
+       (and on a phone, one card wide) top and bottom. */
+    function aimCards(x, y) {
+      var id = drag.id, roots = ed ? ed.roots : st.roots, f = find(roots, id);
+      var boxP = el.querySelector('[data-box="placed"]'), boxL = el.querySelector('[data-box="loose"]');
+      var top = boxP && boxP.querySelector('.arr-top'), stays = { kind: 'same', say: 'stays where it is' };
+      function R(n) { return n.getBoundingClientRect(); }
+      function hit(r, pad) { pad = pad || 0; return x >= r.left - pad && x <= r.right + pad && y >= r.top - pad && y <= r.bottom + pad; }
+      function live(n) { return !n.closest('.arr-lifted'); }
+      function cardsOf(box) { return [].filter.call(box.children, function (n) { return n.classList.contains('arr-card') && live(n); }); }
+      function across(box) { return box === top && getComputedStyle(box).gridTemplateColumns.split(' ').length > 1; }
+      function onto(tid) {
+        var why = refuse(roots, id, { kind: 'into', id: tid }), same = !!f && !!f.parent && f.parent.id === tid && f.at === f.sibs.length - 1;
+        return { kind: same ? 'same' : 'into', id: tid, full: !!why, say: why || (same ? 'stays where it is' : 'inside ' + label(tid)) };
+      }
+      /* before or after card c among its own, the bar drawn in the space between them */
+      function beside(c, after) {
+        var cid = c.getAttribute('data-id'), cf = find(roots, cid), parent = cf && cf.parent ? cf.parent.id : null, wide = across(c.parentNode);
+        var others = (cf ? cf.sibs : roots).map(function (s) { return s.id; }).filter(function (s) { return s !== id; });
+        var t = { kind: 'gap', parent: parent, index: others.indexOf(cid) + (after ? 1 : 0) }, why = refuse(roots, id, t), r = R(c);
+        var same = !!f && (f.parent ? f.parent.id : null) === parent && f.at === t.index;
+        if (same) t.kind = 'same';
+        t.full = !!why;
+        t.say = why || (same ? 'stays where it is' : parent ? 'here, inside ' + label(parent) : 'here, at the top');
+        t.bar = wide ? { v: true, x: after ? r.right + 7 : r.left - 7, y: r.top, h: r.bottom - r.top } : { x: r.left, y: after ? r.bottom + 5 : r.top - 5, w: r.right - r.left };
+        return t;
+      }
+      /* in the space among a box's cards: beside the nearest of them */
+      function among(box) {
+        var best = null, bd = Infinity;
+        cardsOf(box).forEach(function (c) {
+          var r = R(c), dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - y, 0, y - r.bottom);
+          if (dx * dx + dy * dy < bd) { bd = dx * dx + dy * dy; best = c; }
+        });
+        if (!best) return null;
+        var r = R(best);
+        if (across(box) && y >= r.top && y <= r.bottom) return beside(best, x > (r.left + r.right) / 2);
+        return beside(best, y > (r.top + r.bottom) / 2);
+      }
+      if (boxL && y >= R(boxL).top) {
+        var over = [].filter.call(boxL.querySelectorAll('.arr-card'), function (n) { return live(n) && hit(R(n)); })[0];
+        if (over) return onto(over.getAttribute('data-id'));
+        return f ? { kind: 'out', say: 'out, not placed' } : { kind: 'same', say: 'stays loose' };
+      }
+      if (!boxP || !hit(R(boxP), 16)) return stays;
+      if (!top) return { kind: 'gap', parent: null, index: 0, y: null, say: 'here, at the top' };
+      var lifted = boxP.querySelector('.arr-lifted');
+      if (lifted && hit(R(lifted))) return stays;
+      var under = [].filter.call(boxP.querySelectorAll('.arr-card'), function (n) { return live(n) && hit(R(n)); });
+      var c = under[under.length - 1];            // the deepest card under the pointer
+      if (!c) return among(top) || stays;
+      var r = R(c), wide = across(c.parentNode), well = [].filter.call(c.children, function (n) { return n.classList.contains('arr-in'); })[0];
+      if (well) {
+        var w = R(well);
+        if (y > w.bottom) return beside(c, true);
+        if (y >= w.top) return among(well) || onto(c.getAttribute('data-id'));
+      }
+      var lead = wide ? Math.min(18, (r.right - r.left) * 0.2) : Math.min(12, (r.bottom - r.top) * 0.25);
+      if (wide ? x < r.left + lead : y < r.top + lead) return beside(c, false);
+      if (wide ? x > r.right - lead : !well && y > r.bottom - lead) return beside(c, true);
+      return onto(c.getAttribute('data-id'));
+    }
     function aim() {
       var t = drag.tgt = aimAt(drag.x, drag.y), line = drag.line, g = drag.ghost;
       unmark();
       line.style.display = 'none';
       line.classList.toggle('full', !!t.full);
-      if (t.kind === 'into') { var row = el.querySelector('.arr-item[data-id="' + t.id + '"]'); if (row) { row.classList.add('into'); if (t.full) row.classList.add('full'); } }
+      if (t.kind === 'into') {
+        var row = el.querySelector((lay === 'cards' ? '.arr-card' : '.arr-item') + '[data-id="' + t.id + '"]');
+        if (row) { row.classList.add('into'); if (t.full) row.classList.add('full'); }
+      }
       else if (t.kind === 'out') el.querySelector('[data-box="loose"]').classList.add('out');
       else if (t.kind === 'gap') {
         var boxP = el.querySelector('[data-box="placed"]');
-        if (t.y == null) { boxP.classList.add('here'); if (t.full) boxP.classList.add('full'); }
+        if (t.bar) {
+          var b = t.bar, a0 = el.querySelector('.arr').getBoundingClientRect();
+          line.classList.toggle('v', !!b.v);
+          line.style.display = 'block';
+          line.style.top = Math.round(b.y - a0.top) + 'px';
+          line.style.left = Math.round(b.x - a0.left) + 'px';
+          line.style.width = b.v ? '' : Math.max(40, Math.round(b.w)) + 'px';
+          line.style.height = b.v ? Math.max(24, Math.round(b.h)) + 'px' : '';
+        }
+        else if (t.y == null) { boxP.classList.add('here'); if (t.full) boxP.classList.add('full'); }
         else {
           var a = el.querySelector('.arr').getBoundingClientRect(), z = boxP.getBoundingClientRect(), left = z.left + t.depth * INDENT + 6;
           line.style.display = 'block';
@@ -564,7 +695,7 @@
       g.style.transform = 'translate(' + Math.round(gx) + 'px,' + Math.round(gy) + 'px)';
     }
     function unmark() {
-      el.querySelectorAll('.arr-item.into,.arr-zone.out,.arr-zone.here').forEach(function (n) { n.classList.remove('into', 'out', 'here', 'full'); });
+      el.querySelectorAll('.arr-item.into,.arr-card.into,.arr-zone.out,.arr-zone.here').forEach(function (n) { n.classList.remove('into', 'out', 'here', 'full'); });
     }
     function release(e) {
       if (!drag || e.pointerId !== drag.pid) return;
@@ -590,7 +721,7 @@
         cancelAnimationFrame(drag.raf);
         if (drag.ghost) drag.ghost.remove();
         if (drag.line) drag.line.remove();
-        if (drag.row.parentNode) drag.row.parentNode.classList.remove('arr-lifted');
+        if (drag.lifted) drag.lifted.classList.remove('arr-lifted');
       }
       unmark();
       document.documentElement.classList.remove('arr-dragging');
@@ -605,12 +736,13 @@
 
     function paintEdit(focus) {
       var me = mine(), btn = !!(window.beachVoice && beachVoice.button && beachVoice.button.shown());
+      painted = true;
       var replaces = me && st.who !== me && kept.some(function (k) { return k.handle === me; });
       var start = { draft: 'picked up where you left it on this device', yours: 'from your own, as it stands on the beach', said: 'from your words of 24 and 27 October',
         copy: st.how === 'list' ? 'from the plain list' : 'copied from ' + whose(st.who) + '’s' + (replaces ? '; keeping it replaces yours' : '') }[ed.how] || '';
       el.innerHTML = '<div class="arr editing"><div class="arr-head"><p class="arr-who">Arranging yours</p><p class="arr-src">' + esc(start) +
         (ed.prior ? ' · <button type="button" class="arr-link" data-act="prior">bring back the one you left on this device</button>' : '') + '</p></div>' +
-        '<p class="arr-how">' + HOW + '</p>' +
+        '<p class="arr-how">' + howTo() + '</p>' +
         '<p class="arr-say' + (ed.err ? ' err' : '') + '" aria-live="polite">' + esc(ed.said) + '</p>' +
         zones(ed.roots, 'Nothing placed yet: drag a proposal up here.') +
         '<p class="arr-tapway">Can’t drag? Tap a proposal to hold it, then tap the one it goes inside. Nothing is written onto any proposal.</p>' +
@@ -655,12 +787,22 @@
       });
     }
 
+    /* the same panel drawn the other way, as rows or as cards: what is shown, or being arranged, stays as it is,
+       and a drag under way is let go */
+    function layout(l) {
+      l = l === 'cards' ? 'cards' : 'list';
+      if (l === lay) return;
+      if (drag) abandon();
+      lay = l;
+      if (painted) { if (ed) paintEdit(); else paintView(); }
+    }
+
     var ready = Promise.all([list(), others().catch(function () { return []; })]).then(function (two) {
       lst = two[0] || []; kept = two[1] || [];
       if (opts.handle === '') { st.how = 'list'; paintView(); return; }
       return show(opts.handle || DEFAULT);
     });
-    return { ready: ready, show: show };
+    return { ready: ready, show: show, layout: layout };
   }
 
   window.beachArrange = { FAMILY: FAMILY, DEFAULT: DEFAULT, read: read, said: said, list: list, others: others, parse: parse, toBlock: toBlock, label: label, info: info, draw: draw };

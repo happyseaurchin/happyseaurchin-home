@@ -204,6 +204,9 @@
   .views [role=tab][aria-selected="true"]{background:var(--acc);color:var(--abyss);border-color:transparent}
   #sectionsView,#arranged{border-top:0;padding-top:1rem}
   #sectionsView[hidden],#arranged[hidden]{display:none}
+  /* Cards spread as wide as the sections do, so cards sit side by side (a block, so the margin's 100% is the column's) */
+  #arranged.cards{display:block}
+  #arranged.cards #arrangePanel{--gw:max(100%, min(72rem, calc(100vw - 32px)));width:var(--gw);margin-left:calc((100% - var(--gw)) / 2)}
   #arrHead{font-size:clamp(1.6rem,8.4vw,3.6rem);overflow-wrap:anywhere}
   /* the shelf: the proposals in sections by where each stands, new, being decided, being built, complete, each a
      narrow card with its quipu beneath its buttons, set side by side as wide as the bar above (David, 4 Nov 2026) */
@@ -1139,20 +1142,22 @@
   }
 
   /* ════════ one person's page of the proposals (function:arrangement 5): a switch between Sections, every proposal by
-     what that person has answered, and List, their arrangement; the reader's choice is kept on their device (David,
-     4 Nov 2026: "in the same multi-section listing (but sorted in terms of whether the user hasn't added content (top),
-     supplied content (middle) and completed (bottom)), versus the embedded listed arrangement") ════════ */
+     what that person has answered; List, their arrangement as nested rows; and Cards, the same arrangement as cards
+     inside cards, dragged into one another. The reader's choice is kept on their device (David, 4 Nov 2026: "in the
+     same multi-section listing (but sorted in terms of whether the user hasn't added content (top), supplied content
+     (middle) and completed (bottom)), versus the embedded listed arrangement versus the more graphical card-nesting") ════════ */
   function arrangementPage() {
     $('quipu').remove(); document.querySelector('.band').classList.add('solo');
     $('bar-name').textContent = ARR;
-    var VIEWS = ['sections', 'list'], asked = location.hash.slice(1), kept = store.get('proposals:view');
+    var VIEWS = ['sections', 'list', 'cards'], asked = location.hash.slice(1), kept = store.get('proposals:view');
     var VIEW = VIEWS.indexOf(asked) >= 0 ? asked : VIEWS.indexOf(kept) >= 0 ? kept : 'sections';
-    var PERSON = ARR, SHELFLIST = null, drawnFor = '', listShow = null;
+    var PERSON = ARR, SHELFLIST = null, drawnFor = '', listShow = null, panel = null;
     $('bandText').innerHTML = '<div class="eyebrow">Proposals · as each person sees them</div><h1 id="arrHead">Reading the beach…</h1>' +
       '<p class="lede" id="arrLede"></p><div class="actions"><a class="btn line" href="/proposal">Every proposal</a></div>';
     $('main').innerHTML = '<div class="views" role="tablist" aria-label="How the proposals are shown">' +
         '<button type="button" role="tab" id="tab-sections" aria-controls="sectionsView" data-view="sections">Sections</button>' +
-        '<button type="button" role="tab" id="tab-list" aria-controls="arranged" data-view="list">List</button></div>' +
+        '<button type="button" role="tab" id="tab-list" aria-controls="arranged" data-view="list">List</button>' +
+        '<button type="button" role="tab" id="tab-cards" aria-controls="arranged" data-view="cards">Cards</button></div>' +
       '<section id="sectionsView" role="tabpanel" aria-labelledby="tab-sections" hidden></section>' +
       '<section id="arranged" role="tabpanel" aria-labelledby="tab-list" hidden><div id="arrangePanel"><p class="note">Reading the arrangement…</p></div></section>';
     $('foot').innerHTML = '<p>Sections read every proposal on the beach’s list, <a href="/explain?block=proposals">proposals</a>, and sort them by the answers in that person’s own mirrors; nothing is kept for them. Each arrangement is its holder’s own block on the beach, <code>arrangement:&lt;handle&gt;</code>, kept whole under their own key, each position a proposal by its name. The law: <a href="/explain?block=function:arrangement">function:arrangement</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
@@ -1203,7 +1208,10 @@
       document.querySelectorAll('.views [role=tab]').forEach(function (b) {
         var on = b.getAttribute('data-view') === v; b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
       });
-      $('sectionsView').hidden = v !== 'sections'; $('arranged').hidden = v !== 'list';
+      $('sectionsView').hidden = v !== 'sections'; $('arranged').hidden = v === 'sections';
+      /* List and Cards are one panel drawn two ways, so what it shows, or what is being arranged, carries across */
+      $('arranged').classList.toggle('cards', v === 'cards');
+      if (v !== 'sections') { $('arranged').setAttribute('aria-labelledby', 'tab-' + v); if (panel) panel.layout(v); }
       if (v === 'sections') sectionsDraw();
       heading();
     }
@@ -1214,7 +1222,7 @@
       setView(v, true); $('tab-' + v).focus(); e.preventDefault();
     });
     if (!window.beachArrange) $('arrangePanel').innerHTML = '<p class="note">The arrangement couldn’t be drawn just now. Try again in a moment.</p>';
-    else beachArrange.draw($('arrangePanel'), { handle: ARR, onShow: function (roots, who, how) {
+    else panel = beachArrange.draw($('arrangePanel'), { handle: ARR, layout: VIEW === 'cards' ? 'cards' : 'list', onShow: function (roots, who, how) {
       var m = me(), whose = nameOf(who);
       var title = how === 'list' ? 'The proposals, as the list stands' : how === 'arranging' ? 'Arranging yours' : who === m ? 'Your arrangement' : whose + '’s arrangement';
       listShow = { title: title, bar: how === 'list' ? 'the list' : how === 'arranging' || who === m ? 'yours' : whose + '’s' };
