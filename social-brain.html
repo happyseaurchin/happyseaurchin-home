@@ -141,11 +141,12 @@
   <button id="tg-riders"  aria-pressed="true">sand riders</button>
   <button id="tg-labels"  aria-pressed="true">names</button>
   <button id="tg-turn"    aria-pressed="true" title="the figure turns on its own; off holds it still">turning</button>
+  <button id="tg-everyone" aria-pressed="false" class="hidden" title="the whole beach — off, only your own place in it: your grains two steps out, the reaches touching them, and who met you in your room lately">everyone</button>
   <button data-scale="live" aria-pressed="true" title="the beach as it stands">live beach</button>
   <button data-scale="s2k"  aria-pressed="false" title="the same figure at a scale the beach has not reached — generated, and said so">imagine 2,000</button>
   <button data-scale="s20k" aria-pressed="false" title="the same figure at a scale the beach has not reached — generated, and said so">imagine 20,000</button>
   <button id="btn-refresh" title="read the beach again — this page never polls">re-read</button>
-  <button id="btn-stand" title="put your handle in the address — the figure centres on you and your channels open for writing">stand as…</button>
+  <button id="btn-stand" title="put your handle in the address — the figure draws your own place and your channels open for writing">stand as…</button>
   <button id="btn-theme" title="light or dark" aria-label="switch between the light and dark register">◐</button>
 </div>
 
@@ -161,7 +162,7 @@
 <div id="pop-back" class="pop-back hidden"></div>
 <div id="pop" class="pop hidden" role="dialog" aria-modal="true" aria-labelledby="pop-h">
   <h3 id="pop-h">Stand as your handle</h3>
-  <p>Your handle goes in the address — the figure centres on you, and the channels you hold open for writing. Nothing is stored here but the path. Leave it empty, or choose nobody, to see the whole brain centred on no one.</p>
+  <p>Your handle goes in the address — the figure draws your own place in it: you, the people you hold a channel with and theirs, and who met you in your room lately; and the channels you hold open for writing. Nothing is stored here but the path. Leave it empty, or choose nobody, to see the whole brain centred on no one.</p>
   <div class="ask__row">
     <input id="ask-handle" placeholder="your handle" autocomplete="off" spellcheck="false" autocapitalize="none">
     <button id="ask-go">stand</button>
@@ -203,8 +204,20 @@ document.documentElement.classList.remove('no-js');
    same. A party standing here with their key opens them; everyone else sees
    that a sealed line stands, and nothing of it.
 
+   THE SCOPE (5 Nov 2026): standing as a handle, the figure draws that hand's
+   own place and no one else — the hand, everyone it holds a grain with and
+   everyone they hold one with (two steps), the reaches waiting that touch any
+   of them, and the hands met in its own room, pool:<handle>, in the last
+   thirty days, drawn dim and with no grain. A grain is drawn when both its
+   hands stand within the two steps. Everyone else is left out of the figure,
+   not hidden behind the camera; 'everyone' under options draws the whole
+   beach, remembered on the device as the turning is, and with no handle in
+   the address the whole beach is what is drawn. The near cloud is laid out
+   on its own with the standing hand at its centre, filling the sphere.
+
    THE ECONOMICS: one reading of the index and every grain block per visit,
-   then stillness — no polling. Writes are the visitor's own: a message
+   and, standing as a handle, one light reading of its room — then stillness,
+   no polling. Writes are the visitor's own: a message
    appended beneath their side of a grain (the beach allocates the slot), an
    acceptance, or a reach — each latched by the side key they chose.
 
@@ -253,7 +266,10 @@ const isObj = v => v && typeof v === 'object' && !Array.isArray(v);
 const digitKeys = o => Object.keys(o).filter(k => /^[1-9]$/.test(k)).sort();
 const when = ts => ts ? String(ts).slice(0, 10) : '';
 const voice = n => typeof n === 'string' ? n : (isObj(n) && typeof n._ === 'string' ? n._ : '');
-const MACHINE = h => /\d{4}-\d{2}-\d{2}[tT]?\d/.test(h) || /^(probe-|e2e-|revtest|ps-iss|tickets-test|test[-_]|hatch-tickets)/i.test(h);
+/* never drawn, here or in any grain: the machine-made (a date in the name, probes, tickets, tests) and September 2026's automated
+   runs — alice-gt-/bob-gt- and thirteen digits, forensic-, trial-, fd-trial-, g-m1-, detect- (34 of the 84 handles drawn on
+   5 November 2026). The beach keeps every one of them; only the figure leaves them out. */
+const MACHINE = h => /\d{4}-\d{2}-\d{2}[tT]?\d/.test(h) || /-gt-\d{13}$/.test(h) || /^(probe-|e2e-|revtest|ps-iss|tickets-test|test[-_]|hatch-tickets|forensic-|trial-|fd-trial-|g-m1-|detect-)/i.test(h);
 const isGray = n => isObj(n) && (String(n._ || '').startsWith('Encrypted (gray)') || (isObj(n['9']) && n['9']._ === 'gray'));
 /* a sealed entry is an envelope itself (as the connector lands one), or a line whose author stands at 1 and whose
    envelope stands one zero deeper, at its underscore (coloured-stigmergy §2.3) */
@@ -312,6 +328,7 @@ const LAYER = { grains:true, reaches:true, riders:true, labels:true };
 let FOCUS = -1, HOVER = -1, HOP = null;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 let TURN = !REDUCED; try { if (localStorage.getItem('social-brain:turn') === 'still') TURN = false; } catch(e){}
+let EVERYONE = false; try { EVERYONE = localStorage.getItem('social-brain:everyone') === 'everyone'; } catch(e){}
 
 function parseLive(idx, got, passportNames){
   const nodes = [], byId = new Map();
@@ -372,13 +389,15 @@ function parseGrain(name, blk){
     return g;
 }
 
-/* seed each neuron on a sphere from its own name, then relax — no clock in it */
-function layoutLive(nodes, edges, pending){
+/* seed each neuron on a sphere from its own name, then relax — no clock in it; a pinned neuron (the standing hand, in its own
+   place) holds the centre while the rest settle around it */
+function layoutLive(nodes, edges, pending, pin){
   for (const n of nodes){
     const r = rng(fnv(n.id)), th = r() * Math.PI * 2, ph = Math.acos(2 * r() - 1), R = n.phantom ? 1.05 : (n.deg ? 0.9 : 1.15);
     n.x = R * Math.sin(ph) * Math.cos(th); n.y = R * Math.cos(ph) * 0.8; n.z = R * Math.sin(ph) * Math.sin(th);
   }
-  const N = nodes.length;
+  const N = nodes.length, hold = () => { if (pin >= 0) nodes[pin].x = nodes[pin].y = nodes[pin].z = 0; };
+  hold();
   for (let it = 0; it < (N > 120 ? 200 : 600); it++){
     const k = 0.9 - it / 800;
     for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++){
@@ -391,6 +410,7 @@ function layoutLive(nodes, edges, pending){
     for (const e of edges) spring(nodes[e.a], nodes[e.b], 0.6, 0.05);
     for (const p of pending) spring(nodes[p.a], nodes[p.p], 0.32, 0.08);
     for (const n of nodes){ const g = n.deg ? 0.012 : 0.004; n.x *= 1 - g * k; n.y *= 1 - g * k; n.z *= 1 - g * k; }
+    hold();
   }
   /* the forces settle at a size that grows with the count of handles, and the camera assumes the unit sphere: 103 handles on
      5 November 2026 settled near radius 7, the unconnected near 17, behind the camera's near plane, and one arc with a negative
@@ -399,18 +419,53 @@ function layoutLive(nodes, edges, pending){
   const core = nodes.filter(n => !n.phantom && n.deg), ref = core.length ? core : nodes.filter(n => !n.phantom);
   const rms = Math.sqrt(ref.reduce((t, n) => t + n.x * n.x + n.y * n.y + n.z * n.z, 0) / (ref.length || 1));
   if (rms > 0){ const s = 0.9 / rms; for (const n of nodes){ n.x *= s; n.y *= s; n.z *= s; } }
+  /* and nothing strays past the shell: brought back with the core, the 34 handles with no grain (of 50, 5 November 2026)
+     still settled between radius 2 and 3.9 and turned off the canvas — each is laid on the shell along its own direction */
+  for (const n of nodes){ const r = Math.hypot(n.x, n.y, n.z); if (r > 1.35){ const s = 1.35 / r; n.x *= s; n.y *= s; n.z *= s; } }
 }
 
-/* after a message lands: re-read THAT grain only and patch it in place — the figure is untouched, nothing resets */
+/* THE SCOPE — the standing hand's own place, drawn as a figure of its own; null when the hand stands nowhere on this beach */
+function scopeOf(L, h){
+  const at = L.byId.get(h); if (at === undefined) return null;
+  const adj = i => L.edges.filter(e => e.a === i || e.b === i).map(e => e.a === i ? e.b : e.a);
+  const keep = new Set([at]); for (const j of adj(at)){ keep.add(j); for (const k of adj(j)) keep.add(k); }
+  const near = new Set(keep);   /* the two steps — a grain is drawn only between two of these */
+  /* a reach touches the place by the hand that reached, or by the name its prose reaches for — and brings its reacher along */
+  const pending = L.pending.filter(p => near.has(p.a) || near.has(L.byId.get(L.nodes[p.p].hint)));
+  for (const p of pending){ keep.add(p.a); keep.add(p.p); }
+  const met = new Set((L.room || []).map(id => L.byId.get(id)).filter(i => i !== undefined && !keep.has(i)));
+  for (const i of met) keep.add(i);
+  const order = [...keep].sort((x, y) => x - y), to = new Map(order.map((i, k) => [i, k])), byId = new Map();
+  const nodes = order.map(i => ({ ...L.nodes[i], met: met.has(i) })); nodes.forEach((n, k) => { if (!n.phantom) byId.set(n.id, k); });
+  const edges = L.edges.filter(e => near.has(e.a) && near.has(e.b)).map(e => ({ ...e, a: to.get(e.a), b: to.get(e.b) }));
+  const pend = pending.map(p => ({ ...p, a: to.get(p.a), p: to.get(p.p) }));
+  layoutLive(nodes, edges, pend, to.get(at));
+  return { ...L, nodes, edges, pending: pend, byId, met: met.size, scoped: true };
+}
+/* the hands met lately in a handle's own room: the pscale 0 disc gives each entry with its stamp but not its hand, which stands
+   one level deeper at the entry's 1 — so the room is read at pscale −1, the hand at 1 and the clock at 3 of every entry and
+   nothing of the words (pool:happyseaurchin on 5 November 2026: 24 KB, against 151 KB whole) */
+async function readRoom(h, days){
+  const r = await fetch(BEACH + '?block=' + encodeURIComponent('pool:' + h) + '&pscale=-1', { headers:{Accept:'application/json'}, cache:'no-store' }).catch(() => null);
+  const d = r && r.ok ? await r.json().catch(() => null) : null, at = {}, since = new Date(Date.now() - days * 864e5).toISOString();
+  for (const e of (d && d.entries) || []){ const m = /^(\d+)\.([13])$/.exec(e.address || ''); if (m) (at[m[1]] = at[m[1]] || {})[m[2]] = e.content; }
+  return [...new Set(Object.values(at).filter(e => typeof e['1'] === 'string' && typeof e['3'] === 'string' && e['3'] >= since).map(e => e['1']))];
+}
+
+/* after a message lands: re-read THAT grain only and patch it in place — the figure is untouched, nothing resets; the scope
+   draws copies of the beach's edges, so the beach and the figure are patched both */
 async function refreshGrain(pid){
   const blk = await readBlock('grain:' + pid).catch(() => null);
   const g = blk ? parseGrain('grain:' + pid, blk) : null;
   if (!g || g.debris) return false;
-  const ei = LIVE.edges.findIndex(e => e.g && e.g.pid === pid);
-  if (ei >= 0){ const e = LIVE.edges[ei]; e.g = g; e.w = 1 + g.entries.length; e.riders = g.entries.filter(x => x.rider).length; return 'edge'; }
-  const pi = LIVE.pending.findIndex(p => p.g.pid === pid);
-  if (pi >= 0){ if (g.a && g.b) return false; LIVE.pending[pi].g = g; return 'pending'; }
-  return false;
+  let where = false;
+  for (const M of new Set([LIVE, G])){
+    const e = M.edges.find(e => e.g && e.g.pid === pid);
+    if (e){ e.g = g; e.w = 1 + g.entries.length; e.riders = g.entries.filter(x => x.rider).length; where = 'edge'; continue; }
+    const p = M.pending.find(p => p.g.pid === pid);
+    if (p){ if (g.a && g.b) return false; p.g = g; where = 'pending'; }
+  }
+  return where;
 }
 
 /* the look at scale — generated, and said so */
@@ -542,10 +597,11 @@ function draw(t){
   for (const i of ORDER){
     const N = G.nodes[i]; if (N.phantom || PS[i] <= 0) continue;
     const d = depthA(i), p = PS[i];
-    let r = (syn ? (1.1 + 0.75 * Math.sqrt(N.deg)) * p : (N.deg ? (5 + 2.6 * Math.sqrt(N.deg)) : 3.4) * p) * (syn ? zoomK() : Math.min(1.6, zoomK()));
+    /* a hand met in the room is drawn as one with no grain: small and dim */
+    let r = (syn ? (1.1 + 0.75 * Math.sqrt(N.deg)) * p : (N.deg && !N.met ? (5 + 2.6 * Math.sqrt(N.deg)) : 3.4) * p) * (syn ? zoomK() : Math.min(1.6, zoomK()));
     if (big) r *= 0.8;
     let spr = SPR.vapour, a = 0.55 + 0.45 * d;
-    if (!N.deg && !syn) a *= 0.6;
+    if ((!N.deg || N.met) && !syn) a *= 0.6;
     if (HOP){ if (i === FOCUS) spr = SPR.solid; else if (HOP[i] === 2) spr = SPR.vapour; else if (HOP[i] === 1){ spr = SPR.dim; a *= 0.7; } else { spr = SPR.dim; a *= 0.22; } }
     if (i === YOU) spr = SPR.solid;
     if (i === HOVER && i !== FOCUS && i !== YOU) spr = SPR.liquid;
@@ -579,7 +635,7 @@ function draw(t){
       for (let i = 0; i < n; i++){ const N = G.nodes[i];
         if (N.phantom){ if (LAYER.reaches) label(i, `rgba(${PAL.vapour},0.6)`); continue; }
         const dim = HOP && HOP[i] < 2 && i !== FOCUS;
-        label(i, (i === FOCUS || i === YOU) ? `rgb(${PAL.solid})` : (dim ? `rgba(${PAL.vapour},0.35)` : `rgba(${PAL.vapour},${(N.deg ? 0.55 : 0.4) + 0.45 * depthA(i)})`)); }
+        label(i, (i === FOCUS || i === YOU) ? `rgb(${PAL.solid})` : (dim ? `rgba(${PAL.vapour},0.35)` : `rgba(${PAL.vapour},${(N.deg && !N.met ? 0.55 : 0.4) + 0.45 * depthA(i)})`)); }
     } else {
       if (FOCUS >= 0) label(FOCUS, `rgb(${PAL.solid})`); if (HOVER >= 0 && HOVER !== FOCUS) label(HOVER, `rgb(${PAL.liquid})`);
       if (cam.dist < 0.6){ const col = `rgba(${PAL.vapour},0.55)`; for (let i = 0; i < n; i++) if (i !== FOCUS && i !== HOVER && PS[i] > 0.9 && PX[i] > -20 && PX[i] < W + 20 && PY[i] > -20 && PY[i] < H + 20) label(i, col); }
@@ -595,7 +651,7 @@ canvas.addEventListener('pointermove', e => {
   if (down){ const dx = e.clientX - down.x, dy = e.clientY - down.y; if (Math.hypot(dx, dy) > 4){ down.moved = true; dragging = true; canvas.classList.add('grabbing'); } cam.yaw = down.yaw + dx * 0.006; cam.pitch = Math.max(-1.3, Math.min(1.3, down.pitch + dy * 0.006)); return; }
   HOVER = hitNode(e.clientX, e.clientY);
   const tip = $('tip');
-  if (HOVER >= 0){ const N = G.nodes[HOVER]; tip.textContent = N.phantom ? 'a reach waiting for ' + N.id.slice(2) : N.id + (N.deg ? ' · ' + N.deg + ' grain' + (N.deg > 1 ? 's' : '') : ' · no grains yet'); tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 14, W - 220) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; canvas.style.cursor = 'pointer'; }
+  if (HOVER >= 0){ const N = G.nodes[HOVER]; tip.textContent = N.phantom ? 'a reach waiting for ' + N.id.slice(2) : N.id + (N.deg ? ' · ' + N.deg + ' grain' + (N.deg > 1 ? 's' : '') : ' · no grains yet') + (N.met ? ' · met in your room lately' : ''); tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 14, W - 220) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; canvas.style.cursor = 'pointer'; }
   else { tip.style.display = 'none'; canvas.style.cursor = ''; }
 });
 canvas.addEventListener('pointerup', e => {
@@ -771,8 +827,10 @@ function cardNode(i){
   const mine = G.edges.map((e, k) => ({ e, k })).filter(({ e }) => e.a === i || e.b === i);
   const pend = G.pending.filter(p => p.a === i);
   const isYou = HANDLE && N.id === HANDLE;
-  let html = `<p class="kind">${isYou ? 'you — a neuron' : 'handle · a neuron'}</p><h2>${esc(N.id)}</h2><p class="addr">${N.passport ? 'passport:' + esc(N.id) + ' · ' + N.blocks + ' block' + (N.blocks === 1 ? '' : 's') + ' at this beach' : 'named in grains only — no passport yet'}</p>`;
+  let html = `<p class="kind">${isYou ? 'you — a neuron' : N.met ? 'handle · met in your room lately' : 'handle · a neuron'}</p><h2>${esc(N.id)}</h2><p class="addr">${N.passport ? 'passport:' + esc(N.id) + ' · ' + N.blocks + ' block' + (N.blocks === 1 ? '' : 's') + ' at this beach' : 'named in grains only — no passport yet'}</p>`;
   html += `<div class="side">grains · ${mine.length}</div><ol class="list">` + (mine.length ? mine.map(({ e, k }) => { const other = e.a === i ? e.b : e.a; return `<li><button data-edge="${k}">${esc(G.nodes[other].id)}</button><span class="by">${e.g.entries.length} entr${e.g.entries.length === 1 ? 'y' : 'ies'}${e.riders ? ' · ' + e.riders + ' rider' + (e.riders > 1 ? 's' : '') : ''}${e.g.lastTs ? ' · ' + esc(when(e.g.lastTs)) : ''}</span></li>`; }).join('') : '<li><span class="by">no grains formed yet — signal without commitment</span></li>') + '</ol>';
+  const beyond = G.scoped ? N.deg - mine.length : 0;   /* a hand two steps out may hold grains further still */
+  if (beyond > 0) html += `<p class="note">${beyond} more grain${beyond > 1 ? 's' : ''} beyond your place — everyone, under options, draws ${beyond > 1 ? 'them' : 'it'}</p>`;
   if (pend.length) html += `<div class="side">reaches waiting</div><ol class="list">` + pend.map(p => `<li><button data-pend="${G.pending.indexOf(p)}">toward ${esc(G.nodes[p.p].id.slice(2))}</button><span class="by">${p.since ? 'since ' + esc(when(p.since)) : 'awaiting acceptance'}</span></li>`).join('') + '</ol>';
   if (standing() && !isYou){
     const between = mine.find(({ e }) => G.nodes[e.a].id === HANDLE || G.nodes[e.b].id === HANDLE);
@@ -782,7 +840,7 @@ function cardNode(i){
       if (waiting) html += `<p class="note">${esc(N.id)} has reached toward you — <button data-pend="${G.pending.indexOf(waiting)}" style="all:unset;color:var(--liquid);cursor:pointer;border-bottom:1px solid rgba(var(--liquid-rgb),.35)">read it and accept</button></p>`;
       else html += `<div class="side">no channel between you yet</div>` + writeBoxHtml('reach', N.id);
     }
-  } else if (isYou && !mine.length && !pend.length) html += `<p class="note">no channels yet — tap another neuron to reach out</p>`;
+  } else if (isYou && !mine.length && !pend.length) html += `<p class="note">no channels yet — tap another neuron to reach out${G.scoped ? ' (everyone, under options, draws the whole beach)' : ''}</p>`;
   openCard(html);
   body.querySelectorAll('button[data-edge]').forEach(b => b.addEventListener('click', () => cardEdge(+b.dataset.edge)));
   body.querySelectorAll('button[data-pend]').forEach(b => b.addEventListener('click', () => cardPending(G.pending[+b.dataset.pend])));
@@ -812,6 +870,9 @@ for (const [id, k] of Object.entries(TG)) $(id).addEventListener('click', () => 
 document.querySelectorAll('[data-scale]').forEach(b => b.addEventListener('click', () => { IMAGINE = { live:0, s2k:1, s20k:2 }[b.dataset.scale]; show(); }));
 $('tg-turn').addEventListener('click', () => { TURN = !TURN; $('tg-turn').setAttribute('aria-pressed', String(TURN)); try { localStorage.setItem('social-brain:turn', TURN ? 'turning' : 'still'); } catch(e){} });
 $('tg-turn').setAttribute('aria-pressed', String(TURN));
+/* everyone — the whole beach, or the standing hand's own place; offered only where that hand stands on the beach, kept on the device */
+$('tg-everyone').addEventListener('click', () => { EVERYONE = !EVERYONE; $('tg-everyone').setAttribute('aria-pressed', String(EVERYONE)); try { localStorage.setItem('social-brain:everyone', EVERYONE ? 'everyone' : 'near'); } catch(e){} if (LIVE && IMAGINE === 0) show(); });
+$('tg-everyone').setAttribute('aria-pressed', String(EVERYONE));
 $('btn-refresh').addEventListener('click', () => load(true));
 $('btn-stand').addEventListener('click', () => { $('pop-back').classList.remove('hidden'); $('pop').classList.remove('hidden'); $('ask-handle').value = HANDLE || ''; $('ask-handle').focus(); });
 $('pop-back').addEventListener('click', () => { $('pop-back').classList.add('hidden'); $('pop').classList.add('hidden'); });
@@ -824,7 +885,8 @@ addEventListener('keydown', e => { if (e.key === 'Escape'){ $('pop-back').classL
 function show(keep){
   const held = keep && G && FOCUS >= 0 && !G.synthetic ? G.nodes[FOCUS].id : null;
   pulses.length = 0; FOCUS = -1; HOVER = -1; HOP = null; if (!keep) closeCard(); if (!keep) cam.gx = cam.gy = cam.gz = 0; PX = null; flash = null;
-  G = IMAGINE === 0 ? LIVE : buildSynthetic(IMAGINE === 1 ? 2000 : 20000);
+  G = IMAGINE === 0 ? ((HANDLE && !EVERYONE && LIVE && scopeOf(LIVE, HANDLE)) || LIVE) : buildSynthetic(IMAGINE === 1 ? 2000 : 20000);
+  $('tg-everyone').classList.toggle('hidden', !(HANDLE && LIVE && LIVE.byId.has(HANDLE)));   /* a switch only where a place stands */
   document.querySelectorAll('[data-scale]').forEach(b => b.setAttribute('aria-pressed', String({ live:0, s2k:1, s20k:2 }[b.dataset.scale] === IMAGINE)));
   project();
   if (held && G.byId.has(held)) setFocus(G.byId.get(held));
@@ -835,12 +897,17 @@ function meta(){
   const m = $('meta');
   if (!G) return;
   if (G.synthetic){ m.innerHTML = `<span class="syn">imagined</span> · <b>${G.nodes.length.toLocaleString()}</b> handles · <b>${G.edges.length.toLocaleString()}</b> grains in <b>${G.K}</b> lobes — generated to show the look at scale, not the beach<br>drag to turn · wheel to zoom · tap a neuron to stand there`; return; }
+  /* what is shown, of what exists: the scope says 'of', the whole beach needs not */
+  const sc = !!G.scoped, hands = M => M.nodes.filter(n => !n.phantom).length, of = (k, all) => `<b>${k}</b>` + (sc ? ' of ' + all : '');
   const formed = G.edges.length, waiting = G.pending.length, riders = G.edges.reduce((s, e) => s + e.riders, 0);
   const gray = G.edges.reduce((s, e) => s + e.g.entries.filter(x => x.gray).length + (e.g.gray1 ? 1 : 0) + (e.g.gray2 ? 1 : 0), 0);
   m.innerHTML = `drawn from live water — read ${esc(G.readAt.toISOString().slice(0, 16).replace('T', ' '))}Z · <b>${G.blockCount}</b> blocks on the index<br>` +
-    `<b>${G.nodes.filter(n => !n.phantom).length}</b> handles · <b>${formed}</b> grains formed · <b>${waiting}</b> reaches waiting · <b>${riders}</b> sand riders · <b>${gray}</b> gray entries kept private` +
+    `${of(hands(G), hands(LIVE))} handles · ${of(formed, LIVE.edges.length)} grains formed · ${of(waiting, LIVE.pending.length)} reaches waiting · <b>${riders}</b> sand riders · <b>${gray}</b> gray entries kept private` +
     (G.debris.length ? ` · ${G.debris.length} test grains not drawn` : '') +
-    (HANDLE ? `<br><span class="you">standing as ${esc(HANDLE)}</span>${G.byId.has(HANDLE) ? '' : ' — no presence here yet; tap a neuron to reach out'}` : '<br>every edge and every name is public substrate — a handle in the address only picks the vantage') ;
+    (!HANDLE ? '<br>every edge and every name is public substrate — a handle in the address draws that hand’s own place' :
+      `<br><span class="you">standing as ${esc(HANDLE)}</span>` + (!G.byId.has(HANDLE) ? ' — no presence here yet; tap a neuron to reach out'
+      : !sc ? ' — the whole beach; everyone off (options) draws your own place'
+      : (hands(G) > 1 ? ` — your own place: your grains two steps out, the reaches touching them${G.met ? ', ' + G.met + ' met in your room in the last 30 days' : ''}` : ' — nobody near you yet') + ' · everyone (options) draws the whole beach'));
 }
 
 /* Handles are case-sensitive on the beach — ayush and Ayush derive different grain blocks (ways:grain 1) — so a
@@ -874,6 +941,8 @@ async function load(announce, keep){
     const got = await readMany(grainNames, (d, t) => { $('meta').textContent = 'reading the beach — ' + d + ' of ' + t + ' grains'; });
     LIVE = parseLive(idx, got, passportNames);
     resolveSpelling();
+    /* the room is read only where the index lists one — a hand without a room asks nothing more of the beach */
+    if (HANDLE && LIVE.byId.has(HANDLE) && blocks.includes('pool:' + HANDLE)){ $('meta').textContent = 'reading the beach — ' + HANDLE + '’s room'; LIVE.room = await readRoom(HANDLE, 30); }
     if (IMAGINE === 0) show(keep); else meta();
     if (announce) toast('re-read — ' + LIVE.edges.length + ' grains, ' + LIVE.pending.length + ' waiting');
   } catch(e){
