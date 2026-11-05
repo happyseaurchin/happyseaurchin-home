@@ -589,14 +589,15 @@ function openCardsOf(deck){
 }
 /* ── writes — the deck page's write path, held to exactly ── */
 async function writeWithLatch(body, what){
+  await siteKeys.ready();
   /* THE KEY FOLLOWS THE BLOCK BEING WRITTEN — one name per block, shared with
    * /next and /hands — with the older per-page keys as read-fallbacks so nobody
    * re-types a key they set elsewhere. A success re-homes it. */
   const home = 'next-latch:' + body.block;
-  const latch = localStorage.getItem(home)
-    || localStorage.getItem('mirror-latch:' + body.block)
-    || (body.block === 'now:' + HANDLE ? localStorage.getItem('now-latch:' + HANDLE) : null)
-    || localStorage.getItem(latchKey());
+  const latch = siteKeys.get(home)
+    || siteKeys.get('mirror-latch:' + body.block)
+    || (body.block === 'now:' + HANDLE ? siteKeys.get('now-latch:' + HANDLE) : null)
+    || siteKeys.get(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -604,11 +605,12 @@ async function writeWithLatch(body, what){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(home, v.trim());
-  } else if (w.ok && latch) localStorage.setItem(home, latch);
+    if (w.ok) siteKeys.set(home, v.trim());
+  } else if (w.ok && latch) siteKeys.set(home, latch);
   return w;
 }
 async function ensureVentureMirror(){
+  await siteKeys.ready();
   const name = VENTURE + ':' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
   if (existing) return { ok: true };
@@ -627,14 +629,14 @@ async function ensureVentureMirror(){
    * founding: an unprotected one is not the fallback. A handle whose passport is
    * latched founds its blocks under that same key (the beach refuses any other),
    * so the prompt asks for it rather than inviting a new one. */
-  let latch = localStorage.getItem(latchKey());
+  let latch = siteKeys.get(latchKey());
   if (!latch){
     const v = prompt('This founds your mirror, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     latch = v.trim();
   }
   const w = await writeBlock({ block: name, content: root, new_lock: latch });
-  if (w.ok){ localStorage.setItem(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
+  if (w.ok){ siteKeys.set(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
   return w;
 }
 async function writeMirrorAt(addr, content){

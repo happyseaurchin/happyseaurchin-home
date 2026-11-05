@@ -593,13 +593,13 @@ render().catch(e => { $('walk').innerHTML = '<li class="loading">' + esc('could 
     { word: 'I’ll help fund it', at: '6' }
   ];
   const home = n => 'next-latch:' + FAMILY + ':' + n;
-  const kept = n => { try { return localStorage.getItem(home(n)) || localStorage.getItem('mirror-latch:' + FAMILY + ':' + n); } catch(e){ return null; } };
+  const kept = n => { try { return siteKeys.get(home(n)) || siteKeys.get('mirror-latch:' + FAMILY + ':' + n); } catch(e){ return null; } };
   $('at').innerHTML = SPOTS.map((s, i) =>
     '<label><input type="radio" name="spot" value="' + s.at + '"' + (i === 0 ? ' checked' : '') + '><span>' + esc(s.word) + '</span></label>').join('');
   let saved = null; try { saved = localStorage.getItem('venture:who'); } catch(e){}
   if (saved) who.value = saved;
   const keyHint = () => { const n = who.value.trim(); key.placeholder = n && kept(n) ? 'key kept on this device' : 'your key'; };
-  who.addEventListener('input', keyHint); keyHint();
+  who.addEventListener('input', keyHint); keyHint(); siteKeys.ready().then(keyHint);
   async function write(body){
     const r = await fetch(ORIGIN, { method:'POST', cache:'no-store',
       headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify(body) });
@@ -609,6 +609,7 @@ render().catch(e => { $('walk').innerHTML = '<li class="loading">' + esc('could 
   const refused = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required' || w.data.code === 'handle_bound');
   function say(cls, text){ hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = text; }
   async function submit(){
+    await siteKeys.ready();
     const text = note.value.trim(); if (!text) { note.focus(); return; }
     const name = who.value.trim();
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,31}$/.test(name)) { say('err', 'Pick a name of 2 to 32 letters, digits, - or _ — it is how your statement is signed.'); who.focus(); return; }
@@ -628,11 +629,12 @@ render().catch(e => { $('walk').innerHTML = '<li class="loading">' + esc('could 
       const w = await write({ block, spindle: spot.at, content: text, secret });
       if (refused(w)){ say('err', 'That name’s statements are latched to another key. If it is yours, check the key (phones capitalise the first letter); if not, choose another name.'); post.disabled = false; return; }
       if (!w.ok) throw new Error((w.data && w.data.error) || ('the beach said ' + w.status));
-      try { localStorage.setItem(home(name), secret); localStorage.setItem('venture:who', name); } catch(e){}
+      const kept = siteKeys.set(home(name), secret); try { localStorage.setItem('venture:who', name); } catch(e){}
       key.value = ''; keyHint();
       say('ok', 'It stands on the bobble under “' + spot.word + '”. Writing again there replaces it.');
       landed.textContent = '“' + text + '” — ' + name; landed.hidden = false; note.value = '';
-      setTimeout(() => location.reload(), 1200);
+      /* read again once the key is kept, wrapped */
+      setTimeout(() => kept.then(() => location.reload(), () => location.reload()), 1200);
     } catch(e){ say('err', 'couldn’t put that on the bobble — ' + e.message); }
     post.disabled = false;
   }

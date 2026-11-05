@@ -810,7 +810,7 @@ async function keyIn(handle, secret, quiet){
     ME_KEY = { h, s, xsec: k.xsec, xpub: k.xpub };
     if (ME.id !== h){ ME.id = h; ME.v = null; ME.draft = [0, 0, 0]; ME.step = 0; ME.sent = ''; }
     saveMe();
-    try { localStorage.setItem('passport-latch:' + h, s); } catch(e){}
+    try { siteKeys.set('passport-latch:' + h, s); } catch(e){}
     $('k-key').value = '';
     await readMine();
     say('', '');
@@ -958,10 +958,11 @@ function keyinUi(){
    meeting was made with; an empty key box uses it, and a wrong one is refused at the passport as any typed key is */
 function keptKey(h){
   h = handleOf(h); if (!h) return '';
-  try { return localStorage.getItem('passport-latch:' + h) || localStorage.getItem('mirror-latch:' + MEETING + ':' + h) || ''; } catch(e){ return ''; }
+  try { return siteKeys.get('passport-latch:' + h) || siteKeys.get('mirror-latch:' + MEETING + ':' + h) || ''; } catch(e){ return ''; }
 }
 function keptHint(){ $('k-key').placeholder = keptKey($('k-handle').value) ? 'kept on this device' : ''; }
 $('k-handle').addEventListener('input', keptHint);
+siteKeys.ready().then(keptHint);
 /* the members a keeper opens the room with: the people the meeting's invitation names at its Who, spine:<name> 1.2
    ('WHO: invited — <handle> (<name>), …, the group sed:<group>. …'), offered to keep or change. A group's seats are
    left for the keeper to name, since a room holds nine */
@@ -982,7 +983,7 @@ $('k-go').addEventListener('click', async () => { if (await keyIn($('k-handle').
 $('k-key').addEventListener('keydown', ev => { if (ev.key === 'Enter') $('k-go').click(); });
 $('btn-who').addEventListener('click', () => {
   const dd = $('dd-acts'); if (dd) dd.open = false;
-  if (ME_KEY) try { localStorage.removeItem('passport-latch:' + ME_KEY.h); } catch(e){}
+  if (ME_KEY) try { siteKeys.del('passport-latch:' + ME_KEY.h); } catch(e){}
   ME_KEY = null; MB.clear(); PEOPLE = new Map(); $('k-handle').value = ''; show(VIEW);
 });
 $('btn-add').addEventListener('click', async () => {
@@ -1335,6 +1336,7 @@ $('d-past').addEventListener('toggle', async () => {
 
 /* ---------- boot ---------- */
 (async function boot(){
+  await siteKeys.ready();
   /* ?join: the sitting's one room, found as the start page finds it; a first opener founds it, open or (?keyed) kept */
   if (MEETING && !BEAT && Q.has('join')){
     BEAT = (await sittingBeat(MEETING).catch(() => '')) || beatOf(Date.now());
@@ -1364,7 +1366,7 @@ $('d-past').addEventListener('toggle', async () => {
   const wide = innerWidth >= 900 && innerWidth > innerHeight;
   const view = Q.has('screen') ? 'room' : Q.has('phone') ? 'hand' : (saved === 'room' || saved === 'hand') ? saved : wide ? 'room' : 'hand';
   if (KEYED && ROOMSTANDS && ME.id && !/^anon-/.test(ME.id)){
-    let s = ''; try { s = localStorage.getItem('passport-latch:' + ME.id) || ''; } catch(e){}
+    let s = ''; try { s = siteKeys.get('passport-latch:' + ME.id) || ''; } catch(e){}
     if (s){ $('loading').textContent = 'opening your key…'; await keyIn(ME.id, s, true); }
   }
   show(view);

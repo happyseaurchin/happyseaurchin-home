@@ -478,10 +478,10 @@ const DEV_WAKER = LOCAL ? (new URLSearchParams(location.search).get('waker') || 
 let WAKER = DEV_WAKER || 'https://waker-production.up.railway.app';   /* ways:doorbell 2 at the apex says otherwise when it moves */
 
 /* each character's key, kept under the name the character page keeps it — a key held for
-   Ugarth there opens him here */
+   Ugarth there opens him here — and wrapped (theme.js siteKeys), read once the keyring is ready */
 const latchHome = h => 'journal-latch:' + host(BEACH) + ':' + h;
-function keyOf(h){ try { return localStorage.getItem(latchHome(h)) || null; } catch(e){ return null; } }
-function keySet(h, v){ try { if (v) localStorage.setItem(latchHome(h), v); else localStorage.removeItem(latchHome(h)); } catch(e){} }
+function keyOf(h){ return siteKeys.get(latchHome(h)) || null; }
+function keySet(h, v){ if (v) siteKeys.set(latchHome(h), v); else siteKeys.del(latchHome(h)); }
 const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){ return null; } };
 const partyHome = () => 'group:party:' + host(BEACH);
 function saveParty(){
@@ -1248,7 +1248,9 @@ function speakDevice(lines){
 const NARR_HOME = 'group:narrator';
 const OPENAI_VOICES = ['fable', 'onyx', 'ballad', 'sage', 'ash', 'coral', 'echo', 'nova', 'alloy', 'shimmer', 'verse'];
 const OPENAI_STYLE = 'Read as a storyteller at a table of friends, telling the tale aloud: warm, unhurried and clear, a little hushed where the moment tightens, never theatrical. Where a character speaks, give them a light touch of their own voice.';
-let NARR = (() => { try { const n = JSON.parse(store(NARR_HOME) || '{}') || {}; return { kind: n.kind || 'device', openai: n.openai || {}, eleven: n.eleven || {} }; } catch(e){ return { kind: 'device', openai: {}, eleven: {} }; } })();
+/* the narrator and its keys are kept wrapped (theme.js siteKeys), so they are read once the keyring is ready (boot) */
+const narrFrom = v => { try { const n = JSON.parse(v || '{}') || {}; return { kind: n.kind || 'device', openai: n.openai || {}, eleven: n.eleven || {} }; } catch(e){ return { kind: 'device', openai: {}, eleven: {} }; } };
+let NARR = narrFrom('');
 const narrReady = () => NARR.kind === 'openai' ? !!NARR.openai.key : NARR.kind === 'eleven' ? !!(NARR.eleven.key && NARR.eleven.voice) : true;
 const narrName = () => NARR.kind === 'openai' && narrReady() ? 'OpenAI · ' + (NARR.openai.voice || 'fable') : NARR.kind === 'eleven' && narrReady() ? 'ElevenLabs · ' + (NARR.eleven.voiceName || 'a voice') : 'this device’s voice';
 let AUDIO = null, CLOUD = null;
@@ -1352,7 +1354,7 @@ function readNarr(){
   NARR = { kind: narrKind(),
     openai: { key: $('n-okey').value.trim(), voice: $('n-ovoice').value || 'fable', style: $('n-ostyle').value.trim() },
     eleven: { key: $('n-ekey').value.trim(), voice: ev.value || NARR.eleven.voice || '', voiceName: ev.value ? ev.options[ev.selectedIndex].text : NARR.eleven.voiceName || '' } };
-  store(NARR_HOME, JSON.stringify(NARR));
+  siteKeys.set(NARR_HOME, JSON.stringify(NARR));
 }
 async function elevenVoices(){
   const key = $('n-ekey').value.trim(), sel = $('n-evoice');
@@ -1515,7 +1517,10 @@ function watch(){
 /* ── boot: the world, then the party ── */
 async function boot(){
   if (!WORLD_PARAM) return showState('Which table?', 'The table plays at a world: open it from a table’s card at <a href="/rpg">/rpg →</a> (“group-audio-play”), or add <code>?world=</code> and the table’s name.');
+  const keys = siteKeys.ready();
   const beach = await resolveWorld(WORLD_PARAM).catch(() => null);
+  /* a members' beach that refused this page: its own words, with the way in, never 'no world' (theme.js sitePass) */
+  if (!beach && window.sitePass && sitePass.walled(APEX)) return showState('This beach is its members’.', sitePass.wall(APEX));
   if (!beach) return showState('No world by that name.', 'Nothing at this beach is called <b>' + esc(WORLD_PARAM) + '</b> — the tables are at <a href="/rpg">/rpg →</a>.');
   BEACH = beach; WORLD = beachToWorld(beach) || WORLD_PARAM;
   $('bar-world').textContent = WORLD;
@@ -1528,7 +1533,9 @@ async function boot(){
     const m = two.match(/https?:\/\/\S+\/enroll/);
     if (m) WAKER = m[0].replace(/\/enroll$/, '');
   }
-  try { await readAll(); } catch(e){ return showState('The beach is out of reach.', esc(String(e.message || e))); }
+  try { await readAll(); } catch(e){ return (window.sitePass && sitePass.walled(BEACH)) ? showState('This beach is its members’.', sitePass.wall(BEACH)) : showState('The beach is out of reach.', esc(String(e.message || e))); }
+  await keys;
+  NARR = narrFrom(siteKeys.get(NARR_HOME));
   readFaces().catch(() => {});
   render();
   $('happen').addEventListener('click', makeItHappen);

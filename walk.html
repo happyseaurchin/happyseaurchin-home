@@ -1130,11 +1130,13 @@ async function writeWithLatch(body, what){
   /* THE KEY FOLLOWS THE BLOCK BEING WRITTEN — one name per block, shared with
    * /next and /hands — with this page's old deck-scoped key and the recency
    * page's mirror-latch as read-fallbacks, so nobody re-types a key they set
-   * elsewhere. A success re-homes it under the shared name. */
+   * elsewhere. A success re-homes it under the shared name. Every one kept
+   * wrapped (theme.js siteKeys), read once the keyring is ready. */
+  await siteKeys.ready();
   const home = 'next-latch:' + body.block;
-  const latch = localStorage.getItem(home)
-    || localStorage.getItem('mirror-latch:' + body.block)
-    || localStorage.getItem(latchKey());
+  const latch = siteKeys.get(home)
+    || siteKeys.get('mirror-latch:' + body.block)
+    || siteKeys.get(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -1142,8 +1144,8 @@ async function writeWithLatch(body, what){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(home, v.trim());
-  } else if (w.ok && latch) localStorage.setItem(home, latch);
+    if (w.ok) siteKeys.set(home, v.trim());
+  } else if (w.ok && latch) siteKeys.set(home, latch);
   return w;
 }
 async function ensureVentureMirror(){
@@ -1167,7 +1169,8 @@ async function ensureVentureMirror(){
    * founding: an unprotected one is not the fallback. A handle whose passport is
    * latched founds its blocks under that same key (the beach refuses any other),
    * so the prompt asks for it rather than inviting a new one. */
-  let latch = localStorage.getItem(latchKey());
+  await siteKeys.ready();
+  let latch = siteKeys.get(latchKey());
   if (!latch){
     const v = prompt('This founds your mirror, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return { ok: false, quiet: true };
@@ -1183,7 +1186,7 @@ async function ensureVentureMirror(){
     latch = v.trim();
     w = await writeBlock({ block: name, content: root, new_lock: latch });
   }
-  if (w.ok){ localStorage.setItem(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
+  if (w.ok){ siteKeys.set(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
   return w;
 }
 async function writeMirrorAt(addr, content){
@@ -1196,10 +1199,11 @@ async function writeMirrorAt(addr, content){
 const keeperKey = () => 'morning-keeper:spine:' + VENTURE;
 /* the page sees no latch, only the key this device was given: options → add my latch-key, or
  * kept after a spine write the beach admitted */
-const keeperHeld = () => { try { return !!localStorage.getItem(keeperKey()); } catch(e){ return false; } };
+const keeperHeld = () => siteKeys.has(keeperKey());
 async function writeSpine(addr, content){
+  await siteKeys.ready();
   const body = { block: 'spine:' + VENTURE, spindle: wireAddr(addr), content };
-  let latch = localStorage.getItem(keeperKey());
+  let latch = siteKeys.get(keeperKey());
   if (!latch){
     latch = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; check the first letter — phones capitalise it):');
     if (latch === null || !latch.trim()) return { ok: false, quiet: true };
@@ -1212,8 +1216,8 @@ async function writeSpine(addr, content){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(keeperKey(), v.trim());
-  } else if (w.ok) localStorage.setItem(keeperKey(), latch);
+    if (w.ok) siteKeys.set(keeperKey(), v.trim());
+  } else if (w.ok) siteKeys.set(keeperKey(), latch);
   return w;
 }
 async function appendCard(entry, pile){
@@ -2491,8 +2495,8 @@ document.getElementById('btn-mirror').addEventListener('click', () => document.b
 document.getElementById('btn-latch').addEventListener('click', () => {
   const v = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; blank clears; check the first letter — phones capitalise it):');
   if (v === null) return;
-  if (!v.trim()){ localStorage.removeItem(keeperKey()); toast('key cleared'); }
-  else { localStorage.setItem(keeperKey(), v.trim()); toast('key kept on this device'); }
+  if (!v.trim()){ siteKeys.del(keeperKey()); toast('key cleared'); }
+  else { siteKeys.set(keeperKey(), v.trim()); toast('key kept on this device'); }
   if (SHEET) paintSheet();
 });
 document.getElementById('btn-refresh').addEventListener('click', () => load().then(() => toast('re-read')));
@@ -2846,9 +2850,10 @@ function gNextFree(walk){
  * write replaces the node it names, and a bare string over a node carrying a zero chain wipes
  * everything beneath (function:earth 7.2) — so this page never sends one. */
 async function gSave(kind, walk, text){
+  await siteKeys.ready();
   const name = (kind === 'voice' ? 'identity:' : 'spatial:') + HANDLE;
-  const latchKeyG = 'here-latch:' + name;   /* shared with /here — one key per block, kept on this device */
-  const known = localStorage.getItem(latchKeyG) || localStorage.getItem('now-latch:' + HANDLE) || null;
+  const latchKeyG = 'here-latch:' + name;   /* shared with /here — one key per block, kept on this device, wrapped */
+  const known = siteKeys.get(latchKeyG) || siteKeys.get('now-latch:' + HANDLE) || null;
   const reach = (obj, w) => { let n = obj; for (const ch of w){ const k = ch === '0' ? '_' : ch; if (n[k] == null) n[k] = {}; else if (typeof n[k] === 'string') n[k] = { '_': n[k] }; n = n[k]; } return n; };
   const fresh = await readBlock(name).catch(() => undefined);
   if (fresh === undefined) return 'the beach did not answer — nothing written';
@@ -2874,7 +2879,7 @@ async function gSave(kind, walk, text){
       w = await writeBlock({ block: name, content: root, new_lock: latch });
     }
     if (!w.ok) return 'the block could not be born (' + w.status + ')';
-    localStorage.setItem(latchKeyG, latch);
+    siteKeys.set(latchKeyG, latch);
     toast(name + ' born, latched to ' + HANDLE);
     return true;
   }
@@ -2888,8 +2893,8 @@ async function gSave(kind, walk, text){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKeyG, v.trim());
-  } else if (w.ok && known) localStorage.setItem(latchKeyG, known);
+    if (w.ok) siteKeys.set(latchKeyG, v.trim());
+  } else if (w.ok && known) siteKeys.set(latchKeyG, known);
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   return true;
 }
@@ -2897,6 +2902,7 @@ async function gSave(kind, walk, text){
  * as the fallback): the words before 'Location:' stay, the clause after it becomes this address.
  * The passport's own key, kept on this device as passport-latch:<handle> — the same name /here uses. */
 async function gStandHere(walk, words){
+  await siteKeys.ready();
   const name = 'passport:' + HANDLE;
   let origin = APEX, fresh = await readAt(APEX, name).catch(() => null);
   if (!fresh){ origin = BEACH; fresh = await readAt(BEACH, name).catch(() => null); }
@@ -2907,7 +2913,7 @@ async function gStandHere(walk, words){
   const key = 'passport-latch:' + HANDLE;
   const post = async body => { const r = await fetch(origin, { method:'POST', cache:'no-store', headers:{'Content-Type':'application/json', Accept:'application/json'}, body: JSON.stringify(body) }); let d = null; try { d = await r.json(); } catch(e){} return { ok: r.ok, status: r.status, data: d }; };
   const body = { block: name, spindle: '3', content: line };
-  let latch = null; try { latch = localStorage.getItem(key); } catch(e){}
+  const latch = siteKeys.get(key) || null;
   if (latch) body.secret = latch;
   let w = await post(body);
   if (lockRequired(w)){
@@ -2915,7 +2921,7 @@ async function gStandHere(walk, words){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await post(body);
-    if (w.ok){ try { localStorage.setItem(key, v.trim()); } catch(e){} }
+    if (w.ok) siteKeys.set(key, v.trim());
   }
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   return true;
@@ -3087,7 +3093,10 @@ if (!VENTURE){
   $('ask-handle').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
 } else {
   $('app').classList.remove('hidden');
-  load().catch(e => showState('The beach would not read.', esc(String(e.message || e)) + '<br>Try again in a moment — nothing here is stored, so nothing is lost.'));
+  load().catch(e => (window.sitePass && sitePass.walled(BEACH))
+    /* a members' beach that refused this page: its own words, with the way in (theme.js sitePass) */
+    ? showState('This beach is its members’.', sitePass.wall(BEACH))
+    : showState('The beach would not read.', esc(String(e.message || e)) + '<br>Try again in a moment — nothing here is stored, so nothing is lost.'));
 }
 })();
 </script>

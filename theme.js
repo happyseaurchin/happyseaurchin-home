@@ -92,6 +92,479 @@
   });
 })();
 
+/* ── THE KEYS THIS DEVICE KEEPS, NEVER IN PLAIN TEXT (siteKeys) — the doors' battery, 5 Nov 2026 (bsp-mcp
+ * proposals/2026-11-05-the-doors-battery-minimal.md §8 item 20; spine:security-schematic 1.12 and 4.3).
+ *
+ * A key a person gives a page is kept on this device so they type it once (security-schematic 1.1), and it is
+ * kept WRAPPED under a key the browser will not hand out: the beach's own keeping (button/seal.js keep, an AES-GCM
+ * key made non-extractable and kept in this origin's IndexedDB), the same the beach's voice gives its own copies.
+ * What stands in storage is ciphertext (w1.<iv>.<ct>); the key itself is held in this page's memory alone. The
+ * pages name a key as they always have (passport-latch:<handle>, journal-latch:<host>:<handle>, …) and ask here:
+ *
+ *   siteKeys.get(name)               the key kept under the name, or ''; at once, and every key once ready() has run
+ *   siteKeys.ready()                 resolves once every key this device keeps is read (a page reading one as it loads
+ *                                    waits for it; a tap comes long after)
+ *   siteKeys.set(name, key, { tab }) kept wrapped, for this tab alone where tab is true; '' forgets it
+ *   siteKeys.del(name)               forgotten, every copy
+ *   siteKeys.has(name)               whether a key stands under the name, said at once (a box's hint)
+ *   siteKeys.forName(handle)         a key kept for any block named for the handle, as the voice looks for one
+ *   siteKeys.able()                  whether this browser keeps keys at all, once ready() has run
+ *
+ * WHERE EACH NAME GOES. The five names the voice reads as keys (next-latch:<block>, mirror-latch:<block>,
+ * passport-latch:<h>, lists-latch:<h>, now-latch:<h>) MOVE onto the voice's own keeping, beach-key:<block> (for
+ * the last three passport:<h>, lists:<h> and now:<h>), so a key a page kept is the voice's and the voice's the
+ * page's, one copy a block: wrapped where they stood, the voice would read the wrapped text as a key. Every other
+ * name a key stood under (here-latch:, journal-latch:, grain-latch:, shell-latch:, the keepers' next-keeper:,
+ * morning-keeper: and invite-keeper:, models:key:, gallery:pass, gallery:key, gallery:place-key, group:narrator) is
+ * WRAPPED WHERE IT STANDS, under its own name, in localStorage, or sessionStorage for a tab. Where two old names held
+ * different keys for one block, the second stands beside the first as a spare (beach-spare:<old name>), read back
+ * under its own name until a key is next given for that block, so no key anyone kept is lost.
+ *
+ * THE MOVE ON LOAD reads each plain copy, wraps it, and deletes the plain copy. A browser that cannot wrap (no
+ * IndexedDB, no SubtleCrypto) keeps what it kept, as it kept it, and is given nothing new to keep, as the voice does.
+ * Once a browser has wrapped a key here (site-keys:able), the names the voice reads move at once, as this file
+ * loads and before any voice on the page reads storage, to the voice's own name for the block, so whichever wraps
+ * them first, this page or the voice, finds them there; everything else is wrapped as soon as the seal has loaded.
+ * mindflow's key (mindflow-api-key) is kept by mindflow's own pages, which load no theme.js. */
+(function(){
+  'use strict';
+  var SEAL = 'https://beach.happyseaurchin.com/button/seal.js';
+  var ABLE = 'site-keys:able', SPARE = 'beach-spare:';
+  var MOVES = /^(next-latch|mirror-latch|passport-latch|lists-latch|now-latch):(.+)$/;
+  var WRAPS = /^(?:here-latch:|journal-latch:|grain-latch:|shell-latch:|next-keeper:|morning-keeper:|invite-keeper:|models:key:).+|^gallery:(?:pass|key|place-key)$|^group:narrator$/;
+  var MEM = {}, TAB = {}, GONE = {}, READY = null, ABLE_NOW = false, sealP = null;
+
+  function store(tab){ try { return tab ? window.sessionStorage : window.localStorage; } catch(e){ return null; } }
+  function rd(st, k){ try { return st ? st.getItem(k) : null; } catch(e){ return null; } }
+  function wr(st, k, v){ try { if (st) st.setItem(k, v); } catch(e){} }
+  function rm(st, k){ try { if (st) st.removeItem(k); } catch(e){} }
+  function names(st){ var out = []; try { for (var i = 0; st && i < st.length; i++) out.push(st.key(i)); } catch(e){} return out; }
+  function wrapped(v){ return typeof v === 'string' && v.indexOf('w1.') === 0; }
+  function plain(v){ return typeof v === 'string' && v && !wrapped(v) ? v : ''; }
+  /* the voice's own name for the key an old name held: beach-key:<the block it latches> */
+  function moved(name){
+    var m = MOVES.exec(String(name || ''));
+    if (!m) return '';
+    return 'beach-key:' + (m[1] === 'passport-latch' ? 'passport:' : m[1] === 'lists-latch' ? 'lists:' : m[1] === 'now-latch' ? 'now:' : '') + m[2];
+  }
+  function isKey(name){ return !!moved(name) || WRAPS.test(String(name || '')); }
+
+  /* AT ONCE, AS THIS FILE LOADS: an old name the voice reads moves to beach-key:<block>, or, where that block already
+   * holds another key, beside it as a spare, compared once both can be read; a write that did not take leaves the old
+   * name standing. Only where this browser has wrapped a key before, so a browser that cannot never meets a voice that
+   * drops a plain key it cannot wrap. */
+  (function moveNow(){
+    var st = store(false);
+    if (rd(st, ABLE) !== '1') return;
+    names(st).forEach(function(n){
+      var to = moved(n), v = to ? plain(rd(st, n)) : '';
+      if (!v) return;
+      var cur = rd(st, to);
+      if (cur == null) wr(st, to, v); else if (cur !== v) wr(st, SPARE + n, v);
+      if (cur === v || rd(st, to) === v || rd(st, SPARE + n) === v) rm(st, n);
+    });
+  })();
+
+  function seal(){
+    if (window.beachSeal) return Promise.resolve(window.beachSeal);
+    if (sealP) return sealP;
+    sealP = new Promise(function(ok, no){
+      var s = document.createElement('script');
+      s.src = SEAL; s.async = true;
+      s.onload = function(){ if (window.beachSeal) ok(window.beachSeal); else { sealP = null; no(new Error('the seal did not load')); } };
+      s.onerror = function(){ sealP = null; no(new Error('could not load ' + SEAL)); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+    return sealP;
+  }
+  function settled(jobs){ return Promise.all(jobs.map(function(j){ return Promise.resolve(j).catch(function(){}); })); }
+  /* what was not moved at once (the first page on this browser, before it had wrapped anything) is moved now; an old name
+   * that a voice on this page may already have read as a key stands until the next page, which moves it before any voice */
+  function migrate(S){
+    var st = store(false), jobs = [];
+    names(st).forEach(function(n){
+      var to = moved(n), v = to ? plain(rd(st, n)) : '';
+      if (!v) return;
+      var cur = rd(st, to);
+      jobs.push((cur === v ? Promise.resolve(true) : S.keep.wrap(v).then(function(w){
+        if (rd(st, n) !== v) return false;                       // given or forgotten meanwhile: that stands
+        var now = rd(st, to);
+        if (now == null || plain(now) === v){ wr(st, to, w); return rd(st, to) === w; }
+        wr(st, SPARE + n, w); return rd(st, SPARE + n) === w;
+      })).then(function(done){ if (done && !window.beachVoice && rd(st, n) === v) rm(st, n); }));
+    });
+    [false, true].forEach(function(tab){
+      var s = store(tab);
+      names(s).forEach(function(n){
+        var v = WRAPS.test(n) ? plain(rd(s, n)) : '';
+        if (v) jobs.push(S.keep.wrap(v).then(function(w){ if (rd(s, n) === v) wr(s, n, w); }));
+      });
+    });
+    return settled(jobs);
+  }
+  /* every key kept, opened into this page's memory; a plain one met here (a name just moved) wrapped where it stands */
+  function readAll(S){
+    var jobs = [];
+    [false, true].forEach(function(tab){
+      var s = store(tab), into = tab ? TAB : MEM;
+      names(s).forEach(function(n){
+        if (!(WRAPS.test(n) || (!tab && /^beach-(key|spare):/.test(n)))) return;
+        var v = rd(s, n);
+        if (plain(v)){
+          if (!(n in into) && !GONE[n]) into[n] = v;
+          jobs.push(S.keep.wrap(v).then(function(w){ if (rd(s, n) === v) wr(s, n, w); }));
+        } else if (wrapped(v)) jobs.push(S.keep.unwrap(v).then(function(t){ if (t !== null && !(n in into) && !GONE[n] && rd(s, n) === v) into[n] = t; }));
+      });
+    });
+    return settled(jobs).then(function(){
+      /* a spare that agrees with its block's key is no spare */
+      Object.keys(MEM).forEach(function(n){
+        if (n.indexOf(SPARE) !== 0 || MEM[moved(n.slice(SPARE.length))] !== MEM[n]) return;
+        delete MEM[n]; rm(store(false), n);
+      });
+    });
+  }
+  function ready(){
+    if (READY) return READY;
+    READY = seal().then(function(S){
+      if (!S.keep || !S.keep.able()) return;
+      return S.keep.wrap('able').then(function(w){ return S.keep.unwrap(w); }).then(function(t){
+        if (t !== 'able') return;
+        ABLE_NOW = true; wr(store(false), ABLE, '1');
+        return migrate(S).then(function(){ return readAll(S); });
+      });
+    }).catch(function(){}).then(function(){});
+    return READY;
+  }
+
+  function get(name){
+    name = String(name || '');
+    var to = moved(name), st = store(false);
+    if (to) return GONE[to] ? '' : (MEM[SPARE + name] || MEM[to] || plain(rd(st, SPARE + name)) || plain(rd(st, to)) || plain(rd(st, name)) || '');
+    if (WRAPS.test(name)) return GONE[name] ? '' : (MEM[name] || TAB[name] || plain(rd(st, name)) || plain(rd(store(true), name)) || '');
+    return rd(st, name) || '';
+  }
+  function has(name){
+    if (get(name)) return true;
+    var to = moved(name), st = store(false);
+    if (to) return !GONE[to] && (rd(st, to) != null || rd(st, SPARE + name) != null);
+    return WRAPS.test(String(name || '')) && !GONE[name] && (rd(st, name) != null || rd(store(true), name) != null);
+  }
+  function forName(handle){
+    var tail = ':' + String(handle || ''), n, st = store(false), all;
+    if (tail === ':') return '';
+    for (n in MEM) if (n.indexOf('beach-key:') === 0 && n.slice(-tail.length) === tail && MEM[n]) return MEM[n];
+    all = names(st);
+    for (var i = 0; i < all.length; i++){
+      n = all[i];
+      if ((n.indexOf('beach-key:') === 0 || MOVES.test(n)) && n.slice(-tail.length) === tail && !GONE[moved(n) || n] && plain(rd(st, n))) return plain(rd(st, n));
+    }
+    return '';
+  }
+  function dropSpares(to){
+    Object.keys(MEM).forEach(function(n){ if (n.indexOf(SPARE) === 0 && moved(n.slice(SPARE.length)) === to) delete MEM[n]; });
+    var st = store(false);
+    names(st).forEach(function(n){ if (n.indexOf(SPARE) === 0 && moved(n.slice(SPARE.length)) === to) rm(st, n); });
+  }
+  /* wrapped, once the seal is here; the newest key given wins, so an older wrap landing late never covers it */
+  function keep(tab, n, v){
+    return ready().then(function(){
+      var S = window.beachSeal;
+      if (!ABLE_NOW || !S) return false;
+      return S.keep.wrap(v).then(function(w){ if ((tab ? TAB : MEM)[n] !== v) return false; wr(store(tab), n, w); return true; }, function(){ return false; });
+    });
+  }
+  function set(name, value, opts){
+    name = String(name || ''); value = value == null ? '' : String(value).trim();
+    if (!value) return del(name);
+    var to = moved(name), st = store(false), tab = store(true), t = !!(opts && opts.tab);
+    if (to){
+      /* a key just given for a block is its key: a spare beside it is no longer anyone's */
+      delete GONE[to]; MEM[to] = value; dropSpares(to);
+      if (rd(st, name) != null) rm(st, name);
+      if (plain(rd(st, to))) rm(st, to);
+      return keep(false, to, value);
+    }
+    if (WRAPS.test(name)){
+      delete GONE[name];
+      (t ? TAB : MEM)[name] = value; delete (t ? MEM : TAB)[name];
+      rm(t ? st : tab, name);
+      if (plain(rd(t ? tab : st, name))) rm(t ? tab : st, name);
+      return keep(t, name, value);
+    }
+    wr(st, name, value);
+    return Promise.resolve(true);
+  }
+  function del(name){
+    name = String(name || '');
+    var to = moved(name), st = store(false), tab = store(true);
+    if (to){ GONE[to] = true; delete MEM[to]; rm(st, to); dropSpares(to); rm(st, name); }
+    else if (WRAPS.test(name)){ GONE[name] = true; delete MEM[name]; delete TAB[name]; rm(st, name); rm(tab, name); }
+    else rm(st, name);
+    return Promise.resolve(true);
+  }
+
+  window.siteKeys = { get: get, set: set, del: del, has: has, ready: ready, forName: forName, isKey: isKey, able: function(){ return ABLE_NOW; } };
+  /* a device that keeps a key reads them all straight away, so a tap never waits on the seal */
+  var any = false;
+  [false, true].forEach(function(tab){ names(store(tab)).forEach(function(n){ if (isKey(n) || /^beach-(key|spare):/.test(n)) any = true; }); });
+  if (any) ready();
+})();
+
+/* ── THE PASS AT A MEMBERS' BEACH (sitePass) — the doors' battery, 5 Nov 2026 (§8 item 19; spine:security-schematic
+ * 1.35). A beach an organisation runs for its members (pscale-beach, the members' gate) answers a stranger 401
+ * members_only for every block but what its keepers mark beyond, and lists only those in its index; a member proves
+ * their passport once for a pass the device keeps twelve hours, which the beach's voice keeps as beach-pass:<beach>.
+ * Every page here reads and writes a beach by its address with a small client of its own, so the pass is carried
+ * here, once, for all of them: a request this page makes to a beach's wire (<origin>[/w/<table>]/.well-known/
+ * pscale-beach) carries the pass held for that beach as Authorization: Bearer, where it sets none itself; and the
+ * door's refusal (members_only, or an index saying it is a members' beach's) is proved once more, asking nothing,
+ * with a key this device keeps (a write's own key for the handle its block is named for, as the voice does; else the
+ * passport's of the member the pass was last for, or of the name this device signs with), through the voice where it
+ * speaks for that beach, else with the voice's own proof, kept where the voice keeps it; then made once again. A
+ * beach's sub-beaches and tables are its deploy's, and share its pass.
+ *
+ * What cannot be passed is said in plain words, with the way in, never as nobody, nothing or a 401:
+ *   sitePass.walled(origin)   that beach refused this page, and no pass was had
+ *   sitePass.gated(index)     an index the page read is a members' beach's, as a stranger is shown it
+ *   sitePass.wall(origin)     the words: whose beach; a member proves their key once (a button that asks for the
+ *                             name and the key, proves, and reads the page again); a newcomer comes in by a
+ *                             member's invitation, at the String where the site knows it
+ *   sitePass.prove({ beach, name, ask })    that proof, asked for, or not (ask: false)
+ *   sitePass.held(origin)     the pass this device holds for that beach, { name, pass, expires }, or null
+ * A page that draws no wall of its own where a beach refused it is given one, under its bar. */
+(function(){
+  'use strict';
+  if (!window.fetch || window.sitePass) return;
+  var raw = window.fetch.bind(window);
+  var PASS = 'beach-pass:', WIRE = /\/\.well-known\/pscale-beach$/, APEX = 'https://beach.happyseaurchin.com';
+  /* the members' beaches whose String the site knows: where a newcomer takes a member's invitation (string.html DOORS) */
+  var DOORS = { 'https://beach.bringingtheflavour.com': { name: 'SALT', join: 'https://www.bringingtheflavour.com/string' } };
+  var MEMBERS = /\bis its members(?:'|’) beach\b/;
+  var OPEN = {}, WALLED = {}, TRIED = {}, PROVING = {}, SHOWN = {}, styled = false;
+
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function clean(v){ return window.cleanHandle ? window.cleanHandle(v) : String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim(); }
+  function signer(){ try { return clean(localStorage.getItem('render:who')); } catch(e){ return ''; } }
+  /* the deploy an address belongs to: <x>.beach.<domain> and /w/<table> are the beach's own */
+  function deployOf(origin){
+    try {
+      var u = new URL(origin, location.href), h = u.hostname, i = h.indexOf('.beach.');
+      if (i > 0) h = h.slice(i + 1);
+      return u.protocol + '//' + h + (u.port ? ':' + u.port : '');
+    } catch(e){ return ''; }
+  }
+  function wireOf(url){
+    try {
+      var u = new URL(url, location.href);
+      if (!/^https?:$/.test(u.protocol) || !WIRE.test(u.pathname)) return null;
+      return { deploy: deployOf(u.origin), index: !u.searchParams.has('block') && !u.searchParams.has('tables') };
+    } catch(e){ return null; }
+  }
+  function record(d){ try { var p = JSON.parse(localStorage.getItem(PASS + d) || 'null'); return p && p.name ? p : null; } catch(e){ return null; } }
+  function live(p){ return !!(p && p.pass && Date.parse(p.expires) - Date.now() > 60000); }
+  function held(origin){ var p = record(deployOf(origin || APEX)); return live(p) ? { name: p.name, pass: p.pass, expires: p.expires } : null; }
+  function bodyOf(init){ try { return init && typeof init.body === 'string' ? JSON.parse(init.body) : null; } catch(e){ return null; } }
+  /* the proof passes as the voice sends it: a passport's latch, and nothing else */
+  function isProof(init){
+    var b = bodyOf(init);
+    return !!(b && /^post$/i.test((init && init.method) || '') && /^passport:/.test(String(b.block || '')) && b.content === undefined &&
+      b.new_lock === undefined && b.append !== true && b.invite !== true && typeof b.secret === 'string');
+  }
+  function gated(index){ return !!(index && typeof index._ === 'string' && MEMBERS.test(index._)); }
+  /* a member's key for this beach: the passport's own, as every page names it, at the apex; at any other beach under a name
+   * that carries the beach, so a key there never stands in for the same name's key here */
+  function keyName(name, d){ return 'passport-latch:' + name + (d === APEX ? '' : '@' + d.replace(/^https?:\/\//, '')); }
+  function keyFor(name, d){ var K = window.siteKeys; return K ? (K.get(keyName(name, d)) || K.get('passport-latch:' + name) || K.forName(name)) : ''; }
+  function proof(d, name, key){
+    return raw(d + '/.well-known/pscale-beach', { method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'passport:' + name, secret: key }) })
+      .then(function(r){
+        return r.json().catch(function(){ return null; }).then(function(x){
+          if (r.ok && x && x.pass){
+            try { localStorage.setItem(PASS + d, JSON.stringify({ name: name, pass: x.pass, expires: x.expires })); } catch(e){}
+            return { ok: true, name: name, expires: x.expires };
+          }
+          if (r.ok) return { ok: false, open: true };
+          return { ok: false, status: r.status, code: x && x.code, error: x && (x.error || x.message) };
+        });
+      }, function(e){ return { ok: false, error: String((e && e.message) || e) }; });
+  }
+  /* PROVED ONCE MORE, ASKING NOTHING — once a page for each beach */
+  function reprove(w, init){
+    var d = w.deploy;
+    if (PROVING[d]) return PROVING[d];
+    if (TRIED[d]) return Promise.resolve(null);
+    TRIED[d] = true;
+    var tries = [], b = bodyOf(init), rec = record(d), who = clean((rec && rec.name) || signer());
+    if (b && typeof b.block === 'string' && b.block.lastIndexOf(':') > 0){
+      var wk = typeof b.secret === 'string' && b.secret ? b.secret : typeof b.new_lock === 'string' ? b.new_lock : '';
+      var wh = clean(b.block.slice(b.block.lastIndexOf(':') + 1));
+      if (wk && wh) tries.push({ name: wh, key: wk });
+    }
+    PROVING[d] = (window.siteKeys ? window.siteKeys.ready() : Promise.resolve()).then(function(){
+      var v = window.beachVoice;
+      if (who && v && v.beach === d && typeof v.prove === 'function') tries.push({ name: who, voice: true });
+      else if (who){ var k = keyFor(who, d); if (k && !tries.some(function(t){ return t.name === who && t.key === k; })) tries.push({ name: who, key: k }); }
+      function next(i){
+        if (i >= tries.length) return null;
+        var t = tries[i];
+        return Promise.resolve(t.voice ? window.beachVoice.prove({ name: t.name, ask: false }) : proof(d, t.name, t.key))
+          .then(function(r){ return r && r.ok && held(d) ? held(d) : next(i + 1); }, function(){ return next(i + 1); });
+      }
+      return next(0);
+    }).then(function(p){ delete PROVING[d]; return p; }, function(){ delete PROVING[d]; return null; });
+    return PROVING[d];
+  }
+  function withPass(init, p){
+    var o = {}, k;
+    for (k in init) o[k] = init[k];
+    o.headers = new Headers((init && init.headers) || undefined);
+    o.headers.set('Authorization', 'Bearer ' + p.pass);
+    return o;
+  }
+  function refused(w, url, init, r, p){
+    WALLED[w.deploy] = true;
+    /* a pass the door no longer takes (its secret turned) is given up, its name kept for the proof */
+    if (p) try { localStorage.setItem(PASS + w.deploy, JSON.stringify({ name: p.name })); } catch(e){}
+    return reprove(w, init).then(function(p2){
+      if (!p2){ wallSoon(w.deploy); return r; }
+      WALLED[w.deploy] = false;
+      return carry(url, init, w, true);
+    });
+  }
+  function carry(url, init, w, again){
+    var rec = record(w.deploy);
+    var first = live(rec) ? Promise.resolve(rec) : rec && !again ? reprove(w, init) : Promise.resolve(null);
+    return first.then(function(p){
+      return raw(url, p ? withPass(init, p) : init).then(function(r){
+        var reading = !init.method || /^get$/i.test(init.method);
+        if (r.status === 401) return r.clone().json().then(function(x){
+          if (!x || x.code !== 'members_only') return r;
+          if (again){ WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
+          return refused(w, url, init, r, p);
+        }, function(){ return r; });
+        /* an index a stranger is shown: what its keepers mark beyond, and the words saying so */
+        if (r.ok && reading && w.index && !p && !OPEN[w.deploy]) return r.clone().json().then(function(x){
+          if (!gated(x)){ OPEN[w.deploy] = true; return r; }
+          if (again){ WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
+          return refused(w, url, init, r, null);
+        }, function(){ return r; });
+        return r;
+      });
+    });
+  }
+  window.fetch = function(input, init){
+    var url = typeof input === 'string' ? input : (typeof URL !== 'undefined' && input instanceof URL) ? input.href : '';
+    var w = url ? wireOf(url) : null;
+    if (!w || !w.deploy) return raw(input, init);
+    init = init || {};
+    var h; try { h = new Headers(init.headers || undefined); } catch(e){ return raw(input, init); }
+    if (h.has('Authorization') || isProof(init)) return raw(input, init);
+    return carry(url, init, w, false);
+  };
+
+  /* ── the wall, in plain words, with the way in ── */
+  function style(){
+    if (styled || !document.head) return;
+    styled = true;
+    var s = document.createElement('style');
+    s.textContent = '.pass-wall{box-sizing:border-box;max-width:100%;border:1px solid var(--line-strong,rgba(196,219,223,.24));border-radius:6px;' +
+      'background:var(--card,#123742);color:var(--foam,#EFF6F5);padding:12px 14px;margin:12px 0;font-family:var(--body,Georgia,serif);' +
+      'font-size:15px;line-height:1.5;overflow-wrap:anywhere;text-align:left}' +
+      '.pass-wall p{margin:0 0 8px}.pass-wall p:last-child{margin:0}.pass-wall a{color:var(--liquid,#33C2D2)}' +
+      '.pass-wall__go{font-family:var(--mono,ui-monospace,monospace);font-size:12.5px;color:var(--liquid,#33C2D2);background:none;' +
+      'border:1px solid var(--liquid,#33C2D2);border-radius:4px;padding:5px 10px;margin:4px 0 0;cursor:pointer;max-width:100%;white-space:normal;text-align:left}' +
+      '.pass-wall__go:disabled{opacity:.6;cursor:default}' +
+      '.pass-wall__said{font-family:var(--mono,ui-monospace,monospace);font-size:12px;color:var(--vapour,#C4DBDF)}' +
+      '.pass-wall__said:empty{display:none}.pass-wall__said.err{color:var(--solid,#E7B24C)}' +
+      '.pass-wall--top{margin:10px 16px}';
+    document.head.appendChild(s);
+  }
+  function words(d){
+    var door = DOORS[d] || {}, host = d.replace(/^https?:\/\//, ''), name = door.name || host;
+    return '<p><b>' + esc(name) + '</b> is its members’ beach' + (door.name ? ' (' + esc(host) + ')' : '') +
+      ': what its members keep there is theirs, and a stranger is shown only what they mark open, not even that the rest is there.</p>' +
+      '<p>A member proves their key once, and this device keeps a pass for twelve hours. ' +
+      '<button type="button" class="pass-wall__go" data-pass-prove="' + esc(d) + '">I’m a member: prove my key</button></p>' +
+      '<p class="pass-wall__said" aria-live="polite"></p>' +
+      '<p>Not a member? A member can invite you: their link brings you in with a name and a key of your own' +
+      (door.join ? ', at <a href="' + esc(door.join) + '">' + esc(name) + '’s String</a>' : '') + '.</p>';
+  }
+  function wall(origin){ var d = deployOf(origin || APEX); style(); return '<div class="pass-wall" data-pass-wall="' + esc(d) + '">' + words(d) + '</div>'; }
+  /* a page that drew no wall of its own is given one, under its bar */
+  function wallSoon(d){
+    if (SHOWN[d]) return;
+    SHOWN[d] = true;
+    setTimeout(function(){
+      if (held(d) || !document.body || document.querySelector('[data-pass-wall]')) return;
+      style();
+      var box = document.createElement('div');
+      box.className = 'pass-wall pass-wall--top'; box.setAttribute('data-pass-wall', d); box.setAttribute('role', 'status');
+      box.innerHTML = words(d);
+      var top = document.querySelector('.stickyhead') || document.querySelector('.bar');
+      if (top && top.parentNode) top.parentNode.insertBefore(box, top.nextSibling); else document.body.insertBefore(box, document.body.firstChild);
+    }, 1200);
+  }
+
+  /* PROVED, ASKED FOR: the name (the one the pass was last for, else asked, offering the name this device signs with) and
+   * the key (the one kept for it at this beach, else asked, twice more while the beach refuses it), kept wrapped once it
+   * proves; through the voice where it speaks for this beach, which asks and keeps as it always has */
+  function prove(op){
+    op = op || {};
+    var d = deployOf(op.beach || APEX), door = DOORS[d] || {}, host = d.replace(/^https?:\/\//, ''), place = door.name || host;
+    var ask = op.ask !== false, rec = record(d), name = clean(op.name || (rec && rec.name) || '');
+    if (!name && ask){
+      var v = window.prompt('Your name at ' + place + ': the one your passport there is under', signer());
+      if (v === null) return Promise.resolve({ ok: false, quiet: true });
+      name = clean(v);
+    }
+    if (!name || name.length > 32) return Promise.resolve({ ok: false, needName: true, error: 'a member’s name: up to 32 letters, digits, - or _' });
+    TRIED[d] = false; WALLED[d] = false;
+    var vc = window.beachVoice;
+    if (vc && vc.beach === d && typeof vc.prove === 'function') return vc.prove({ name: name, ask: ask }).then(function(r){ if (r && r.ok) r.name = name; return r; });
+    return (window.siteKeys ? window.siteKeys.ready() : Promise.resolve()).then(function(){
+      var key = keyFor(name, d), asked = 0, last = null;
+      function attempt(){
+        if (!key){
+          if (!ask || asked++ === 2) return last || { ok: false, needKey: true, error: name + '’s key is not on this device' };
+          var k = window.prompt((last ? 'That key is not the one ' + name + '’s passport at ' + place + ' uses. Enter it again' : 'The key ' + name + '’s passport at ' + place + ' uses') +
+            ' (kept on this device — check the first letter: phones capitalise it):');
+          if (k === null || !k.trim()) return { ok: false, quiet: true };
+          key = k.trim();
+        }
+        return proof(d, name, key).then(function(r){
+          /* kept, wrapped, before the page is read again */
+          if (r.ok) return (window.siteKeys ? window.siteKeys.set(keyName(name, d), key) : Promise.resolve()).then(function(){ return r; }, function(){ return r; });
+          if (r.open) return { ok: false, error: place + ' is open to anyone: no pass is needed' };
+          if (r.status === 404) return { ok: false, error: 'no member called ' + name + ' at ' + place };
+          if (r.status === 403 || r.code === 'lock_required' || r.code === 'handle_bound'){ last = { ok: false, error: 'that key does not open ' + name + '’s passport at ' + place }; key = ''; return attempt(); }
+          return r;
+        });
+      }
+      return attempt();
+    });
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest ? e.target.closest('[data-pass-prove]') : null;
+    if (!b) return;
+    e.preventDefault();
+    var box = b.closest('[data-pass-wall]'), said = box ? box.querySelector('.pass-wall__said') : null;
+    var say = function(t, err){ if (said){ said.textContent = t || ''; said.classList.toggle('err', !!err); } };
+    b.disabled = true; say('proving your key…');
+    prove({ beach: b.getAttribute('data-pass-prove'), ask: true }).then(function(r){
+      b.disabled = false;
+      if (r && r.ok){ say('a pass for ' + (r.name || 'you') + ', kept on this device for twelve hours: reading again…'); setTimeout(function(){ location.reload(); }, 500); return; }
+      say(r && r.quiet ? '' : (r && r.error) || 'the beach did not take that key', !(r && r.quiet));
+    });
+  });
+
+  window.sitePass = {
+    held: held, prove: prove, gated: gated, wall: wall, deployOf: deployOf,
+    walled: function(origin){ var d = deployOf(origin || APEX); return !!WALLED[d] && !held(d); }
+  };
+})();
+
 /* ── THE READER'S LOOK (look.2, 27 Oct 2026) was taken out on 28 Oct 2026 at David's word ("I need a SUPER SIMPLE
  * way … two paths and the user can choose, and there's no logic which is being tripped"): a proposal's crafted page
  * and its standard view, /proposal/<name>, each always show themselves, and nothing sends a reader from one to the
@@ -1493,13 +1966,17 @@
   /* the beach's voice, once a page: a page that carries it already is not given a second */
   function voice(){
     if (window.beachVoice) return Promise.resolve(window.beachVoice);
-    if (!voiceP) voiceP = new Promise(function(ok, no){
+    /* the keys this device keeps are moved onto the voice's own names before it first reads them (siteKeys, above),
+     * so it finds every one; a seal slow to come holds it up three seconds at most */
+    var keys = window.siteKeys ? Promise.race([window.siteKeys.ready(), new Promise(function(r){ setTimeout(r, 3000); })]) : Promise.resolve();
+    if (!voiceP) voiceP = keys.then(function(){ return new Promise(function(ok, no){
+      if (window.beachVoice) return ok(window.beachVoice);
       var s = document.createElement('script');
       s.src = VOICE; s.async = true;
       s.onload = function(){ if (window.beachVoice) ok(window.beachVoice); else no(); };
       s.onerror = function(){ voiceP = null; no(); };
       document.body.appendChild(s);
-    });
+    }); });
     return voiceP;
   }
   /* the act under options, saying what it will do */
@@ -1776,8 +2253,8 @@
     var chain = listToChain(items);
     if (chain) branch['1'] = chain;
 
-    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
-                 { headers:{Accept:'application/json'}, cache:'no-store' })
+    return window.siteKeys.ready().then(function(){ return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
+                 { headers:{Accept:'application/json'}, cache:'no-store' }); })
       .then(function(r){
         /* a read that failed is never written over: the block would be replaced by its error */
         if (!r.ok && r.status !== 404) throw { ok:false, status:r.status };
@@ -1788,9 +2265,8 @@
         if (typeof content._ !== 'string' || !content._) content._ = ROOT_SAYS;
         content[String(digit)] = branch;
 
-        var key = null;
-        /* the passport's own key first: the beach binds lists:<handle> to it (handle_bound) */
-        try { key = localStorage.getItem(latchFor(handle)) || localStorage.getItem('passport-latch:' + handle); } catch(e){}
+        /* the passport's own key first: the beach binds lists:<handle> to it (handle_bound); both kept wrapped (siteKeys) */
+        var key = window.siteKeys.get(latchFor(handle)) || window.siteKeys.get('passport-latch:' + handle) || null;
         if (!key){
           key = prompt('Your key for ' + name + ' — the one your passport uses, if you have one; it keeps these lists yours to edit:');
           if (key === null || !key.trim()) return { ok:false, quiet:true };
@@ -1801,14 +2277,14 @@
 
         var landed = function(){ listsRead[origin + '|' + handle] = Promise.resolve(content); };
         return post(origin, body).then(function(w){
-          if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} landed(); return w; }
+          if (w.ok){ window.siteKeys.set(latchFor(handle), key); landed(); return w; }
           var bound = !w.ok && w.data && w.data.code === 'handle_bound';
           if (!lockRequired(w) && !bound) return w;
           var v = prompt(bound ? 'The beach binds ' + name + " to your passport's key — enter that key:" : 'That key was refused for ' + name + '. Try again:');
           if (v === null || !v.trim()) return { ok:false, quiet:true };
           body.secret = v.trim(); body.new_lock = v.trim();
           return post(origin, body).then(function(w2){
-            if (w2.ok){ try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){} landed(); }
+            if (w2.ok){ window.siteKeys.set(latchFor(handle), v.trim()); landed(); }
             return w2;
           });
         });

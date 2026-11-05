@@ -170,13 +170,14 @@ const taken = node => 9 - slotsFree(node).length;
 /* ── the key ── one per holder, as every hand door has kept it, the
  * passport's behind it */
 const keyName = h => 'next-latch:ahead:' + h;
-function keyOf(h){ try { return localStorage.getItem(keyName(h)) || localStorage.getItem('passport-latch:' + h) || ''; } catch(e){ return ''; } }
-function keep(h, k){ try { localStorage.setItem(keyName(h), k); } catch(e){} }
+function keyOf(h){ try { return siteKeys.get(keyName(h)) || siteKeys.get('passport-latch:' + h) || ''; } catch(e){ return ''; } }
+function keep(h, k){ try { siteKeys.set(keyName(h), k); } catch(e){} }
 const ask = m => { const v = prompt(m); return v === null ? '' : v.trim(); };
 
 /* a write to one of a holder's hands under the key this device keeps — asked
  * once where none is kept, and kept; quiet asks nothing */
 async function put(h, body, quiet){
+  await siteKeys.ready();
   const send = k => write(Object.assign({}, body, k ? { secret: k } : {}));
   let w = await send(keyOf(h));
   if (lockRequired(w)){
@@ -200,6 +201,7 @@ const rootOf = (project, h) => 'AHEAD — ' + h + "'s hand in " + (project === '
  * founds under its own key); given as the proof, the new hand may keep the key
  * the holder's hands already use, so a person keeps one key for their cards. */
 async function found(h, project, quiet){
+  await siteKeys.ready();
   const block = name(project, h);
   let key = keyOf(h);
   if (!key){
@@ -210,14 +212,14 @@ async function found(h, project, quiet){
   const content = { '_': rootOf(project, h) };
   let w = await write({ block, content, new_lock: key });
   if (!w.ok && w.data && w.data.code === 'handle_bound'){
-    let pk = ''; try { pk = localStorage.getItem('passport-latch:' + h) || ''; } catch(e){}
+    let pk = ''; try { pk = siteKeys.get('passport-latch:' + h) || ''; } catch(e){}
     if (!pk || pk === key){
       if (quiet) return { ok: false, quiet: true };
       pk = ask('The beach binds ' + block + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
       if (!pk) return { ok: false, quiet: true };
     }
     w = await write({ block, content, secret: pk, new_lock: key });
-    if (w.ok) try { localStorage.setItem('passport-latch:' + h, pk); } catch(e){}
+    if (w.ok) try { siteKeys.set('passport-latch:' + h, pk); } catch(e){}
   }
   if (w.ok) keep(h, key);
   return w;
@@ -275,6 +277,7 @@ async function move(c, to, quiet){
  * moves, and a card that cannot land stays where it was, still read. Done and
  * dropped cards stay as the record; the old hand is set aside, never wiped. */
 async function split(h){
+  await siteKeys.ready();
   if (!keyOf(h)) return { ok: false, quiet: true, moved: 0 };
   const old = await read('ahead:' + h).catch(() => null);
   const open = old ? cardsIn('ahead:' + h, old).filter(isOpen) : [];

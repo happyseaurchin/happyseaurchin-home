@@ -454,7 +454,7 @@ let FOLD_PUB = null, FOLD_MINE = null; /* the standing folds — bare now (every
 let CLOCK = clockNow();
 const latchKey = () => 'now-latch:' + HANDLE;
 /* a passport founded on this device lends its key to the now — one key, asked for once */
-const readLatch = () => { try { return localStorage.getItem(latchKey()) || localStorage.getItem('passport-latch:' + HANDLE) || null; } catch(e){ return null; } };
+const readLatch = () => { try { return siteKeys.get(latchKey()) || siteKeys.get('passport-latch:' + HANDLE) || null; } catch(e){ return null; } };
 /* a line that lands here under this handle's key says whose device this is — the name every
    go menu offers as the way back from anyone else's pages (theme.js, the switch) */
 const signedAs = () => { try { localStorage.setItem('render:who', HANDLE); } catch(e){} };
@@ -489,6 +489,7 @@ function chainOwn(block){
   return t && !/^MIRROR — /.test(t) ? t : null;
 }
 async function writeRoot(text){
+  await siteKeys.ready();
   const ok = await ensureMirror();
   if (!ok) return 'the mirror could not be reached';
   const fresh = await readBlock('now:' + HANDLE).catch(() => undefined);
@@ -510,7 +511,7 @@ async function writeRoot(text){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+    if (w.ok) siteKeys.set(latchKey(), v.trim());
   }
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   if (body.secret) signedAs();
@@ -721,6 +722,7 @@ async function renderHand(){
 
 /* ── writes — the mirror is born locked, floor 10, and only its holder voices it ── */
 async function ensureMirror(){
+  await siteKeys.ready();
   if (MIRROR) return MIRROR_OK;
   const name = 'now:' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
@@ -742,7 +744,7 @@ async function ensureMirror(){
     w = await writeBlock({ block: name, content: root, new_lock: latch });
   }
   if (!w.ok){ toast('the mirror could not be born (' + w.status + ')'); return false; }
-  localStorage.setItem(latchKey(), latch);
+  siteKeys.set(latchKey(), latch);
   MIRROR = root; MIRROR_OK = true;
   toast('mirror born, latched to ' + HANDLE);
   return true;
@@ -788,6 +790,7 @@ function composeWrite(addr, text){
   return { spindle: pad10(digits.slice(0, at + 1).join('')), content };
 }
 async function writeRung(addr, text){
+  await siteKeys.ready();
   const ok = await ensureMirror();
   if (!ok) return MIRROR_OK ? 'the mirror could not be reached' : 'this mirror is off the clock (floor ≠ 10) — mend it before voicing it';
   /* the merge is only as true as the copy it merges from — fetch fresh, every time */
@@ -808,7 +811,7 @@ async function writeRung(addr, text){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+    if (w.ok) siteKeys.set(latchKey(), v.trim());
   }
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   if (body.secret) signedAs();

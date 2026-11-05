@@ -759,8 +759,9 @@ function wireWrite(kind, opts){
 /* the writes — each latched by the SIDE key, kept on this device per grain side */
 const sideLatch = (pid, side) => 'grain-latch:' + pid + ':' + side;
 async function sendMessage(pid, side, text, sealTo){
+  await siteKeys.ready();
   const lk = sideLatch(pid, side);
-  let latch = null; try { latch = localStorage.getItem(lk); } catch(e){}
+  let latch = null; try { latch = siteKeys.get(lk); } catch(e){}
   let line = text;
   if (sealTo){
     /* THE WRITER'S DOOR seals before the line leaves: the voice asks once for the key the handle's passport uses, publishes
@@ -780,20 +781,21 @@ async function sendMessage(pid, side, text, sealTo){
     const v = prompt('Your side of this grain is latched — the key you reached or accepted with (kept on this device; check the first letter — phones capitalise it):');
     if (v === null || !v.trim()) return { ok:false, quiet:true };
     body.secret = v.trim(); w = await writeBlock(body);
-    if (w.ok) try { localStorage.setItem(lk, v.trim()); } catch(e){}
+    if (w.ok) try { siteKeys.set(lk, v.trim()); } catch(e){}
   }
   return w;
 }
 async function reachGrain(pid, side, other, description, text){
+  await siteKeys.ready();
   const lk = sideLatch(pid, side);
-  let key = null; try { key = localStorage.getItem(lk); } catch(e){}
+  let key = null; try { key = siteKeys.get(lk); } catch(e){}
   if (!key){
     key = prompt('Invent a key for YOUR side of this channel — it is what lets you write here again (kept on this device; check the first letter — phones capitalise it):');
     if (key === null || !key.trim()) return { ok:false, quiet:true };
     key = key.trim();
   }
   const w = await writeBlock({ block: 'grain:' + pid, action: 'reach', side, agent_id: HANDLE, partner_agent_id: other, description, my_side_content: text, my_passphrase: key });
-  if (w.ok) try { localStorage.setItem(lk, key); } catch(e){}
+  if (w.ok) try { siteKeys.set(lk, key); } catch(e){}
   return w;
 }
 

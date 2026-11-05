@@ -93,7 +93,9 @@
   .vline button.goat{background:none;border:1px solid var(--line);border-radius:5px;padding:1px 7px;margin:0 4px 2px 0;
     color:var(--vapour-dim);font-family:var(--mono);font-size:10.5px;cursor:pointer}
   .vline button.goat:hover{border-color:var(--liquid);color:var(--foam)}
-  .vline p{margin:0;font-size:0.98rem;line-height:1.45}
+  .vline p{margin:0;font-size:0.98rem;line-height:1.45;min-width:0;overflow-wrap:anywhere}
+  /* on a phone a row wraps, so a voice's places and words never push the page sideways; its words stay beside the name where they fit */
+  @media (max-width:640px){ .vline{flex-wrap:wrap} .vline p{flex:1 1 12rem} }
   .vline .ago{font-family:var(--mono);font-size:10px;color:var(--vapour-dim);flex:none;margin-left:auto}
   .subhead{font-family:var(--mono);font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:var(--liquid);margin:14px 0 4px}
   .plinks{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;font-family:var(--mono);font-size:12px}
@@ -808,8 +810,9 @@ async function writeBlock(body){
 }
 const lockRequired = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
 const latchKey = () => 'mirror-latch:' + FAMILY + ':' + HANDLE;
-const storedLatch = () => localStorage.getItem(latchKey()) || (FAMILY === 'now' ? localStorage.getItem('now-latch:' + HANDLE) : null);
+const storedLatch = () => siteKeys.get(latchKey()) || (FAMILY === 'now' ? siteKeys.get('now-latch:' + HANDLE) : null);
 async function writeWithLatch(body, what){
+  await siteKeys.ready();
   const latch = storedLatch();
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
@@ -818,11 +821,12 @@ async function writeWithLatch(body, what){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+    if (w.ok) siteKeys.set(latchKey(), v.trim());
   }
   return w;
 }
 async function ensureMirror(){
+  await siteKeys.ready();
   const name = FAMILY + ':' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
   if (existing) return existing;
@@ -831,7 +835,7 @@ async function ensureMirror(){
   for (let i = 0; i < fl; i++) root = { '_': root };
   const body = { block: name, content: root };
   const latch = storedLatch() || (prompt('your mirror ' + name + ' will be born now — enter your key, the one your passport uses if you have one (kept on this device; blank leaves it open):') || '').trim();
-  if (latch){ body.new_lock = latch; localStorage.setItem(latchKey(), latch); }
+  if (latch){ body.new_lock = latch; siteKeys.set(latchKey(), latch); }
   const w = await writeBlock(body);
   /* a refused founding keeps the beach's reason, so the note can say why */
   MIRROR_REFUSAL = w.ok ? '' : ((w.data && (w.data.error || w.data.code)) || String(w.status));

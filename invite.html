@@ -210,9 +210,10 @@ const Q = new URLSearchParams(location.search);
 const NAME = String(decodeURIComponent(PATH[1] || '') || Q.get('m') || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+/* a key name goes to the keyring, wrapped (theme.js siteKeys); anything else to localStorage as before */
 const mem = {
-  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
-  set(k, v){ try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){} }
+  get(k){ if (window.siteKeys && siteKeys.isKey(k)) return siteKeys.get(k) || null; try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k, v){ if (window.siteKeys && siteKeys.isKey(k)) return v == null ? siteKeys.del(k) : siteKeys.set(k, v); try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){} }
 };
 
 /* ---------- the beach ---------- */
@@ -507,6 +508,7 @@ document.addEventListener('click', ev => {
 const KEPT = ' (kept on this device; check the first letter — phones capitalise it):';
 const keeperKey = () => 'invite-keeper:' + NAME;
 async function keyed(write){
+  await siteKeys.ready();
   let secret = mem.get(keeperKey()) || mem.get('mirror-latch:' + NAME + ':' + M.keeper) || mem.get('passport-latch:' + M.keeper) || '';
   const asked = !secret;
   if (asked){ const v = prompt(NAME + ' is kept under ' + (M.keeper || 'its keeper') + '’s key — enter it' + KEPT); secret = v && v.trim(); if (!secret) return null; }
