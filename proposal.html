@@ -197,6 +197,13 @@
   /* a person's arrangement (/proposals/<handle>): the band's heading says whose, so the panel's own is not said twice;
      it holds a name and the long word 'arrangement', so on a phone it is sized to the screen and a long name may break */
   #arranged .arr-who{display:none}
+  /* its switch, flat: Sections or List, the chosen one filled */
+  .views{display:flex;flex-wrap:wrap;gap:0.45rem;margin:0.4rem 0 0}
+  .views [role=tab]{font-family:var(--mono);font-size:13px;letter-spacing:0.04em;padding:0.45rem 1rem;border-radius:999px;border:1px solid var(--line-strong);background:transparent;color:var(--foam);cursor:pointer;min-height:40px}
+  .views [role=tab]:hover{border-color:var(--acc)}
+  .views [role=tab][aria-selected="true"]{background:var(--acc);color:var(--abyss);border-color:transparent}
+  #sectionsView,#arranged{border-top:0;padding-top:1rem}
+  #sectionsView[hidden],#arranged[hidden]{display:none}
   #arrHead{font-size:clamp(1.6rem,8.4vw,3.6rem);overflow-wrap:anywhere}
   /* the shelf: the proposals in sections by where each stands, new, being decided, being built, complete, each a
      narrow card with its quipu beneath its buttons, set side by side as wide as the bar above (David, 4 Nov 2026) */
@@ -982,6 +989,92 @@
     return shelf;
   }
 
+  /* ════════ the shelf: the proposals as narrow cards in sections, on the index and on a person's page ════════ */
+  /* each proposal read once (its spine, its law, its mirrors, its threads), its card set in the section opts.groupOf names,
+     in the list's own order, its quipu beneath its buttons and its steps linking into its page; a section counts the cards
+     it shows. The index sorts by where each proposal stands, a person's page by what that person has answered. */
+  var SHELF = {}, shelfWatching = false;   /* name → its quipu, redrawn at the figure's own width when the window changes */
+  function drawShelfQuipu(name) {
+    var f = document.querySelector('[data-quipu="' + name + '"]'), d = SHELF[name];
+    if (f && d) f.innerHTML = quipuSVG(d.g, { w: figW(f, 160), base: '/proposal/' + name, label: d.label });
+  }
+  /* two buttons, two addresses, each always itself (David, 28 Oct 2026): the snazzy page where it has one, and the
+     standard view drawn from its blocks */
+  function shelfCard(s, i, stat, snazzy, quipu) {
+    return '<article class="card" id="c-' + esc(s.name) + '" data-i="' + i + '"><div class="txt"><h3 class="nm"><a href="/proposal/' + esc(s.name) + '">' + esc(s.name) + '</a></h3>' +
+      '<p class="what" title="' + esc(cap(s.what)) + '">' + esc(cap(s.what)) + '</p><p class="stat">' + esc(stat) + '</p></div>' +
+      '<div class="two">' + (snazzy ? '<a class="btn primary" href="' + esc(snazzy) + '">Snazzy</a>' : '') + '<a class="btn line" href="/proposal/' + esc(s.name) + '">Standard</a></div>' +
+      (quipu ? '<figure class="quipu" data-quipu="' + esc(s.name) + '"></figure>' : '') + '</article>';
+  }
+  /* a card's counts, each number keeping its word on a narrow card: '0 threads' never breaks between them */
+  function countsOf(x, withDecisions) {
+    return [x.steps + ' steps'].concat(withDecisions ? [x.decs + (x.decs === 1 ? ' decision' : ' decisions')] : [],
+      [x.answers + (x.answers === 1 ? ' answer' : ' answers') + (x.people ? ' from ' + x.people + (x.people === 1 ? ' person' : ' people') : ''),
+       x.threads + (x.threads === 1 ? ' thread' : ' threads')]);
+  }
+  function latestOf(x) { return x.latest ? ' · the latest answer ' + rel(x.latest) : ''; }
+  /* opts: { groups: [{g, h, say, none}], groupOf(x), statOf(x, g), who } — x is what a card counts: its phase, steps,
+     decisions, answers, people, threads and latest answer, and with opts.who how many decisions that person has answered */
+  function shelfInto(root, shelf, opts) {
+    var GROUPS = opts.groups.concat([{ g: 'unread', h: 'Not read just now', say: 'Its blocks couldn’t be read just now, or it isn’t on the beach yet.', hide: true }]);
+    var run = {}, settled = 0;   /* a fresh run: a drawing for another person drops whatever arrives late from the last */
+    root._run = run;
+    root.innerHTML = '<p class="qcap">' + LEGEND + '</p><div class="groups">' + GROUPS.map(function (G) {
+      return '<div class="group" data-g="' + G.g + '"' + (G.hide ? ' hidden' : '') + '><div class="ghead"><h3>' + esc(G.h) + '</h3><span class="gn"></span>' +
+        '<p class="gsay">' + esc(G.say) + '</p></div><div class="cards"></div><p class="gempty">Reading…</p></div>';
+    }).join('') + '</div>';
+    if (!shelfWatching) { shelfWatching = true; onResize(function () { Object.keys(SHELF).forEach(drawShelfQuipu); }); }
+    function box(g) { return root.querySelector('.group[data-g="' + g + '"]'); }
+    /* a section counts the cards it shows; one still empty says so once every proposal has been read */
+    function tally() {
+      if (root._run !== run) return;
+      GROUPS.forEach(function (G) {
+        var b = box(G.g); if (!b) return;
+        var n = b.querySelectorAll('.card').length, e = b.querySelector('.gempty');
+        b.querySelector('.gn').textContent = n ? String(n) : '';
+        if (n) e.hidden = true;
+        else { e.hidden = false; e.innerHTML = settled < shelf.length ? 'Reading…' : (G.none || 'None just now.'); }
+      });
+    }
+    /* in its section at the list's own place, wherever the others have already landed */
+    function place(i, g, html) {
+      var b = root._run === run && box(g); if (!b) return;
+      var cards = b.querySelector('.cards'), before = null, tmp = document.createElement('div');
+      for (var c = cards.firstElementChild; c; c = c.nextElementSibling) if (+c.getAttribute('data-i') > i) { before = c; break; }
+      tmp.innerHTML = html;
+      cards.insertBefore(tmp.firstElementChild, before);
+      b.hidden = false;
+    }
+    shelf.forEach(function (s, i) {
+      Promise.all([readBlock('spine:' + s.name), readBlock('function:' + s.name), readMirrors(s.name, true),
+        window.beachThreads ? beachThreads.read(s.name).catch(function () { return { threads: [] }; }) : Promise.resolve({ threads: [] })]).then(function (four) {
+        if (root._run !== run) return;
+        var spine = four[0], law = four[1], m = four[2], th = (four[3] && four[3].threads) || [];
+        if (!spine) { place(i, 'unread', shelfCard(s, i, 'not yet on the beach', snazzyAt(s.page, true), false)); return; }
+        learnCase(JSON.stringify(spine));
+        var steps = stepsOf(spine), decs = decisionsOf(steps), mirrors = m.mirrors || {};
+        var people = {}, answers = 0, latest = '', mine = 0;
+        decs.forEach(function (d) {
+          var got = answersAt(mirrors, d);
+          got.forEach(function (a) { people[a.who] = 1; answers++; });
+          if (opts.who && got.some(function (a) { return a.who === opts.who; })) mine++;
+        });
+        Object.keys(m.touched || {}).forEach(function (h) { if (people[h] && String(m.touched[h]) > latest) latest = m.touched[h]; });
+        var L2 = lawOf(law, s.name), phase = L2.phase || (steps.some(function (x) { return x.state; }) ? 'project' : 'proposal');
+        var x = { phase: phase, steps: steps.length, decs: decs.length, answers: answers, people: Object.keys(people).length, threads: th.length, latest: latest, mine: mine };
+        var g = opts.groupOf(x), stat = opts.statOf(x, g);
+        /* the snazzy page as the standard view finds it (its law's 6, its spine's root 2, then its line), so a card whose
+           line names none, as leros-on-the-commons's, still offers it */
+        place(i, g, shelfCard(s, i, stat, snazzyAt(pageOf(L2, spine, s), true), true));
+        SHELF[s.name] = { g: quipuGroup(s.name, steps, mirrors, th), label: s.name + ': ' + phase + ' · ' + stat + '. Each step links to its section on the proposal’s page.' };
+        drawShelfQuipu(s.name);
+      }).catch(function () {
+        if (root._run === run && !root.querySelector('#c-' + s.name)) place(i, 'unread', shelfCard(s, i, 'couldn’t be read just now', snazzyAt(s.page, true), false));
+      }).then(function () { if (root._run === run) { settled++; tally(); } });
+    });
+    tally();
+  }
+
   /* ════════ the index: every proposal on the beach's list, and the form itself ════════ */
   function indexPage() {
     document.title = 'Proposals';
@@ -994,7 +1087,9 @@
       /* the list alone, and at its top one button to the reader's own arrangement, a page of its own; a reader the
          page does not know starts from David's, the default (function:arrangement 4), where dragging makes it theirs
          (David, 27 Oct 2026: "Just show the list and at the top add a simple button to go to the user's arrangement") */
-      var mine = '<a class="btn line" href="/proposals/' + esc(encodeURIComponent(ME || (window.beachArrange && beachArrange.DEFAULT) || 'happyseaurchin')) + '">' + (ME ? 'Your arrangement' : 'Arrange your own') + '</a>';
+      /* the reader's own page opens on whichever view they chose last; a reader the page does not know is taken to the
+         default's list, where dragging makes an arrangement theirs (function:arrangement 5) */
+      var mine = '<a class="btn line" href="/proposals/' + esc(encodeURIComponent(ME || (window.beachArrange && beachArrange.DEFAULT) || 'happyseaurchin')) + (ME ? '' : '#list') + '">' + (ME ? 'Your proposals' : 'Arrange your own') + '</a>';
       $('bandText').innerHTML = '<div class="eyebrow">The proposal form · on the beach</div>' +
         '<h1><a href="/proposal">Proposals</a></h1>' +
         '<p class="lede">A proposal kept on the beach grows into its project’s page. It starts as a few steps with a decision at each, answered by anyone in their own words; as the decisions stand and the work begins, threads tie each piece of work to it, so one address carries the proposal and then the project.</p>' +
@@ -1006,19 +1101,8 @@
          built once it is a project, complete once its keeper says so or it is set aside (function:proposal 6). 'Live' is
          the two middle sections, split by the phase its law already gives. A card lands in its section once its blocks are
          read, in the list's own order, and a section counts what it shows. */
-      var GROUPS = [
-        { g: 'new', h: 'New', say: 'Nobody has answered yet.' },
-        { g: 'deciding', h: 'Being decided', say: 'Its decisions are open, and answers are coming in.' },
-        { g: 'building', h: 'Being built', say: 'Its decisions stand and the work is under way; lit bars on a cord are its step’s state.' },
-        { g: 'done', h: 'Complete', say: 'Done, or set aside once its work moved into blocks of its own.',
-          none: 'None yet. A keeper marks theirs complete with one line in its law: <code>phase: complete</code>.' },
-        { g: 'unread', h: 'Not read just now', say: 'Its blocks couldn’t be read just now, or it isn’t on the beach yet.', hide: true }
-      ];
       sections.push('<section id="shelf"><div class="addr">live from the beach · the list, at <b>proposals</b></div><h2>The proposals</h2>' +
-        (shelf.length ? '<p class="qcap">' + LEGEND + '</p><div class="groups">' + GROUPS.map(function (G) {
-          return '<div class="group" data-g="' + G.g + '"' + (G.hide ? ' hidden' : '') + '><div class="ghead"><h3>' + esc(G.h) + '</h3><span class="gn"></span>' +
-            '<p class="gsay">' + esc(G.say) + '</p></div><div class="cards"></div><p class="gempty">Reading…</p></div>';
-        }).join('') + '</div>' : '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>') +
+        (shelf.length ? '<div id="shelfIn"></div>' : '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>') +
         '<p class="note">A crafted page wears a look of its own taken from what it proposes: its own palette and type, a drawing that moves at the top, an instrument for each step, and plain words for someone new to the beach. <a href="/explain?block=ways:proposal">The craft of making one</a>. The page drawn from its blocks needs no code at all, and exists the moment a spine and its law stand.</p></section>');
       var how = [];
       for (var k = 1; k <= 7; k++) { var r = form[String(k)]; if (r == null) continue; var sp = split(textOf(r)); how.push('<details class="fold"><summary>' + esc(sentenceCase(sp.title)) + '</summary><div class="in"><p>' + rich(cap(sp.rest)) + '</p></div></details>'); }
@@ -1037,96 +1121,112 @@
       $('makeLine').value = 'Read function:proposal on https://beach.happyseaurchin.com, then function:document and function:thread, and help me set up a proposal on the beach, following its MAKING ONE at 7. The topic: <what you want to propose>. Who decides: <names>. Tell me what you are about to make before you write anything, and write it under my own key.';
       $('copyMake').addEventListener('click', copier('makeLine', 'copiedMake'));
       $('foot').innerHTML = '<p>The list is its own block on the beach, <a href="/explain?block=proposals">proposals</a>: a line for each proposal, added by its keeper when it is shared, and it grows as they come. Every card and every cord above is read live from that proposal’s own blocks. The form: <a href="/explain?block=function:proposal">function:proposal</a>, on <a href="/explain?block=function:document">the document form</a> and <a href="/explain?block=function:thread">the thread</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
-      /* each proposal's card, made once its blocks are read and set in its section, its quipu beneath its buttons, its
-         steps linking into its page */
-      var drawn = {}, settled = 0;
-      function drawCard(name) {
-        var f = document.querySelector('[data-quipu="' + name + '"]'), d = drawn[name];
-        if (f && d) f.innerHTML = quipuSVG(d.g, { w: figW(f, 160), base: '/proposal/' + name, label: d.label });
-      }
-      onResize(function () { Object.keys(drawn).forEach(drawCard); });
-      function groupOf(phase, answers) {
-        return phase === 'complete' || phase === 'set aside' ? 'done' : phase === 'project' ? 'building' : answers ? 'deciding' : 'new';
-      }
-      /* two buttons, two addresses, each always itself (David, 28 Oct 2026): the snazzy page where it has one, and the
-         standard view drawn from its blocks */
-      function shelfCard(s, i, stat, snazzy, quipu) {
-        return '<article class="card" id="c-' + esc(s.name) + '" data-i="' + i + '"><div class="txt"><h3 class="nm"><a href="/proposal/' + esc(s.name) + '">' + esc(s.name) + '</a></h3>' +
-          '<p class="what" title="' + esc(cap(s.what)) + '">' + esc(cap(s.what)) + '</p><p class="stat">' + esc(stat) + '</p></div>' +
-          '<div class="two">' + (snazzy ? '<a class="btn primary" href="' + esc(snazzy) + '">Snazzy</a>' : '') + '<a class="btn line" href="/proposal/' + esc(s.name) + '">Standard</a></div>' +
-          (quipu ? '<figure class="quipu" data-quipu="' + esc(s.name) + '"></figure>' : '') + '</article>';
-      }
-      /* a section counts the cards it shows; one still empty says so once every proposal has been read */
-      function tally() {
-        GROUPS.forEach(function (G) {
-          var box = document.querySelector('.group[data-g="' + G.g + '"]'); if (!box) return;
-          var n = box.querySelectorAll('.card').length, e = box.querySelector('.gempty');
-          box.querySelector('.gn').textContent = n ? String(n) : '';
-          if (n) e.hidden = true;
-          else { e.hidden = false; e.innerHTML = settled < shelf.length ? 'Reading…' : (G.none || 'None just now.'); }
-        });
-      }
-      /* in its section at the list's own place, wherever the others have already landed */
-      function place(i, g, html) {
-        var box = document.querySelector('.group[data-g="' + g + '"]'); if (!box) return;
-        var cards = box.querySelector('.cards'), before = null, tmp = document.createElement('div');
-        for (var c = cards.firstElementChild; c; c = c.nextElementSibling) if (+c.getAttribute('data-i') > i) { before = c; break; }
-        tmp.innerHTML = html;
-        cards.insertBefore(tmp.firstElementChild, before);
-        box.hidden = false;
-      }
-      shelf.forEach(function (s, i) {
-        Promise.all([readBlock('spine:' + s.name), readBlock('function:' + s.name), readMirrors(s.name, true),
-          window.beachThreads ? beachThreads.read(s.name).catch(function () { return { threads: [] }; }) : Promise.resolve({ threads: [] })]).then(function (four) {
-          var spine = four[0], law = four[1], m = four[2], th = (four[3] && four[3].threads) || [];
-          if (!spine) { place(i, 'unread', shelfCard(s, i, 'not yet on the beach', snazzyAt(s.page, true), false)); return; }
-          learnCase(JSON.stringify(spine));
-          var steps = stepsOf(spine), decs = decisionsOf(steps), mirrors = m.mirrors || {};
-          var people = {}, answers = 0, latest = '';
-          decs.forEach(function (d) { answersAt(mirrors, d).forEach(function (a) { people[a.who] = 1; answers++; }); });
-          Object.keys(m.touched || {}).forEach(function (h) { if (people[h] && String(m.touched[h]) > latest) latest = m.touched[h]; });
-          var L2 = lawOf(law, s.name), phase = L2.phase || (steps.some(function (x) { return x.state; }) ? 'project' : 'proposal');
-          var g = groupOf(phase, answers), np = Object.keys(people).length;
-          /* the section says the phase, so a card says it only where its section holds two: complete, or set aside */
-          /* a number keeps its word on a narrow card: '0 threads' never breaks between them */
-          var stat = (g === 'done' ? [phase] : []).concat([steps.length + ' steps', decs.length + (decs.length === 1 ? ' decision' : ' decisions'),
-            answers + (answers === 1 ? ' answer' : ' answers') + (np ? ' from ' + np + (np === 1 ? ' person' : ' people') : ''),
-            th.length + (th.length === 1 ? ' thread' : ' threads')]).join(' · ') + (latest ? ' · the latest answer ' + rel(latest) : '');
-          /* the snazzy page as the standard view finds it (its law's 6, its spine's root 2, then its line), so a card whose
-             line names none, as leros-on-the-commons's, still offers it */
-          place(i, g, shelfCard(s, i, stat, snazzyAt(pageOf(L2, spine, s), true), true));
-          drawn[s.name] = { g: quipuGroup(s.name, steps, mirrors, th), label: s.name + ': ' + phase + ' · ' + stat + '. Each step links to its section on the proposal’s page.' };
-          drawCard(s.name);
-        }).catch(function () {
-          if (!document.getElementById('c-' + s.name)) place(i, 'unread', shelfCard(s, i, 'couldn’t be read just now', snazzyAt(s.page, true), false));
-        }).then(function () { settled++; tally(); });
+      if (shelf.length) shelfInto($('shelfIn'), shelf, {
+        groups: [
+          { g: 'new', h: 'New', say: 'Nobody has answered yet.' },
+          { g: 'deciding', h: 'Being decided', say: 'Its decisions are open, and answers are coming in.' },
+          { g: 'building', h: 'Being built', say: 'Its decisions stand and the work is under way; lit bars on a cord are its step’s state.' },
+          { g: 'done', h: 'Complete', say: 'Done, or set aside once its work moved into blocks of its own.',
+            none: 'None yet. A keeper marks theirs complete with one line in its law: <code>phase: complete</code>.' }
+        ],
+        groupOf: function (x) { return x.phase === 'complete' || x.phase === 'set aside' ? 'done' : x.phase === 'project' ? 'building' : x.answers ? 'deciding' : 'new'; },
+        /* the section says the phase, so a card says it only where its section holds two: complete, or set aside */
+        statOf: function (x, g) { return (g === 'done' ? [x.phase] : []).concat(countsOf(x, true)).join(' · ') + latestOf(x); }
       });
-      tally();
     }, function () {
       $('bandText').innerHTML = '<div class="eyebrow">Proposals</div><h1>Proposals</h1><p class="lede">The beach couldn’t be read just now. Try again in a moment.</p>';
     });
   }
 
-  /* ════════ one person's arrangement of the proposals, a page of its own (function:arrangement 5) ════════ */
+  /* ════════ one person's page of the proposals (function:arrangement 5): a switch between Sections, every proposal by
+     what that person has answered, and List, their arrangement; the reader's choice is kept on their device (David,
+     4 Nov 2026: "in the same multi-section listing (but sorted in terms of whether the user hasn't added content (top),
+     supplied content (middle) and completed (bottom)), versus the embedded listed arrangement") ════════ */
   function arrangementPage() {
     $('quipu').remove(); document.querySelector('.band').classList.add('solo');
     $('bar-name').textContent = ARR;
-    $('bandText').innerHTML = '<div class="eyebrow">Proposals · as each person nests them</div><h1 id="arrHead">Reading the beach…</h1>' +
-      '<p class="lede">Each person nests the proposals their own way, in their own block and under their own key. Nothing is written onto a proposal by nesting it, and nobody’s arrangement is the structure.</p>' +
-      '<div class="actions"><a class="btn line" href="/proposal">Every proposal</a></div>';
-    $('main').innerHTML = '<section id="arranged"><div id="arrangePanel"><p class="note">Reading the arrangement…</p></div></section>';
-    $('foot').innerHTML = '<p>Each arrangement is its holder’s own block on the beach, <code>arrangement:&lt;handle&gt;</code>, kept whole under their own key, each position a proposal by its name. The law: <a href="/explain?block=function:arrangement">function:arrangement</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
-    if (!window.beachArrange) { $('arrangePanel').innerHTML = '<p class="note">The arrangement couldn’t be drawn just now. Try again in a moment.</p>'; return; }
-    beachArrange.draw($('arrangePanel'), { handle: ARR, onShow: function (roots, who, how) {
-      var me = beachVoice.name ? beachVoice.name() : ME, whose = who === beachArrange.DEFAULT ? 'David' : who;
-      var title = how === 'list' ? 'The proposals, as the list stands' : how === 'arranging' ? 'Arranging yours' : who === me ? 'Your arrangement' : whose + '’s arrangement';
-      $('arrHead').textContent = title;
-      $('bar-name').textContent = how === 'list' ? 'the list' : how === 'arranging' || who === me ? 'yours' : whose + '’s';
-      document.title = title + ' · proposals';
-      /* the address says whose arrangement is drawn, so it is handed on as it stands */
-      var at = '/proposals/' + encodeURIComponent(who);
-      if ((how === 'kept' || how === 'said') && location.pathname.replace(/\/$/, '') !== at) history.replaceState(null, '', at);
+    var VIEWS = ['sections', 'list'], asked = location.hash.slice(1), kept = store.get('proposals:view');
+    var VIEW = VIEWS.indexOf(asked) >= 0 ? asked : VIEWS.indexOf(kept) >= 0 ? kept : 'sections';
+    var PERSON = ARR, SHELFLIST = null, drawnFor = '', listShow = null;
+    $('bandText').innerHTML = '<div class="eyebrow">Proposals · as each person sees them</div><h1 id="arrHead">Reading the beach…</h1>' +
+      '<p class="lede" id="arrLede"></p><div class="actions"><a class="btn line" href="/proposal">Every proposal</a></div>';
+    $('main').innerHTML = '<div class="views" role="tablist" aria-label="How the proposals are shown">' +
+        '<button type="button" role="tab" id="tab-sections" aria-controls="sectionsView" data-view="sections">Sections</button>' +
+        '<button type="button" role="tab" id="tab-list" aria-controls="arranged" data-view="list">List</button></div>' +
+      '<section id="sectionsView" role="tabpanel" aria-labelledby="tab-sections" hidden></section>' +
+      '<section id="arranged" role="tabpanel" aria-labelledby="tab-list" hidden><div id="arrangePanel"><p class="note">Reading the arrangement…</p></div></section>';
+    $('foot').innerHTML = '<p>Sections read every proposal on the beach’s list, <a href="/explain?block=proposals">proposals</a>, and sort them by the answers in that person’s own mirrors; nothing is kept for them. Each arrangement is its holder’s own block on the beach, <code>arrangement:&lt;handle&gt;</code>, kept whole under their own key, each position a proposal by its name. The law: <a href="/explain?block=function:arrangement">function:arrangement</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
+    function me() { return beachVoice.name ? beachVoice.name() : ME; }
+    function nameOf(h) { return h === (window.beachArrange && beachArrange.DEFAULT) ? 'David' : h; }
+    /* the band says whose page it is and what the view shows */
+    function heading() {
+      var t, lede, bar;
+      if (VIEW === 'sections') {
+        var you = PERSON === me(), n = nameOf(PERSON);
+        t = you ? 'Your proposals' : n + '’s proposals';
+        lede = 'Every proposal on the beach, sorted by what ' + (you ? 'you have' : n + ' has') + ' answered: not yet, partly, then nothing left to answer.';
+        bar = you ? 'yours' : n + '’s';
+      } else {
+        t = listShow ? listShow.title : 'Reading the arrangement…';
+        lede = 'Each person nests the proposals their own way, in their own block and under their own key. Nothing is written onto a proposal by nesting it, and nobody’s arrangement is the structure.';
+        bar = listShow ? listShow.bar : ARR;
+      }
+      $('arrHead').textContent = t; $('arrLede').textContent = lede; $('bar-name').textContent = bar;
+      document.title = t + ' · proposals';
+    }
+    /* every proposal on the list, in the sections of what this person has answered in their own mirrors */
+    function sectionsDraw() {
+      if (drawnFor === PERSON) return;
+      drawnFor = PERSON;
+      var el = $('sectionsView'), you = PERSON === me(), n = nameOf(PERSON), who = PERSON;
+      (SHELFLIST ? Promise.resolve(SHELFLIST) : readBlock('proposals').then(function (l) { SHELFLIST = shelfOf(l); return SHELFLIST; })).then(function (shelf) {
+        if (who !== PERSON) return;
+        if (!shelf.length) { el.innerHTML = '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>'; drawnFor = ''; return; }
+        shelfInto(el, shelf, {
+          who: who,
+          groups: [
+            { g: 'todo', h: 'Not answered yet', say: (you ? 'You haven’t' : n + ' hasn’t') + ' answered any of its decisions.' },
+            { g: 'partly', h: 'Partly answered', say: (you ? 'You’ve' : n + ' has') + ' answered some of its decisions; each card says how many.' },
+            { g: 'done', h: 'Nothing left to answer', say: (you ? 'You’ve' : n + ' has') + ' answered every decision, or it asks none, or it is complete.' }
+          ],
+          groupOf: function (x) { return x.phase === 'complete' || x.phase === 'set aside' || !x.decs || x.mine >= x.decs ? 'done' : x.mine ? 'partly' : 'todo'; },
+          statOf: function (x) {
+            return (x.phase === 'complete' || x.phase === 'set aside' ? [x.phase] : [])
+              .concat([x.decs ? x.mine + ' of ' + x.decs + ' answered' : 'no decisions'], countsOf(x, false)).join(' · ') + latestOf(x);
+          }
+        });
+      }, function () { drawnFor = ''; el.innerHTML = '<p class="note">The beach couldn’t be read just now. Try again in a moment.</p>'; });
+    }
+    function setView(v, chosen) {
+      VIEW = v;
+      if (chosen) { store.set('proposals:view', v); if (location.hash) history.replaceState(null, '', location.pathname + location.search); }
+      document.querySelectorAll('.views [role=tab]').forEach(function (b) {
+        var on = b.getAttribute('data-view') === v; b.setAttribute('aria-selected', on ? 'true' : 'false'); b.tabIndex = on ? 0 : -1;
+      });
+      $('sectionsView').hidden = v !== 'sections'; $('arranged').hidden = v !== 'list';
+      if (v === 'sections') sectionsDraw();
+      heading();
+    }
+    document.querySelectorAll('.views [role=tab]').forEach(function (b) { b.addEventListener('click', function () { setView(b.getAttribute('data-view'), true); }); });
+    document.querySelector('.views').addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      var v = VIEWS[(VIEWS.indexOf(VIEW) + (e.key === 'ArrowRight' ? 1 : VIEWS.length - 1)) % VIEWS.length];
+      setView(v, true); $('tab-' + v).focus(); e.preventDefault();
+    });
+    if (!window.beachArrange) $('arrangePanel').innerHTML = '<p class="note">The arrangement couldn’t be drawn just now. Try again in a moment.</p>';
+    else beachArrange.draw($('arrangePanel'), { handle: ARR, onShow: function (roots, who, how) {
+      var m = me(), whose = nameOf(who);
+      var title = how === 'list' ? 'The proposals, as the list stands' : how === 'arranging' ? 'Arranging yours' : who === m ? 'Your arrangement' : whose + '’s arrangement';
+      listShow = { title: title, bar: how === 'list' ? 'the list' : how === 'arranging' || who === m ? 'yours' : whose + '’s' };
+      /* the address says whose arrangement is drawn, so it is handed on as it stands, and the sections follow it */
+      if ((how === 'kept' || how === 'said') && who) {
+        var at = '/proposals/' + encodeURIComponent(who);
+        if (location.pathname.replace(/\/$/, '') !== at) history.replaceState(null, '', at + location.search + location.hash);
+        if (who !== PERSON) { PERSON = who; if (VIEW === 'sections') sectionsDraw(); }
+      }
+      heading();
     } });
+    setView(VIEW, false);
   }
 
   if (NAME) proposalPage(); else if (ARR) arrangementPage(); else indexPage();
