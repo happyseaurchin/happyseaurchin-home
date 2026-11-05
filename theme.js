@@ -304,7 +304,7 @@
     return Promise.resolve(true);
   }
 
-  window.siteKeys = { get: get, set: set, del: del, has: has, ready: ready, forName: forName, isKey: isKey, able: function(){ return ABLE_NOW; } };
+  window.siteKeys = { get: get, set: set, del: del, has: has, ready: ready, forName: forName, isKey: isKey, able: function(){ return ABLE_NOW; }, seal: seal };
   /* a device that keeps a key reads them all straight away, so a tap never waits on the seal */
   var any = false;
   [false, true].forEach(function(tab){ names(store(tab)).forEach(function(n){ if (isKey(n) || /^beach-(key|spare):/.test(n)) any = true; }); });
@@ -376,19 +376,30 @@
    * that carries the beach, so a key there never stands in for the same name's key here */
   function keyName(name, d){ return 'passport-latch:' + name + (d === APEX ? '' : '@' + d.replace(/^https?:\/\//, '')); }
   function keyFor(name, d){ var K = window.siteKeys; return K ? (K.get(keyName(name, d)) || K.get('passport-latch:' + name) || K.forName(name)) : ''; }
+  /* the proof, in the form this device keeps for the name at this beach, else the derived latch first (the derived latch) */
   function proof(d, name, key){
-    return raw(d + '/.well-known/pscale-beach', { method: 'POST', cache: 'no-store',
-      headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'passport:' + name, secret: key }) })
-      .then(function(r){
-        return r.json().catch(function(){ return null; }).then(function(x){
-          if (r.ok && x && x.pass){
-            try { localStorage.setItem(PASS + d, JSON.stringify({ name: name, pass: x.pass, expires: x.expires })); } catch(e){}
-            return { ok: true, name: name, expires: x.expires };
-          }
-          if (r.ok) return { ok: false, open: true };
-          return { ok: false, status: r.status, code: x && x.code, error: x && (x.error || x.message) };
-        });
-      }, function(e){ return { ok: false, error: String((e && e.message) || e) }; });
+    var kept = formOf(d, name);
+    return sealLib().then(function(S){ return S.latch(key, name); }, function(){ return ''; }).then(function(L){
+      var forms = !L ? [key] : kept.indexOf('derived:') === 0 ? [L] : kept === 'word' ? [key, L] : [L, key], last = null;
+      function one(i){
+        if (i >= forms.length) return last;
+        return raw(d + '/.well-known/pscale-beach', { method: 'POST', cache: 'no-store',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'passport:' + name, secret: forms[i] }) })
+          .then(function(r){
+            return r.json().catch(function(){ return null; }).then(function(x){
+              if (r.ok && x && x.pass){
+                try { localStorage.setItem(PASS + d, JSON.stringify({ name: name, pass: x.pass, expires: x.expires })); } catch(e){}
+                if (forms[i] === key) keepForm(d, name, 'word'); else if (kept.indexOf('derived:') !== 0) keepForm(d, name, 'derived:');
+                return { ok: true, name: name, expires: x.expires };
+              }
+              if (r.ok) return { ok: false, open: true };
+              last = { ok: false, status: r.status, code: x && x.code, error: x && (x.error || x.message) };
+              return r.status === 403 ? one(i + 1) : last;
+            });
+          }, function(e){ return { ok: false, error: String((e && e.message) || e) }; });
+      }
+      return one(0);
+    });
   }
   /* PROVED ONCE MORE, ASKING NOTHING — once a page for each beach */
   function reprove(w, init){
@@ -396,7 +407,7 @@
     if (PROVING[d]) return PROVING[d];
     if (TRIED[d]) return Promise.resolve(null);
     TRIED[d] = true;
-    var tries = [], b = bodyOf(init), rec = record(d), who = clean((rec && rec.name) || signer());
+    var tries = [], b = bodyOf((init && init.__word) || init), rec = record(d), who = clean((rec && rec.name) || signer());
     if (b && typeof b.block === 'string' && b.block.lastIndexOf(':') > 0){
       var wk = typeof b.secret === 'string' && b.secret ? b.secret : typeof b.new_lock === 'string' ? b.new_lock : '';
       var wh = clean(b.block.slice(b.block.lastIndexOf(':') + 1));
@@ -415,6 +426,68 @@
       return next(0);
     }).then(function(p){ delete PROVING[d]; return p; }, function(){ delete PROVING[d]; return null; });
     return PROVING[d];
+  }
+  /* ── THE DERIVED LATCH (bsp-mcp proposals/2026-11-05-the-derived-latch.md §4: one word, two keys). A word typed once
+   * makes two keys: the sealing pair no beach sees, and the latch a beach checks, beachSeal.latch(word, handle). Where the
+   * hand's passport at the surface a write goes to says "latch: derived" at 9.3, and the word derives the halves at 9.1
+   * and 9.2, the write carries the derived latch in place of the word, as secret and as new_lock alike, so the beach's
+   * host never sees the word; anything else (a shared key, another's latch) goes as it is. A hand seen switched at a beach
+   * is kept on this device, beach-form:<beach>|<hand> with its published half, and a passport there without the marker
+   * is then refused with nothing sent (§4.4). The proof comes before any read at a members' beach, so it proves in the
+   * form kept, else the derived latch first. A page moves no latch: what still answers to the word is moved by its
+   * holder's switch, the voice at key-in or pscale_key_publish through their AI. ── */
+  var FORM = 'beach-form:', NINES = {}, MARK = /^latch: derived\b/;
+  function sealLib(){ return window.beachSeal ? Promise.resolve(window.beachSeal) : window.siteKeys && window.siteKeys.seal ? window.siteKeys.seal() : Promise.reject(new Error('the seal did not load')); }
+  function handIn(block){ if (/^(sed|grain|archive):/.test(block)) return ''; var i = block.lastIndexOf(':'), h = i > 0 ? block.slice(i + 1) : ''; return /^[A-Za-z0-9_-]{1,64}$/.test(h) ? h : ''; }
+  function formOf(d, h){ try { return localStorage.getItem(FORM + d + '|' + h) || ''; } catch(e){ return ''; } }
+  function keepForm(d, h, v){ try { localStorage.setItem(FORM + d + '|' + h, v); } catch(e){} }
+  /* the hand's 9 at the surface the write goes to, read once a page */
+  function nineAt(base, h){
+    var k = base + '|' + h;
+    if (!(k in NINES)) NINES[k] = window.fetch(base + '?block=' + encodeURIComponent('passport:' + h), { cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(function(r){ return r.ok ? r.json().then(function(p){ return (p && p['9']) || null; }) : r.status === 404 ? null : 'unread'; }, function(){ return 'unread'; });
+    return NINES[k];
+  }
+  function gone(d, h){ var e = new Error(d.replace(/^https?:\/\//, '') + ' no longer says ' + h + '’s key is derived, though this device saw it say so: nothing was sent. The word does not go to a beach that stops saying its form.'); e.formGone = true; return e; }
+  /* the latch a write sends in place of s */
+  function latchOf(base, d, block, s){
+    if (typeof s !== 'string' || !s) return Promise.resolve(s);
+    var hands = [handIn(String(block || '')), signer()].filter(function(h, i, a){ return h && a.indexOf(h) === i; });
+    function next(i){
+      if (i >= hands.length) return s;
+      var h = hands[i];
+      return nineAt(base, h).then(function(nine){
+        var derived = nine && nine !== 'unread' && typeof nine['3'] === 'string' && MARK.test(nine['3']), kept = formOf(d, h);
+        if (nine === 'unread' || (!derived && kept.indexOf('derived:') !== 0)) return next(i + 1);
+        return sealLib().then(function(S){
+          return S.pair(s, h).then(function(pair){
+            var mine = S.published(pair)['2'];
+            if (!derived){ if (kept === 'derived:' + mine) throw gone(d, h); return next(i + 1); }
+            var has = S.publishedOf(nine);
+            if (!has) return next(i + 1);
+            keepForm(d, h, 'derived:' + has.x25519);
+            return has.x25519 === mine ? S.latch(s, h) : next(i + 1);
+          });
+        });
+      });
+    }
+    return next(0);
+  }
+  /* a write's body with its keys in the form each hand's passport names */
+  function derivedInit(url, init, w){
+    var b = bodyOf(init);
+    if (!b || !/^post$/i.test(init.method || '') || !((typeof b.secret === 'string' && b.secret) || (typeof b.new_lock === 'string' && b.new_lock))) return Promise.resolve(init);
+    var u = new URL(url, location.href), base = u.origin + u.pathname, block = b.block || u.searchParams.get('block') || '';
+    return Promise.all([latchOf(base, w.deploy, block, b.secret), latchOf(base, w.deploy, block, b.new_lock)]).then(function(r){
+      if (r[0] === b.secret && r[1] === b.new_lock) return init;
+      var o = {}, nb = {}, k;
+      for (k in init) o[k] = init[k];
+      for (k in b) nb[k] = b[k];
+      if (typeof b.secret === 'string') nb.secret = r[0];
+      if (typeof b.new_lock === 'string') nb.new_lock = r[1];
+      o.body = JSON.stringify(nb);
+      return o;
+    });
   }
   function withPass(init, p){
     var o = {}, k;
@@ -461,7 +534,13 @@
     init = init || {};
     var h; try { h = new Headers(init.headers || undefined); } catch(e){ return raw(input, init); }
     if (h.has('Authorization') || isProof(init)) return raw(input, init);
-    return carry(url, init, w, false);
+    return derivedInit(url, init, w).then(function(i2){
+      if (i2 !== init) i2.__word = init;   // the proof, if the door asks for one, is made from the word
+      return carry(url, i2, w, false);
+    }, function(e){
+      if (!e || !e.formGone) throw e;
+      return new Response(JSON.stringify({ error: e.message, code: 'form_gone' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+    });
   };
 
   /* ── the wall, in plain words, with the way in ── */
