@@ -385,7 +385,7 @@ const moveCard = (c, to) => H_.move(c, to);
 const latchKey = block => 'next-latch:' + block;
 /* the passport's own key, kept on this device by /welcome and /here — the one the beach
  * binds every block named for the handle to (handle_bound, pscale-beach #77) */
-const passportLatch = () => { try { return localStorage.getItem('passport-latch:' + HANDLE) || null; } catch(e){ return null; } };
+const passportLatch = () => { try { return siteKeys.get('passport-latch:' + HANDLE) || null; } catch(e){ return null; } };
 
 /* A BLOCK A PERSON WRITES IS BORN LATCHED TO THEM — the act /now already makes at
  * a mirror's first voicing ("First voicing founds your mirror, locked to you").
@@ -394,10 +394,11 @@ const passportLatch = () => { try { return localStorage.getItem('passport-latch:
  * new_lock needs no prior secret (lock rule R1), so the founding asks once and
  * locks in the same write. */
 async function foundLatched(block, content){
+  await siteKeys.ready();
   /* new_lock rides EVERY founding, held key or fresh one: a secret alone proves
    * authority over a block that already exists and locks nothing on one being
    * born, so the held-key path founding open was the same fault wearing a key. */
-  let key = localStorage.getItem(latchKey(block)) || passportLatch();
+  let key = siteKeys.get(latchKey(block)) || passportLatch();
   if (!key){
     const v = prompt('This founds ' + (block.startsWith('ahead:') ? 'your hand — the cards you hold' : 'your mirror') + ', locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return { ok: false, quiet: true };
@@ -411,7 +412,7 @@ async function foundLatched(block, content){
     key = v.trim();
     w = await writeBlock({ block, content, new_lock: key });
   }
-  if (w.ok) localStorage.setItem(latchKey(block), key);
+  if (w.ok) siteKeys.set(latchKey(block), key);
   return w;
 }
 
@@ -423,31 +424,33 @@ async function foundLatched(block, content){
  * already latched on another device refuses the homestead, and the ordinary
  * key prompt below takes over. */
 async function offerLatch(block){
+  await siteKeys.ready();
   try { if (sessionStorage.getItem('latch-declined:' + block)) return null; } catch(e){ return null; }
   /* the passport's key closes it without a question — it is the only key the beach
    * accepts on a block named for a passport-holder (handle_bound) */
   const pk = passportLatch();
   if (pk){
     const w0 = await writeBlock({ block, new_lock: pk });
-    if (w0.ok){ localStorage.setItem(latchKey(block), pk); return pk; }
+    if (w0.ok){ siteKeys.set(latchKey(block), pk); return pk; }
   }
   const v = prompt(block + ' is not protected yet — anyone can rewrite it.\nEnter your key — the one your passport uses, if you have one (kept on this device) — or cancel to leave it open:');
   if (v === null || !v.trim()){ try { sessionStorage.setItem('latch-declined:' + block, '1'); } catch(e){} return null; }
   const key = v.trim();
   const w = await writeBlock({ block, new_lock: key });
   if (!w.ok){ try { sessionStorage.setItem('latch-declined:' + block, '1'); } catch(e){} return null; }
-  localStorage.setItem(latchKey(block), key);
+  siteKeys.set(latchKey(block), key);
   return key;
 }
 
 async function withLatch(block, body){
-  const secret = localStorage.getItem(latchKey(block)) || await offerLatch(block);
+  await siteKeys.ready();
+  const secret = siteKeys.get(latchKey(block)) || await offerLatch(block);
   let w = await writeBlock(secret ? Object.assign({}, body, { secret }) : body);
   if (lockRequired(w)){
     const v = prompt(block + ' is latched — enter your key for it (kept on this device; check the first letter — phones capitalise it):');
     if (!v || !v.trim()) return { ok:false, quiet:true };
     w = await writeBlock(Object.assign({}, body, { secret: v.trim() }));
-    if (w.ok) localStorage.setItem(latchKey(block), v.trim());
+    if (w.ok) siteKeys.set(latchKey(block), v.trim());
     /* A REFUSED KEY SAYS SO. The generic 'did not land' after a typed key read
      * as broken plumbing when the plumbing was fine and the KEY was wrong —
      * name the actual fault, and where the right one lives: any browser this
@@ -930,6 +933,7 @@ if (!HANDLE){
    * device nothing moves — the page reads the old hand's cards beside the new. */
   (async () => {
     await reload();
+    await siteKeys.ready();
     if (!H_.keyOf(HANDLE) || !ALLCARDS.some(c => c.legacy && inPlay(c))) return;
     const r = await H_.split(HANDLE);
     if (r.moved){ toast('✓ your cards now stand in a hand for each project'); await reload(); }

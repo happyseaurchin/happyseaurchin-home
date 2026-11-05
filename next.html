@@ -944,7 +944,7 @@ function renderDeck(){
   $('count').textContent = DECK.length ? ((POS % DECK.length) + 1) + ' / ' + DECK.length : '';
   const canAct = DECK.length > 0;
   const gated = !OP.member;
-  const latchWanted = OP.access === 'latched' && !localStorage.getItem(latchKey());
+  const latchWanted = OP.access === 'latched' && !siteKeys.get(latchKey());
   $('gatebar').classList.toggle('hidden', !(gated || latchWanted));
   if (gated) $('gatebar').textContent = 'this deck belongs to ' + OP.access + ' — reading is open; marks from outside stay outside its fold (convention, not enforcement)';
   else if (latchWanted) $('gatebar').textContent = 'this deck needs a key before you can answer — set yours with the ⚿ above';
@@ -1168,7 +1168,7 @@ function gestureTomorrow(el){
         const mine = await readBlock(name).catch(() => null);
         const body = pileLanding(name, mine, to, entry);
         if (!body){ toast('tomorrow holds nine live cards — finish or let go before deferring more', true); return; }
-        const secret = localStorage.getItem(latchKey());
+        const secret = siteKeys.get(latchKey());
         landed = await writeBlock(Object.assign(body, secret ? { secret } : {}));
       }
       if (!landed.ok){ if (!landed.quiet) toast('the move did not land at ' + said + ' — the card stays put', true); return; }
@@ -1199,8 +1199,9 @@ function gestureDrop(el){
 /* ── writes ── */
 function latchKey(){ return 'next-latch:' + FIELD + ':' + HANDLE; }
 function keeperKey(){ return 'next-keeper:' + FIELD; }
-function keeperLatch(){ return localStorage.getItem(keeperKey()); }
+function keeperLatch(){ return siteKeys.get(keeperKey()); }
 async function ensureMirror(){
+  await siteKeys.ready();
   const name = FIELD + ':' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
   if (existing) return true;
@@ -1210,13 +1211,14 @@ async function ensureMirror(){
   for (let i = 0; i < FLOOR; i++) root = { '_': root };
   /* homestead at birth: a latch on this device locks the newborn mirror to its holder */
   const body = { block: name, content: root };
-  const latch = localStorage.getItem(latchKey());
+  const latch = siteKeys.get(latchKey());
   if (latch) body.new_lock = latch;
   const w = await writeBlock(body);
   if (w.ok && latch) toast('mirror born latched to ' + HANDLE);
   return w.ok;
 }
 async function writeMark(addr, content){
+  await siteKeys.ready();
   /* A HAND CARD'S ADDRESS CARRIES ITS BLOCK — '<block>|<place>' (cardFromHand):
    * the write goes to the hand the card stands in, which already stands, so no
    * mirror is founded for it. Every other deck writes its own mirror. */
@@ -1233,7 +1235,7 @@ async function writeMark(addr, content){
      * so a hand write always replaces the slot wholesale, blanks included */
     : { block, spindle: spot,
         content: HAND && typeof content === 'string' ? { '_': content } : content };
-  const latch = localStorage.getItem(latchKey());
+  const latch = siteKeys.get(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -1241,7 +1243,7 @@ async function writeMark(addr, content){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+    if (w.ok) siteKeys.set(latchKey(), v.trim());
     /* a refused key says so — the fault is the key, not the plumbing, and the
      * right one still sits in any browser this block has written from before */
     else if (lockRequired(w)){
@@ -1266,8 +1268,8 @@ async function writeSpine(addr, content){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(keeperKey(), v.trim());
-  } else if (w.ok) localStorage.setItem(keeperKey(), latch);
+    if (w.ok) siteKeys.set(keeperKey(), v.trim());
+  } else if (w.ok) siteKeys.set(keeperKey(), latch);
   return w;
 }
 
@@ -1408,6 +1410,7 @@ function pastTense(text){
  * and never a parse of its words (function:ahead:4); a card with no 2 lands in
  * the holder's own now. ── */
 async function landCard(card, doneText, elapsed){
+  await siteKeys.ready();
   if (!PERSONAL) return { skipped: true };
   const fam = (card && card.toward) || (HAND ? 'now' : null);
   if (!fam) return { skipped: true };
@@ -1436,7 +1439,7 @@ async function landCard(card, doneText, elapsed){
   const keyHomes = ['next-latch:' + name];
   if (fam === 'now') keyHomes.push('now-latch:' + HANDLE);
   keyHomes.push('mirror-latch:' + fam + ':' + HANDLE);
-  const secret = keyHomes.map(k => localStorage.getItem(k)).find(v => v) || null;
+  const secret = keyHomes.map(k => siteKeys.get(k)).find(v => v) || null;
   /* A CLOCK FAMILY TAKES A BEAT OF TODAY; ANYTHING ELSE TAKES AN APPEND. A beat
    * address is nine digits and only a block whose floor reaches that far can
    * hold one — a floor-1 mirror would refuse it outright — so the SHAPE OF THE
@@ -1464,11 +1467,11 @@ async function landCard(card, doneText, elapsed){
     const v = prompt(name + ' is latched — its key (the one you set where you write it), kept on this device:');
     if (v !== null && v.trim()){
       w = await writeBlock(Object.assign(body, { secret: v.trim() }));
-      if (w.ok) localStorage.setItem('next-latch:' + name, v.trim());
+      if (w.ok) siteKeys.set('next-latch:' + name, v.trim());
     }
   }
   if (!w.ok) return { refused: true, name, fam, why: (w.data && (w.data.error || w.data.code)) || w.status };
-  if (secret) localStorage.setItem('next-latch:' + name, secret);
+  if (secret) siteKeys.set('next-latch:' + name, secret);
   /* AND ONLY NOW is the slot given back — the card is somewhere else first. */
   const freed = card && card.addr ? await writeMark(card.addr, { '_': '' }) : { ok: false };
   return { addr, name, fam, append: !deep, freed: !!freed.ok };
@@ -1509,9 +1512,10 @@ function renderSweep(){
   $('btn-sweep').addEventListener('click', doSweep);
 }
 async function doSweep(){
+  await siteKeys.ready();
   const gone = sweepable();
   if (!gone.length) return;
-  const secret = localStorage.getItem(latchKey());
+  const secret = siteKeys.get(latchKey());
   toast('sweeping…');
   for (const c of gone){
     /* an empty write IS the put-down — wrapped as {_: ''} because a bare string
@@ -1528,7 +1532,7 @@ async function doSweep(){
 /* ── sheet: done-already / finish / respond ── */
 function openSheet(kind, mark, title){
   if (!OP.member){ toast('marks from outside ' + OP.access + ' stay outside its fold', true); return; }
-  if (OP.access === 'latched' && !localStorage.getItem(latchKey())){ toast('set your edit-latch first — ⚿', true); return; }
+  if (OP.access === 'latched' && !siteKeys.get(latchKey())){ toast('set your edit-latch first — ⚿', true); return; }
   const card = kind === 'finish'
     ? (TIMERS[VIEW] ? cardAt(VIEW) || { text: TIMERS[VIEW].text } : null)
     : currentCard();
@@ -1754,7 +1758,7 @@ function renderAlso(){
 }
 function startDoing(){
   if (!OP.member) return;
-  if (OP.access === 'latched' && !localStorage.getItem(latchKey())){ toast('set your edit-latch first — ⚿', true); return; }
+  if (OP.access === 'latched' && !siteKeys.get(latchKey())){ toast('set your edit-latch first — ⚿', true); return; }
   const card = currentCard(); if (!card || card.proposed) return;
   /* A CLOCK PER CARD. The card in front of you goes back to its own clock if it
    * has one, and starts its own if it has not — every other clock keeps running,
@@ -1828,14 +1832,16 @@ setInterval(tickClocks, 500);
 
 /* ── boot ── */
 async function boot(){
+  await siteKeys.ready();
   HANDLE = handleFromUrl();
   if (!HANDLE){
     $('ask').classList.remove('hidden');
-    $('ask-go').addEventListener('click', () => {
+    $('ask-go').addEventListener('click', async () => {
       const h = cleanHandle($('ask-handle').value);
       if (h){
         const lv = $('ask-latch').value.trim();
-        if (lv) localStorage.setItem('next-latch:' + FIELD + ':' + h, lv);
+        /* kept wrapped before the page moves on: the wrapping is the browser's, and takes a moment */
+        if (lv) await siteKeys.set('next-latch:' + FIELD + ':' + h, lv);
         const p = new URLSearchParams(location.search); p.delete('h');
         const qs = p.toString();
         location.href = '/next/' + encodeURIComponent(h) + (qs ? '?' + qs : '');
@@ -1895,11 +1901,12 @@ if (window.siteDoors) siteDoors(Object.assign({ handle: HANDLE, here: 'next' }, 
   $('cap-veil').addEventListener('click', e => { if (e.target === $('cap-veil')) closeCapture(); });
   $('btn-refresh').addEventListener('click', async () => { toast('reading the field…'); await reload(); });
   $('btn-latch').addEventListener('click', async () => {
-    const cur = localStorage.getItem(latchKey()) || '';
+    await siteKeys.ready();
+    const cur = siteKeys.get(latchKey()) || '';
     const v = prompt(HAND ? 'The key for your cards (kept on this device):' : 'Edit-latch for ' + FIELD + ':' + HANDLE + ' (kept on this device; claims your mirror):', cur);
     if (v === null) return;
-    if (!v.trim()){ localStorage.removeItem(latchKey()); toast('latch cleared on this device'); return; }
-    localStorage.setItem(latchKey(), v.trim());
+    if (!v.trim()){ siteKeys.del(latchKey()); toast('latch cleared on this device'); return; }
+    siteKeys.set(latchKey(), v.trim());
     /* the hand is a hand per project, each founded latched under this key as it
      * is first written — nothing to claim here */
     if (HAND){ toast('✓ kept on this device for your cards'); renderDeck(); return; }

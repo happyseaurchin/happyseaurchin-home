@@ -314,12 +314,13 @@ const latchKey = () => 'now-latch:' + HANDLE;
 function hint(msg, cls){ const h = $('w-hint'); h.textContent = msg || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); }
 
 async function ensureMirror(){
+  await siteKeys.ready();
   if (MIRROR) return MIRROR_OK;
   const name = 'now:' + HANDLE;
   const existing = await readBlock(name).catch(() => null);
   if (existing){ MIRROR = existing; MIRROR_OK = floorOf(existing) === 10; return MIRROR_OK; }
   let latch = null;
-  try { latch = localStorage.getItem(latchKey()) || localStorage.getItem('passport-latch:' + HANDLE); } catch(e){}
+  try { latch = siteKeys.get(latchKey()) || siteKeys.get('passport-latch:' + HANDLE); } catch(e){}
   if (!latch){
     const v = prompt('First voicing founds your mirror, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return false;
@@ -336,7 +337,7 @@ async function ensureMirror(){
     w = await writeBlock({ block: name, content: root, new_lock: latch });
   }
   if (!w.ok){ hint('the mirror could not be born (' + w.status + ')', 'err'); return false; }
-  localStorage.setItem(latchKey(), latch);
+  siteKeys.set(latchKey(), latch);
   MIRROR = root; MIRROR_OK = true;
   return true;
 }
@@ -376,6 +377,7 @@ function composeWrite(addr, text){
   return { spindle: pad10(digits.slice(0, at + 1).join('')), content };
 }
 async function writeRung(addr, text){
+  await siteKeys.ready();
   const ok = await ensureMirror();
   if (!ok) return MIRROR_OK ? 'nothing written' : 'this now stands off the clock — open /now/' + HANDLE + ' to mend it';
   const fresh = await readBlock('now:' + HANDLE).catch(() => undefined);
@@ -386,7 +388,7 @@ async function writeRung(addr, text){
   if (!composed) return 'that would displace words standing at a coarser rung — refused, nothing eaten';
   const body = { block: 'now:' + HANDLE, spindle: composed.spindle, content: composed.content };
   let latch = null;
-  try { latch = localStorage.getItem(latchKey()) || localStorage.getItem('passport-latch:' + HANDLE); } catch(e){}
+  try { latch = siteKeys.get(latchKey()) || siteKeys.get('passport-latch:' + HANDLE); } catch(e){}
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -394,7 +396,7 @@ async function writeRung(addr, text){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKey(), v.trim());
+    if (w.ok) siteKeys.set(latchKey(), v.trim());
   }
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   return true;
@@ -550,7 +552,7 @@ async function foundPassport(){
   const w = await writeBlock({ block: 'passport:' + name, content: { '_': line, '3': EARTH }, new_lock: key });
   $('p-go').disabled = false;
   if (!w.ok){ say(w.status === 409 ? 'a passport named ' + name + ' already stands' : 'the beach refused it (' + w.status + ')', 'err'); return; }
-  try { localStorage.setItem('passport-latch:' + name, key); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
+  try { siteKeys.set('passport-latch:' + name, key); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
   remember(name);
   say(''); $('p-key').value = ''; $('p-line').value = '';
   const h = encodeURIComponent(name);
@@ -566,6 +568,7 @@ $('p-key').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventD
    'Location:' and the clause after it is replaced, as /here does; the passport's key serves,
    remembered on this device, and is asked for once when it is not. ── */
 async function standThere(){
+  await siteKeys.ready();
   const name = cleanHandle($('e-name').value), where = $('e-where').value.replace(/\s+/g, ' ').trim();
   const say = (m, cls) => { const h = $('e-hint'); h.textContent = m || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); };
   if (!name){ $('e-name').focus(); say('your name first — as your passport spells it'); return; }
@@ -580,14 +583,14 @@ async function standThere(){
   const before = p3.split(/\s*\bLocation:/i)[0].trim();
   const body = { block: 'passport:' + name, spindle: '3',
     content: (before ? before + ' ' : '') + 'Location: *:https://earth.beach.happyseaurchin.com:spatial:earth:' + (stood ? stood.addr : '30000000000') + ' — ' + where };
-  let key = null; try { key = localStorage.getItem('passport-latch:' + name); } catch(e){}
+  let key = null; try { key = siteKeys.get('passport-latch:' + name); } catch(e){}
   if (key) body.secret = key;
   let w = await writeBlock(body);
   if (lockRequired(w)){
     const v = prompt('passport:' + name + ' is latched — enter your key (kept on this device; check the first letter — phones capitalise it):');
     if (v === null || !v.trim()) return done('nothing written');
     body.secret = v.trim(); w = await writeBlock(body);
-    if (w.ok) try { localStorage.setItem('passport-latch:' + name, v.trim()); } catch(e){}
+    if (w.ok) try { siteKeys.set('passport-latch:' + name, v.trim()); } catch(e){}
   }
   if (!w.ok) return done(lockRequired(w) ? 'that key does not open ' + name + '\'s passport — nothing written' : 'the beach refused it (' + w.status + ')', 'err');
   done('');

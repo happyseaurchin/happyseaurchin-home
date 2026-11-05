@@ -380,10 +380,11 @@ const BEACH = ROOT + '/.well-known/pscale-beach';
 const FAM = 'string', FLOOR = 10;
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+/* a key name goes to the keyring, wrapped (theme.js siteKeys); anything else to localStorage as before */
 const store = {
-  get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
-  set(k, v){ try { localStorage.setItem(k, v); } catch(e){} },
-  del(k){ try { localStorage.removeItem(k); } catch(e){} }
+  get(k){ if (window.siteKeys && siteKeys.isKey(k)) return siteKeys.get(k) || null; try { return localStorage.getItem(k); } catch(e){ return null; } },
+  set(k, v){ if (window.siteKeys && siteKeys.isKey(k)) return siteKeys.set(k, v); try { localStorage.setItem(k, v); } catch(e){} },
+  del(k){ if (window.siteKeys && siteKeys.isKey(k)) return siteKeys.del(k); try { localStorage.removeItem(k); } catch(e){} }
 };
 const clean = v => window.cleanHandle ? window.cleanHandle(v) : String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim();
 const voice = n => { while (n && typeof n === 'object'){ if (!('_' in n)) return ''; n = n._; } return typeof n === 'string' ? n.trim() : ''; };
@@ -629,6 +630,7 @@ const FOLLOW_SAYS = "The hands this hand follows — whose lens lines read into 
 const followed = h => FOLLOWS.some(x => low(x) === low(h));
 function onDevice(){ try { const v = JSON.parse(store.get(DOOR + ':follows') || '[]'); return Array.isArray(v) ? v.map(clean).filter(Boolean) : []; } catch(e){ return []; } }
 async function loadFollows(){
+  await siteKeys.ready();
   const here = onDevice();
   let there = null;
   if (ME && window.siteLists && !MEMBERS){ try { there = await siteLists.read(ME, 4); } catch(e){} }
@@ -638,6 +640,7 @@ async function loadFollows(){
 }
 /* a members' string keeps who you follow on this device: the site's lists stand on the open commons, and a member's choices are theirs */
 async function saveFollows(){
+  await siteKeys.ready();
   store.set(DOOR + ':follows', JSON.stringify(FOLLOWS));
   if (!ME || !window.siteLists || MEMBERS) return { ok: true, device: true };
   /* the key that signs their string is the passport's, which binds lists:<handle> too: no need to ask for it again */

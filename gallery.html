@@ -46,7 +46,7 @@
   .cam input::placeholder{color:var(--vapour-dim)}
   .btn{flex:0 0 auto;font-family:var(--mono);font-weight:700;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;color:var(--abyss);background:var(--solid);border:none;border-radius:4px;padding:12px 22px;cursor:pointer}
   .btn:hover{background:var(--foam)} .btn:disabled{opacity:.5;cursor:default}
-  .pill{flex:0 0 auto;font-family:var(--mono);font-size:13px;color:var(--vapour);background:rgba(var(--well-rgb),0.35);border:1px solid var(--line-strong);border-radius:999px;padding:10px 16px;cursor:pointer}
+  .pill{flex:0 0 auto;max-width:100%;font-family:var(--mono);font-size:13px;color:var(--vapour);background:rgba(var(--well-rgb),0.35);border:1px solid var(--line-strong);border-radius:999px;padding:10px 16px;cursor:pointer}
   .pill:hover{color:var(--foam);border-color:var(--foam)} .pill.on{color:var(--abyss);background:var(--liquid);border-color:var(--liquid)}
   .pill.small{font-size:11.5px;padding:6px 12px}
   .hidden{display:none !important}
@@ -62,7 +62,7 @@
   .keycard .sub{color:var(--vapour);font-size:.95rem;margin:0 0 14px}
   .keycard .sub b{color:var(--foam)}
   .keycard select,.keycard input{background:rgba(var(--well-rgb),0.55);border:1px solid var(--line-strong);border-radius:4px;padding:11px 13px;color:var(--foam);font-family:var(--mono);font-size:13px}
-  .keycard select{flex:0 0 auto} .keycard input{flex:1 1 190px;min-width:0} .keycard input::placeholder{color:var(--vapour-dim)}
+  .keycard select{flex:0 0 auto;max-width:100%} .keycard input{flex:1 1 190px;min-width:0} .keycard input::placeholder{color:var(--vapour-dim)}
   .keycard .acts{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px}
   .keycard .eyebrow{margin:14px 0 6px}
   .keycard .row .pill.small{white-space:nowrap}
@@ -149,14 +149,19 @@
     <div class="keycard__in">
       <button type="button" class="keycard__x" id="key-x" aria-label="close">✕</button>
       <h3>Your keys</h3>
-      <p class="sub">Everything here runs <b>in this browser</b>. Your own key opens <b>your vault</b> at the beach, where your other keys are kept sealed — one key, typed once, brings the rest to any device. Nothing is ever kept in the open on the beach.</p>
+      <p class="sub">Everything here runs <b>in this browser</b>. <b>Your vault</b> at the beach keeps your other keys, each sealed under <b>your vault key</b>: a key of its own, never your passport’s, which seals here and goes nowhere. Your passport’s key latches the vault, so only you write to it. Two keys bring the rest to any device, and nothing is kept in the open, on the beach or on this device.</p>
       <p class="eyebrow">You</p>
       <div class="row">
         <input id="me" placeholder="your name at the beach" spellcheck="false" autocapitalize="none" autocomplete="username">
         <input id="pass" type="password" placeholder="your key — the one your passport uses" autocomplete="current-password" spellcheck="false">
+      </div>
+      <div class="row">
+        <input id="vkey" type="password" placeholder="your vault key — a key of its own" autocomplete="off" spellcheck="false">
+        <input id="vkey2" type="password" placeholder="the vault key once more, to be sure" autocomplete="off" spellcheck="false" style="display:none">
         <button type="button" class="pill small" id="unlock">open my vault</button>
       </div>
       <p class="hint" id="vault-hint" style="margin:2px 0 0"></p>
+      <div class="row" id="reseal-row" style="display:none;margin-top:8px"><button type="button" class="pill small" id="reseal">seal my vault again under its vault key</button></div>
       <div class="row"><input id="follows" placeholder="the hands you follow — names, comma-separated; their lines on a moment are your direction" spellcheck="false" autocapitalize="none"></div>
       <p class="eyebrow">Pictures</p>
       <div class="row">
@@ -644,22 +649,31 @@
         scene=document.getElementById('scene'),shot=document.getElementById('shot'),styleIn=document.getElementById('style'),
         btn=document.getElementById('render'),hint=document.getElementById('mhint'),follow=document.getElementById('follow');
     var FOLLOW=false, TICK=null, BUSY=false, WORLD_STYLE=null;
-    // ── what this browser holds: on the device when 'remember' is ticked, for this tab only when it is not ──
-    function stored(k){try{return localStorage.getItem(k)||sessionStorage.getItem(k)||'';}catch(e){return '';}}
+    // ── what this browser holds: on the device when 'remember' is ticked, for this tab only when it is not; a KEY never in
+    //    plain text, but wrapped under a key the browser will not hand out (theme.js siteKeys; the doors' battery, 5 Nov 2026).
+    //    The vault key is held by its field alone, never kept ──
+    var vkey=document.getElementById('vkey'),vkey2=document.getElementById('vkey2'),resealRow=document.getElementById('reseal-row');
+    function secret(k){return !!(window.siteKeys&&siteKeys.isKey(k));}
+    function stored(k){if(secret(k))return siteKeys.get(k);try{return localStorage.getItem(k)||sessionStorage.getItem(k)||'';}catch(e){return '';}}
     function REMEMBER(){return remCb.checked;}
-    function hold(k,v){try{if(!v){localStorage.removeItem(k);sessionStorage.removeItem(k);return;}(REMEMBER()?localStorage:sessionStorage).setItem(k,v);(REMEMBER()?sessionStorage:localStorage).removeItem(k);}catch(e){}}
+    function hold(k,v){if(secret(k)){if(!v)siteKeys.del(k);else siteKeys.set(k,v,{tab:!REMEMBER()});return;}try{if(!v){localStorage.removeItem(k);sessionStorage.removeItem(k);return;}(REMEMBER()?localStorage:sessionStorage).setItem(k,v);(REMEMBER()?sessionStorage:localStorage).removeItem(k);}catch(e){}}
     function seatLatch(h){return 'journal-latch:'+host(BEACH)+':'+h;}   /* the name the character page and the group page keep a character's key under */
     try{
       remCb.checked=(localStorage.getItem('gallery:remember')||'1')==='1';
       provider.value=stored('gallery:provider')||'free';
-      key.value=stored('gallery:key')||'';
       me.value=cleanHandle(params.get('h'))||stored('gallery:me')||stored('gallery:who')||'';
-      pass.value=stored('gallery:pass')||'';
       scene.value=stored('gallery:scene')||'bubble:gal-1';
       shot.value=stored('gallery:shot')||'';
       styleIn.value=stored('gallery:style')||'';
-      var pl=JSON.parse(stored('gallery:place')||'null'); if(pl&&pl.url){place.value='supabase';placeUrl.value=pl.url;placeBucket.value=pl.bucket||'stills';placeKey.value=stored('gallery:place-key')||'';}
+      var pl=JSON.parse(stored('gallery:place')||'null'); if(pl&&pl.url){place.value='supabase';placeUrl.value=pl.url;placeBucket.value=pl.bucket||'stills';}
     }catch(e){scene.value='bubble:gal-1';}
+    /* the keys, once the keyring has opened them */
+    var KEYS=siteKeys.ready().then(function(){
+      if(!key.value)key.value=stored('gallery:key')||'';
+      if(!pass.value)pass.value=stored('gallery:pass')||'';
+      if(place.value==='supabase'&&!placeKey.value)placeKey.value=stored('gallery:place-key')||'';
+      labelKey();
+    });
     function meName(){return cleanHandle(me.value);}
     function who(){return MODE==='character'?HANDLE:(meName()||'observer');}
     window.myName=who;
@@ -685,14 +699,26 @@
     card.addEventListener('click',function(e){if(e.target===card)card.close();});
     function vsay(m,cls){vaultHint.className='hint'+(cls?' '+cls:'');vaultHint.textContent=m;}
     function today(){return new Date().toISOString().slice(0,10);}
-    // ── THE VAULT (ways:vault; vault.js): one key opens it, and what it holds fills this card ──
+    // ── THE VAULT (ways:vault; vault.js): at the beach this page reads, never a table or a world beneath it; latched with your
+    //    passport's key, sealed with a vault key of its own; a vault founded under the one phrase opens with it, and is offered
+    //    a re-seal under a vault key (spine:security-schematic 1.52 and 1.55; the doors' battery, 5 Nov 2026) ──
     var SEATS={}, VAULT={exists:false,slots:{}};
-    function vaultLaw(h){var o=APEX.replace(/\/+$/,'');return 'vault:'+h+' — '+h+'’s vault, founded '+today()+' from happyseaurchin.com/gallery to the recipe at ways:vault. THE LAW. This root is plain on purpose: a keyless reader learns how the vault works and never a key. Each entry beneath is one KEY-GROUP the handle holds — its label plain at the entry (what the key is, for whom, since when: an image key and its service; a character at a table and the table’s address; a picture place), and the key itself sealed at the entry’s 1 — so the list reads without the key and no key reads without the sovereign. Write-latch and cipher answer to ONE sovereign: the handle’s own passport key, typed by its holder into the page that needs it and kept in no block, this one included. Sealed as bsp-mcp seals (Argon2id with the salt '+o+', the beach’s URL form; nacl secretbox), so the router opens what a page sealed and a page opens what the router sealed. The canary at 9 proves the key. Rotating the sovereign re-seals nothing: every entry is rewritten under the new key in the same pass.';}
-    function openVault(){var h=meName(),k=pass.value.trim();if(!h||!k){vsay('your name and your key first — they open the vault','err');return Promise.resolve(null);}
+    function vaultAt(){return vault.home(BEACH);}
+    function vkeyOf(){return (vkey.value||'').trim();}
+    function vaultLaw(h,again){var o=vaultAt();return 'vault:'+h+' — '+h+'’s vault, '+(again?'sealed again ':'founded ')+today()+' from happyseaurchin.com/gallery'+(again?' under a vault key of its own':'')+' to the recipe at ways:vault. THE LAW. This root is plain on purpose: a keyless reader learns how the vault works and never a key. Each entry beneath is one KEY-GROUP the handle holds — its label plain at the entry (what the key is, for whom, since when: an image key and its service; a character at a table and the table’s address; a picture place), and the key itself sealed at the entry’s 1 — so the list reads without the vault key and no key reads without it. TWO KEYS (ways:vault 1): every write answers to the latch, the handle’s own passport key; every entry is sealed under a VAULT KEY of its own, chosen apart from every latch, typed by its holder into the page that needs it, kept in no block and never sent to the beach. Sealed as bsp-mcp seals (Argon2id with the salt '+o+', the beach’s URL form; nacl secretbox), so the router opens what a page sealed (secret the latch, enc_secret the vault key) and a page opens what the router sealed. The canary at 9 proves the vault key. Changing the latch re-seals nothing; changing the vault key rewrites every entry under the new one in the same pass, each read back.';}
+    /* the first of the keys given under which the vault opens: the vault key, else the passport's own phrase (the one-key trade) */
+    function readUnder(at,h,keys){var i=0;function next(){if(i>=keys.length)return vault.read(at,h,keys[0]||'').then(function(v){v.key='';return v;});
+      var k=keys[i++];return vault.read(at,h,k).then(function(v){if(!v.exists){v.key='';return v;}if(v.canary==='opens'||v.entries.some(function(e){return e.opened;})){v.key=k;return v;}return next();});}return next();}
+    function openVault(){var h=meName(),k=pass.value.trim(),vk=vkeyOf();
+      if(!h){vsay('your name first: the vault is under it','err');return Promise.resolve(null);}
+      if(!vk&&!k){vsay('your vault key opens your vault','err');return Promise.resolve(null);}
       vsay('opening your vault… a second or two');
-      return vault.read(APEX,h,k).then(function(v){
-        VAULT=v; VAULT.slots={}; var found=[];
-        if(!v.exists){vsay('no vault yet under '+h+' — keep a key below and one is founded, latched under this same key');return v;}
+      var at=vaultAt(), keys=[vk,k].filter(function(x,i,a){return x&&a.indexOf(x)===i;});
+      return readUnder(at,h,keys).then(function(v){
+        VAULT=v; VAULT.slots={}; VAULT.oneKey=!!(v.key&&v.key===k); var found=[];
+        resealRow.style.display=VAULT.oneKey?'':'none'; vkey2.style.display=!v.exists||VAULT.oneKey?'':'none';
+        if(!v.exists){vsay('no vault yet under '+h+' at '+host(at)+' — keep a key below and one is founded: latched with your passport’s key, sealed with your vault key (type it twice; it is kept nowhere, so keep it in a password manager)');return v;}
+        if(!v.key){vsay(vk?'that vault key does not open the vault under '+h+' at '+host(at):'type your vault key: it opens the vault under '+h,'err');return v;}
         v.entries.forEach(function(e){
           if(!e.opened)return; var L=e.label.toLowerCase();
           if(L.indexOf('image key')===0){var m=e.label.match(/image key\s*[—-]\s*(google|openai|grok)/i);if(m)provider.value={google:'gemini',openai:'openai',grok:'grok'}[m[1].toLowerCase()];key.value=e.text;VAULT.slots.image=e.slot;found.push('image key'+(m?' ('+m[1]+')':''));}
@@ -701,23 +727,45 @@
             if(url===BEACH.replace(/\/+$/,'')){hold(seatLatch(ch),e.text);if(MODE==='character'&&ch.toLowerCase()===HANDLE.toLowerCase()){seat.value=e.text;VAULT.slots.seat=e.slot;}}found.push(ch+' at '+sm[2].replace(/,+$/,''));}}
         });
         var sealed=v.entries.filter(function(e){return e.envelope&&!e.opened;}).length;
-        vsay('vault open — '+(found.length?found.join(', '):'nothing for this page in it yet')+(sealed?' · '+sealed+' other '+(sealed>1?'entries':'entry')+' sealed under another form':''),'ok');
+        vsay('vault open — '+(found.length?found.join(', '):'nothing for this page in it yet')+(sealed?' · '+sealed+' other '+(sealed>1?'entries':'entry')+' sealed under another form':'')+(VAULT.oneKey?' · it is sealed under your passport’s key, the one that latches it: choose a vault key of its own, type it twice, and seal it again':''),VAULT.oneKey?'err':'ok');
         remember();labelKey();return v;
       }).catch(function(e){vsay(e.message,'err');return null;});}
-    function keepIn(kind){var h=meName(),k=pass.value.trim();if(!h||!k){vsay('your name and your key first — the vault answers to them','err');return;}
+    /* the vault key, typed twice where it is about to seal for the first time: a slip there would seal what nobody can open */
+    function twice(vk){if(vk===(vkey2.value||'').trim())return true;vkey2.style.display='';vsay('type the vault key once more, beside it, to be sure: it is kept nowhere, so a slip seals what nobody can open','err');vkey2.focus();return false;}
+    function keepIn(kind){var h=meName(),k=pass.value.trim(),vk=vkeyOf();
+      if(!h||!k){vsay('your name and your passport’s key first: the vault is latched with that key','err');return;}
+      if(!vk){vsay('your vault key too: a key of its own, which seals what the vault keeps and never leaves this browser','err');vkey.focus();return;}
+      if(vk===k){vsay('the vault key must not be your passport’s key: the beach checks that one, and the vault key never goes there','err');return;}
       var label,text,slot;
       if(kind==='image'){if(!key.value.trim()||provider.value==='free'){vsay('choose a service and paste its key first','err');return;}label='image key — '+NAMES[provider.value]+', kept '+today()+' from happyseaurchin.com/gallery';text=key.value.trim();slot=VAULT.slots.image;}
       else if(kind==='seat'){if(!seat.value.trim()){vsay('type '+HANDLE+'’s key first','err');return;}label=HANDLE+' at '+(WORLD||LEGACY_BEACH)+' — '+BEACH.replace(/\/+$/,'')+', since '+today();text=seat.value.trim();slot=VAULT.slots.seat;}
       else{var P=window.placeNow();if(!P){vsay('fill in your own bucket first — its URL, bucket and anon key','err');return;}label='picture place — supabase '+P.url+' bucket '+P.bucket+', kept '+today();text=P.key;slot=VAULT.slots.place;}
-      vsay('sealing…');
-      var ensure=VAULT.exists?Promise.resolve():vault.found(APEX,h,k,vaultLaw(h)).then(function(){VAULT.exists=true;});
-      return ensure.then(function(){return vault.keep(APEX,h,k,label,text,slot);}).then(function(at){VAULT.slots[kind]=at;if(kind==='seat')hold(seatLatch(HANDLE),text);vsay('sealed in your vault at '+at+' — '+label.split(',')[0],'ok');remember();}).catch(function(e){vsay(e.message,'err');});}
+      var at=vaultAt();
+      (VAULT.opened===at?Promise.resolve(VAULT):openVault().then(function(v){if(v)VAULT.opened=at;return v;})).then(function(v){
+        if(!v)return;
+        if(v.exists&&VAULT.oneKey){vsay('your vault is sealed under your passport’s key: seal it again under its vault key first','err');resealRow.style.display='';return;}
+        if(v.exists&&v.key!==vk){vsay('that vault key does not open your vault, so nothing was sealed','err');return;}
+        if(!v.exists&&!twice(vk))return;
+        vsay('sealing…');
+        var ensure=v.exists?Promise.resolve():vault.found(at,h,k,vk,vaultLaw(h)).then(function(){VAULT.exists=true;VAULT.key=vk;vkey2.style.display='none';vkey2.value='';});
+        return ensure.then(function(){return vault.keep(at,h,k,vk,label,text,slot);}).then(function(n){VAULT.slots[kind]=n;if(kind==='seat')hold(seatLatch(HANDLE),text);vsay('sealed in your vault at '+n+' — '+label.split(',')[0]+', under your vault key','ok');remember();});
+      }).catch(function(e){vsay(e.message,'err');});}
+    function resealVault(){var h=meName(),k=pass.value.trim(),vk=vkeyOf();
+      if(!h||!k){vsay('your name and your passport’s key first: they latch the vault, and open it as it is sealed now','err');return;}
+      if(!vk||vk===k){vsay('a vault key of its own first, not your passport’s key','err');vkey.focus();return;}
+      if(!twice(vk))return;
+      vsay('sealing your vault again under its vault key… each entry read back before the next');
+      vault.reseal(vaultAt(),h,k,VAULT.key||k,vk,vaultLaw(h,true)).then(function(r){
+        VAULT.oneKey=false;resealRow.style.display='none';vkey2.style.display='none';vkey2.value='';
+        return openVault().then(function(){vsay('sealed again under your vault key: '+r.resealed+' '+(r.resealed===1?'entry':'entries')+(r.left?', and '+r.left+' sealed under another key left as they stand':'')+'. Your passport’s key still latches it; keep the vault key in a password manager, since what it seals opens with it alone.','ok');});
+      }).catch(function(e){vsay(e.message,'err');});}
+    document.getElementById('reseal').addEventListener('click',resealVault);
     document.getElementById('unlock').addEventListener('click',openVault);
     document.getElementById('vault-image').addEventListener('click',function(){keepIn('image');});
     document.getElementById('vault-seat').addEventListener('click',function(){keepIn('seat');});
     document.getElementById('vault-place').addEventListener('click',function(){keepIn('place');});
     document.getElementById('key-keep').addEventListener('click',function(){remember();labelKey();keepFollows().then(function(){if(LENS.loaded)render();}).catch(function(e){keyHint.className='hint err';keyHint.textContent='your follows were not kept — '+e.message;});keyHint.className='hint ok';keyHint.textContent=(keyed()?'pictures on '+NAMES[provider.value]+', under '+who():'no image key — the free service, without faces')+(REMEMBER()?' — kept on this device':' — for this tab only');setTimeout(function(){card.close();keyHint.textContent='';},1100);});
-    document.getElementById('key-forget').addEventListener('click',function(){key.value='';provider.value='free';pass.value='';seat.value='';placeKey.value='';SEATS={};VAULT={exists:false,slots:{}};['gallery:key','gallery:pass','gallery:place-key'].forEach(function(k){hold(k,'');});if(MODE==='character')hold(seatLatch(HANDLE),'');vault.forget();remember();labelKey();vsay('');keyHint.className='hint';keyHint.textContent='forgotten — this browser holds no key now';});
+    document.getElementById('key-forget').addEventListener('click',function(){key.value='';provider.value='free';pass.value='';vkey.value='';vkey2.value='';seat.value='';placeKey.value='';SEATS={};VAULT={exists:false,slots:{}};resealRow.style.display='none';['gallery:key','gallery:pass','gallery:place-key'].forEach(function(k){hold(k,'');});if(MODE==='character')hold(seatLatch(HANDLE),'');vault.forget();remember();labelKey();vsay('');keyHint.className='hint';keyHint.textContent='forgotten — this browser holds no key now';});
     labelKey();
     var CARD=null;   /* the moment's card that was pressed — it shows the state in place, beside the button */
     function say(m,cls){hint.className='hint'+(cls?' '+cls:'');hint.textContent=m;
@@ -801,14 +849,19 @@
     btn.addEventListener('click',go);
     // ── boot ──
     (LEGACY_BEACH?Promise.resolve('https://'+LEGACY_BEACH):WORLD?resolveWorld(WORLD):Promise.resolve(APEX)).then(function(origin){
+      /* a members' beach that refused the page: its own words, with the way in, never 'no world' (theme.js sitePass) */
+      if(!origin&&window.sitePass&&sitePass.walled(APEX)){document.getElementById('shots').innerHTML=sitePass.wall(APEX);return;}
       if(!origin){document.getElementById('shots').innerHTML='<p class="empty">No world named '+esc(WORLD)+' — the tables are at <a href="/rpg">/rpg →</a>.</p>';return;}
       BEACH=origin;
       var atTable=!!(WORLD||LEGACY_BEACH);
       // the go menu: at a table it is the table's ring (this character's page and pictures, the others at the table, the mirror), as /page draws it
       if(window.siteDoors)siteDoors(WORLD?{handle:HANDLE||null,world:WORLD,beach:origin,here:'gallery'}:{handle:HANDLE||null,here:'gallery',site:true});
       document.getElementById('bar-where').textContent=atTable?' · '+(WORLD||LEGACY_BEACH):'';
-      var prep=atTable?readIndex().then(function(idx){HANDLES=(idx.blocks||[]).filter(function(b){return b.indexOf('passport:')===0;}).map(function(b){return b.slice(9);});}).catch(function(){}):Promise.resolve();
+      var WALL=false;
+      var prep=(atTable?readIndex().then(function(idx){WALL=!!(window.sitePass&&sitePass.gated(idx));HANDLES=(idx.blocks||[]).filter(function(b){return b.indexOf('passport:')===0;}).map(function(b){return b.slice(9);});}).catch(function(){WALL=!!(window.sitePass&&sitePass.walled(BEACH));}):Promise.resolve()).then(function(){return KEYS;});
       prep.then(function(){
+        /* a members' beach shows a stranger only what its keepers mark open: said so, with the way in */
+        if(WALL){document.getElementById('shots').innerHTML=sitePass.wall(BEACH);document.getElementById('src').textContent='reading '+origin.replace(/^https?:\/\//,'')+', a members’ beach';return;}
         MODE=HANDLE&&atTable&&HANDLES.some(function(h){return h.toLowerCase()===HANDLE.toLowerCase();})?'character':HANDLE?'handle':ROOM?'room':'index';
         if(MODE==='character')HANDLE=HANDLES.filter(function(h){return h.toLowerCase()===HANDLE.toLowerCase();})[0];
         var h1=document.getElementById('h1'), lede=document.getElementById('lede'), h2=document.getElementById('cam-h2'), sub=document.getElementById('cam-sub');

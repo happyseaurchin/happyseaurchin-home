@@ -384,11 +384,11 @@ function locationRef(pp){
 }
 const namesAPlace = p3 => typeof p3 === 'string' && (/\blocation\b/i.test(p3) || /\b\d{8,}\b/.test(p3));
 
-/* ── the keys: one latch per block, kept on this device; the now-latch is tried first
- * because a handle's key holds across the estate for most people ── */
+/* ── the keys: one latch per block, kept on this device, wrapped (theme.js siteKeys); the now-latch is tried
+ * first because a handle's key holds across the estate for most people ── */
 const latchKey = name => 'here-latch:' + name;
 function knownLatch(name){
-  return localStorage.getItem(latchKey(name)) || (HANDLE ? localStorage.getItem('now-latch:' + HANDLE) : null) || null;
+  return siteKeys.get(latchKey(name)) || (HANDLE ? siteKeys.get('now-latch:' + HANDLE) : null) || null;
 }
 
 /* ── the mirrors — read whole, written whole ── */
@@ -430,6 +430,7 @@ function setRootLine(block, text){ let n = block; while (n && typeof n['_'] === 
 /* THE ONE WRITE: found if absent, else fetch fresh, mutate, POST whole with confirm.
  * kind: 'spatial' | 'identity'; mutate(block) edits in place. Returns true or a sentence. */
 async function saveMirror(kind, mutate){
+  await siteKeys.ready();
   const name = kind === 'spatial' ? spName() : idName();
   const fresh = await readBlock(MAP.origin, name).catch(() => undefined);
   if (fresh === undefined) return 'the beach did not answer — nothing written';
@@ -445,7 +446,7 @@ async function saveMirror(kind, mutate){
     mutate(block);
     const w = await writeBlock(MAP.origin, { block: name, content: block, new_lock: latch });
     if (!w.ok) return 'the mirror could not be born (' + w.status + ')';
-    localStorage.setItem(latchKey(name), latch);
+    siteKeys.set(latchKey(name), latch);
     toast('mirror born, latched to ' + HANDLE);
     return true;
   }
@@ -464,8 +465,8 @@ async function saveMirror(kind, mutate){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(MAP.origin, body);
-    if (w.ok) localStorage.setItem(latchKey(name), v.trim());
-  } else if (w.ok && latch) localStorage.setItem(latchKey(name), latch);
+    if (w.ok) siteKeys.set(latchKey(name), v.trim());
+  } else if (w.ok && latch) siteKeys.set(latchKey(name), latch);
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   return true;
 }
@@ -474,8 +475,9 @@ async function saveMirror(kind, mutate){
  * Position 3 carries how they are met and then 'Location: *:<origin>:spatial:<world>:<address> — <words>';
  * the words before 'Location:' stay, the clause after it is replaced. Written where the passport is
  * kept (the apex, or the real for a handle the world's door founded there), under the passport's own
- * key, kept on this device as passport-latch:<handle>. ── */
+ * key, kept on this device as passport-latch:<handle>, wrapped (theme.js siteKeys). ── */
 async function standHere(walk, words){
+  await siteKeys.ready();
   const origin = PASSPORT_AT === 'the real' ? REAL : APEX;
   const name = 'passport:' + HANDLE;
   const fresh = await readBlock(origin, name).catch(() => undefined);
@@ -486,8 +488,7 @@ async function standHere(walk, words){
   const line = (before ? before + ' ' : '') + 'Location: *:' + MAP.origin + ':spatial:' + MAP.world + ':' + fullOf(walk) + (words ? ' — ' + words : '');
   const key = 'passport-latch:' + HANDLE;
   const body = { block: name, spindle: '3', content: line };
-  let latch = null;
-  try { latch = localStorage.getItem(key); } catch(e){}
+  const latch = siteKeys.get(key) || null;
   if (latch) body.secret = latch;
   let w = await writeBlock(origin, body);
   if (lockRequired(w)){
@@ -495,7 +496,7 @@ async function standHere(walk, words){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(origin, body);
-    if (w.ok){ try { localStorage.setItem(key, v.trim()); } catch(e){} }
+    if (w.ok) siteKeys.set(key, v.trim());
   }
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   return true;
@@ -817,7 +818,15 @@ async function boot(){
   $('f-h1').textContent = HANDLE || '<handle>'; $('f-h2').textContent = HANDLE || '<handle>';
   $('f-world').textContent = MAP.world; $('f-world2').textContent = MAP.world;
   $('f-pp').textContent = PASSPORT_AT || (HANDLE ? 'nowhere' : '—');
-  try { await loadMap(); } catch(e){ $('m-name').textContent = 'the map did not answer'; $('m-rung').textContent = String(e.message || e); return; }
+  try { await loadMap(); } catch(e){
+    /* a map behind a members' wall: its own words, with the way in, never 'the map did not answer · 401' (theme.js sitePass) */
+    if (window.sitePass && sitePass.walled(MAP.origin)){
+      $('m-name').textContent = 'a members’ beach'; $('m-rung').textContent = 'the map stands behind its wall';
+      $('m-note').insertAdjacentHTML('beforebegin', sitePass.wall(MAP.origin));
+      return;
+    }
+    $('m-name').textContent = 'the map did not answer'; $('m-rung').textContent = String(e.message || e); return;
+  }
   WALK = jumpZeros(WALK);
   if (STAND) STAND.walk = jumpZeros(STAND.walk);
   await loadMine();

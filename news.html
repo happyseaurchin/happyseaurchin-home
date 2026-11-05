@@ -334,8 +334,9 @@ const OUT = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6"/><p
 
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const $ = id => document.getElementById(id);
-const store = { get(k){ try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
-                set(k, v){ try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch(e){} } };
+/* a key name goes to the keyring, wrapped (theme.js siteKeys); anything else to localStorage as before */
+const store = { get(k){ if (window.siteKeys && siteKeys.isKey(k)) return siteKeys.get(k); try { return localStorage.getItem(k) || ''; } catch(e){ return ''; } },
+                set(k, v){ if (window.siteKeys && siteKeys.isKey(k)) return siteKeys.set(k, v); try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch(e){} } };
 
 /* a link inside a voice is a door: escape every piece, build anchors only from matches */
 const LINK = /(https?:\/\/[^\s<>"']+)/g;
@@ -872,6 +873,7 @@ function setAt(root, address, text){
   n[digits[digits.length - 1]] = text;
 }
 async function ensureMirror(say){
+  await siteKeys.ready();
   const name = 'news:' + HANDLE;
   const existing = await readBlock(name);
   let latch = store.get(latchKey());
@@ -911,6 +913,7 @@ async function ensureMirror(say){
   return latch;
 }
 async function send(root, it){
+  await siteKeys.ready();
   const st = root.querySelector('[data-said]');
   const say = t => { st.textContent = t; };
   const text = root.querySelector('[data-say]').value.trim();
