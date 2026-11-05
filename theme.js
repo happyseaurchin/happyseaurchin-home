@@ -1109,7 +1109,10 @@
     ['news',        'news'],
     /* what people are sharing: a link and a line of why, each in its sharer's own mirror at the second it was shared
      * (function:string; David's GO at spine:happening 1.1118, 27 Oct 2026) */
-    ['string',      'the string']
+    ['string',      'the string'],
+    /* the middle point's app: one button over a host of cells that listen at several speeds and speak only at the middle
+     * point, with the settings, the score and the voice out (the verso build record, §2.3; lane verso.1, 5 Nov 2026) */
+    ['verso',       'verso']
   ];
 
   /* THE NAME THIS DEVICE SIGNS WITH — render:who, kept by whichever page last wrote
