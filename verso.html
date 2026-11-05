@@ -1,0 +1,2096 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>verso — it listens, and speaks at the middle point</title>
+<meta name="description" content="One button wakes a shell of AI cells that listen to the people in the room at several speeds at once and speak aloud only at the middle point: after a thought has landed, when nobody else is about to say it, while the topic is still open. Mostly it holds.">
+<meta property="og:title" content="verso — it listens, and speaks at the middle point">
+<meta property="og:description" content="One button. It listens at several speeds at once, and mostly holds.">
+<meta property="og:image" content="https://happyseaurchin.com/animations/middle-point.jpg">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* the page's own colours, in both registers: the people (one each), the cells' three layers,
+     and what was foreclosed. Every other colour is theme.css's. */
+  :root{
+    --spk-a:#F2836B; --spk-b:#7DB8F5; --spk-c:#E58AC8; --spk-d:#B5D86A; --spk-e:#F0C674;
+    --lay-fast:#33C2D2; --lay-mid:#7FCB86; --lay-slow:#B49BF5;
+    --gone:#C27B85;
+  }
+  :root[data-theme="light"]{
+    --spk-a:#B4472C; --spk-b:#2F62B3; --spk-c:#9A3D8A; --spk-d:#5E7A12; --spk-e:#8E6210;
+    --lay-fast:#0D6B79; --lay-mid:#2E7D3A; --lay-slow:#6A47B5;
+    --gone:#9A4F5A;
+  }
+  *{box-sizing:border-box}
+  html{background:var(--abyss)}
+  html,body{margin:0}
+  body{
+    font-family:var(--body); color:var(--foam); font-size:17px; line-height:1.45; min-height:100dvh; overflow-x:hidden;
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--liquid-rgb),0.10), transparent 60%),
+      linear-gradient(180deg,var(--ground-top) 0px, var(--deep) 280px, var(--abyss) 900px);
+    -webkit-font-smoothing:antialiased; -webkit-tap-highlight-color:transparent;
+  }
+  .hidden{display:none !important}
+  button{font-family:var(--mono);cursor:pointer}
+  button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
+  a{color:var(--liquid);text-decoration:none}
+
+  /* the bar — the site's own; theme.js gathers its buttons behind 'options' */
+  .bar{display:flex;align-items:center;gap:8px;padding:10px 12px 6px;font-family:var(--mono);font-size:12px;letter-spacing:0.06em;color:var(--vapour-dim)}
+  .bar .dot{width:7px;height:7px;border-radius:50%;background:var(--vapour-dim);flex:none;transition:background .3s,box-shadow .3s}
+  .bar .dot.on{background:var(--liquid);box-shadow:0 0 10px var(--liquid)}
+  .bar .dot.speaking{background:var(--foam);box-shadow:0 0 12px var(--foam)}
+  .bar .dot.lost{background:var(--solid)}
+  .bar b{color:var(--foam)}
+  .bar .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar .spacer{flex:1}
+  .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px}
+  .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
+  .bar button.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+
+  /* THE SCORE — drawn, never listed: the talk on the top staves, verso's own staff, the held
+     thoughts on ledger lines, the floor and the urge, the cells keeping time, the words */
+  .score{position:relative;margin:4px 12px 0;border:1px solid var(--line);border-radius:14px;background:rgba(var(--card-rgb),0.32);overflow:hidden}
+  :root[data-theme="light"] .score{background:rgba(var(--card-rgb),0.78);box-shadow:0 1px 3px rgba(var(--wash-rgb),0.07)}
+  #score{display:block;width:100%;height:clamp(280px,44vh,440px);touch-action:pan-y;cursor:grab}
+  .judging #score{cursor:crosshair}
+  .tonow{position:absolute;top:6px;right:6px;z-index:2;min-height:38px;padding:4px 14px;border-radius:999px;border:1px solid rgba(var(--liquid-rgb),0.6);background:rgba(var(--well-rgb),0.88);color:var(--liquid);font-size:12px;font-weight:700}
+
+  /* the words — only when asked for */
+  .wp{margin:8px 12px 0;border:1px solid var(--line);border-radius:14px;background:rgba(var(--card-rgb),0.30);padding:4px 12px 10px;font-size:15px;line-height:1.4}
+  :root[data-theme="light"] .wp{background:rgba(var(--card-rgb),0.78)}
+  .wp h4{font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--liquid);margin:10px 0 4px}
+  .wp .r{display:flex;gap:10px;align-items:baseline;padding:5px 0;border-bottom:1px solid var(--line)}
+  .wp .r:last-child{border-bottom:none}
+  .wp .k{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);flex:none;min-width:58px}
+  .wp .x{flex:1;min-width:0;color:var(--foam);overflow-wrap:anywhere}
+  .wp .x i{font-style:normal;font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .wp .q{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:2px 0 4px}
+  .wp .legend{font-size:14px;color:var(--vapour);margin:2px 0 0}
+  .chip{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:0.03em;padding:0 7px;border-radius:999px;border:1px solid currentColor;margin-right:6px;white-space:nowrap}
+  .chip.ripe,.chip.withheld{color:var(--solid)} .chip.voiced,.chip.spoken,.chip.speaking{color:var(--foam)}
+  .chip.foreclosed,.chip.pruned,.chip.cut{color:var(--gone)} .chip.would{color:var(--foam)} .chip.handed{color:var(--liquid)}
+
+  /* THE ONE BUTTON — large and centred; the rings behind it pulse at the cells' own rhythm */
+  .core{display:flex;flex-direction:column;align-items:center;gap:8px;padding:2px 12px 0}
+  .press{position:relative;width:100%;max-width:440px;height:210px;display:flex;align-items:center;justify-content:center}
+  #rings{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .go{position:relative;z-index:1;width:156px;height:156px;border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:0;
+    border:1.5px solid var(--line-strong);color:var(--vapour);
+    background:radial-gradient(circle at 50% 36%, rgba(var(--card-hi-rgb),0.98), rgba(var(--card-rgb),0.98) 72%);
+    box-shadow:0 6px 26px rgba(0,0,0,0.26), inset 0 0 0 6px rgba(var(--well-rgb),0.22);
+    transition:background .35s,color .35s,border-color .35s,box-shadow .35s,transform .12s;-webkit-user-select:none;user-select:none;touch-action:manipulation}
+  .go:active{transform:scale(0.97)}
+  .go .gi{width:30px;height:30px;margin-bottom:2px}
+  .go .gi g{display:none}
+  .go.off .g-off,.go.waking .g-off,.go.lost .g-off{display:inline}
+  .go.on .g-hold{display:inline}
+  .go.speaking .g-say,.go.on.would .g-say{display:inline}
+  .go.on.would .g-hold{display:none}
+  .go .gw{font-family:var(--display);font-weight:800;font-size:22px;letter-spacing:0.01em;line-height:1.05}
+  .go .gs{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;opacity:0.8;min-height:1.3em;max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .go.on{background:radial-gradient(circle at 50% 36%, rgba(var(--liquid-rgb),0.40), rgba(var(--liquid-rgb),0.14) 74%);border-color:var(--liquid);color:var(--foam);
+    box-shadow:0 0 0 1px rgba(var(--liquid-rgb),0.35),0 0 34px rgba(var(--liquid-rgb),0.28)}
+  .go.on.would{border-color:var(--foam)}
+  .go.speaking{background:radial-gradient(circle at 50% 36%, var(--foam), rgba(var(--vapour-rgb),0.9) 76%);border-color:var(--foam);color:var(--abyss);box-shadow:0 0 44px rgba(var(--vapour-rgb),0.5)}
+  .go.waking{border-color:rgba(var(--liquid-rgb),0.7);color:var(--foam)}
+  .go.lost{border-color:rgba(var(--solid-rgb),0.75);color:var(--solid)}
+
+  /* what it listens to */
+  .feed{display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap;width:100%;max-width:440px}
+  .feed .seg{flex:0 1 auto;min-width:92px}
+  .feed select,.feed input{flex:1 1 140px;min-width:0;max-width:230px;min-height:44px;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:10px;color:var(--foam);font-family:var(--mono);font-size:16px;padding:8px 10px}
+
+  /* where the host is */
+  .hostline{width:100%;max-width:440px;display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;color:var(--vapour-dim);text-align:center;min-height:44px}
+  .hostline .addr{color:var(--vapour);overflow-wrap:anywhere}
+  .hostline.err .say{color:var(--solid)}
+  .hostline .ok{color:var(--bud)}
+  .hostline button{min-height:42px;background:none;border:1px solid var(--line-strong);border-radius:999px;color:var(--vapour);font-size:12px;padding:6px 16px}
+  .hostline button.demo{border-color:rgba(var(--solid-rgb),0.65);color:var(--solid);font-weight:700}
+  .hostline button.demo.nudge{animation:nudge .9s ease-in-out 2}
+  @keyframes nudge{0%,100%{box-shadow:0 0 0 0 rgba(var(--solid-rgb),0.5)}50%{box-shadow:0 0 0 9px rgba(var(--solid-rgb),0)}}
+  .hostline input{flex:1 1 210px;min-width:0;min-height:44px;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:10px;color:var(--foam);font-family:var(--mono);font-size:16px;padding:8px 10px}
+
+  /* what the run has spent */
+  .spend{width:100%;max-width:300px;display:flex;align-items:center;gap:10px;font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim)}
+  .spend .m{flex:1;height:4px;border-radius:2px;background:rgba(var(--vapour-rgb),0.18);overflow:hidden}
+  .spend .m i{display:block;height:100%;width:0;background:var(--solid);transition:width .4s}
+
+  /* THE SETTINGS — sliders and toggles, each sent to the host as it changes */
+  .settings{display:grid;grid-template-columns:repeat(auto-fill,minmax(166px,1fr));gap:8px;padding:14px 12px calc(32px + env(safe-area-inset-bottom));max-width:980px;margin:0 auto}
+  .set{border:1px solid var(--line);border-radius:12px;background:rgba(var(--card-rgb),0.30);padding:9px 11px 11px;min-width:0}
+  :root[data-theme="light"] .set{background:rgba(var(--card-rgb),0.8)}
+  .set.wide{grid-column:1/-1}
+  .sk{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-family:var(--mono);font-size:11.5px;letter-spacing:0.05em;color:var(--vapour-dim);margin:0 0 6px}
+  .sk .sv{font-weight:700;color:var(--foam);letter-spacing:0.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  .segs{display:flex;gap:6px}
+  .seg{flex:1 1 0;min-width:0;min-height:44px;padding:6px 4px;border-radius:10px;border:1px solid var(--line-strong);background:rgba(var(--well-rgb),0.45);color:var(--vapour);font-size:12.5px;line-height:1.15}
+  .seg.on{background:rgba(var(--liquid-rgb),0.2);border-color:var(--liquid);color:var(--foam);font-weight:700}
+  .seg:disabled{opacity:0.45;cursor:default}
+  .set input[type=range]{-webkit-appearance:none;appearance:none;display:block;width:100%;height:40px;margin:0;background:transparent;touch-action:pan-y;cursor:pointer}
+  .set input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:linear-gradient(90deg,var(--liquid) 0 var(--p,50%),rgba(var(--vapour-rgb),0.22) var(--p,50%) 100%)}
+  .set input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:28px;height:28px;margin-top:-11px;border-radius:50%;background:var(--foam);border:3px solid var(--liquid);box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+  .set input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:rgba(var(--vapour-rgb),0.22)}
+  .set input[type=range]::-moz-range-progress{height:6px;border-radius:3px;background:var(--liquid)}
+  .set input[type=range]::-moz-range-thumb{width:24px;height:24px;border-radius:50%;background:var(--foam);border:3px solid var(--liquid)}
+  .set .tx{display:block;width:100%;min-height:44px;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:10px;color:var(--foam);font-family:var(--mono);font-size:16px;padding:8px 10px;outline:none}
+  .set .tx:focus{border-color:var(--liquid)}
+  .set .sub{display:flex;align-items:center;gap:10px;margin:8px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim)}
+  .set .sub .tx{flex:1;min-width:0}
+  .lock{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 12px;border-radius:10px;border:1px dashed rgba(var(--bud-rgb),0.65);color:var(--bud);font-family:var(--mono);font-size:12.5px}
+  .lock svg{width:15px;height:15px;flex:none}
+  .why{display:none;margin:8px 0 0;font-size:14px;line-height:1.35;color:var(--vapour)}
+  .words-on .why{display:block}
+  .setfoot{grid-column:1/-1;display:flex;justify-content:center;padding:4px 0 0}
+  .setfoot button{min-height:42px;background:none;border:1px solid var(--line);border-radius:999px;color:var(--vapour-dim);font-size:12px;padding:6px 16px}
+
+  /* a word from the page: shown, then gone */
+  .hint{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:50;width:max-content;max-width:min(88vw,560px);margin:0;padding:8px 16px;border-radius:16px;background:rgb(var(--well-rgb));border:1px solid var(--line-strong);box-shadow:0 8px 28px rgba(0,0,0,0.32);font-family:var(--mono);font-size:11.5px;line-height:1.4;color:var(--vapour);text-align:center;pointer-events:none;opacity:0;transition:opacity .3s}
+  .hint.show{opacity:1}
+  .hint.ok{color:var(--solid)} .hint.err{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}
+
+  /* the voice and the host — one sheet, opened from options */
+  .veil{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,0.55);display:flex;align-items:center;justify-content:center;padding:16px}
+  .panel{width:100%;max-width:460px;max-height:calc(100dvh - 32px);overflow:auto;border:1px solid var(--line-strong);border-radius:14px;background:var(--deep);padding:16px}
+  .panel h2{font-family:var(--display);font-size:1.3rem;margin:0 0 6px}
+  .panel h3{font-family:var(--mono);font-size:11px;font-weight:400;letter-spacing:0.08em;text-transform:uppercase;color:var(--liquid);margin:16px 0 6px}
+  .panel p{margin:0 0 10px;color:var(--vapour);font-size:0.95rem}
+  .panel .pick{display:flex;align-items:baseline;gap:8px;padding:9px 0 5px;cursor:pointer;color:var(--foam)}
+  .panel .pick span{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
+  .panel .opts{padding:2px 0 4px 24px;position:relative}
+  .panel select,.panel textarea,.panel input:not([type=radio]):not([type=range]){width:100%;margin:0 0 8px;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:8px;color:var(--foam);font-family:var(--mono);font-size:16px;padding:9px 10px;outline:none}
+  .panel textarea{font-family:var(--body);line-height:1.4;resize:vertical}
+  .panel input:focus,.panel textarea:focus{border-color:var(--liquid)}
+  .panel input[type=radio]{width:auto;margin:0;flex:none;accent-color:var(--liquid)}
+  .panel .ctlrow{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);margin:10px 0 6px}
+  .panel input[type=range]{flex:1;accent-color:var(--liquid)}
+  .panel .row{display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+  .panel button{border:none;border-radius:8px;font-weight:700;font-size:13px;padding:11px 16px;min-height:44px}
+  .panel .go2{background:var(--solid);color:var(--abyss)} .panel .no{background:none;border:1px solid var(--line-strong);color:var(--vapour)}
+  .panel .ph{font-family:var(--mono);font-size:12px;min-height:1.4em;color:var(--vapour-dim);margin:6px 0 0}
+  .panel .ph.err{color:var(--liquid)}
+
+  /* the judges' marks — a sheet from the bottom, big enough for a thumb */
+  .mveil{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,0.35);display:flex;align-items:flex-end;justify-content:center}
+  .mpanel{width:100%;max-width:480px;border:1px solid var(--line-strong);border-bottom:none;border-radius:16px 16px 0 0;background:var(--deep);padding:14px 14px calc(14px + env(safe-area-inset-bottom));box-shadow:0 -8px 30px rgba(0,0,0,0.3)}
+  .mpanel .mt{font-family:var(--mono);font-size:12px;letter-spacing:0.04em;color:var(--vapour-dim);margin:0 0 10px;text-align:center}
+  .mpanel .mq{font-size:15px;color:var(--vapour);margin:-4px 0 10px;text-align:center}
+  .mpanel .mb{display:flex;flex-direction:column;gap:8px}
+  .mpanel .mb button{min-height:54px;border-radius:12px;border:1px solid var(--line-strong);background:rgba(var(--card-rgb),0.6);color:var(--foam);font-family:var(--body);font-size:16px;display:flex;align-items:center;gap:14px;padding:0 16px;text-align:left}
+  .mpanel .mb .ic{width:26px;height:26px;flex:none;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-weight:700;font-size:15px;border-radius:50%;border:1.5px solid currentColor}
+  .mpanel .mx{margin-top:8px;width:100%;min-height:44px;background:none;border:none;color:var(--vapour-dim);font-size:12px}
+</style>
+</head>
+<body data-beach-button="off">
+<script>document.documentElement.classList.remove('no-js');</script>
+<div class="bar">
+  <span class="dot" id="dot"></span>
+  <span class="where">verso · <b id="bar-state">asleep</b></span>
+  <span class="spacer"></span>
+  <button type="button" id="c-words" aria-pressed="false" title="the words: what each cell wrote, what is held, what it said — and what each setting changes">show the words</button>
+  <button type="button" id="c-sheet" title="the voice it speaks with, and where its host is">the voice and the host</button>
+</div>
+<main id="app">
+  <section class="score" aria-label="the score">
+    <canvas id="score" role="img" aria-label="The score, moving past a fixed now: the people talking on the top staves, verso's own staff beneath them (a rest while it holds, a note when it speaks), held thoughts on ledger lines, the floor and the urge as two moving values with their thresholds, the cells keeping time, and the words as a strip. Drag it sideways to look back."></canvas>
+    <button type="button" class="tonow hidden" id="to-now" aria-label="back to now">now ›</button>
+  </section>
+  <section class="wp hidden" id="wp" aria-label="the words"></section>
+  <section class="core">
+    <div class="press">
+      <canvas id="rings" aria-hidden="true"></canvas>
+      <button type="button" class="go off" id="go" aria-pressed="false" title="press to enliven; press again to stop">
+        <svg class="gi" viewBox="0 0 30 30" aria-hidden="true">
+          <g class="g-off"><path d="M10.4 9.6a8.4 8.4 0 1 0 9.2 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M15 5.4v8.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></g>
+          <g class="g-hold"><path d="M4 12.4h22M4 19.6h22" stroke="currentColor" stroke-width="1.2" opacity="0.45"/><rect x="10.5" y="12.4" width="9" height="4.4" rx="0.6" fill="currentColor"/></g>
+          <g class="g-say"><ellipse cx="12.6" cy="20.4" rx="5.6" ry="4" transform="rotate(-22 12.6 20.4)" fill="currentColor"/><path d="M17.7 19V5.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></g>
+        </svg>
+        <span class="gw" id="go-w">enliven</span>
+        <span class="gs" id="go-s">live</span>
+      </button>
+    </div>
+    <div class="feed" id="feed" role="group" aria-label="what it listens to">
+      <button type="button" class="seg" data-feed="live" aria-pressed="false">live</button>
+      <button type="button" class="seg" data-feed="replay" aria-pressed="false">replay</button>
+      <select id="run" class="hidden" aria-label="the run to replay"></select>
+      <input id="run-id" class="hidden" placeholder="the run’s name" aria-label="the run to replay" autocomplete="off" autocapitalize="none" spellcheck="false">
+    </div>
+    <div class="hostline" id="hostline" aria-live="polite"></div>
+    <div class="spend hidden" id="spend"><span id="spend-t"></span><span class="m"><i id="spend-m"></i></span></div>
+  </section>
+  <section class="settings" id="settings" aria-label="the settings"></section>
+  <noscript><p style="text-align:center;font-family:var(--mono);color:var(--vapour-dim)">verso needs JavaScript.</p></noscript>
+</main>
+<p class="hint" id="hint" role="status"></p>
+
+<div class="veil hidden" id="sveil"><div class="panel" role="dialog" aria-modal="true" aria-labelledby="s-title">
+  <h2 id="s-title">The voice and the host</h2>
+  <h3>the voice out</h3>
+  <p>Who speaks its lines aloud, a phrase at a time. A key stays on this device, and goes only to its own service.</p>
+  <label class="pick"><input type="radio" name="narr" value="device"><b>this device’s voice</b><span>free</span></label>
+  <div class="opts" data-for="device"><select id="n-dvoice" aria-label="the device’s voice"></select></div>
+  <label class="pick"><input type="radio" name="narr" value="openai"><b>OpenAI</b><span>your key</span></label>
+  <div class="opts" data-for="openai">
+    <input id="n-okey" type="password" placeholder="your OpenAI key — sk-…" autocomplete="off" autocapitalize="none" spellcheck="false">
+    <select id="n-ovoice" aria-label="the OpenAI voice"></select>
+    <textarea id="n-ostyle" rows="3" data-dictate aria-label="how it speaks"></textarea>
+  </div>
+  <label class="pick"><input type="radio" name="narr" value="eleven"><b>ElevenLabs</b><span>your key · the richest voices</span></label>
+  <div class="opts" data-for="eleven">
+    <input id="n-ekey" type="password" placeholder="your ElevenLabs key" autocomplete="off" autocapitalize="none" spellcheck="false">
+    <select id="n-evoice" aria-label="the ElevenLabs voice"><option value="">the key first — then your voices</option></select>
+  </div>
+  <div class="ctlrow"><span>slower</span><input id="n-rate" type="range" min="0.7" max="1.3" step="0.05" aria-label="how fast it speaks"><span>faster</span></div>
+  <div class="row"><button type="button" class="no" id="n-test">hear a line</button></div>
+  <p class="ph" id="n-hint"></p>
+  <h3>the host</h3>
+  <p>Where verso’s cells run — the Mac, for now. Kept on this device.</p>
+  <input id="h-addr" inputmode="url" placeholder="ws://localhost:8765" aria-label="the host’s address" autocomplete="off" autocapitalize="none" spellcheck="false">
+  <p class="ph" id="h-hint"></p>
+  <div class="row"><button type="button" class="no" id="s-cancel">cancel</button><button type="button" class="go2" id="s-done">done</button></div>
+</div></div>
+
+<div class="mveil hidden" id="mveil"><div class="mpanel" role="dialog" aria-modal="true" aria-labelledby="m-title">
+  <p class="mt" id="m-title"></p>
+  <p class="mq hidden" id="m-q"></p>
+  <div class="mb" id="m-b"></div>
+  <button type="button" class="mx" id="m-x">not now</button>
+</div></div>
+
+<script>
+(function(){
+'use strict';
+/* ── VERSO — the page over the host (lane verso.1; the build record, bsp-mcp-server
+   proposals/2026-11-05-verso-the-build.md, §2.3). One button wakes the host's cells on the live
+   feed or a replay, and stops them; the settings go to the host as they change; the score draws
+   what the host says is happening; the voice out speaks the host's phrases one at a time and
+   stops the moment it is told. One WebSocket, JSON events (§3); nothing here writes to the beach.
+   With no host, the demo is a stand-in host inside this page, speaking the same events through
+   the same code, so what the demo shows is what the page will do with the real one. ── */
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const store = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch(e){ return null; } };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const num = (v, d) => { const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() !== '') ? Number(v) : NaN; return isFinite(n) ? n : d; };
+const r2 = v => Math.round(v * 100) / 100;
+const r4 = v => Math.round(v * 10000) / 10000;
+const mmss = t => { t = Math.max(0, Math.floor(t)); return Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0'); };
+const uniq = a => a.filter((x, i) => a.indexOf(x) === i);
+const PARAMS = new URLSearchParams(location.search);
+const REDUCED = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+let DIRTY = true;
+
+let HINT_T = null;
+function hint(msg, cls){
+  const h = $('hint'); if (!h) return;
+  clearTimeout(HINT_T);
+  h.innerHTML = msg || ''; h.classList.remove('ok', 'err', 'show');
+  if (cls) h.classList.add(cls);
+  if (msg){ h.classList.add('show'); HINT_T = setTimeout(() => h.classList.remove('show'), cls === 'err' ? 8000 : 4500); }
+}
+
+/* ── THE SETTINGS (§4) — each a slider or a toggle, sent the moment it changes as
+   { type:'settings', key, value, all }. Kept on this device; a running host's own values are
+   taken up when it says what it runs. window, line_limit, attention and attachment start at
+   provisional values: §4 says they are tuned on the replay. ── */
+const SPEC = [
+  { key: 'mode', name: 'mode', kind: 'seg', opts: [['spoken-to', 'spoken to'], ['ready', 'ready']], start: 'spoken-to',
+    why: 'Spoken to: it speaks only once someone has named it. Ready: also when enough is ready. A replay marks both.' },
+  { key: 'threshold', name: 'threshold', kind: 'range', min: 1, max: 9, step: 1, start: 3,
+    why: 'How many independent releases a held thought needs before it may be spoken: three is one from each layer.' },
+  { key: 'window', name: 'window', kind: 'range', min: 0, max: 1, step: 0.05, start: 0.6, dp: 2,
+    why: 'How open the floor must be, from 0 (someone speaking) to 1 (a full pause), before it may speak.' },
+  { key: 'line_limit', name: 'line limit', kind: 'range', min: 1, max: 6, step: 1, start: 1, suffix: ' line', plural: ' lines',
+    why: 'How far it goes on when it is met with silence: how many lines may follow one another while nobody speaks.' },
+  { key: 'stop', name: 'stops', kind: 'multi', wide: true, opts: [['at-once', 'at once'], ['phrase', 'phrase'], ['sentence', 'sentence']], start: ['at-once', 'phrase', 'sentence'],
+    why: 'Which stops are open while it speaks: at once, at the end of the phrase, at the end of the sentence. The cell chooses as it speaks, and the floor executes it.' },
+  { key: 'attention', name: 'attention', kind: 'range', min: 1, max: 9, step: 1, start: 5,
+    why: 'How many held thoughts each cell keeps in view at a landing, the ripe ones first.' },
+  { key: 'attachment', name: 'attachment', kind: 'range', min: 0, max: 1, step: 0.05, start: 0.5, dp: 2,
+    why: 'How readily a thought that stops fitting is dropped: it scales how long a held thought may live before it is foreclosed.' },
+  { key: 'cells', name: 'cells', kind: 'seg', opts: [['nine', 'the nine'], ['four', 'the four']], start: 'nine',
+    why: 'Which tiers and efforts run: OSH’s nine, or the four inside them.' },
+  { key: 'labelling', name: 'labelling', kind: 'seg', opts: [['local', 'local'], ['service', 'service']], start: 'local',
+    why: 'Who spoke, worked out on the Mac, or by a service (a stub for now).' },
+  { key: 'injector', name: 'injector', kind: 'seg', wide: true, opts: [['walked', 'walked'], ['yoked', 'yoked'], ['neutral', 'neutral'], ['none', 'none']], start: 'walked',
+    why: 'Walked: each cell walks the block rung by rung, one call a rung, and holds a spindle of its own. Yoked: its twin is handed that spindle whole. Neutral: a spindle of the same length from a neutral block. None: no spindle.' },
+  { key: 'injector_block', name: 'block', kind: 'text', start: 'injector:middle-point', max: 80, inside: 'injector' },
+  { key: 'shell', name: 'shell', kind: 'text', start: 'keel', max: 60,
+    why: 'Whose purpose the frame reads.' },
+  { key: 'stop_usd', name: 'stop at', kind: 'range', min: 1, max: 30, step: 1, start: 10, prefix: '$',
+    why: 'The run’s hard stop, in dollars.' },
+  { key: 'safety', name: 'safety', kind: 'lock', wide: true, start: true,
+    why: 'A risk to someone’s safety always lets it speak. Always on; not a setting.' }
+];
+const SPEC_BY = {}; SPEC.forEach(s => { SPEC_BY[s.key] = s; });
+const clone = v => Array.isArray(v) ? v.slice() : v;
+function validSetting(s, v){
+  if (v === undefined || v === null) return false;
+  if (s.kind === 'range') return typeof v === 'number' && isFinite(v) && v >= s.min && v <= s.max;
+  if (s.kind === 'seg') return s.opts.some(o => o[0] === v);
+  if (s.kind === 'multi') return Array.isArray(v) && v.length > 0 && v.every(x => s.opts.some(o => o[0] === x));
+  if (s.kind === 'text') return typeof v === 'string' && v.trim().length > 0 && v.length <= (s.max || 80);
+  if (s.kind === 'lock') return v === true;
+  return false;
+}
+function loadSettings(){
+  let saved = {}; try { saved = JSON.parse(store('verso:settings') || '{}') || {}; } catch(e){}
+  const out = {};
+  SPEC.forEach(s => { out[s.key] = validSetting(s, saved[s.key]) ? clone(saved[s.key]) : clone(s.start); });
+  out.safety = true;
+  return out;
+}
+let SET = loadSettings();
+const snapshot = () => { const o = {}; SPEC.forEach(s => { o[s.key] = clone(SET[s.key]); }); o.safety = true; return o; };
+function shownValue(s, v){
+  if (s.kind === 'range') return (s.prefix || '') + (s.dp ? Number(v).toFixed(s.dp) : v) + (s.plural && Number(v) !== 1 ? s.plural : (s.suffix || ''));
+  if (s.kind === 'seg'){ const o = s.opts.find(o => o[0] === v); return o ? o[1] : v; }
+  if (s.kind === 'multi') return v.length + ' open';
+  if (s.kind === 'lock') return 'always on';
+  return v;
+}
+function ctlHTML(s){
+  const v = SET[s.key];
+  if (s.kind === 'range') return '<input type="range" data-k="' + s.key + '" min="' + s.min + '" max="' + s.max + '" step="' + s.step + '" value="' + v + '" aria-label="' + esc(s.name) + '">';
+  if (s.kind === 'seg' || s.kind === 'multi') return '<div class="segs" role="group" aria-label="' + esc(s.name) + '">' + s.opts.map(o => '<button type="button" class="seg" data-k="' + s.key + '" data-v="' + esc(o[0]) + '" aria-pressed="false">' + esc(o[1]) + '</button>').join('') + '</div>';
+  if (s.kind === 'text') return '<input type="text" class="tx" data-k="' + s.key + '" value="' + esc(v) + '" maxlength="' + (s.max || 80) + '" aria-label="' + esc(s.name) + '" autocomplete="off" autocapitalize="none" spellcheck="false">';
+  if (s.kind === 'lock') return '<div class="lock" role="note"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 7V5.3a3.4 3.4 0 0 1 6.8 0V7" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="3" y="7" width="10" height="7" rx="1.5" fill="currentColor"/></svg>a risk to someone’s safety lets it speak</div>';
+  return '';
+}
+function settingHTML(s){
+  const subs = SPEC.filter(x => x.inside === s.key).map(x => '<label class="sub"><span>' + esc(x.name) + '</span>' + ctlHTML(x) + '</label>').join('');
+  return '<div class="set' + (s.wide ? ' wide' : '') + '" data-set="' + s.key + '">' +
+    '<div class="sk"><span>' + esc(s.name) + '</span><span class="sv" data-sv="' + s.key + '"></span></div>' +
+    ctlHTML(s) + subs + (s.why ? '<p class="why">' + esc(s.why) + '</p>' : '') + '</div>';
+}
+function renderSettings(){
+  $('settings').innerHTML = SPEC.filter(s => !s.inside).map(settingHTML).join('') +
+    '<div class="setfoot"><button type="button" id="s-reset">back to the start values</button></div>';
+  SPEC.forEach(s => paintSetting(s.key));
+}
+function fillRange(el){ const min = +el.min, max = +el.max; el.style.setProperty('--p', ((+el.value - min) / (max - min) * 100) + '%'); }
+function paintSetting(key){
+  const s = SPEC_BY[key]; if (!s) return;
+  const v = SET[key];
+  const sv = document.querySelector('[data-sv="' + key + '"]'); if (sv) sv.textContent = shownValue(s, v);
+  document.querySelectorAll('[data-k="' + key + '"]').forEach(el => {
+    if (el.classList.contains('seg')){ const on = s.kind === 'multi' ? v.includes(el.dataset.v) : el.dataset.v === v; el.classList.toggle('on', on); el.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+    else if (el.type === 'range'){ if (document.activeElement !== el) el.value = v; fillRange(el); }
+    else if (el.type === 'text'){ if (document.activeElement !== el) el.value = v; }
+  });
+}
+function changed(key){
+  store('verso:settings', JSON.stringify(SET));
+  paintSetting(key); DIRTY = true;
+  send({ type: 'settings', key, value: clone(SET[key]), all: snapshot() });
+}
+function resetSettings(){
+  let n = 0;
+  SPEC.forEach(s => { const was = JSON.stringify(SET[s.key]); SET[s.key] = clone(s.start); if (JSON.stringify(SET[s.key]) !== was){ n++; changed(s.key); } });
+  hint(n ? 'back to the start values' : 'already at the start values', 'ok');
+}
+/* the values a running host reports are the ones that are running */
+function adopt(o){
+  if (!o || typeof o !== 'object') return;
+  o = Object.assign({}, o);
+  /* the host keeps two under its own names: cells as 'osh9', the injector as { arm, block } */
+  if (o.cells === 'osh9' || o.cells === 'osh' || o.cells === 9) o.cells = 'nine';
+  if (o.cells === 4) o.cells = 'four';
+  if (o.injector && typeof o.injector === 'object'){ if (o.injector.block) o.injector_block = o.injector.block; o.injector = o.injector.arm; }
+  SPEC.forEach(s => {
+    let v = o[s.key];
+    if (s.kind === 'multi' && typeof v === 'string') v = [v];
+    if (s.kind !== 'lock' && validSetting(s, v)) SET[s.key] = clone(v);
+  });
+  store('verso:settings', JSON.stringify(SET)); SPEC.forEach(s => paintSetting(s.key)); DIRTY = true;
+}
+function wireSettings(){
+  const box = $('settings');
+  box.addEventListener('click', e => {
+    if (e.target.closest('#s-reset')){ resetSettings(); return; }
+    const b = e.target.closest('button.seg[data-k]'); if (!b) return;
+    const s = SPEC_BY[b.dataset.k], v = b.dataset.v;
+    if (s.kind === 'seg'){ if (SET[s.key] === v) return; SET[s.key] = v; }
+    else {
+      const cur = SET[s.key].slice(), i = cur.indexOf(v);
+      if (i >= 0){ if (cur.length === 1){ hint('one stop stays open'); return; } cur.splice(i, 1); } else cur.push(v);
+      SET[s.key] = s.opts.map(o => o[0]).filter(x => cur.includes(x));
+    }
+    changed(s.key);
+  });
+  /* a slider moves the score's dashed lines as it moves, and is sent once it is let go */
+  box.addEventListener('input', e => {
+    const el = e.target; if (el.type !== 'range') return;
+    const s = SPEC_BY[el.dataset.k]; SET[s.key] = Number(el.value); fillRange(el);
+    const sv = document.querySelector('[data-sv="' + s.key + '"]'); if (sv) sv.textContent = shownValue(s, SET[s.key]);
+    DIRTY = true;
+  });
+  box.addEventListener('change', e => {
+    const el = e.target, s = el.dataset && SPEC_BY[el.dataset.k]; if (!s) return;
+    if (el.type === 'range'){ SET[s.key] = Number(el.value); changed(s.key); }
+    else if (el.type === 'text'){
+      const v = el.value.trim();
+      if (!v){ el.value = SET[s.key]; return; }
+      if (v === SET[s.key]) return;
+      SET[s.key] = v; changed(s.key);
+    }
+  });
+  box.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.type === 'text') e.target.blur(); });
+}
+
+/* ── THE HOST — one WebSocket (§3). The address is asked once (ws://localhost:8765 offered),
+   kept on this device, and changed from the sheet. A lost host is tried again on its own, a
+   little less often each time, and the page says plainly when nobody answers. ── */
+const HOST_HOME = 'verso:host', DEFAULT_HOST = 'ws://localhost:8765';
+const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$/i;
+function normalHost(raw){
+  let s = String(raw || '').trim();
+  if (!s) return '';
+  if (/^https?:\/\//i.test(s)) s = s.replace(/^http/i, 'ws');
+  if (!/^wss?:\/\//i.test(s)){
+    const hostPart = s.split(/[/:]/)[0];
+    s = (location.protocol === 'https:' && !LOCAL.test(hostPart) ? 'wss://' : 'ws://') + s;
+  }
+  try { const u = new URL(s); if (u.protocol !== 'ws:' && u.protocol !== 'wss:') return ''; return u.href.replace(/\/$/, ''); } catch(e){ return ''; }
+}
+/* an https page may open ws:// only to this machine itself: from a phone, the Mac needs wss://
+   (a tunnel with a real certificate) or to serve this page over http itself */
+function mixedBlocked(url){
+  if (location.protocol !== 'https:') return false;
+  try { const u = new URL(url); return u.protocol === 'ws:' && !LOCAL.test(u.hostname); } catch(e){ return false; }
+}
+/* served by the host itself (host.py --page, the phone's way in over plain http): its socket is
+   this page's own origin, so nothing need be asked */
+const SITE_ORIGIN = /(^|\.)happyseaurchin\.com$|\.vercel\.app$/i;
+const OWN_HOST = /^https?:$/.test(location.protocol) && !SITE_ORIGIN.test(location.hostname) && (location.pathname === '/' || location.port === '8765')
+  ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host : '';
+const HOST = { url: store(HOST_HOME) || OWN_HOST, asked: !!(store(HOST_HOME) || OWN_HOST), ws: null, state: 'idle', tries: 0, timer: null, nextAt: 0, demo: null };
+function hostUrl(){ return HOST.url || DEFAULT_HOST; }
+function dropSocket(){
+  clearTimeout(HOST.timer); HOST.timer = null;
+  if (HOST.ws){ const ws = HOST.ws; HOST.ws = null; ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null; try { ws.close(); } catch(e){} }
+}
+function connect(){
+  dropSocket();
+  if (HOST.demo) return;
+  const url = hostUrl();
+  if (mixedBlocked(url)){ HOST.state = 'blocked'; paintHost(true); return; }
+  let ws;
+  try { ws = new WebSocket(url); }
+  catch(e){ HOST.state = 'closed'; later(); paintHost(true); return; }
+  HOST.ws = ws; HOST.state = 'connecting'; paintHost(true);
+  const slow = setTimeout(() => { if (ws.readyState === 0){ try { ws.close(); } catch(e){} } }, 6000);
+  ws.onopen = () => {
+    clearTimeout(slow); if (HOST.ws !== ws) return;
+    HOST.state = 'open'; HOST.tries = 0;
+    send({ type: 'host', page: 'verso', v: 1, settings: snapshot() });   /* the hello: the host says what it runs */
+    paintHost(true);
+  };
+  ws.onmessage = e => { if (HOST.ws === ws) receive(e.data); };
+  ws.onerror = () => {};
+  ws.onclose = () => {
+    clearTimeout(slow); if (HOST.ws !== ws) return;
+    HOST.ws = null;
+    const was = HOST.state; HOST.state = 'closed';
+    if (was === 'open') lostHost();
+    later(); paintHost(true);
+  };
+}
+function later(){
+  HOST.tries++;
+  const wait = Math.min(15000, 1000 * Math.pow(2, Math.min(HOST.tries - 1, 4)));
+  HOST.nextAt = Date.now() + wait;
+  clearTimeout(HOST.timer); HOST.timer = setTimeout(connect, wait);
+}
+function send(msg){
+  if (HOST.demo){ HOST.demo.hear(JSON.parse(JSON.stringify(msg))); return true; }
+  if (HOST.ws && HOST.ws.readyState === 1){ try { HOST.ws.send(JSON.stringify(msg)); return true; } catch(e){} }
+  return false;
+}
+/* what arrives: one JSON object an event, its kind in type (or event, or kind), its fields at
+   the top or under data; an array is several */
+function receive(data){
+  let m; try { m = typeof data === 'string' ? JSON.parse(data) : data; } catch(e){ return; }
+  if (Array.isArray(m)){ m.forEach(receive); return; }
+  if (!m || typeof m !== 'object') return;
+  const type = String(m.type || m.event || m.kind || '').toLowerCase();
+  const d = (m.data && typeof m.data === 'object' && !Array.isArray(m.data)) ? Object.assign({}, m.data, m) : m;
+  const h = ON[type];
+  if (h){ try { h(d); } catch(e){ console.warn('verso: a ' + type + ' event could not be read', e); } }
+}
+function paintHost(force){
+  const el = $('hostline'), url = hostUrl();
+  /* a person typing the address keeps what they are typing */
+  if (!force && $('host-in') && document.activeElement === $('host-in')) return;
+  let html = '', err = false;
+  if (HOST.demo){
+    html = '<span class="say">the demo — a stand-in host inside this page</span><button type="button" data-act="leave">leave the demo</button>';
+  } else if (!HOST.asked){
+    html = '<span class="say">where is the host?</span><input id="host-in" value="' + esc(url) + '" aria-label="the host’s address" inputmode="url" autocomplete="off" autocapitalize="none" spellcheck="false">' +
+      '<button type="button" data-act="connect">connect</button><button type="button" class="demo" data-act="demo">demo</button>';
+  } else if (HOST.state === 'open'){
+    html = '<span class="ok" aria-hidden="true">●</span><span class="addr">' + esc(url) + '</span><button type="button" data-act="change">change</button>';
+  } else if (HOST.state === 'connecting'){
+    html = '<span class="say">reaching</span><span class="addr">' + esc(url) + '…</span><button type="button" class="demo" data-act="demo">demo</button>';
+  } else if (HOST.state === 'blocked'){
+    err = true;
+    html = '<span class="say">this page is https, so it cannot open ws:// to another machine: use wss:// (a tunnel), or open verso from the host itself</span>' +
+      '<button type="button" data-act="change">change</button><button type="button" class="demo" data-act="demo">demo</button>';
+  } else {
+    err = true;
+    html = '<span class="say">no host answers at</span><span class="addr">' + esc(url) + '</span><span id="host-wait"></span>' +
+      '<button type="button" data-act="retry">try now</button><button type="button" class="demo" data-act="demo">demo</button>';
+  }
+  el.classList.toggle('err', err);
+  el.innerHTML = html;
+  tickHost();
+}
+function tickHost(){
+  const w = $('host-wait'); if (!w) return;
+  const s = Math.max(0, Math.ceil((HOST.nextAt - Date.now()) / 1000));
+  w.textContent = s ? '· again in ' + s + 's' : '· trying';
+}
+function nudgeDemo(){ const b = document.querySelector('#hostline .demo'); if (!b) return; b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge'); }
+function wireHost(){
+  $('hostline').addEventListener('click', e => {
+    const b = e.target.closest('button[data-act]'); if (!b) return;
+    const act = b.dataset.act;
+    if (act === 'connect'){
+      const u = normalHost($('host-in') ? $('host-in').value : '') || DEFAULT_HOST;
+      HOST.url = u; HOST.asked = true; store(HOST_HOME, u); HOST.tries = 0; connect();
+    } else if (act === 'demo') startDemo(true);
+    else if (act === 'leave') leaveDemo();
+    else if (act === 'retry'){ HOST.tries = 0; connect(); }
+    else if (act === 'change') openSheet('host');
+  });
+  $('hostline').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'host-in'){ const b = document.querySelector('#hostline [data-act="connect"]'); if (b) b.click(); } });
+}
+
+/* ── THE RUN — asleep, waking (start sent, nothing back yet), on, or lost (the host went quiet
+   while it ran: it may still be running there). A held silence and a switched-off machine
+   never look alike: asleep, nothing moves; on, the rings keep the cells' time even while it
+   holds. ── */
+const RUN = { state: 'asleep', feed: store('verso:feed') === 'replay' ? 'replay' : 'live', run: store('verso:run') || '', runs: [], wakeT: 0, stoppedAt: -1e9, wouldFlash: -1e9, wakeTimer: null };
+let LAST_FEED = null;   /* the feed of the run on the score: a replay's score takes the judges' marks */
+
+/* the talk's own clock (seconds from the run's start), carried by the floor's ten samples a
+   second and running on between them */
+const TALK = { t: 0, at: 0, run: false };
+function tnow(){ return TALK.run ? TALK.t + (performance.now() - TALK.at) / 1000 : TALK.t; }
+function sync(t, strong){
+  if (!isFinite(t)) return;
+  if (!TALK.run){ if (strong || t > TALK.t){ TALK.t = t; TALK.at = performance.now(); } return; }
+  const now = tnow();
+  if ((strong && Math.abs(t - now) > 0.3) || t > now + 0.3){ TALK.t = t; TALK.at = performance.now(); }
+}
+
+/* what the host has said, kept for the score */
+let WORDS = [], FLOOR = [], LANDINGS = [], BIDS = [], URGE = [], STOPS = [], WOULDS = [], MARKS = [], ONSPANS = [], SPEAKS = [], HOLDERS = [];
+const LED = new Map(), CELLS = new Map(), NAMES = {};
+let SPK = [], SPK_COL = new Map(), FLOOR_NOW = null, COST = null;
+const LIVE = new Set(['withheld', 'ripe']);
+
+function clearScore(){
+  WORDS = []; FLOOR = []; LANDINGS = []; BIDS = []; URGE = []; STOPS = []; WOULDS = []; MARKS = []; ONSPANS = []; SPEAKS = []; HOLDERS = [];
+  LED.clear(); CELLS.clear(); SPK = []; SPK_COL = new Map(); FLOOR_NOW = null; COST = null;
+  Object.keys(NAMES).forEach(k => delete NAMES[k]);
+  TALK.t = 0; TALK.at = performance.now(); TALK.run = false;
+  SAID = {}; CUT.clear(); LINES = {};
+  VIEW_AT = null; paintBack();
+  paintSpend(); DIRTY = true;
+}
+function beginOn(){
+  if (RUN.state === 'on') return;
+  clearTimeout(RUN.wakeTimer);
+  /* a run this page started keeps the feed it asked for; one it found running takes the feed
+     the host said (onHost sets it first), else the one chosen here */
+  if (RUN.state !== 'waking' || !LAST_FEED) LAST_FEED = RUN.feed;
+  RUN.state = 'on';
+  $('app').classList.toggle('judging', LAST_FEED === 'replay');
+  if (!TALK.run){ TALK.run = true; TALK.at = performance.now(); }
+  ONSPANS.push({ t0: tnow(), t1: null });
+  keepAwake(true);
+  if (LAST_FEED === 'replay') hint('a replay: tap the score to mark a moment, or a ◆ to judge it; drag it to look back');
+  paint();
+}
+function endOn(){
+  const t = tnow();
+  const sp = ONSPANS[ONSPANS.length - 1]; if (sp && sp.t1 == null) sp.t1 = t;
+  TALK.t = t; TALK.run = false;
+  keepAwake(false);
+}
+/* events from a running host say it runs: a run the page did not start (picked up after a
+   reconnect, or started on the Mac) shows as it is — except the few that trail a stop */
+function alive(){
+  if (RUN.state === 'on') return;
+  if (RUN.state === 'asleep' && performance.now() - RUN.stoppedAt < 4000) return;
+  beginOn();
+}
+function press(){
+  wakeAudio();   /* from the tap itself: a phone lets audio play later only if a tap started it */
+  if (RUN.state === 'on' || RUN.state === 'waking' || RUN.state === 'lost'){ stopRun(); return; }
+  if (!HOST.demo && HOST.state !== 'open'){ hint('no host answers — try the demo, or the host’s address under options', 'err'); nudgeDemo(); return; }
+  const run = currentRun();
+  if (RUN.feed === 'replay' && !run){ hint('choose a run to replay'); return; }
+  startRun(run);
+}
+function startRun(run){
+  clearScore();
+  LAST_FEED = RUN.feed;
+  RUN.state = 'waking'; RUN.wakeT = performance.now();
+  $('app').classList.toggle('judging', LAST_FEED === 'replay');
+  send(RUN.feed === 'replay' ? { type: 'start', feed: 'replay', run, settings: snapshot() } : { type: 'start', feed: 'live', settings: snapshot() });
+  /* a live run says so aloud, once: the people in the room hear that it listens now (and a
+     phone's voice, woken by this tap, will speak again when its moment comes) */
+  if (RUN.feed === 'live') cue('listening.');
+  clearTimeout(RUN.wakeTimer);
+  RUN.wakeTimer = setTimeout(() => { if (RUN.state === 'waking'){ RUN.state = 'asleep'; paint(); hint('the host did not start — nothing came back', 'err'); } }, 12000);
+  paint();
+}
+function stopRun(){
+  send({ type: 'stop' });
+  voiceStop('at-once', false);
+  clearTimeout(RUN.wakeTimer);
+  if (RUN.state === 'on') endOn();
+  RUN.state = 'asleep'; RUN.stoppedAt = performance.now();
+  keepAwake(false);
+  paint();
+}
+function lostHost(){
+  if (RUN.state === 'on' || RUN.state === 'waking'){
+    if (RUN.state === 'on') endOn();
+    RUN.state = 'lost';
+    voiceStop('at-once', false);
+    hint('the host went quiet — the run may still be going there; press to stop it once the host answers', 'err');
+    paint();
+  }
+}
+function currentRun(){
+  if (RUN.feed !== 'replay') return '';
+  return RUN.runs.length ? ($('run').value || RUN.run) : $('run-id').value.trim();
+}
+
+/* the screen stays awake while it listens: a phone that locks mid-talk would silence the voice */
+let WAKE = null;
+async function keepAwake(on){
+  try {
+    if (on && !WAKE && navigator.wakeLock && document.visibilityState === 'visible'){ WAKE = await navigator.wakeLock.request('screen'); WAKE.addEventListener('release', () => { WAKE = null; }); }
+    else if (!on && WAKE){ const w = WAKE; WAKE = null; await w.release(); }
+  } catch(e){ WAKE = null; }
+}
+
+/* ── THE EVENTS FROM THE HOST (§3) — words, floor, mirror, ledger, speak, stop, period, cost,
+   done, and host (its answer to the page's hello). Each read tolerantly: the shapes the page
+   expects are in the seam note beside the build record. ── */
+const ON = {
+  host: onHost, words: onWords, word: onWords, floor: onFloor, mirror: onMirror, ledger: onLedger,
+  speak: onSpeak, would: d => { alive(); addWould(d); }, stop: onStopEvent, period: onPeriod, cost: onCost, done: onDone,
+  error: d => hint(esc(d.message || d.error || 'the host reported an error'), 'err')
+};
+function spkIndex(s){
+  if (!SPK_COL.has(s)){
+    const used = new Set(SPK_COL.values());
+    let i = /^[A-E]$/i.test(s) ? s.toUpperCase().charCodeAt(0) - 65 : 0;
+    while (used.has(i) && i < 40) i++;
+    SPK_COL.set(s, i);
+  }
+  return SPK_COL.get(s) % 5;
+}
+function addSpeaker(s){ if (s && !SPK.includes(s)){ SPK.push(s); SPK.sort(); spkIndex(s); } }
+function speakerBefore(t){ for (let i = WORDS.length - 1; i >= 0; i--) if (WORDS[i].t1 <= t + 0.05) return WORDS[i].s; return null; }
+
+function onHost(d){
+  if (Array.isArray(d.runs)) RUN.runs = d.runs.map(r => typeof r === 'string' ? { id: r, title: r } : (r && typeof r === 'object' && r.id != null) ? { id: String(r.id), title: String(r.title || r.name || r.id) } : null).filter(Boolean);
+  if (d.names && typeof d.names === 'object') Object.assign(NAMES, d.names);
+  /* the cells it runs, with their layers and periods, so the strip shows them before they write */
+  if (Array.isArray(d.cells)) d.cells.forEach(c => {
+    if (!c || typeof c !== 'object') return;
+    const name = String(c.id || c.name || c.cell || ''); if (!name) return;
+    cellOf(name, c.layer); setPeriod(name, c.period != null ? c.period : c.s, c.layer, NaN);
+  });
+  let st = String(d.state || '').toLowerCase();
+  if (!st && typeof d.running === 'boolean') st = d.running ? String(d.what || 'running').toLowerCase() : 'idle';
+  if (st === 'live' || st === 'replay' || st === 'running' || st === 'on'){
+    if (st === 'live' || st === 'replay'){ RUN.feed = st; if (RUN.state !== 'on') LAST_FEED = st; }
+    if (d.run) RUN.run = String(d.run);
+    if (d.settings) adopt(d.settings);
+    if (RUN.state !== 'on') beginOn();
+  } else if (st === 'idle' || st === 'asleep' || st === 'stopped' || st === 'done'){
+    if (RUN.state === 'on' || RUN.state === 'lost'){ if (RUN.state === 'on') endOn(); RUN.state = 'asleep'; }
+  }
+  paintFeed(); paint();
+}
+function onWords(d){
+  const list = Array.isArray(d.words) ? d.words : Array.isArray(d.items) ? d.items : Array.isArray(d.data) ? d.data : [d];
+  if (d.names && typeof d.names === 'object') Object.assign(NAMES, d.names);
+  let latest = -Infinity;
+  for (const x of list){
+    if (!x || typeof x !== 'object') continue;
+    const t0 = num(x.t0, num(x.start, NaN)); if (!isFinite(t0)) continue;
+    const t1 = Math.max(t0, num(x.t1, num(x.end, t0 + 0.3)));
+    const w = String(x.w != null ? x.w : x.word != null ? x.word : x.text != null ? x.text : '').trim(); if (!w) continue;
+    const s = String(x.s != null ? x.s : x.speaker != null ? x.speaker : '?').trim().slice(0, 12) || '?';
+    let i = WORDS.length;
+    while (i > 0 && WORDS[i - 1].t0 > t0) i--;
+    if (i > 0 && WORDS[i - 1].t0 === t0 && WORDS[i - 1].w === w && WORDS[i - 1].s === s) continue;   /* sent twice */
+    WORDS.splice(i, 0, { t0, t1, s, w });
+    addSpeaker(s);
+    latest = Math.max(latest, t1);
+  }
+  if (WORDS.length > 6000) WORDS.splice(0, 2000);
+  if (isFinite(latest)) sync(latest, false);
+  alive(); DIRTY = true;
+}
+function onFloor(d){
+  const list = Array.isArray(d.samples) ? d.samples : Array.isArray(d.floor) ? d.floor : [d];
+  let last = null;
+  for (const x of list){
+    if (!x || typeof x !== 'object') continue;
+    const t = num(x.t, NaN); if (!isFinite(t)) continue;
+    const f = { t, open: clamp(num(x.open, 0), 0, 1), landed: x.landed === true || x.landed === 1 || x.landed === 'true', bid: x.bid ? String(x.bid) : null };
+    const prev = FLOOR.length ? FLOOR[FLOOR.length - 1] : null;
+    if (prev && t < prev.t - 0.001){ let i = FLOOR.length; while (i > 0 && FLOOR[i - 1].t > t) i--; FLOOR.splice(i, 0, f); }
+    else FLOOR.push(f);
+    if (f.landed) LANDINGS.push({ t, s: speakerBefore(t) });
+    if (f.bid && (!prev || prev.bid !== f.bid)){ BIDS.push({ t, s: f.bid }); addSpeaker(f.bid); }
+    last = f;
+  }
+  if (FLOOR.length > 6000) FLOOR.splice(0, 2000);
+  if (LANDINGS.length > 600) LANDINGS.splice(0, 200);
+  if (BIDS.length > 600) BIDS.splice(0, 200);
+  if (last){ sync(last.t, true); FLOOR_NOW = last; }
+  alive(); DIRTY = true;
+}
+function layerOf(given, name, period){
+  if (given != null && given !== ''){
+    const g = String(given).toLowerCase();
+    if (g === '0' || /^f(ast)?$/.test(g)) return 0;
+    if (g === '1' || /^m(id|iddle)?$/.test(g)) return 1;
+    if (g === '2' || /^s(low)?$/.test(g)) return 2;
+  }
+  const n = String(name || '').toLowerCase();
+  if (/^f\d+$|fast/.test(n)) return 0;
+  if (/^m\d+$|middle|\bmid\b/.test(n)) return 1;
+  if (/^s\d+$|slow/.test(n)) return 2;
+  if (isFinite(period)) return period < 6 ? 0 : period < 30 ? 1 : 2;
+  return 1;
+}
+function cellOf(name, layer){
+  let c = CELLS.get(name);
+  if (!c){ c = { name, layer: layerOf(layer, name, NaN), layerGiven: layer != null && layer !== '', period: null, anchor: null, lines: [], last: null }; CELLS.set(name, c); }
+  else if (layer != null && layer !== '' && !c.layerGiven){ c.layer = layerOf(layer, name, NaN); c.layerGiven = true; }
+  return c;
+}
+function onMirror(m){
+  const d = m.line && typeof m.line === 'object' ? Object.assign({}, m.line, { cell: m.cell || m.line.cell }) : m;
+  const name = String(d.cell || d.name || d.c || '?');
+  const c = cellOf(name, d.layer);
+  const line = { t: num(d.t, tnow()), act: String(d.act || '').toLowerCase(), text: String(d.text || ''), parent: String(d.parent || ''), horizon: String(d.horizon || ''), stop: String(d.stop || ''), entry: String(d.entry || ''), ms: num(d.ms, null), usd: num(d.usd, null) };
+  c.lines.push(line); if (c.lines.length > 80) c.lines.splice(0, 20);
+  c.last = line; c.anchor = line.t;
+  if (d.would === true || line.act === 'would') addWould({ id: name + '@' + line.t, t: line.t, mode: d.mode, phrase: line.text, cell: name });
+  alive(); DIRTY = true;
+}
+function normState(s){
+  s = String(s || '').toLowerCase().replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  if (/^hand(ed)? ?back$|^handed$/.test(s)) return 'handed back';
+  if (s === 'held' || s === 'withhold' || s === 'holding') return 'withheld';
+  if (s === 'closed' || s === 'gone') return 'foreclosed';
+  if (s === 'spoken') return 'voiced';
+  return s;
+}
+function setState(x, s, t){
+  x.state = s; x.hist.push({ t, s });
+  if (LIVE.has(s)) x.end = null; else if (x.end == null) x.end = t;
+}
+function upsert(e, t){
+  if (!e || typeof e !== 'object') return null;
+  const id = String(e.id != null ? e.id : e.entry != null ? e.entry : ((e.holder || '?') + ':' + (e.text || e.parent || '')).slice(0, 80));
+  let x = LED.get(id);
+  if (!x){ x = { id, born: num(e.born, num(e.born_t, t)), hist: [], urges: [], state: '', urge: 0, end: null, holder: '' }; LED.set(id, x); }
+  ['holder', 'parent', 'landing', 'lived', 'voice', 'text', 'by'].forEach(k => { if (e[k] != null && e[k] !== '') x[k] = typeof e[k] === 'object' ? JSON.stringify(e[k]) : String(e[k]); });
+  if (!x.text && e.say) x.text = String(e.say);
+  if (typeof e.handed === 'string' && e.handed) x.by = e.handed;   /* whose own words it was, said */
+  if (!x.holder) x.holder = String(e.cell || '?');
+  if (!HOLDERS.includes(x.holder)) HOLDERS.push(x.holder);
+  const u = num(e.urge, NaN);
+  if (isFinite(u) && u !== x.urge){ x.urge = u; x.urges.push({ t, u }); }
+  const s = normState(e.state) || x.state || 'withheld';
+  if (s !== x.state){ const at = { ripe: e.ripe_at, foreclosed: e.foreclosed_at, voiced: e.voiced_at, 'handed back': e.handed_at }[s]; setState(x, s, num(at, t)); }
+  return x;
+}
+function onLedger(d){
+  if (d.would && typeof d.would === 'object'){ alive(); addWould(d.would); return; }   /* a would-speak mark, as the host first sent it */
+  const t = num(d.t, tnow());
+  const arr = Array.isArray(d.entries) ? d.entries : Array.isArray(d.ledger) ? d.ledger : Array.isArray(d.data) ? d.data : null;
+  if (arr){
+    const seen = new Set();
+    arr.forEach(e => { const x = upsert(e, num(e && e.t, t)); if (x) seen.add(x.id); });
+    LED.forEach(x => { if (!seen.has(x.id) && LIVE.has(x.state)) setState(x, 'pruned', t); });
+  } else upsert(d, t);
+  /* the urge as one moving value: the most urgent thought still held */
+  let u = 0; LED.forEach(x => { if (LIVE.has(x.state)) u = Math.max(u, x.urge || 0); });
+  const lastU = URGE.length ? URGE[URGE.length - 1] : null;
+  if (!lastU || lastU.u !== u) URGE.push({ t, u });
+  if (URGE.length > 3000) URGE.splice(0, 1000);
+  alive(); DIRTY = true;
+}
+/* which mode would have spoken: spoken to (filled ◆) where its flag says so, else ready (open ◆) */
+function wouldMode(o){
+  if (o.spoken_to === true || o.spokenTo === true) return 'spoken-to';
+  if (o.ready === true) return 'ready';
+  const m = String(o.mode || '').toLowerCase().replace(/[_\s]+/g, '-');
+  return m === 'ready' ? 'ready' : /^spoken-?to$/.test(m) ? 'spoken-to' : SET.mode;
+}
+function addWould(o){
+  const t = num(o.t, tnow());
+  const id = String(o.id != null ? o.id : o.entry != null ? o.entry : 'w' + Math.round(t * 10)), entry = o.entry != null ? String(o.entry) : id;
+  const p = String(o.phrase || o.text || '');
+  /* the mark and the silent phrases that follow it are one moment */
+  const w = WOULDS.find(x => (x.id === id || x.entry === entry) && Math.abs(x.t - t) < 8);
+  if (w){
+    if (p && !w.phrase.includes(p)) w.phrase = (w.phrase + ' ' + p).trim();
+    if (o.spoken_to === true) w.mode = 'spoken-to';
+    if (o.safety === true) w.safety = true;
+    if (isFinite(num(o.urge, NaN))) w.urge = num(o.urge, null);
+    if (isFinite(num(o.open, NaN))) w.open = num(o.open, null);
+    return;
+  }
+  WOULDS.push({ id, entry, t, mode: wouldMode(o), phrase: p, cell: String(o.cell || ''), safety: o.safety === true, urge: num(o.urge, null), open: num(o.open, null), judged: null });
+  RUN.wouldFlash = performance.now();
+  paintGo(); DIRTY = true;
+}
+function onSpeak(d){
+  const t = num(d.t, tnow());
+  const phrase = String(d.phrase != null ? d.phrase : d.text != null ? d.text : d.line != null ? d.line : '').trim();
+  const id = String(d.id != null ? d.id : d.line_id != null ? d.line_id : d.entry != null ? d.entry : 'line' + Math.round(t * 10));
+  alive();
+  const would = d.would === true || d.would === 'true' || d.silent === true || (LAST_FEED === 'replay' && d.would !== false);
+  if (would){ addWould({ id, entry: d.entry, t, mode: d.mode, spoken_to: d.spoken_to, ready: d.ready, phrase, cell: d.cell }); return; }
+  if (!phrase) return;
+  /* a phrase of a line already stopped is never said: the host may have sent it before it heard */
+  if (isCut(id)){ send({ type: 'stopped', id, i: num(d.i, null), said: SAID[id] || 0, cut: phrase, rule: 'at-once', t: r2(tnow()) }); return; }
+  const lines = LINES[id] || (LINES[id] = []);
+  const ev = { id, i: num(d.i, lines.length), text: phrase, last: !!d.last, t, cell: String(d.cell || ''), entry: String(d.entry || ''), tStart: null, tEnd: null, state: 'queued' };
+  lines.push(ev); SPEAKS.push(ev);
+  if (SPEAKS.length > 400) SPEAKS.splice(0, 100);
+  enqueue(ev);
+  DIRTY = true;
+}
+const normRule = r => { r = String(r || '').toLowerCase().replace(/[_\s]+/g, '-'); return /phrase/.test(r) ? 'phrase' : /sentence/.test(r) ? 'sentence' : 'at-once'; };
+function onStopEvent(d){
+  const rule = normRule(d.rule || d.stop || d.at), silent = d.silent === true || LAST_FEED === 'replay';
+  STOPS.push({ t: num(d.t, tnow()), rule, silent, by: d.by ? String(d.by) : '' });
+  if (!silent) voiceStop(rule, true, d.id);   /* in a replay nothing sounds, so there is nothing to stop */
+  DIRTY = true;
+}
+function onPeriod(d){
+  if (d.periods && typeof d.periods === 'object' && !Array.isArray(d.periods)) Object.keys(d.periods).forEach(c => setPeriod(c, d.periods[c], null, NaN));
+  else setPeriod(d.cell || d.name, d.s != null ? d.s : d.period != null ? d.period : d.seconds != null ? d.seconds : d.ms != null ? num(d.ms, NaN) / 1000 : NaN, d.layer, num(d.t, NaN));
+  alive(); DIRTY = true;
+}
+function setPeriod(name, p, layer, t){
+  p = num(p, NaN); if (!name || !isFinite(p) || p <= 0) return;
+  const c = cellOf(String(name), layer);
+  c.period = p;
+  if (isFinite(t)) c.anchor = t; else if (c.anchor == null) c.anchor = c.last ? c.last.t : tnow();
+  if (!c.layerGiven) c.layer = layerOf(null, c.name, p);
+}
+function onCost(d){
+  COST = { usd: num(d.usd, num(d.spent, 0)), cap: num(d.stop_usd, num(d.cap, NaN)), calls: num(d.calls, null) };
+  paintSpend();
+}
+function onDone(d){
+  clearTimeout(RUN.wakeTimer);
+  if (RUN.state === 'on') endOn();
+  RUN.state = 'asleep'; RUN.stoppedAt = performance.now();
+  const why = d.reason || d.message;
+  hint('the run is done' + (why ? ' — ' + esc(why) : '') + (HOST.demo ? ' · press to play it again' : ''), 'ok');
+  paint();
+}
+function paintSpend(){
+  const el = $('spend');
+  if (!COST){ el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  const cap = isFinite(COST.cap) && COST.cap > 0 ? COST.cap : SET.stop_usd;
+  $('spend-t').textContent = '$' + COST.usd.toFixed(COST.usd < 1 ? 3 : 2) + ' of $' + cap;
+  $('spend-m').style.width = clamp(COST.usd / cap * 100, 0, 100) + '%';
+}
+
+/* ── THE VOICE OUT — the group page's narrator, carried over: this device's own voice (free,
+   and always the floor), or OpenAI or ElevenLabs on the person's own key, kept on this device
+   and sent only to its own service. Here it speaks the host's phrases one at a time, never a
+   whole line at once, says 'spoken' as each phrase ends, and on the host's stop it stops — at
+   once unless the stop names the phrase or the sentence — and says 'stopped'. ── */
+const canSpeak = () => 'speechSynthesis' in window && typeof SpeechSynthesisUtterance !== 'undefined';
+const NARR_HOME = 'verso:narrator';
+let VOICE = null, RATE = clamp(parseFloat(store('verso:rate') || store('group:rate') || '1') || 1, 0.7, 1.3), HELD = [];
+function voiceList(){ return canSpeak() ? speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang)) : []; }
+function pickVoice(){
+  const vs = voiceList(), saved = store('verso:voice') || store('group:voice');
+  VOICE = vs.find(v => v.name === saved) || vs.find(v => /premium|enhanced|natural/i.test(v.name)) ||
+    vs.find(v => /Google UK English|Daniel|Serena|Arthur|Martha/i.test(v.name)) || vs.find(v => v.default) || vs[0] || null;
+}
+const OPENAI_VOICES = ['sage', 'fable', 'onyx', 'ballad', 'ash', 'coral', 'echo', 'nova', 'alloy', 'shimmer', 'verse'];
+const OPENAI_STYLE = 'Speak as one quiet person joining a small conversation: brief, warm and natural, unhurried, never theatrical — one thought offered, then room left for the others.';
+/* a narrator chosen on the group page is taken up here until one is chosen here (its key the
+   same key, on the same device); its storyteller's style is not */
+let NARR = (() => {
+  try {
+    const own = store(NARR_HOME), n = JSON.parse(own || store('group:narrator') || '{}') || {};
+    const o = Object.assign({}, n.openai || {}); if (!own) delete o.style;
+    return { kind: ['device', 'openai', 'eleven'].includes(n.kind) ? n.kind : 'device', openai: o, eleven: n.eleven || {} };
+  } catch(e){ return { kind: 'device', openai: {}, eleven: {} }; }
+})();
+const narrReady = () => NARR.kind === 'openai' ? !!NARR.openai.key : NARR.kind === 'eleven' ? !!(NARR.eleven.key && NARR.eleven.voice) : true;
+const narrName = () => NARR.kind === 'openai' && narrReady() ? 'OpenAI · ' + (NARR.openai.voice || 'sage') : NARR.kind === 'eleven' && narrReady() ? 'ElevenLabs · ' + (NARR.eleven.voiceName || 'a voice') : 'this device’s voice';
+let AUDIO = null, CLOUD_DOWN = false;
+/* ONE audio element, first played from a tap: a phone that let it play once lets it play again
+   when the words arrive seconds later */
+const SILENCE = 'data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+function audioEl(){ if (!AUDIO){ AUDIO = new Audio(); AUDIO.preload = 'auto'; } return AUDIO; }
+function wakeAudio(){ if (NARR.kind === 'device') return; const a = audioEl(); if (a.dataset.woken) return; a.dataset.woken = '1'; a.src = SILENCE; a.play().catch(() => {}); }
+async function refusal(r){ try { const d = await r.json(); return String((d.error && d.error.message) || (d.detail && (d.detail.message || d.detail)) || '').slice(0, 140); } catch(e){ return ''; } }
+async function synth(text, signal){
+  let r;
+  if (NARR.kind === 'openai'){
+    const o = NARR.openai;
+    try { r = await fetch('https://api.openai.com/v1/audio/speech', { method: 'POST', signal, headers: { 'Authorization': 'Bearer ' + o.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'gpt-4o-mini-tts', voice: o.voice || 'sage', input: text, instructions: o.style || OPENAI_STYLE, response_format: 'mp3' }) }); }
+    /* OpenAI answers a refused key without the header a page needs to read it, so a refusal
+       arrives here looking like no answer at all */
+    catch(e){ if (e.name === 'AbortError') throw e; throw new Error('OpenAI would not speak it — the key may be wrong, or out of credit'); }
+    if (!r.ok) throw new Error('OpenAI refused it (' + r.status + ') ' + await refusal(r));
+  } else {
+    const e = NARR.eleven;
+    try { r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(e.voice) + '?output_format=mp3_44100_128', { method: 'POST', signal,
+      headers: { 'xi-api-key': e.key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' }, body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }) }); }
+    catch(err){ if (err.name === 'AbortError') throw err; throw new Error('ElevenLabs did not answer'); }
+    if (!r.ok) throw new Error('ElevenLabs refused it (' + r.status + ') ' + await refusal(r));
+  }
+  return r.blob();
+}
+
+/* the phrases waiting, the one being said, and what each line has had said */
+const VQ = { list: [], cur: null, turn: 0, ctls: new Set(), stopping: null };
+let SPEAKING = false, SAID = {}, LINES = {};
+const CUT = new Map();   /* line id → when it was stopped: its later phrases are not said */
+const isCut = id => CUT.has(id) && performance.now() - CUT.get(id) < 10000;
+const endsSentence = s => /[.!?…]["”’)\]]*\s*$/.test(s);
+/* a phrase is said as it comes; a host that sends a whole line in one event still has it said
+   a phrase at a time, so a stop can fall between phrases */
+function phrasesOf(text){
+  const s = String(text).replace(/\s+/g, ' ').trim();
+  if (s.length <= 90) return [s];
+  const parts = s.match(/[^.!?…;,]+[.!?…;,]+["”’)\]]*\s*|[^.!?…;,]+$/g) || [s];
+  const out = []; let cur = '';
+  for (const p of parts){ if (cur && (cur + p).length > 90){ out.push(cur.trim()); cur = p; } else cur += p; }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+function setSpeaking(v){ SPEAKING = v; paintGo(); paintBar(); DIRTY = true; }
+function enqueue(ev){
+  const pieces = phrasesOf(ev.text);
+  pieces.forEach((p, k) => VQ.list.push({ ev, text: p, k, of: pieces.length }));
+  if (!VQ.cur && !VQ.stopping) nextPiece();
+}
+function cue(text){ enqueue({ id: 'cue', i: 0, text, cue: true, tStart: null, tEnd: null, state: 'queued' }); }
+function nextPiece(){
+  const it = VQ.list.shift();
+  if (!it){ VQ.cur = null; setSpeaking(false); finishStopping(); return; }
+  VQ.cur = it; setSpeaking(true);
+  const turn = ++VQ.turn;
+  if (it.k === 0 && it.ev.tStart == null){ it.ev.tStart = tnow(); it.ev.state = 'speaking'; }
+  prefetch();
+  sayPiece(it, turn).then(res => {
+    if (turn !== VQ.turn) return;   /* stopped at once: already settled */
+    const ev = it.ev;
+    if (res !== 'done' && !ev.cue){
+      /* it could not be said: the rest of this line goes unsaid, and the host is told */
+      ev.state = 'unvoiced'; ev.tEnd = tnow();
+      VQ.list = VQ.list.filter(x => x.ev !== ev);
+      send({ type: 'stopped', id: ev.id, i: ev.i, said: SAID[ev.id] || 0, cut: ev.text, rule: 'none', reason: 'no voice', t: r2(tnow()) });
+    } else if (it.k === it.of - 1){
+      ev.tEnd = tnow();
+      if (!ev.cue){ ev.state = 'spoken'; SAID[ev.id] = (SAID[ev.id] || 0) + 1; send({ type: 'spoken', id: ev.id, i: ev.i, phrase: ev.text }); }
+    }
+    DIRTY = true;
+    nextPiece();
+  });
+}
+function sayPiece(it, turn){
+  if (NARR.kind !== 'device' && narrReady() && !CLOUD_DOWN) return sayCloud(it, turn).then(r => (r === 'failed' && turn === VQ.turn) ? sayDevice(it, turn) : r);
+  return sayDevice(it, turn);
+}
+let NOVOICE_TOLD = false;
+function sayDevice(it, turn){
+  return new Promise(res => {
+    if (!canSpeak()){ if (!NOVOICE_TOLD){ NOVOICE_TOLD = true; hint('this browser has no voice of its own — choose a voice under options, or read it under show the words', 'err'); } res('failed'); return; }
+    const go = () => {
+      if (turn !== VQ.turn){ res('stopped'); return; }
+      if (!VOICE) pickVoice();
+      const u = new SpeechSynthesisUtterance(it.text);
+      if (VOICE) u.voice = VOICE;
+      u.rate = RATE;
+      let started = false, settled = false;
+      const done = v => { if (settled) return; settled = true; HELD = HELD.filter(x => x !== u); res(v); };
+      u.onstart = () => { started = true; };
+      u.onend = () => done('done');
+      u.onerror = e => done(e && (e.error === 'interrupted' || e.error === 'canceled') ? 'stopped' : started ? 'done' : 'failed');
+      HELD.push(u);   /* a browser drops what it loses hold of */
+      speechSynthesis.speak(u);
+      /* a voice that has not started within a few seconds says so, never pretends; a phone that
+         holds speech while its page is hidden is waiting, not failing */
+      const watch = () => {
+        if (started || settled || turn !== VQ.turn) return;
+        if (document.visibilityState === 'hidden'){ setTimeout(watch, 1000); return; }
+        try { speechSynthesis.resume(); } catch(e){}
+        setTimeout(() => {
+          if (started || settled || turn !== VQ.turn || document.visibilityState === 'hidden') return;
+          try { speechSynthesis.cancel(); } catch(e){}
+          hint('the voice did not start — press the button once to wake it, or quit the browser and open it again to free its voice', 'err');
+          done('failed');
+        }, 2500);
+      };
+      setTimeout(watch, 3000);
+    };
+    /* anything stale still holding the browser's queue is cleared first, and nothing new is
+       spoken until it has truly gone quiet — speaking straight after a clear left it stuck */
+    if (speechSynthesis.speaking || speechSynthesis.pending){
+      speechSynthesis.cancel();
+      let waited = 0;
+      const settle = () => { if ((speechSynthesis.speaking || speechSynthesis.pending) && waited < 1500){ waited += 100; setTimeout(settle, 100); } else setTimeout(go, 120); };
+      setTimeout(settle, 100);
+    } else go();
+  });
+}
+function playPart(blob, turn){
+  return new Promise(res => {
+    const a = audioEl(), url = URL.createObjectURL(blob);
+    let t = null;
+    const done = v => { a.onended = a.onerror = null; clearInterval(t); URL.revokeObjectURL(url); res(v); };
+    t = setInterval(() => { if (turn !== VQ.turn){ a.pause(); done(false); } }, 120);
+    a.onended = () => done(true); a.onerror = () => done(false);
+    a.src = url; a.defaultPlaybackRate = RATE; a.playbackRate = RATE;
+    a.play().catch(() => done('refused'));
+  });
+}
+function sayCloud(it, turn){
+  let got = it.pre;
+  if (!got){ const ctl = new AbortController(); VQ.ctls.add(ctl); it.ctl = ctl; got = synth(it.text, ctl.signal).then(b => ({ b }), e => ({ e })); }
+  return got.then(r => {
+    if (it.ctl) VQ.ctls.delete(it.ctl);
+    if (turn !== VQ.turn) return 'stopped';
+    if (r.e){
+      if (r.e.name === 'AbortError') return 'stopped';
+      CLOUD_DOWN = true;
+      hint(esc(r.e.message) + ' — speaking on in this device’s voice', 'err');
+      return 'failed';
+    }
+    return playPart(r.b, turn).then(p => {
+      if (p === true) return 'done';
+      if (turn !== VQ.turn) return 'stopped';
+      if (p === 'refused') hint('the voice is ready — press the button once to let it play', 'err');
+      return 'failed';
+    });
+  });
+}
+/* the next phrase is fetched while this one plays */
+function prefetch(){
+  if (NARR.kind === 'device' || !narrReady() || CLOUD_DOWN) return;
+  const nx = VQ.list[0]; if (!nx || nx.pre) return;
+  const ctl = new AbortController(); VQ.ctls.add(ctl); nx.ctl = ctl;
+  nx.pre = synth(nx.text, ctl.signal).then(b => ({ b }), e => ({ e }));
+}
+function voiceStop(rule, report, id){
+  const cur = VQ.cur;
+  if (!cur){
+    /* between phrases: nothing sounds, but the line's later phrases are still not said */
+    VQ.list.forEach(x => { if (x.ctl) x.ctl.abort(); }); VQ.list = [];
+    if (id != null) CUT.set(String(id), performance.now());
+    if (report) send({ type: 'stopped', id: id != null ? String(id) : null, i: null, said: id != null ? (SAID[id] || 0) : 0, cut: '', rule, t: r2(tnow()) });
+    return;
+  }
+  const ev = cur.ev;
+  if ((rule === 'phrase' || rule === 'sentence') && !cur.ev.cue){
+    /* the phrase in hand is let finish (with the rest of its sentence, for 'sentence'); what
+       follows is not said */
+    let keep = 0;
+    if (rule === 'phrase'){ while (keep < VQ.list.length && VQ.list[keep].ev === ev) keep++; }
+    else if (!endsSentence(cur.text)){ const k = VQ.list.findIndex(x => endsSentence(x.text)); keep = k < 0 ? VQ.list.length : k + 1; }
+    const dropped = VQ.list.splice(keep);
+    dropped.forEach(x => { if (x.ctl) x.ctl.abort(); });
+    const cutEvs = uniq(dropped.map(x => x.ev)).filter(e => !e.cue);
+    cutEvs.forEach(e => { e.state = 'cut'; e.tEnd = e.tEnd || tnow(); CUT.set(e.id, performance.now()); });
+    CUT.set(ev.id, performance.now());
+    VQ.stopping = { rule, report, id: ev.id, cut: cutEvs.filter(e => e !== ev).map(e => e.text).join(' ') };
+    return;
+  }
+  /* at once: the device voice cancelled, the cloud fetches aborted, the audio paused */
+  VQ.turn++;
+  try { if (canSpeak() && (speechSynthesis.speaking || speechSynthesis.pending)) speechSynthesis.cancel(); } catch(e){}
+  VQ.ctls.forEach(c => { try { c.abort(); } catch(e){} }); VQ.ctls.clear();
+  if (AUDIO && !AUDIO.paused) AUDIO.pause();
+  HELD = [];
+  const evs = uniq([cur.ev].concat(VQ.list.map(x => x.ev))).filter(e => !e.cue);
+  VQ.list = []; VQ.cur = null; VQ.stopping = null;
+  evs.forEach(e => { e.state = 'cut'; e.tEnd = tnow(); if (e.tStart == null) e.tStart = e.tEnd; CUT.set(e.id, performance.now()); });
+  setSpeaking(false);
+  const line = evs.length ? evs[0] : null;
+  if (report) send({ type: 'stopped', id: line ? line.id : (id != null ? String(id) : null), i: line ? line.i : null, said: line ? (SAID[line.id] || 0) : 0, cut: evs.map(e => e.text).join(' '), rule: 'at-once', t: r2(tnow()) });
+}
+function finishStopping(){
+  const s = VQ.stopping; if (!s) return; VQ.stopping = null;
+  if (s.report) send({ type: 'stopped', id: s.id, i: null, said: SAID[s.id] || 0, cut: s.cut, rule: s.rule, t: r2(tnow()) });
+}
+
+/* the sheet: the voice out, and the host */
+const narrKind = () => (document.querySelector('input[name=narr]:checked') || {}).value || 'device';
+function nsay(m, err){ $('n-hint').textContent = m || ''; $('n-hint').className = 'ph' + (err ? ' err' : ''); }
+function hsay(m, err){ $('h-hint').textContent = m || ''; $('h-hint').className = 'ph' + (err ? ' err' : ''); }
+function paintNarrKind(){ const k = narrKind(); document.querySelectorAll('#sveil .opts').forEach(o => o.classList.toggle('hidden', o.dataset.for !== k)); if (k === 'eleven' && $('n-ekey').value.trim() && !$('n-evoice').dataset.loaded) elevenVoices(); }
+function paintVoices(){
+  const sel = $('n-dvoice'); if (!sel) return;
+  if (!VOICE) pickVoice();
+  const vs = voiceList();
+  sel.innerHTML = vs.map(v => '<option value="' + esc(v.name) + '"' + (VOICE && v.name === VOICE.name ? ' selected' : '') + '>' + esc(v.name + ' · ' + v.lang) + '</option>').join('') || '<option>the device’s default</option>';
+}
+function openSheet(focus){
+  document.querySelectorAll('input[name=narr]').forEach(r => { r.checked = r.value === NARR.kind; });
+  $('n-okey').value = NARR.openai.key || ''; $('n-ekey').value = NARR.eleven.key || '';
+  $('n-ovoice').innerHTML = OPENAI_VOICES.map(v => '<option' + (v === (NARR.openai.voice || 'sage') ? ' selected' : '') + '>' + v + '</option>').join('');
+  $('n-ostyle').value = NARR.openai.style || OPENAI_STYLE;
+  $('n-rate').value = RATE;
+  delete $('n-evoice').dataset.loaded;
+  $('h-addr').value = hostUrl();
+  paintVoices(); nsay(''); hsay(HOST.demo ? 'the demo is playing; the host is reached once you leave it' : '');
+  $('sveil').classList.remove('hidden');
+  paintNarrKind();
+  if (focus === 'host') setTimeout(() => { $('h-addr').focus(); $('h-addr').select(); }, 60);
+}
+function closeSheet(){ $('sveil').classList.add('hidden'); }
+function readNarr(){
+  const ev = $('n-evoice');
+  NARR = { kind: narrKind(),
+    openai: { key: $('n-okey').value.trim(), voice: $('n-ovoice').value || 'sage', style: $('n-ostyle').value.trim() },
+    eleven: { key: $('n-ekey').value.trim(), voice: ev.value || NARR.eleven.voice || '', voiceName: ev.value ? ev.options[ev.selectedIndex].text : NARR.eleven.voiceName || '' } };
+  store(NARR_HOME, JSON.stringify(NARR));
+  CLOUD_DOWN = false;
+}
+async function elevenVoices(){
+  const key = $('n-ekey').value.trim(), sel = $('n-evoice');
+  if (!key){ sel.innerHTML = '<option value="">the key first — then your voices</option>'; return; }
+  sel.innerHTML = '<option value="">finding your voices…</option>';
+  try {
+    const r = await fetch('https://api.elevenlabs.io/v1/voices', { headers: { 'xi-api-key': key } });
+    if (!r.ok){ sel.innerHTML = '<option value="">ElevenLabs refused that key</option>'; return; }
+    const vs = ((await r.json()).voices || []), want = NARR.eleven.voice;
+    const pick = vs.find(v => v.voice_id === want) || vs.find(v => /conversation|natural|calm/i.test(JSON.stringify(v.labels || {}) + ' ' + (v.description || ''))) || vs[0];
+    const label = v => [v.name, v.labels && v.labels.accent, v.labels && (v.labels.use_case || v.labels.description)].filter(Boolean).join(' · ');
+    sel.innerHTML = vs.map(v => '<option value="' + esc(v.voice_id) + '"' + (pick && v.voice_id === pick.voice_id ? ' selected' : '') + '>' + esc(label(v)) + '</option>').join('') || '<option value="">no voices in that account</option>';
+    sel.dataset.loaded = '1';
+  } catch(e){ sel.innerHTML = '<option value="">ElevenLabs did not answer</option>'; }
+}
+/* what the chosen voice needs, checked before it is kept: an OpenAI key is tried on the one
+   call OpenAI answers readably when it refuses */
+async function narrCheck(){
+  readNarr();
+  if (NARR.kind === 'openai'){
+    if (!NARR.openai.key){ nsay('an OpenAI key first', true); return false; }
+    nsay('trying the key…');
+    let r = null; try { r = await fetch('https://api.openai.com/v1/models', { headers: { 'Authorization': 'Bearer ' + NARR.openai.key } }); } catch(e){}
+    if (!r){ nsay('OpenAI did not answer', true); return false; }
+    if (!r.ok){ nsay(r.status === 401 ? 'OpenAI refused that key' : 'OpenAI answered ' + r.status, true); return false; }
+  }
+  if (NARR.kind === 'eleven'){
+    if (!NARR.eleven.key){ nsay('an ElevenLabs key first', true); return false; }
+    if (!NARR.eleven.voice){ nsay('choose a voice', true); return false; }
+  }
+  nsay('');
+  return true;
+}
+function wireSheet(){
+  document.querySelectorAll('input[name=narr]').forEach(r => r.addEventListener('change', () => { paintNarrKind(); nsay(''); }));
+  $('n-ekey').addEventListener('change', () => { delete $('n-evoice').dataset.loaded; elevenVoices(); });
+  $('n-dvoice').addEventListener('change', e => { store('verso:voice', e.target.value); pickVoice(); });
+  $('n-rate').addEventListener('change', e => { RATE = parseFloat(e.target.value) || 1; store('verso:rate', String(RATE)); });
+  $('n-test').addEventListener('click', async () => {
+    const line = 'I’m listening. Mostly, I’ll hold.';
+    if (SPEAKING) voiceStop('at-once', false);
+    if (narrKind() === 'device'){ readNarr(); nsay(''); if (!canSpeak()) nsay('this browser has no voice of its own', true); else cue(line); return; }
+    const a = audioEl(); a.dataset.woken = '1'; a.src = SILENCE; a.play().catch(() => {});   /* from the tap itself, before anything is awaited */
+    if (await narrCheck()) cue(line);
+  });
+  $('s-cancel').addEventListener('click', closeSheet);
+  $('s-done').addEventListener('click', async () => {
+    const raw = $('h-addr').value.trim(), u = raw ? normalHost(raw) : DEFAULT_HOST;
+    if (!u){ hsay('that is not an address a page can open — ws://… or wss://…', true); return; }
+    if (!(await narrCheck())) return;
+    const moved = u !== hostUrl() || !HOST.asked;
+    HOST.url = u; HOST.asked = true; store(HOST_HOME, u);
+    closeSheet();
+    if (moved && !HOST.demo){ HOST.tries = 0; connect(); }
+    paintHost(true);
+    hint('the voice: ' + esc(narrName()), 'ok');
+  });
+  $('sveil').addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
+  $('sveil').addEventListener('click', e => { if (e.target === $('sveil')) closeSheet(); });
+}
+
+/* ── THE JUDGES' MARKS — on a replay, the people who were there tap a moment (it spoke well,
+   it should have spoken here, its silence was felt) or a ◆ (was it a real moment?); each goes
+   to the host as { type:'mark', t, kind } for the record of play. ── */
+const MOMENT_MARKS = [['spoke-well', 'it spoke well', '✓'], ['should-have-spoken', 'it should have spoken here', '!'], ['silence-felt', 'its silence was felt', '○']];
+const WOULD_MARKS = [['real-moment', 'a real moment', '✓'], ['not-a-moment', 'not a moment', '✗']];
+let MARKING = null;
+const judging = () => LAST_FEED === 'replay' && (RUN.state === 'on' || WORDS.length > 0 || FLOOR.length > 0);
+function openMarks(o){
+  MARKING = o;
+  const kinds = o.would ? WOULD_MARKS : MOMENT_MARKS, t = o.would ? o.would.t : o.t;
+  $('m-title').textContent = (o.would ? 'it would have spoken · ' : 'the moment at ') + mmss(t);
+  const q = $('m-q'); q.textContent = o.would && WORDS_ON && o.would.phrase ? '“' + o.would.phrase + '”' : ''; q.classList.toggle('hidden', !q.textContent);
+  $('m-b').innerHTML = kinds.map(k => '<button type="button" data-kind="' + k[0] + '"><span class="ic" style="color:' + markCol(k[0]) + '">' + k[2] + '</span>' + esc(k[1]) + '</button>').join('');
+  $('mveil').classList.remove('hidden');
+}
+function closeMarks(){ $('mveil').classList.add('hidden'); MARKING = null; }
+function markCol(kind){
+  return kind === 'spoke-well' || kind === 'real-moment' ? 'var(--bud)' : kind === 'should-have-spoken' ? 'var(--solid)' : kind === 'not-a-moment' ? 'var(--gone)' : 'var(--liquid)';
+}
+function wireMarks(){
+  $('m-b').addEventListener('click', e => {
+    const b = e.target.closest('button[data-kind]'); if (!b || !MARKING) return;
+    const kind = b.dataset.kind, run = RUN.run || currentRun() || null;
+    if (MARKING.would){
+      const w = MARKING.would; w.judged = kind === 'real-moment';
+      MARKS.push({ t: w.t, kind, of: w.id });
+      send({ type: 'mark', t: r2(w.t), kind, of: w.id, run });
+    } else {
+      MARKS.push({ t: MARKING.t, kind });
+      send({ type: 'mark', t: r2(MARKING.t), kind, run });
+    }
+    closeMarks(); DIRTY = true;
+    hint('marked at ' + mmss(MARKS[MARKS.length - 1].t), 'ok');
+  });
+  $('m-x').addEventListener('click', closeMarks);
+  $('mveil').addEventListener('click', e => { if (e.target === $('mveil')) closeMarks(); });
+  $('score').addEventListener('click', e => {
+    if (DRAGGED){ DRAGGED = false; return; }   /* the end of a drag back is not a mark */
+    if (!judging()) return;
+    const r = $('score').getBoundingClientRect(), x = e.clientX - r.left;
+    const g = geo(), tn = viewT();
+    if (x < g.gx || x > g.xNow + 4) return;
+    const t = tn - (g.xNow - Math.min(x, g.xNow)) / g.pps; if (t < 0) return;
+    let near = null, best = 18;
+    WOULDS.forEach(w => { const d = Math.abs(g.xNow - (tn - w.t) * g.pps - x); if (d < best){ best = d; near = w; } });
+    openMarks(near ? { would: near } : { t });
+  });
+}
+
+/* ── THE SCORE — a conductor's score that mostly rests, after keel's band on /middle-point,
+   moving past a fixed now: the people on the top staves (a line while each speaks, a bar where
+   a thought lands, a ring where someone bids); verso's own staff (a rest in each bar it held
+   through, a note for each phrase it said, // where it was stopped, ◆ where it would have spoken
+   on a replay); the held thoughts on ledger lines, one line a holder; the floor and the urge,
+   each with its threshold dashed, pale where both pass; the cells keeping time; the words; and
+   the time line with the judges' marks. ── */
+let C = null;
+function readColours(){
+  const cs = getComputedStyle(document.documentElement), v = n => cs.getPropertyValue(n).trim();
+  const rgbOf = hex => { const m = /^#?([0-9a-f]{6})$/i.exec(hex); if (!m) return '200,200,200'; const n = parseInt(m[1], 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255].join(','); };
+  C = { light: document.documentElement.getAttribute('data-theme') === 'light',
+    vrgb: v('--vapour-rgb'), lrgb: v('--liquid-rgb'), srgb: v('--solid-rgb'), brgb: v('--bud-rgb'),
+    foam: v('--foam'), dim: v('--vapour-dim'), liquid: v('--liquid'), solid: v('--solid'), bud: v('--bud'), gone: v('--gone'),
+    spk: ['--spk-a', '--spk-b', '--spk-c', '--spk-d', '--spk-e'].map(v), lay: ['--lay-fast', '--lay-mid', '--lay-slow'].map(v) };
+  C.frgb = rgbOf(C.foam); C.grgb = rgbOf(C.gone); C.spkRgb = C.spk.map(rgbOf); C.layRgb = C.lay.map(rgbOf);
+}
+const A = (rgb, a) => 'rgba(' + rgb + ',' + a + ')';
+const spkCol = (s, a) => A(C.spkRgb[spkIndex(s)], a == null ? 1 : a);
+const LAYER_NAMES = ['fast', 'middle', 'slow'];
+const MONO = '"Space Mono", ui-monospace, monospace';
+const cv = $('score'), ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+/* looking back: a drag across the score holds it at an earlier moment, so a judge can reach any
+   moment of a replay, during it or after it; 'now ›' follows now again. A drag up or down is
+   still the page's own scroll. */
+let VIEW_AT = null, DRAG = null, DRAGGED = false;
+const viewT = () => VIEW_AT == null ? tnow() : Math.min(VIEW_AT, tnow());
+function paintBack(){ const b = $('to-now'); if (b) b.classList.toggle('hidden', VIEW_AT == null); }
+function wireLookBack(){
+  cv.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button !== 0) return; DRAGGED = false; DRAG = { x: e.clientX, at: viewT(), moved: false }; });
+  cv.addEventListener('pointermove', e => {
+    if (!DRAG) return;
+    const dx = e.clientX - DRAG.x;
+    if (!DRAG.moved && Math.abs(dx) < 8) return;
+    DRAG.moved = true;
+    const now = tnow(), at = clamp(DRAG.at - dx / geo().pps, 0, now);
+    VIEW_AT = at >= now - 0.25 ? null : at;
+    paintBack(); DIRTY = true;
+  });
+  const end = () => { if (DRAG && DRAG.moved) DRAGGED = true; DRAG = null; };
+  cv.addEventListener('pointerup', end);
+  cv.addEventListener('pointerleave', end);
+  cv.addEventListener('pointercancel', () => { DRAG = null; });
+  $('to-now').addEventListener('click', () => { VIEW_AT = null; paintBack(); DIRTY = true; });
+}
+function sizeScore(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = Math.max(200, Math.round(r.width)); H = Math.max(200, Math.round(r.height));
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  DIRTY = true;
+}
+function geo(){
+  const k = H / 360, narrow = W < 520;
+  const gx = narrow ? 34 : 72, span = W < 520 ? 24 : W < 900 ? 36 : 48;
+  const xNow = Math.round(gx + (W - gx) * 0.8);
+  return { k, narrow, gx, span, xNow, pps: (xNow - gx) / span,
+    lamp: 11 * k, vTop: 24 * k, vBot: 92 * k, lis: 101 * k, lg: 4.4 * k,
+    lTop: 127 * k, lBot: 168 * k, fTop: 176 * k, fBot: 198 * k, uTop: 203 * k, uBot: 225 * k,
+    cTop: 233 * k, cBot: 298 * k, sY: 318 * k, tY: 337 * k };
+}
+function seg(x0, y0, x1, y1){ ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); }
+function txt(s, x, y, col, px, align, bold){ ctx.fillStyle = col; ctx.font = (bold ? '700 ' : '') + (px || 9) + 'px ' + MONO; ctx.textAlign = align || 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, x, y); }
+function diamond(x, y, r, fill, stroke){ ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); if (fill){ ctx.fillStyle = fill; ctx.fill(); } if (stroke){ ctx.strokeStyle = stroke; ctx.lineWidth = 1.3; ctx.stroke(); } }
+function firstWord(t){ let lo = 0, hi = WORDS.length; while (lo < hi){ const m = (lo + hi) >> 1; if (WORDS[m].t0 < t - 4) lo = m + 1; else hi = m; } return lo; }
+function firstFloor(t){ let lo = 0, hi = FLOOR.length; while (lo < hi){ const m = (lo + hi) >> 1; if (FLOOR[m].t < t) lo = m + 1; else hi = m; } return Math.max(0, lo - 1); }
+function urgeIndexAt(t){ let lo = 0, hi = URGE.length; while (lo < hi){ const m = (lo + hi) >> 1; if (URGE[m].t <= t) lo = m + 1; else hi = m; } return lo - 1; }
+function urgeAt(t){ const i = urgeIndexAt(t); return i >= 0 ? URGE[i].u : 0; }
+/* the lamps at now: the thought has landed, nobody is about to speak, the floor is open enough */
+function lamps(){
+  const f = FLOOR_NOW;
+  if (!f || RUN.state !== 'on') return [false, false, false];
+  const quiet = f.open >= 0.05, lastLand = LANDINGS.length ? LANDINGS[LANDINGS.length - 1] : null, lastStart = WORDS.length ? WORDS[WORDS.length - 1].t0 : -1;
+  return [!!lastLand && lastStart < lastLand.t && quiet, !f.bid && quiet, f.open >= SET.window];
+}
+function heldThrough(a, b){
+  const tn = tnow(); let awake = 0;
+  ONSPANS.forEach(sp => { const s = Math.max(sp.t0, a), e = Math.min(sp.t1 == null ? tn : sp.t1, b); if (e > s) awake += e - s; });
+  if (awake < (b - a) * 0.6) return false;
+  return !SPEAKS.some(e => !e.cue && e.tStart != null && e.tStart < b && (e.tEnd == null ? tn : e.tEnd) > a);
+}
+function holdersIn(tL, tR){
+  const vis = new Set();
+  LED.forEach(x => { if (x.born <= tR && (x.end == null || x.end >= tL)) vis.add(x.holder); });
+  return HOLDERS.filter(h => vis.has(h)).slice(0, 6);
+}
+/* two thoughts held at once by one holder sit a little apart on its line */
+function laneMap(holders){
+  const m = new Map(), tn = tnow();
+  holders.forEach(h => {
+    let prevEnd = -Infinity, prevLane = 1;
+    [...LED.values()].filter(x => x.holder === h).sort((a, b) => a.born - b.born).forEach(x => {
+      const lane = x.born < prevEnd ? 1 - prevLane : 0; m.set(x.id, lane); prevLane = lane; prevEnd = x.end == null ? tn : x.end;
+    });
+  });
+  return m;
+}
+function cellRows(g){
+  let cells = [...CELLS.values()].sort((a, b) => a.layer - b.layer || a.name.localeCompare(b.name, undefined, { numeric: true })).slice(0, 12);
+  const ghost = !cells.length;
+  if (ghost) cells = [0, 1, 2].map(l => ({ name: '', layer: l, lines: [], ghost: true }));
+  const layers = uniq(cells.map(c => c.layer)), gap = 5 * g.k;
+  const step = Math.min(12 * g.k, (g.cBot - g.cTop - gap * Math.max(0, layers.length - 1)) / cells.length);
+  let y = g.cTop + step / 2, prev = null; const rows = [];
+  cells.forEach(c => { if (prev != null && c.layer !== prev) y += gap; rows.push({ c, y }); y += step; prev = c.layer; });
+  return { rows, step, ghost };
+}
+function drawScore(){
+  if (!C) readColours();
+  if (!W) sizeScore();
+  const g = geo(), k = g.k, tn = viewT(), live = VIEW_AT == null, on = RUN.state === 'on' && live;
+  const tL = tn - (g.xNow - g.gx) / g.pps, tR = tn + (W - g.xNow) / g.pps;
+  const X = t => g.xNow - (tn - t) * g.pps;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+  /* the parts on the score */
+  const spk = SPK.length ? SPK.slice(0, 6) : ['A', 'B', 'C'], ghostSpk = !SPK.length;
+  const vStep = (g.vBot - g.vTop) / Math.max(3, spk.length);
+  const vy = s => { const i = spk.indexOf(s); return i < 0 ? null : g.vTop + vStep * (i + 0.5); };
+  const holders = holdersIn(tL, tR);
+  const nh = Math.max(2, holders.length), hStep = Math.min(12 * k, (g.lBot - g.lTop) / nh), hTop = g.lTop + ((g.lBot - g.lTop) - hStep * nh) / 2;
+  const hy = h => { const i = holders.indexOf(h); return i < 0 ? null : hTop + hStep * (i + 0.5); };
+  const cr = cellRows(g);
+  const mid = g.lis + 2 * g.lg, thr = Math.max(1, SET.threshold);
+
+  ctx.save(); ctx.beginPath(); ctx.rect(g.gx - 3, 0, W - g.gx + 3, H); ctx.clip();
+
+  /* bars, every four seconds; the ones ahead are pending */
+  ctx.lineWidth = 1;
+  for (let b = Math.ceil(tL / 4) * 4; b <= tR; b += 4){ if (b < 0) continue; ctx.strokeStyle = A(C.vrgb, b > tn ? 0.04 : 0.08); seg(X(b), g.vTop - 6 * k, X(b), g.lis + 4 * g.lg + 3 * k); }
+
+  /* the voices' staves */
+  ctx.strokeStyle = A(C.vrgb, 0.10);
+  spk.forEach(s => { const y = vy(s); for (let l = -1; l <= 1; l++) seg(g.gx, y + l * 4 * k, W, y + l * 4 * k); });
+  /* the speech: a line on the speaker's own staff while they speak */
+  ctx.lineWidth = 1.5;
+  for (let i = firstWord(tL); i < WORDS.length; i++){
+    const w = WORDS[i]; if (w.t0 > tn) break;
+    if (w.t1 < tL) continue;
+    const y = vy(w.s); if (y == null) continue;
+    const x0 = X(w.t0), x1 = X(Math.min(w.t1, tn)); if (x1 <= x0) continue;
+    const amp = 3.1 * k, ph = (w.t0 * 7.3) % 6.28;
+    ctx.strokeStyle = spkCol(w.s, 0.95);
+    ctx.beginPath();
+    for (let x = x0; x <= x1 + 0.01; x += 1.5){ const env = Math.max(0, Math.min(1, (x - x0) / 4, (x1 - x) / 4 + 0.3)); const yy = y - amp * env * Math.sin((x - x0) * 0.62 + ph); if (x === x0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy); }
+    ctx.stroke();
+  }
+  /* a bar where a thought landed, on the staff of who landed it; a ring where someone bids */
+  ctx.lineWidth = 2;
+  LANDINGS.forEach(l => { if (l.t < tL || l.t > tn) return; const y = vy(l.s); if (y == null) return; ctx.strokeStyle = spkCol(l.s, 0.9); seg(X(l.t), y - 7 * k, X(l.t), y + 7 * k); });
+  ctx.lineWidth = 1.2;
+  BIDS.forEach(b => { if (b.t < tL || b.t > tn) return; const y = vy(b.s); if (y == null) return; ctx.strokeStyle = spkCol(b.s, 0.85); ctx.beginPath(); ctx.arc(X(b.t), y, 3 * k, 0, 7); ctx.stroke(); });
+
+  /* verso's own staff: dim, and lit across the spans it was awake */
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = A(C.vrgb, 0.08);
+  for (let l = 0; l < 5; l++) seg(g.gx, g.lis + l * g.lg, W, g.lis + l * g.lg);
+  ctx.strokeStyle = A(C.vrgb, 0.26);
+  ONSPANS.forEach(sp => { const a = Math.max(sp.t0, tL), b = Math.min(sp.t1 == null ? tn : sp.t1, tR); if (b <= a) return; for (let l = 0; l < 5; l++) seg(X(a), g.lis + l * g.lg, X(b), g.lis + l * g.lg); });
+  /* a whole rest in each bar it held through: a held silence, never a blank */
+  ctx.fillStyle = A(C.vrgb, 0.8);
+  for (let b = Math.floor(Math.max(0, tL) / 4) * 4; b < tn; b += 4){
+    const a0 = b, a1 = Math.min(b + 4, tn);
+    if (a1 - a0 < 1.2 || !heldThrough(a0, a1)) continue;
+    ctx.fillRect(X(b + 2) - 4.5 * k, g.lis + g.lg, 9 * k, g.lg * 0.9);
+  }
+  /* each phrase it said: a note, held while it sounds; cut short, a slash */
+  SPEAKS.forEach(e => {
+    if (e.cue || e.tStart == null) return;
+    const t1 = e.tEnd == null ? tn : e.tEnd; if (t1 < tL || e.tStart > tR) return;
+    const x0 = X(e.tStart), x1 = X(t1), sounding = e.tEnd == null, faint = e.state === 'unvoiced';
+    ctx.save();
+    if (sounding && !REDUCED){ ctx.shadowColor = C.foam; ctx.shadowBlur = 12; }
+    ctx.strokeStyle = faint ? A(C.frgb, 0.45) : C.foam; ctx.lineWidth = 2.2;
+    if (faint) ctx.setLineDash([3, 3]);
+    if (x1 > x0 + 5 * k) seg(x0 + 5 * k, mid, x1, mid);
+    ctx.setLineDash([]);
+    ctx.fillStyle = faint ? 'rgba(0,0,0,0)' : C.foam; ctx.lineWidth = 1.3;
+    ctx.beginPath(); ctx.ellipse(x0, mid, 5.2 * k + 0.4, 3.8 * k + 0.3, -0.35, 0, 7); ctx.fill(); ctx.stroke();
+    ctx.restore();
+    if (e.state === 'cut'){ ctx.strokeStyle = C.solid; ctx.lineWidth = 1.6; seg(x1 - 2, mid + 6 * k, x1 + 3, mid - 6 * k); }
+  });
+  /* where the host stopped it: a caesura (on a replay, where it would have been stopped: fainter) */
+  STOPS.forEach(s => { if (s.t < tL || s.t > tn) return; const x = X(s.t); ctx.strokeStyle = s.silent ? A(C.srgb, 0.55) : C.solid; ctx.lineWidth = 1.6; seg(x - 3, g.lis + 4 * g.lg + 2, x + 1, g.lis - 2); seg(x + 2, g.lis + 4 * g.lg + 2, x + 6, g.lis - 2); });
+  /* where it would have spoken: a faint line down the score, and on a replay a ◆ on its staff
+     (in a live run the note it said stands there instead) */
+  WOULDS.forEach(w => {
+    if (w.t < tL || w.t > tR) return;
+    const x = X(w.t);
+    ctx.strokeStyle = A(C.frgb, 0.22); ctx.lineWidth = 1; ctx.setLineDash([2, 4]); seg(x, g.vTop - 6 * k, x, g.tY); ctx.setLineDash([]);
+    if (LAST_FEED === 'replay') diamond(x, mid, 4.6 * k + 0.4, w.mode === 'ready' ? null : A(C.frgb, 0.9), C.foam);
+  });
+
+  /* the held thoughts, on ledger lines: one line a holder */
+  ctx.lineWidth = 1; ctx.strokeStyle = A(C.vrgb, 0.10);
+  for (let i = 0; i < nh; i++){ const y = hTop + hStep * (i + 0.5); seg(g.gx, y, W, y); }
+  const lanes = laneMap(holders);
+  LED.forEach(x => {
+    const y0 = hy(x.holder); if (y0 == null) return;
+    if (x.born > tR || (x.end != null && x.end < tL)) return;
+    const y = y0 - (lanes.get(x.id) ? 3.4 * k : 0), bx = X(x.born);
+    /* its life, as its state was: held a quiet amber, ripe bright */
+    for (let j = 0; j < x.hist.length; j++){
+      const st = x.hist[j].s; if (!LIVE.has(st)) continue;
+      const a = x.hist[j].t, b = j + 1 < x.hist.length ? x.hist[j + 1].t : tn;
+      if (b < tL || a > tn) continue;
+      ctx.save();
+      if (st === 'ripe'){ ctx.strokeStyle = C.solid; ctx.lineWidth = 2.6; if (!REDUCED && j === x.hist.length - 1){ ctx.shadowColor = C.solid; ctx.shadowBlur = 9; } }
+      else { ctx.strokeStyle = A(C.srgb, 0.55); ctx.lineWidth = 1.6; }
+      const xa = Math.max(X(a), bx + 6 * k), xb = X(Math.min(b, tn));
+      if (xb > xa) seg(xa, y, xb, y);
+      ctx.restore();
+    }
+    /* each release that raised its urge: a tick */
+    let pu = 0; ctx.strokeStyle = A(C.srgb, 0.85); ctx.lineWidth = 1.2;
+    x.urges.forEach(u => { if (u.u > pu && u.t > x.born + 0.05 && u.t >= tL && u.t <= tn) seg(X(u.t), y - 3.4 * k, X(u.t), y + 3.4 * k); pu = u.u; });
+    /* the note where it was born */
+    const live = LIVE.has(x.state), closed = x.state === 'foreclosed' || x.state === 'pruned';
+    ctx.lineWidth = 1.5; ctx.strokeStyle = closed ? C.gone : C.solid;
+    ctx.fillStyle = x.state === 'voiced' ? C.foam : x.state === 'ripe' ? C.solid : 'rgba(0,0,0,0)';
+    ctx.beginPath(); ctx.ellipse(bx, y, 4.8 * k + 0.4, 3.5 * k + 0.3, -0.35, 0, 7); ctx.fill(); ctx.stroke();
+    if (live){   /* a fermata over what is held */
+      ctx.strokeStyle = C.solid; ctx.lineWidth = 1.1;
+      ctx.beginPath(); ctx.moveTo(bx - 5 * k, y - 5.5 * k); ctx.quadraticCurveTo(bx, y - 12 * k, bx + 5 * k, y - 5.5 * k); ctx.stroke();
+      ctx.fillStyle = C.solid; ctx.beginPath(); ctx.arc(bx, y - 6.8 * k, 1.1, 0, 7); ctx.fill();
+    } else if (x.end != null && x.end <= tn + 0.01){
+      const ex = X(x.end);
+      if (closed){   /* foreclosed: a caesura */
+        ctx.strokeStyle = x.state === 'pruned' ? A(C.grgb, 0.5) : C.gone; ctx.lineWidth = 1.5;
+        seg(ex - 2, y + 5 * k, ex + 2, y - 5 * k); seg(ex + 3, y + 5 * k, ex + 7, y - 5 * k);
+      } else if (x.state === 'voiced'){   /* voiced: it rises into verso's staff */
+        const sp = SPEAKS.find(e => !e.cue && e.entry === x.id && e.tStart != null), tx = sp ? X(sp.tStart) : ex;
+        ctx.strokeStyle = C.foam; ctx.lineWidth = 1.3;
+        ctx.beginPath(); ctx.moveTo(ex, y - 4 * k); ctx.quadraticCurveTo(ex + 6, (y + mid) / 2, tx, mid + 4.5 * k); ctx.stroke();
+      } else if (x.state === 'handed back'){   /* handed back: a dotted arrow up to the person whose it is */
+        const who = String(x.by || x.voice || '').toUpperCase(), wy = vy(who), top = wy != null ? wy + 6 * k : g.vBot;
+        ctx.strokeStyle = wy != null ? spkCol(who, 0.85) : A(C.frgb, 0.6); ctx.lineWidth = 1.2;
+        ctx.setLineDash([2, 3]); seg(ex, y - 4 * k, ex, top); ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(ex - 3, top + 4 * k); ctx.lineTo(ex, top); ctx.lineTo(ex + 3, top + 4 * k); ctx.stroke();
+      }
+    }
+  });
+
+  /* the floor: how open, and its window dashed */
+  const fh = g.fBot - g.fTop, uh = g.uBot - g.uTop;
+  ctx.lineWidth = 1; ctx.strokeStyle = A(C.vrgb, 0.10); seg(g.gx, g.fBot, W, g.fBot); seg(g.gx, g.uBot, W, g.uBot);
+  const fi = firstFloor(tL - 0.2);
+  if (FLOOR.length){
+    const runs = []; let cur = [];
+    for (let i = fi; i < FLOOR.length; i++){
+      const f = FLOOR[i]; if (f.t > tn + 0.05) break;
+      if (cur.length && f.t - cur[cur.length - 1].t > 1.2){ runs.push(cur); cur = []; }
+      cur.push(f);
+    }
+    if (cur.length) runs.push(cur);
+    runs.forEach(r => {
+      ctx.beginPath(); ctx.moveTo(X(r[0].t), g.fBot);
+      r.forEach(f => ctx.lineTo(X(f.t), g.fBot - f.open * fh));
+      ctx.lineTo(X(r[r.length - 1].t), g.fBot); ctx.closePath();
+      ctx.fillStyle = A(C.lrgb, 0.20); ctx.fill();
+      ctx.beginPath(); r.forEach((f, i) => { const yy = g.fBot - f.open * fh; if (i) ctx.lineTo(X(f.t), yy); else ctx.moveTo(X(f.t), yy); });
+      ctx.strokeStyle = C.liquid; ctx.lineWidth = 1.3; ctx.stroke();
+    });
+  }
+  ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeStyle = A(C.lrgb, 0.8);
+  const wy = g.fBot - SET.window * fh; seg(g.gx, wy, W, wy); ctx.setLineDash([]);
+  /* the urge: the most urgent held thought, against its threshold dashed */
+  const uMax = thr * 1.5, uy = u => g.uBot - clamp(u / uMax, 0, 1) * uh;
+  if (URGE.length){
+    let i = Math.max(0, urgeIndexAt(tL)), u = URGE[i].t <= tL ? URGE[i].u : 0;
+    let x = X(Math.max(tL, Math.min(URGE[i].t, tL))), pts = [[x, uy(u)]];
+    for (let j = i; j < URGE.length; j++){ const p = URGE[j]; if (p.t > tn) break; if (p.t < tL) { u = p.u; pts[0][1] = uy(u); continue; } const px = X(p.t); pts.push([px, uy(u)]); u = p.u; pts.push([px, uy(u)]); }
+    pts.push([X(tn), uy(u)]);
+    ctx.beginPath(); ctx.moveTo(pts[0][0], g.uBot); pts.forEach(p => ctx.lineTo(p[0], p[1])); ctx.lineTo(pts[pts.length - 1][0], g.uBot); ctx.closePath();
+    ctx.fillStyle = A(C.srgb, 0.16); ctx.fill();
+    ctx.beginPath(); pts.forEach((p, n) => { if (n) ctx.lineTo(p[0], p[1]); else ctx.moveTo(p[0], p[1]); });
+    ctx.strokeStyle = C.solid; ctx.lineWidth = 1.4; ctx.stroke();
+  }
+  ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeStyle = A(C.srgb, 0.85);
+  seg(g.gx, uy(thr), W, uy(thr)); ctx.setLineDash([]);
+  /* where both pass at once — the middle point, open */
+  if (FLOOR.length && URGE.length){
+    let run0 = null, prevT = null;
+    ctx.fillStyle = A(C.frgb, C.light ? 0.12 : 0.15);
+    for (let i = fi; i < FLOOR.length; i++){
+      const f = FLOOR[i]; if (f.t > tn + 0.05) break;
+      const pass = f.open >= SET.window && urgeAt(f.t) >= thr;
+      if (pass && run0 == null) run0 = f.t;
+      if (!pass && run0 != null){ ctx.fillRect(X(run0), g.fTop - 3, Math.max(2, X(f.t) - X(run0)), g.uBot - g.fTop + 6); run0 = null; }
+      prevT = f.t;
+    }
+    if (run0 != null && prevT != null) ctx.fillRect(X(run0), g.fTop - 3, Math.max(2, X(prevT + 0.1) - X(run0)), g.uBot - g.fTop + 6);
+  }
+
+  /* the cells, keeping time: a dot for each line a cell wrote (filled, a release; open, a
+     hold), the loop under way, and the next loop's end expected */
+  cr.rows.forEach(({ c, y }) => {
+    ctx.strokeStyle = A(C.vrgb, 0.08); ctx.lineWidth = 1; seg(g.gx, y, W, y);
+    if (c.ghost) return;
+    const col = C.lay[c.layer], rgb = C.layRgb[c.layer], r = (c.layer === 2 ? 3 : 2.3) * Math.max(0.85, k);
+    let lastT = null;
+    c.lines.forEach(l => {
+      if (l.t > tn) return;
+      lastT = l.t;
+      if (l.t < tL - 1) return;
+      ctx.beginPath(); ctx.arc(X(l.t), y, r, 0, 7);
+      if (l.act === 'release'){ ctx.fillStyle = col; ctx.fill(); } else { ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.stroke(); }
+    });
+    const from = lastT != null ? lastT : c.anchor;
+    if (on && from != null && from < tn){ ctx.strokeStyle = A(rgb, 0.35); ctx.lineWidth = c.layer === 2 ? 2.2 : 1.5; seg(X(Math.max(from, tL)) + r + 1, y, X(tn), y); }
+    if (c.last && c.last.t <= tn && c.last.t >= tL && !REDUCED){
+      const fresh = tn - c.last.t < (c.period || 4);
+      /* the same mark, glowing: a fresh hold stays open, a fresh release stays filled */
+      if (fresh){ ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 9; ctx.beginPath(); ctx.arc(X(c.last.t), y, r, 0, 7); if (c.last.act === 'release'){ ctx.fillStyle = col; ctx.fill(); } else { ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.stroke(); } ctx.restore(); }
+    }
+    if (on && c.period && from != null){ const nx = from + c.period; if (nx > tn && nx < tR){ ctx.strokeStyle = A(rgb, 0.35); ctx.lineWidth = 1; seg(X(nx), y - 2.6 * k, X(nx), y + 2.6 * k); } }
+    /* the age of its latest line, where there is room */
+    if (cr.step >= 9.5 && c.last && c.last.t <= tn){ const age = tn - c.last.t; txt(age < 60 ? Math.round(age) + 's' : Math.round(age / 60) + 'm', g.xNow + 5, y, C.dim, 8.5); }
+  });
+
+  /* the words, as a strip: the newest ending at now, each in its speaker's colour, a speaker's
+     letter where the talk changes hands; where the talk is sparse a word sits at its own time */
+  const F11 = '11px ' + MONO;
+  ctx.font = F11; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  const chip = (s, xr) => { ctx.font = '700 9px ' + MONO; const w = ctx.measureText(s).width + 6; ctx.fillStyle = spkCol(s, 0.18); ctx.fillRect(xr - w, g.sY - 9, w, 12); ctx.fillStyle = spkCol(s, 1); ctx.fillText(s, xr - w + 3, g.sY); ctx.font = F11; return w; };
+  let edge = g.xNow - 4, later = null;
+  for (let i = WORDS.length - 1; i >= 0 && edge > g.gx; i--){
+    const w = WORDS[i]; if (w.t0 > tn) continue;
+    if (later && later.s !== w.s){ edge -= chip(later.s, edge) + 5; }
+    if (w.px == null) w.px = ctx.measureText(w.w).width;
+    const xr = Math.min(X(w.t1), edge), xl = xr - w.px;
+    ctx.globalAlpha = clamp((xl - g.gx) / 50, 0.12, 1);
+    ctx.fillStyle = spkCol(w.s, 1); ctx.fillText(w.w, xl, g.sY);
+    ctx.globalAlpha = 1;
+    edge = xl - 5; later = w;
+  }
+  if (later && edge > g.gx + 10) chip(later.s, edge);
+
+  /* the time line: its bars, the moments where it would have spoken, the judges' marks */
+  ctx.strokeStyle = A(C.vrgb, 0.18); ctx.lineWidth = 1; seg(g.gx, g.tY, W, g.tY);
+  for (let b = Math.ceil(tL / 4) * 4; b <= tR; b += 4){
+    if (b < 0) continue;
+    const x = X(b); seg(x, g.tY - 2.5 * k, x, g.tY + 2.5 * k);
+    if (b % 20 === 0 && b <= tn && Math.abs(x - g.xNow) > 24) txt(mmss(b), x, g.tY + 11 * k, C.dim, 8.5, 'center');
+  }
+  WOULDS.forEach(w => {
+    if (w.t < tL || w.t > tR) return;
+    const x = X(w.t);
+    diamond(x, g.tY, 5 * k + 1, w.mode === 'ready' ? null : C.foam, C.foam);
+    if (w.safety){ ctx.strokeStyle = C.gone; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, g.tY, 8.5 * k + 1, 0, 7); ctx.stroke(); }   /* a risk to someone's safety */
+    if (w.judged != null) txt(w.judged ? '✓' : '✗', x, g.tY - 10 * k, w.judged ? C.bud : C.gone, 10, 'center', true);
+  });
+  MARKS.forEach(m => {
+    if (m.of || m.t < tL || m.t > tR) return;
+    const x = X(m.t), col = m.kind === 'spoke-well' ? C.bud : m.kind === 'should-have-spoken' ? C.solid : C.liquid, top = g.tY - 15 * k;
+    ctx.strokeStyle = col; ctx.globalAlpha = 0.25; ctx.setLineDash([2, 4]); seg(x, g.vTop - 6 * k, x, top); ctx.setLineDash([]); ctx.globalAlpha = 1;
+    ctx.lineWidth = 1.4; seg(x, g.tY, x, top);
+    ctx.fillStyle = col; ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x + 8 * k, top + 3.2 * k); ctx.lineTo(x, top + 6.4 * k); ctx.closePath(); ctx.fill();
+  });
+
+  /* now, and its three lamps — or, looking back, the moment the score was dragged to */
+  const grd = ctx.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, A(C.frgb, 0)); grd.addColorStop(0.08, A(C.frgb, on ? 0.6 : 0.3)); grd.addColorStop(1, A(C.frgb, on ? 0.25 : 0.12));
+  ctx.strokeStyle = grd; ctx.lineWidth = 1.2; seg(g.xNow, g.lamp + 7 * k, g.xNow, g.tY + 4 * k);
+  txt(live ? 'now' : mmss(tn), g.xNow, g.tY + 11 * k, live ? C.dim : C.foam, 8.5, 'center');
+  if (live){
+    const lm = lamps(), mp = on && lm[0] && lm[1] && lm[2] && urgeAt(tn) >= thr, lk = Math.max(0.9, k);
+    for (let i = 0; i < 3; i++){
+      const lx = g.xNow + (10 + i * 12) * lk;
+      ctx.save();
+      if (mp && !REDUCED){ ctx.shadowColor = C.foam; ctx.shadowBlur = 10; }
+      ctx.fillStyle = lm[i] ? (mp ? C.foam : C.liquid) : A(C.vrgb, 0.16);
+      ctx.beginPath(); ctx.arc(lx, g.lamp, 3.6 * lk, 0, 7); ctx.fill(); ctx.restore();
+    }
+    /* what it is doing, just past now */
+    const state = RUN.state === 'on' ? (SPEAKING ? 'speaking' : 'holding') : RUN.state === 'waking' ? 'waking' : RUN.state === 'lost' ? 'host quiet' : 'off';
+    txt(state, g.xNow + 5, g.lis - 5 * k, on ? (SPEAKING ? C.foam : C.liquid) : C.dim, 8.5);
+  }
+  ctx.restore();
+
+  /* the parts, named in the gutter */
+  const lx = 6;
+  txt(mmss(tn), lx, g.lamp, C.dim, 9);
+  spk.forEach(s => { const nm = !g.narrow && NAMES[s] ? String(NAMES[s]).slice(0, 8) : s; txt(nm, lx, vy(s), ghostSpk ? A(C.vrgb, 0.35) : spkCol(s, 1), 9, 'left', true); });
+  txt('verso', lx, mid, on ? C.foam : C.dim, 8.5);
+  if (holders.length) holders.forEach(h => txt(String(h).slice(0, g.narrow ? 4 : 9), lx, hy(h), C.solid, 8.5));
+  else txt('held', lx, (g.lTop + g.lBot) / 2, A(C.srgb, 0.65), 8.5);
+  txt('floor', lx, (g.fTop + g.fBot) / 2, C.liquid, 8.5);
+  txt('urge', lx, (g.uTop + g.uBot) / 2, C.solid, 8.5);
+  const named = new Set();
+  cr.rows.forEach(({ c, y }) => {
+    if (!cr.ghost && cr.step >= 9 && !g.narrow){ txt(String(c.name).slice(0, 9), lx, y, C.lay[c.layer], 8.5); return; }
+    if (named.has(c.layer)) return; named.add(c.layer);
+    txt(g.narrow ? ['fast', 'mid', 'slow'][c.layer] : LAYER_NAMES[c.layer], lx, y, cr.ghost ? A(C.layRgb[c.layer], 0.5) : C.lay[c.layer], 8.5);
+  });
+}
+
+/* ── THE RINGS — round the button, one per layer, each at that layer's own period and reset
+   at each of its cells' loops: a held silence breathes, a switched-off machine is still. ── */
+const rc = $('rings'), rctx = rc.getContext('2d');
+let RW = 0, RH = 0;
+function sizeRings(){ const r = rc.getBoundingClientRect(); RW = Math.max(100, Math.round(r.width)); RH = Math.max(100, Math.round(r.height)); rc.width = Math.round(RW * DPR); rc.height = Math.round(RH * DPR); }
+function layerPulse(l){
+  const cs = [...CELLS.values()].filter(c => c.layer === l && c.period);
+  if (!cs.length) return null;
+  const p = cs.reduce((s, c) => s + c.period, 0) / cs.length;
+  let anchor = -Infinity; cs.forEach(c => { if (c.anchor != null && c.anchor > anchor) anchor = c.anchor; });
+  return { l, p, anchor: isFinite(anchor) ? anchor : 0 };
+}
+function drawRings(){
+  if (!RW) sizeRings();
+  rctx.setTransform(DPR, 0, 0, DPR, 0, 0); rctx.clearRect(0, 0, RW, RH);
+  const r0 = ($('go').offsetWidth || 156) / 2, cx = RW / 2, cy = RH / 2, room = Math.min(cx, cy) - r0 - 3;
+  if (room < 6) return;
+  const ring = (r, rgb, a, w) => { rctx.strokeStyle = A(rgb, a); rctx.lineWidth = w; rctx.beginPath(); rctx.arc(cx, cy, r, 0, Math.PI * 2); rctx.stroke(); };
+  if (SPEAKING){
+    const gr = rctx.createRadialGradient(cx, cy, r0, cx, cy, r0 + room);
+    gr.addColorStop(0, A(C.frgb, 0.32)); gr.addColorStop(1, A(C.frgb, 0));
+    rctx.fillStyle = gr; rctx.beginPath(); rctx.arc(cx, cy, r0 + room, 0, 7); rctx.fill();
+  }
+  if (RUN.state === 'asleep') return;
+  if (RUN.state === 'lost'){ rctx.setLineDash([3, 5]); ring(r0 + 8, C.srgb, 0.65, 1.5); rctx.setLineDash([]); return; }
+  if (RUN.state === 'waking'){ const ph = (performance.now() / 2200) % 1; ring(r0 + 4 + (REDUCED ? room * 0.2 : ph * room * 0.6), C.lrgb, REDUCED ? 0.4 : 0.55 * (1 - ph), 1.5); return; }
+  const tn = tnow();
+  let pulses = [0, 1, 2].map(layerPulse).filter(Boolean);
+  const none = !pulses.length;
+  if (none) pulses = [{ l: 1, p: 6, anchor: 0 }];   /* no rhythm reported yet: a slow breath */
+  pulses.forEach(P => {
+    let ph = ((tn - P.anchor) / P.p) % 1; if (ph < 0) ph += 1;
+    const reach = room * (0.45 + 0.27 * P.l);
+    const r = r0 + 3 + (REDUCED ? reach * 0.35 : ph * reach);
+    const a = (REDUCED ? 0.2 + 0.4 * (1 - ph) : 0.62 * Math.pow(1 - ph, 1.4)) * (none ? 0.5 : 1);
+    ring(r, C.layRgb[P.l], a, 1.6 + 0.5 * P.l);
+  });
+}
+
+/* ── the words, only when asked for: what it said or would have, what is held, what each cell
+   last wrote with its age, and how to read the score ── */
+let WORDS_ON = store('verso:words') === '1';
+const chipOf = (cls, label) => '<span class="chip ' + cls + '">' + esc(label) + '</span>';
+const agoOf = s => s < 60 ? Math.max(0, Math.round(s)) + 's ago' : Math.round(s / 60) + 'm ago';
+function renderWords(){
+  if (!WORDS_ON) return;
+  const tn = tnow(), out = [];
+  const row = (k, x) => '<div class="r"><span class="k">' + k + '</span><span class="x">' + x + '</span></div>';
+  out.push('<h4>the voice</h4>');
+  const said = SPEAKS.filter(e => !e.cue && e.tStart != null).slice(-5).reverse(), would = WOULDS.slice(-4).reverse();
+  if (!said.length && !would.length) out.push('<p class="q">nothing said yet — it holds</p>');
+  said.forEach(e => out.push(row(mmss(e.tStart), chipOf(e.state === 'cut' ? 'cut' : e.state === 'unvoiced' ? 'cut' : 'spoken', e.state === 'cut' ? 'cut short' : e.state === 'unvoiced' ? 'no voice' : e.state === 'speaking' ? 'speaking' : 'said') + esc(e.text))));
+  would.forEach(w => out.push(row(mmss(w.t), chipOf('would', 'would speak · ' + (w.mode === 'ready' ? 'ready' : 'spoken to')) + (w.safety ? chipOf('cut', 'safety') : '') + esc(w.phrase || '…') +
+    (w.urge != null || w.open != null ? ' <i>· ' + [w.urge != null ? 'urge ' + (+w.urge).toFixed(1) : '', w.open != null ? 'floor ' + (+w.open).toFixed(2) : ''].filter(Boolean).join(' · ') + '</i>' : ''))));
+  out.push('<h4>held</h4>');
+  const all = [...LED.values()], live = all.filter(x => LIVE.has(x.state)), gone = all.filter(x => !LIVE.has(x.state)).sort((a, b) => (b.end || 0) - (a.end || 0)).slice(0, 5);
+  if (!all.length) out.push('<p class="q">nothing held yet</p>');
+  live.concat(gone).forEach(x => out.push(row(esc(x.holder), chipOf(x.state === 'handed back' ? 'handed' : x.state, x.state === 'handed back' && x.by ? 'handed back · ' + (NAMES[x.by] || x.by) + ' said it' : x.state) + esc(x.text || '…') +
+    (x.parent ? ' <i>— answers ' + esc(x.parent) + '</i>' : '') + (LIVE.has(x.state) ? ' <i>· urge ' + (x.urge || 0) + ' of ' + SET.threshold + '</i>' : ''))));
+  out.push('<h4>the cells</h4>');
+  const cells = [...CELLS.values()].sort((a, b) => a.layer - b.layer || a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!cells.length) out.push('<p class="q">no cell has written yet</p>');
+  cells.forEach(c => { const l = c.last; out.push(row(esc(c.name) + ' · ' + LAYER_NAMES[c.layer], l ? '<i>' + agoOf(tn - l.t) + ' · ' + esc(l.act || 'line') + (c.period ? ' · every ' + c.period.toFixed(1) + 's' : '') + '</i> ' + esc(l.text || '…') + (l.parent ? ' <i>— answers ' + esc(l.parent) + (l.horizon ? ' · looks ' + esc(l.horizon) + ' ahead' : '') + '</i>' : '') : '<i>' + (c.period ? 'every ' + c.period.toFixed(1) + 's' : 'quiet') + '</i>')); });
+  out.push('<h4>reading the score</h4><p class="legend">Time runs right to left past <b>now</b>. On the top staves, each person: a line while they speak, a bar where a thought lands, a ring where someone is about to speak. On verso’s own staff, a rest in each bar it held through, a note for each phrase it said, // where it was stopped, and on a replay a ◆ where it would have spoken (filled when spoken to, open when only ready). Below, the held thoughts, one line a holder: a fermata while held, bright when ripe, a tick for each release, a caesura when foreclosed, a curve up when voiced, a dotted arrow up to the person who said its words (handed back). Then the floor in teal with its window dashed, and the urge in amber with its threshold dashed; pale where both pass at once — the middle point. Then each cell’s lines (filled, a release) and the loop under way. The three lamps at now: landed · nobody bidding · open enough. Drag the score sideways to look back; now › follows now again. On a replay, tap the score to mark a moment, or a ◆ to say whether it was a real one.</p>');
+  out.push('<p class="q">' + (Object.keys(NAMES).length ? 'the people: ' + Object.keys(NAMES).sort().map(s => esc(s) + ' ' + esc(NAMES[s])).join(' · ') + ' · ' : '') + 'the voice out: ' + esc(narrName()) + '</p>');
+  $('wp').innerHTML = out.join('');
+}
+function paintWordsToggle(){
+  document.body.classList.toggle('words-on', WORDS_ON);
+  $('wp').classList.toggle('hidden', !WORDS_ON);
+  const b = $('c-words'); b.textContent = WORDS_ON ? 'hide the words' : 'show the words'; b.classList.toggle('on', WORDS_ON); b.setAttribute('aria-pressed', WORDS_ON ? 'true' : 'false');
+  renderWords();
+}
+
+/* ── the glass ── */
+function paintGo(){
+  const b = $('go'), st = RUN.state;
+  let cls = 'off', word = 'enliven', sub = RUN.feed === 'replay' ? 'replay' + (currentRun() ? ' · ' + currentRun() : '') : 'live';
+  if (st === 'waking'){ cls = 'waking'; word = 'waking'; sub = '…'; }
+  else if (st === 'lost'){ cls = 'lost'; word = 'host quiet'; sub = 'press to stop'; }
+  else if (st === 'on'){
+    sub = (LAST_FEED || RUN.feed) === 'replay' ? 'replay' : 'live';
+    if (SPEAKING){ cls = 'speaking'; word = 'speaking'; }
+    else if ((LAST_FEED === 'replay') && performance.now() - RUN.wouldFlash < 1600){ cls = 'on would'; word = 'would speak'; }
+    else { cls = 'on'; word = 'holding'; }
+  }
+  if (SPEAKING && st !== 'on'){ cls = 'speaking'; word = 'speaking'; }
+  if (b.className !== 'go ' + cls) b.className = 'go ' + cls;
+  if ($('go-w').textContent !== word) $('go-w').textContent = word;
+  if ($('go-s').textContent !== sub) $('go-s').textContent = sub;
+  b.setAttribute('aria-pressed', st === 'on' || st === 'waking' ? 'true' : 'false');
+  b.setAttribute('aria-label', st === 'on' ? word + ' — press to stop' : st === 'waking' ? 'waking — press to stop' : st === 'lost' ? 'the host went quiet — press to stop the run' : 'enliven — ' + sub);
+}
+function paintBar(){
+  const st = RUN.state, word = st === 'on' ? (SPEAKING ? 'speaking' : 'holding') : st === 'waking' ? 'waking' : st === 'lost' ? 'host quiet' : 'asleep';
+  $('bar-state').textContent = word + (HOST.demo ? ' · demo' : '');
+  $('dot').className = 'dot' + (SPEAKING ? ' speaking' : st === 'on' ? ' on' : st === 'lost' ? ' lost' : '');
+}
+function paintFeed(){
+  const busy = RUN.state !== 'asleep';
+  document.querySelectorAll('#feed .seg').forEach(b => { const on = b.dataset.feed === RUN.feed; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.disabled = busy; });
+  const sel = $('run'), inp = $('run-id'), replay = RUN.feed === 'replay', runs = RUN.runs;
+  sel.classList.toggle('hidden', !replay || !runs.length);
+  inp.classList.toggle('hidden', !replay || !!runs.length);
+  if (replay && runs.length){
+    if (!runs.some(r => r.id === RUN.run)) RUN.run = runs[0].id;
+    sel.innerHTML = runs.map(r => '<option value="' + esc(r.id) + '"' + (r.id === RUN.run ? ' selected' : '') + '>' + esc(r.title || r.id) + '</option>').join('');
+  }
+  if (replay && !runs.length && document.activeElement !== inp) inp.value = RUN.run || '';
+  sel.disabled = inp.disabled = busy;
+}
+function paint(){ paintGo(); paintBar(); paintFeed(); DIRTY = true; }
+function wireFeed(){
+  $('feed').addEventListener('click', e => {
+    const b = e.target.closest('.seg[data-feed]'); if (!b || b.disabled) return;
+    RUN.feed = b.dataset.feed; store('verso:feed', RUN.feed);
+    if (RUN.feed === 'replay' && !RUN.runs.length && (HOST.demo || HOST.state === 'open')) send({ type: 'host', page: 'verso', v: 1, settings: snapshot() });
+    paintFeed(); paintGo();
+  });
+  $('run').addEventListener('change', e => { RUN.run = e.target.value; store('verso:run', RUN.run); paintGo(); });
+  $('run-id').addEventListener('change', e => { RUN.run = e.target.value.trim(); store('verso:run', RUN.run); paintGo(); });
+}
+
+/* ── THE DEMO — a stand-in host in this page, for when no host answers: about two minutes of
+   three invented people (Mara, Tom and Ines) deciding where their Thursday group meets now the
+   hall is going, as the host would send it: their words, a floor that opens and closes, three
+   cells keeping time (two of them writing lines worth reading), five held thoughts that ripen,
+   are handed back as people say them, and one voiced once Mara turns to verso, one speak of
+   three phrases and one stop when Tom starts over it. Played live it speaks; played as a replay it marks where it would have
+   spoken, and takes the judges' marks. Everything goes through the same events as the real
+   host's, so the demo proves the page and nothing else. ── */
+function demoScript(){
+  const names = { A: 'Mara', B: 'Tom', C: 'Ines' };
+  const TURNS = [
+    ['A', 0.9, 'so the hall wants us out by the end of the month | and I don’t think we’ve really said what we want instead'],
+    ['B', 0.7, 'the library has the back room | but it closes at seven | which is early for half of us'],
+    ['C', 0.5, 'and the café is too loud | last time I couldn’t hear a word Ravi said'],
+    ['A', 0.8, 'right | so it’s quiet late enough and cheap | that’s the list'],
+    ['B', 0.6, 'the hall was cheap because nobody else wanted it'],
+    ['C', 1.4, 'what about the school | they let the choir use the music room on Thursdays'],
+    ['A', 0.5, 'do they charge'],
+    ['C', 0.4, 'I think the choir pays something | I can ask'],
+    ['B', 0.9, 'if it’s the school | then the kids could come too | which changes what we’d even do'],
+    ['A', 0.6, 'hm | what do you think verso'],
+    ['B', 5.2, 'well | that’s fair actually | my two would have opinions'],
+    ['C', 0.5, 'mine would want the music room'],
+    ['A', 0.7, 'so we ask them | and I’ll ask the school about Thursdays'],
+    ['B', 0.9, 'and the cost | the garden group could share it | they meet on Thursdays too'],
+    ['C', 0.5, 'they do | I’ll mention it on Saturday'],
+    ['A', 0.6, 'good | so that’s the school the kids and the garden'],
+    ['C', 1.6, 'can I say something about Ravi | he said it’s been too quiet lately | and I didn’t know what he meant'],
+    ['A', 0.6, 'too quiet like nobody talks | or too quiet like nobody comes'],
+    ['C', 0.7, 'I don’t know | I didn’t ask'],
+    ['B', 2.6, 'we could ask him on Thursday | if there is a Thursday'],
+    ['A', 0.5, 'there’ll be a Thursday | even if it’s in my kitchen'],
+    ['C', 0.5, 'your kitchen is quiet and cheap'],
+    ['B', 0.4, 'and it closes whenever we like'],
+    ['A', 0.5, 'so it meets the list'],
+    ['B', 1.5, 'right | I’ll write it up | the school the children the garden and Ravi'],
+    ['C', 0.6, 'and Mara’s kitchen if all else fails']
+  ];
+  /* the words with their times, as Whisper gives them: no punctuation added */
+  const words = [], turns = [];
+  let t = 0;
+  TURNS.forEach(([s, gap, text], k) => {
+    t += gap; const t0 = t;
+    text.split('|').forEach((part, pi) => {
+      if (pi) t += 0.4;
+      part.trim().split(/\s+/).forEach((raw, wi) => {
+        if (wi) t += 0.07;
+        const w = raw.replace(/[.,!?;:]/g, '');
+        const d = 0.11 + 0.05 * w.replace(/[^A-Za-zÀ-ÿ]/g, '').length;
+        words.push({ t0: r2(t), t1: r2(t + d), s, w, k });
+        t += d;
+      });
+    });
+    turns.push({ k, s, t0: r2(t0), t1: r2(t) });
+  });
+  const T = k => turns[k];
+  const end = r2(turns[turns.length - 1].t1 + 2.5);
+  /* the floor, ten a second: shut while someone speaks, rising through a pause, held low in a
+     pause inside a turn, dipping when someone is about to start; landed at each turn's end */
+  const floor = [], landAt = new Set(turns.map(x => Math.round((x.t1 + 0.3) * 10)));
+  let wi = 0;
+  for (let i = 0; i <= Math.round(end * 10); i++){
+    const ts = r2(i / 10);
+    while (wi < words.length && words[wi].t1 + 0.08 < ts) wi++;
+    const cur = words[wi], prev = wi > 0 ? words[wi - 1] : null;
+    let open = 0, bid = null;
+    if (!(cur && cur.t0 - 0.04 <= ts)){
+      open = 1 - Math.exp(-Math.max(0, prev ? ts - prev.t1 : 2) / 0.7);
+      if (cur && prev && cur.k === prev.k && cur.t0 - ts < 0.75) open = Math.min(open, 0.22);
+      if (cur && (!prev || cur.k !== prev.k) && cur.t0 - ts <= 0.35){ bid = cur.s; open *= 0.35; }
+    }
+    floor.push({ t: ts, open: r2(open), landed: landAt.has(i), bid });
+  }
+  const flAt = x => floor[clamp(Math.round(x * 10), 0, floor.length - 1)];
+  const lastSaid = x => { const ws = words.filter(w => w.t1 <= x + 0.05); if (!ws.length) return 'the room'; const s = ws[ws.length - 1].s, tail = []; for (let i = ws.length - 1; i >= 0 && ws[i].s === s && tail.length < 4; i--) tail.unshift(ws[i].w); return s + ': ' + tail.join(' '); };
+  const E = [];
+  words.forEach(w => E.push({ t: r2(w.t1 + 0.3), m: { type: 'words', words: [{ t0: w.t0, t1: w.t1, s: w.s, w: w.w }] } }));
+
+  /* the cells' lines: m1 (middle) and s1 (slow) worth reading; f1 (fast) reading the floor.
+     A thought is born from its holder's line; each independent release raises its urge, one a
+     layer, so three is fast, middle and slow agreeing */
+  const LINES = [];
+  const line = (cell, at, act, parent, text, horizon, stop) => LINES.push({ cell, t: r2(at), act, parent, text, horizon, stop: stop || '' });
+  line('m1', T(0).t1 + 0.3, 'hold', 'A: what we want instead', 'they have not said what they want yet', 'turns');
+  line('m1', T(2).t0 + 1.7, 'hold', 'B: it closes at seven', 'late enough matters to half of them', 'turns');
+  line('m1', T(3).t1 + 0.1, 'hold', 'A: that’s the list', 'the school might have a room on Thursdays', 'turns');
+  line('m1', T(5).t0 + 4.0, 'hold', 'C: what about the school', 'Ines has the school in hand; leave it with her', 'turns');
+  line('m1', T(8).t0 + 4.3, 'release', 'B: the kids could come too', 'nobody has asked the children what they’d want', 'seconds', 'phrase');
+  line('m1', T(10).t0 + 0.7, 'hold', 'B: that’s fair actually', 'the children are in it now; let them carry it', 'the topic');
+  line('m1', T(12).t0 + 1.0, 'release', 'A: so we ask them', 'the garden group meets on Thursdays too', 'turns');
+  line('m1', T(13).t1 - 0.4, 'hold', 'B: the garden group could share it', 'Tom said it; let it go', 'turns');
+  line('m1', T(15).t1 + 0.6, 'hold', 'A: the school the kids and the garden', 'three things have landed; rest', 'the topic');
+  line('m1', T(16).t1 + 0.3, 'hold', 'C: I didn’t know what he meant', 'something is under this; wait for it', 'the topic');
+  line('m1', T(18).t0 + 0.8, 'release', 'C: I didn’t ask', 'ask Ravi what he meant', 'turns');
+  line('m1', T(20).t0 + 0.9, 'hold', 'B: if there is a Thursday', 'a fallback is coming', 'turns');
+  line('m1', T(23).t1 + 0.95, 'hold', 'A: so it meets the list', 'the list is met; nothing to add', 'the topic');
+  line('m1', T(25).t0 + 2.2, 'hold', 'C: if all else fails', 'it is settled; hold', 'the topic');
+  line('s1', T(3).t1 + 1.2, 'hold', 'the talk so far', 'what the room is for has not been said', 'the topic');
+  line('s1', T(9).t1 + 0.9, 'release', 'B: which changes what we’d even do', 'what the children want is the open question', 'the topic');
+  line('s1', T(18).t1 + 0.5, 'release', 'C: I didn’t ask', 'the quiet Ravi named may be the real question; ask him', 'the topic');
+  line('s1', T(23).t1 + 0.3, 'hold', 'A: so it meets the list', 'someone should write it up', 'the topic');
+  let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  let fl = []; for (let x = 1.3; x < end - 0.4; x += 2.6 + rnd() * 0.6) fl.push(r2(x));
+  const rel = [[T(4).t1 + 0.3, 'Tom landed; the floor could open'], [T(8).t1 + 0.3, 'Tom landed; a thought is ready'], [T(9).t1 + 1.3, 'Mara named verso; open, and nobody about to speak'],
+    [T(13).t0 - 0.55, 'the floor is opening'], [T(18).t1 + 0.2, 'Ines landed; nobody about to speak']];
+  const relAt = new Map();
+  rel.forEach(([x, text]) => { let b = 0; fl.forEach((y, i) => { if (Math.abs(y - x) < Math.abs(fl[b] - x)) b = i; }); fl[b] = r2(x); relAt.set(fl[b], text); });
+  fl = fl.sort((a, b) => a - b);
+  fl.forEach(x => {
+    if (relAt.has(x)){ line('f1', x, 'release', lastSaid(x), relAt.get(x), 'seconds', 'at-once'); return; }
+    const f = flAt(x), cur = words.find(w => w.t0 - 0.04 <= x && w.t1 + 0.08 >= x), prev = words.filter(w => w.t1 <= x).pop();
+    const text = cur ? names[cur.s] + ' speaking' : f.bid ? names[f.bid] + ' about to speak' : (prev && x - prev.t1 < 0.8 && words.some(w => w.k === prev.k && w.t0 > x)) ? names[prev.s] + ' still forming' : 'the floor at ' + f.open.toFixed(1);
+    line('f1', x, 'hold', lastSaid(x), text, 'seconds');
+  });
+  const NOMINAL = { f1: 2.9, m1: 9.6, s1: 38 }, LAYER = { f1: 'fast', m1: 'middle', s1: 'slow' }, PRICE = { f1: 0.0004, m1: 0.0031, s1: 0.0118 }, MS = { f1: 700, m1: 2600, s1: 11000 };
+  Object.keys(NOMINAL).forEach(c => E.push({ t: 0.05, m: { type: 'period', cell: c, layer: LAYER[c], s: NOMINAL[c], t: 0 } }));
+  LINES.sort((a, b) => a.t - b.t);
+  const lastOf = {}; let usd = 0, calls = 0;
+  LINES.forEach(L => {
+    const cost = r4(PRICE[L.cell] * (0.8 + 0.4 * rnd()));
+    E.push({ t: L.t, m: { type: 'mirror', cell: L.cell, layer: LAYER[L.cell], t: L.t, parent: L.parent, act: L.act, text: L.text, horizon: L.horizon, stop: L.stop, ms: Math.round(MS[L.cell] * (0.8 + 0.4 * rnd())), usd: cost } });
+    if (lastOf[L.cell] != null) E.push({ t: L.t, m: { type: 'period', cell: L.cell, layer: LAYER[L.cell], s: r2(L.t - lastOf[L.cell]), t: L.t } });
+    lastOf[L.cell] = L.t; usd += cost; calls++;
+    E.push({ t: L.t, m: { type: 'cost', usd: r4(usd), calls } });
+  });
+  /* the ledger, as the host keeps it: a held thought is handed back when a person says its own
+     words, foreclosed when the talk has moved past it. Five: the school (Ines says it), the
+     children (verso says it, live; on the replay Mara does), the garden (Tom says it), Ravi
+     (ripe, but nobody has named verso since, so in 'spoken to' it holds; Tom says it), and who
+     writes it up (Tom takes it on). A would-speak mark is its own event at every mark, both
+     modes' flags apart: Mara has just turned to verso when the children ripen, so that one would
+     speak in either mode; Ravi, long after, only in 'ready'. */
+  const mp = r2(T(9).t1 + 1.5), bid = r2(T(10).t0 - 0.35);
+  const sayLine = ['Could the children say what they’d want there?', 'Nobody has asked them yet,', 'and it might settle the room as well.'];
+  const L = (at, o, only) => E.push({ t: r2(at), m: Object.assign({ type: 'ledger', t: r2(at) }, o), only });
+  L(T(3).t1 + 0.1, { id: 'e1', holder: 'm1', parent: 'A: that’s the list', landing: T(3).t1, state: 'withheld', urge: 0, voice: 'verso', text: 'the school might have a room on Thursdays' });
+  L(T(4).t1 + 0.3, { id: 'e1', urge: 1 });
+  L(T(5).t0 + 1.3, { id: 'e1', state: 'handed back', urge: 0, handed: 'C' });
+  L(T(8).t0 + 4.3, { id: 'e2', holder: 'm1', parent: 'B: the kids could come too', landing: T(8).t1, state: 'withheld', urge: 1, voice: 'verso', text: 'nobody has asked the children what they’d want' });
+  L(T(8).t1 + 0.3, { id: 'e2', urge: 2 });
+  L(T(9).t1 + 0.9, { id: 'e2', state: 'ripe', urge: 3 });
+  E.push({ t: mp, m: { type: 'would', id: 'e2', entry: 'e2', phrase: sayLine.join(' '), cell: 'm1', t: mp, landing: 10, urge: 3, open: 0.89, mode: 'spoken-to', ready: true, spoken_to: true, safety: false } });
+  L(mp, { id: 'e2', state: 'voiced' }, 'live');
+  /* on the replay nothing sounds: the same phrases come silent, and Tom's bid would have stopped the line */
+  sayLine.slice(0, 2).forEach((ph, i) => E.push({ t: r2(mp + i * 2.4), m: { type: 'speak', would: true, silent: true, mode: 'spoken-to', id: 'e2', entry: 'e2', i, n: 3, last: false, phrase: ph, t: r2(mp + i * 2.4), cell: 'm1', stop: 'phrase' }, only: 'replay' }));
+  E.push({ t: bid, m: { type: 'stop', silent: true, rule: 'at-once', id: 'e2', cell: 'm1', at_phrase: 1, by: 'B', t: bid }, only: 'replay' });
+  L(T(12).t0 + 1.0, { id: 'e2', state: 'handed back', urge: 0, handed: 'A' }, 'replay');
+  L(T(12).t0 + 1.0, { id: 'e3', holder: 'm1', parent: 'A: so we ask them', state: 'withheld', urge: 1, voice: 'verso', text: 'share the cost with the garden group, who meet on Thursdays' });
+  L(T(13).t0 - 0.55, { id: 'e3', urge: 2 });
+  L(T(13).t0 + 2.4, { id: 'e3', state: 'handed back', urge: 0, handed: 'B' });
+  L(T(18).t0 + 0.8, { id: 'e4', holder: 'm1', parent: 'C: I didn’t ask', state: 'withheld', urge: 1, voice: 'verso', text: 'ask Ravi what he meant by too quiet' });
+  L(T(18).t1 + 0.2, { id: 'e4', urge: 2 });
+  L(T(18).t1 + 0.5, { id: 'e4', state: 'ripe', urge: 3 });
+  E.push({ t: r2(T(18).t1 + 0.7), m: { type: 'would', id: 'e4', entry: 'e4', phrase: 'You could ask Ravi on Thursday what he meant.', cell: 'm1', t: r2(T(18).t1 + 0.7), landing: 19, urge: 3, open: 0.62, mode: 'spoken-to', ready: true, spoken_to: false, safety: false } });
+  L(T(19).t0 + 1.0, { id: 'e4', state: 'handed back', urge: 0, handed: 'B' });
+  L(T(23).t1 + 0.3, { id: 'e5', holder: 's1', parent: 'A: so it meets the list', state: 'withheld', urge: 0, voice: 'verso', text: 'someone should write it up' });
+  L(T(24).t0 + 1.6, { id: 'e5', state: 'handed back', urge: 0, handed: 'B' });
+  E.sort((a, b) => a.t - b.t);
+  return { names, floor, events: E, mp, bid, end, line: sayLine, e2bEnd: r2(T(12).t0 + 1.0) };
+}
+function DemoHost(emit){
+  const D = demoScript();
+  let timer = null, t0 = 0, feed = 'live', E = [], ip = 0, fi = 0, st = null;
+  const out = m => setTimeout(() => emit(JSON.stringify(m)), 0);
+  const at = () => (performance.now() - t0) / 1000;
+  function begin(f){
+    halt(); feed = f === 'replay' ? 'replay' : 'live'; t0 = performance.now(); ip = 0; fi = 0;
+    E = D.events.filter(e => !e.only || e.only === feed).map(e => ({ t: e.t, m: e.m }));
+    st = { sent: 0, stopped: false, done: false, wait: null, back: false };
+    timer = setInterval(step, 50); step();
+  }
+  function halt(){ if (timer){ clearInterval(timer); timer = null; } if (st && st.wait){ clearTimeout(st.wait); st.wait = null; } }
+  const voicing = () => feed === 'live' && st && st.sent > 0 && !st.stopped && !st.done;
+  function step(){
+    const t = at();
+    while (fi < D.floor.length && D.floor[fi].t <= t){
+      const f = Object.assign({ type: 'floor' }, D.floor[fi]);
+      if (voicing() && f.t >= D.mp && !f.bid) f.open = Math.min(f.open, 0.25);   /* while it speaks, the floor is held */
+      out(f); fi++;
+    }
+    while (ip < E.length && E[ip].t <= t){ out(E[ip].m); ip++; }
+    if (feed === 'live' && st.sent === 0 && t >= D.mp) phrase(0);
+    if (feed === 'live' && st.sent > 0 && !st.stopped && t >= D.bid){   /* Tom starts over it: stop */
+      st.stopped = true; if (st.wait){ clearTimeout(st.wait); st.wait = null; }
+      out({ type: 'stop', rule: 'at-once', id: 'e2', t: r2(t) });
+    }
+    if (t >= D.end){ halt(); out({ type: 'done', run: feed === 'replay' ? 'demo' : 'live', reason: 'the end of the demo' }); }
+  }
+  /* the line, a phrase at a time: the next is sent when the page says the last was spoken */
+  function phrase(i){
+    if (!st || st.stopped || i >= D.line.length) return;
+    st.sent = i + 1;
+    out({ type: 'speak', id: 'e2', i, phrase: D.line[i], last: i === D.line.length - 1, t: r2(at()), cell: 'm1', entry: 'e2', stop: 'phrase' });
+    if (st.wait) clearTimeout(st.wait);
+    st.wait = setTimeout(() => { st.wait = null; if (timer && !st.stopped && st.sent === i + 1) phrase(i + 1); }, 8000);
+  }
+  function insert(t, m){ let j = ip; while (j < E.length && E[j].t <= t) j++; E.splice(j, 0, { t, m }); }
+  function hear(m){
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'host') out({ type: 'host', state: timer ? feed : 'idle', run: timer && feed === 'replay' ? 'demo' : null, runs: [{ id: 'demo', title: 'the demo · two minutes' }], names: D.names });
+    else if (m.type === 'start') begin(m.feed);
+    else if (m.type === 'stop') halt();
+    else if (m.type === 'spoken' && m.id === 'e2' && st && !st.stopped){
+      if (m.i + 1 < D.line.length) phrase(m.i + 1);
+      else { st.done = true; if (st.wait){ clearTimeout(st.wait); st.wait = null; } }
+    } else if (m.type === 'stopped' && m.id === 'e2' && st){
+      st.stopped = true; if (st.wait){ clearTimeout(st.wait); st.wait = null; }
+      if (st.back || !m.cut) return;
+      /* the line cut short goes back to the ledger */
+      st.back = true;
+      const t = r2(at() + 0.4);
+      insert(t, { type: 'ledger', id: 'e2b', holder: 'm1', parent: 'verso, cut short', state: 'withheld', urge: 1, voice: 'verso', text: String(m.cut), t });
+      insert(Math.max(t + 1, D.e2bEnd), { type: 'ledger', id: 'e2b', state: 'handed back', urge: 0, handed: 'A', t: Math.max(t + 1, D.e2bEnd) });   /* Mara: 'so we ask them' */
+    }
+    /* settings and marks are taken as a host takes them */
+  }
+  return { hear, halt };
+}
+function startDemo(go){
+  dropSocket();
+  HOST.demo = DemoHost(receive); HOST.state = 'demo';
+  RUN.runs = [{ id: 'demo', title: 'the demo · two minutes' }]; RUN.run = 'demo';
+  paintHost(true); paint();
+  send({ type: 'host', page: 'verso', v: 1, settings: snapshot() });
+  if (go) press();   /* the tap that chose the demo starts it, and wakes the voice */
+}
+function leaveDemo(){
+  if (RUN.state !== 'asleep') stopRun();
+  if (HOST.demo) HOST.demo.halt();
+  HOST.demo = null; HOST.state = 'idle'; RUN.runs = [];
+  paint(); paintHost(true);
+  if (HOST.asked){ HOST.tries = 0; connect(); }
+}
+
+/* ── the frame: the score and the rings drawn while anything moves, and once after any change ── */
+let lastGoPaint = 0;
+function frame(now){
+  if (RUN.state !== 'asleep' || SPEAKING || DIRTY){ DIRTY = false; drawScore(); drawRings(); }
+  if (now - lastGoPaint > 250){ lastGoPaint = now; if (RUN.state === 'on') paintGo(); }
+  requestAnimationFrame(frame);
+}
+
+/* ── boot ── */
+function boot(){
+  readColours();
+  const hp = PARAMS.get('host');
+  if (hp){ const u = normalHost(hp); if (u){ HOST.url = u; HOST.asked = true; store(HOST_HOME, u); } }
+  if (PARAMS.get('feed') === 'replay' || PARAMS.get('feed') === 'live') RUN.feed = PARAMS.get('feed');
+  renderSettings(); wireSettings(); wireHost(); wireFeed(); wireSheet(); wireMarks(); wireLookBack();
+  $('go').addEventListener('click', press);
+  $('c-words').addEventListener('click', () => { WORDS_ON = !WORDS_ON; store('verso:words', WORDS_ON ? '1' : null); paintWordsToggle(); DIRTY = true; });
+  $('c-sheet').addEventListener('click', () => openSheet());
+  paintWordsToggle(); paint(); paintHost(true);
+  if (window.siteDoors) siteDoors({ here: 'verso', site: true });
+  sizeScore(); sizeRings();
+  window.addEventListener('resize', () => { sizeScore(); sizeRings(); });
+  new MutationObserver(() => { readColours(); DIRTY = true; }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { WORDS.forEach(w => { w.px = null; }); DIRTY = true; });
+  if (canSpeak()){ try { speechSynthesis.cancel(); } catch(e){} pickVoice(); speechSynthesis.onvoiceschanged = () => { pickVoice(); paintVoices(); }; }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    DIRTY = true;
+    if (RUN.state === 'on') keepAwake(true);
+    if (!HOST.demo && HOST.asked && HOST.state === 'closed'){ HOST.tries = 0; connect(); }
+  });
+  setInterval(tickHost, 1000);
+  setInterval(renderWords, 500);
+  if (PARAMS.has('demo')) startDemo(false), (PARAMS.get('demo') !== 'idle' && startRun(RUN.feed === 'replay' ? 'demo' : ''));
+  else if (HOST.asked) connect();
+  requestAnimationFrame(frame);
+}
+boot();
+})();
+</script>
+</body>
+</html>
