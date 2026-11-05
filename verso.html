@@ -303,19 +303,19 @@ function hint(msg, cls){
    provisional values: §4 says they are tuned on the replay. ── */
 const SPEC = [
   { key: 'mode', name: 'mode', kind: 'seg', opts: [['spoken-to', 'spoken to'], ['ready', 'ready']], start: 'spoken-to',
-    why: 'Spoken to: it speaks when someone names it. Ready: also when enough is ready. A replay marks both.' },
+    why: 'Spoken to: it speaks only once someone has named it. Ready: also when enough is ready. A replay marks both.' },
   { key: 'threshold', name: 'threshold', kind: 'range', min: 1, max: 9, step: 1, start: 3,
     why: 'How many independent releases a held thought needs before it may be spoken: three is one from each layer.' },
   { key: 'window', name: 'window', kind: 'range', min: 0, max: 1, step: 0.05, start: 0.6, dp: 2,
     why: 'How open the floor must be, from 0 (someone speaking) to 1 (a full pause), before it may speak.' },
-  { key: 'line_limit', name: 'line limit', kind: 'range', min: 1, max: 6, step: 1, start: 2, suffix: ' phr',
-    why: 'How far it goes on, in phrases, when it is met with silence.' },
+  { key: 'line_limit', name: 'line limit', kind: 'range', min: 1, max: 6, step: 1, start: 1, suffix: ' line', plural: ' lines',
+    why: 'How far it goes on when it is met with silence: how many lines may follow one another while nobody speaks.' },
   { key: 'stop', name: 'stops', kind: 'multi', wide: true, opts: [['at-once', 'at once'], ['phrase', 'phrase'], ['sentence', 'sentence']], start: ['at-once', 'phrase', 'sentence'],
     why: 'Which stops are open while it speaks: at once, at the end of the phrase, at the end of the sentence. The cell chooses as it speaks, and the floor executes it.' },
-  { key: 'attention', name: 'attention', kind: 'range', min: 1, max: 9, step: 1, start: 3,
-    why: 'How many options each cell keeps in view at a landing.' },
+  { key: 'attention', name: 'attention', kind: 'range', min: 1, max: 9, step: 1, start: 5,
+    why: 'How many held thoughts each cell keeps in view at a landing, the ripe ones first.' },
   { key: 'attachment', name: 'attachment', kind: 'range', min: 0, max: 1, step: 0.05, start: 0.5, dp: 2,
-    why: 'How readily a cell drops a thought that stops fitting: low lets go easily, high holds on.' },
+    why: 'How readily a thought that stops fitting is dropped: it scales how long a held thought may live before it is foreclosed.' },
   { key: 'cells', name: 'cells', kind: 'seg', opts: [['nine', 'the nine'], ['four', 'the four']], start: 'nine',
     why: 'Which tiers and efforts run: OSH’s nine, or the four inside them.' },
   { key: 'labelling', name: 'labelling', kind: 'seg', opts: [['local', 'local'], ['service', 'service']], start: 'local',
@@ -351,7 +351,7 @@ function loadSettings(){
 let SET = loadSettings();
 const snapshot = () => { const o = {}; SPEC.forEach(s => { o[s.key] = clone(SET[s.key]); }); o.safety = true; return o; };
 function shownValue(s, v){
-  if (s.kind === 'range') return (s.prefix || '') + (s.dp ? Number(v).toFixed(s.dp) : v) + (s.suffix || '');
+  if (s.kind === 'range') return (s.prefix || '') + (s.dp ? Number(v).toFixed(s.dp) : v) + (s.plural && Number(v) !== 1 ? s.plural : (s.suffix || ''));
   if (s.kind === 'seg'){ const o = s.opts.find(o => o[0] === v); return o ? o[1] : v; }
   if (s.kind === 'multi') return v.length + ' open';
   if (s.kind === 'lock') return 'always on';
@@ -400,6 +400,11 @@ function resetSettings(){
 /* the values a running host reports are the ones that are running */
 function adopt(o){
   if (!o || typeof o !== 'object') return;
+  o = Object.assign({}, o);
+  /* the host keeps two under its own names: cells as 'osh9', the injector as { arm, block } */
+  if (o.cells === 'osh9' || o.cells === 'osh' || o.cells === 9) o.cells = 'nine';
+  if (o.cells === 4) o.cells = 'four';
+  if (o.injector && typeof o.injector === 'object'){ if (o.injector.block) o.injector_block = o.injector.block; o.injector = o.injector.arm; }
   SPEC.forEach(s => {
     let v = o[s.key];
     if (s.kind === 'multi' && typeof v === 'string') v = [v];
@@ -462,7 +467,12 @@ function mixedBlocked(url){
   if (location.protocol !== 'https:') return false;
   try { const u = new URL(url); return u.protocol === 'ws:' && !LOCAL.test(u.hostname); } catch(e){ return false; }
 }
-const HOST = { url: store(HOST_HOME) || '', asked: !!store(HOST_HOME), ws: null, state: 'idle', tries: 0, timer: null, nextAt: 0, demo: null };
+/* served by the host itself (host.py --page, the phone's way in over plain http): its socket is
+   this page's own origin, so nothing need be asked */
+const SITE_ORIGIN = /(^|\.)happyseaurchin\.com$|\.vercel\.app$/i;
+const OWN_HOST = /^https?:$/.test(location.protocol) && !SITE_ORIGIN.test(location.hostname) && (location.pathname === '/' || location.port === '8765')
+  ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host : '';
+const HOST = { url: store(HOST_HOME) || OWN_HOST, asked: !!(store(HOST_HOME) || OWN_HOST), ws: null, state: 'idle', tries: 0, timer: null, nextAt: 0, demo: null };
 function hostUrl(){ return HOST.url || DEFAULT_HOST; }
 function dropSocket(){
   clearTimeout(HOST.timer); HOST.timer = null;
@@ -700,7 +710,14 @@ function speakerBefore(t){ for (let i = WORDS.length - 1; i >= 0; i--) if (WORDS
 function onHost(d){
   if (Array.isArray(d.runs)) RUN.runs = d.runs.map(r => typeof r === 'string' ? { id: r, title: r } : (r && typeof r === 'object' && r.id != null) ? { id: String(r.id), title: String(r.title || r.name || r.id) } : null).filter(Boolean);
   if (d.names && typeof d.names === 'object') Object.assign(NAMES, d.names);
-  const st = String(d.state || '').toLowerCase();
+  /* the cells it runs, with their layers and periods, so the strip shows them before they write */
+  if (Array.isArray(d.cells)) d.cells.forEach(c => {
+    if (!c || typeof c !== 'object') return;
+    const name = String(c.id || c.name || c.cell || ''); if (!name) return;
+    cellOf(name, c.layer); setPeriod(name, c.period != null ? c.period : c.s, c.layer, NaN);
+  });
+  let st = String(d.state || '').toLowerCase();
+  if (!st && typeof d.running === 'boolean') st = d.running ? String(d.what || 'running').toLowerCase() : 'idle';
   if (st === 'live' || st === 'replay' || st === 'running' || st === 'on'){
     if (st === 'live' || st === 'replay'){ RUN.feed = st; if (RUN.state !== 'on') LAST_FEED = st; }
     if (d.run) RUN.run = String(d.run);
@@ -772,10 +789,11 @@ function cellOf(name, layer){
   else if (layer != null && layer !== '' && !c.layerGiven){ c.layer = layerOf(layer, name, NaN); c.layerGiven = true; }
   return c;
 }
-function onMirror(d){
+function onMirror(m){
+  const d = m.line && typeof m.line === 'object' ? Object.assign({}, m.line, { cell: m.cell || m.line.cell }) : m;
   const name = String(d.cell || d.name || d.c || '?');
   const c = cellOf(name, d.layer);
-  const line = { t: num(d.t, tnow()), act: String(d.act || '').toLowerCase(), text: String(d.text || ''), parent: String(d.parent || ''), horizon: String(d.horizon || ''), stop: String(d.stop || ''), ms: num(d.ms, null), usd: num(d.usd, null) };
+  const line = { t: num(d.t, tnow()), act: String(d.act || '').toLowerCase(), text: String(d.text || ''), parent: String(d.parent || ''), horizon: String(d.horizon || ''), stop: String(d.stop || ''), entry: String(d.entry || ''), ms: num(d.ms, null), usd: num(d.usd, null) };
   c.lines.push(line); if (c.lines.length > 80) c.lines.splice(0, 20);
   c.last = line; c.anchor = line.t;
   if (d.would === true || line.act === 'would') addWould({ id: name + '@' + line.t, t: line.t, mode: d.mode, phrase: line.text, cell: name });
@@ -798,17 +816,20 @@ function upsert(e, t){
   if (!e || typeof e !== 'object') return null;
   const id = String(e.id != null ? e.id : e.entry != null ? e.entry : ((e.holder || '?') + ':' + (e.text || e.parent || '')).slice(0, 80));
   let x = LED.get(id);
-  if (!x){ x = { id, born: num(e.born, t), hist: [], urges: [], state: '', urge: 0, end: null, holder: '' }; LED.set(id, x); }
-  ['holder', 'parent', 'landing', 'lived', 'voice', 'text'].forEach(k => { if (e[k] != null && e[k] !== '') x[k] = typeof e[k] === 'object' ? JSON.stringify(e[k]) : String(e[k]); });
+  if (!x){ x = { id, born: num(e.born, num(e.born_t, t)), hist: [], urges: [], state: '', urge: 0, end: null, holder: '' }; LED.set(id, x); }
+  ['holder', 'parent', 'landing', 'lived', 'voice', 'text', 'by'].forEach(k => { if (e[k] != null && e[k] !== '') x[k] = typeof e[k] === 'object' ? JSON.stringify(e[k]) : String(e[k]); });
+  if (!x.text && e.say) x.text = String(e.say);
+  if (typeof e.handed === 'string' && e.handed) x.by = e.handed;   /* whose own words it was, said */
   if (!x.holder) x.holder = String(e.cell || '?');
   if (!HOLDERS.includes(x.holder)) HOLDERS.push(x.holder);
   const u = num(e.urge, NaN);
   if (isFinite(u) && u !== x.urge){ x.urge = u; x.urges.push({ t, u }); }
   const s = normState(e.state) || x.state || 'withheld';
-  if (s !== x.state) setState(x, s, t);
+  if (s !== x.state){ const at = { ripe: e.ripe_at, foreclosed: e.foreclosed_at, voiced: e.voiced_at, 'handed back': e.handed_at }[s]; setState(x, s, num(at, t)); }
   return x;
 }
 function onLedger(d){
+  if (d.would && typeof d.would === 'object'){ alive(); addWould(d.would); return; }   /* a would-speak mark, as the host first sent it */
   const t = num(d.t, tnow());
   const arr = Array.isArray(d.entries) ? d.entries : Array.isArray(d.ledger) ? d.ledger : Array.isArray(d.data) ? d.data : null;
   if (arr){
@@ -823,12 +844,28 @@ function onLedger(d){
   if (URGE.length > 3000) URGE.splice(0, 1000);
   alive(); DIRTY = true;
 }
+/* which mode would have spoken: spoken to (filled ◆) where its flag says so, else ready (open ◆) */
+function wouldMode(o){
+  if (o.spoken_to === true || o.spokenTo === true) return 'spoken-to';
+  if (o.ready === true) return 'ready';
+  const m = String(o.mode || '').toLowerCase().replace(/[_\s]+/g, '-');
+  return m === 'ready' ? 'ready' : /^spoken-?to$/.test(m) ? 'spoken-to' : SET.mode;
+}
 function addWould(o){
   const t = num(o.t, tnow());
-  const id = String(o.id != null ? o.id : 'w' + Math.round(t * 10));
-  const w = WOULDS.find(x => x.id === id);
-  if (w){ const p = String(o.phrase || o.text || ''); if (p && !w.phrase.includes(p)) w.phrase = (w.phrase + ' ' + p).trim(); return; }
-  WOULDS.push({ id, t, mode: o.mode === 'ready' ? 'ready' : o.mode === 'spoken-to' ? 'spoken-to' : SET.mode, phrase: String(o.phrase || o.text || ''), cell: String(o.cell || ''), judged: null });
+  const id = String(o.id != null ? o.id : o.entry != null ? o.entry : 'w' + Math.round(t * 10)), entry = o.entry != null ? String(o.entry) : id;
+  const p = String(o.phrase || o.text || '');
+  /* the mark and the silent phrases that follow it are one moment */
+  const w = WOULDS.find(x => (x.id === id || x.entry === entry) && Math.abs(x.t - t) < 8);
+  if (w){
+    if (p && !w.phrase.includes(p)) w.phrase = (w.phrase + ' ' + p).trim();
+    if (o.spoken_to === true) w.mode = 'spoken-to';
+    if (o.safety === true) w.safety = true;
+    if (isFinite(num(o.urge, NaN))) w.urge = num(o.urge, null);
+    if (isFinite(num(o.open, NaN))) w.open = num(o.open, null);
+    return;
+  }
+  WOULDS.push({ id, entry, t, mode: wouldMode(o), phrase: p, cell: String(o.cell || ''), safety: o.safety === true, urge: num(o.urge, null), open: num(o.open, null), judged: null });
   RUN.wouldFlash = performance.now();
   paintGo(); DIRTY = true;
 }
@@ -837,8 +874,8 @@ function onSpeak(d){
   const phrase = String(d.phrase != null ? d.phrase : d.text != null ? d.text : d.line != null ? d.line : '').trim();
   const id = String(d.id != null ? d.id : d.line_id != null ? d.line_id : d.entry != null ? d.entry : 'line' + Math.round(t * 10));
   alive();
-  const would = d.would === true || d.would === 'true' || (LAST_FEED === 'replay' && d.would !== false);
-  if (would){ addWould({ id, t, mode: d.mode, phrase, cell: d.cell }); return; }
+  const would = d.would === true || d.would === 'true' || d.silent === true || (LAST_FEED === 'replay' && d.would !== false);
+  if (would){ addWould({ id, entry: d.entry, t, mode: d.mode, spoken_to: d.spoken_to, ready: d.ready, phrase, cell: d.cell }); return; }
   if (!phrase) return;
   /* a phrase of a line already stopped is never said: the host may have sent it before it heard */
   if (isCut(id)){ send({ type: 'stopped', id, i: num(d.i, null), said: SAID[id] || 0, cut: phrase, rule: 'at-once', t: r2(tnow()) }); return; }
@@ -851,9 +888,9 @@ function onSpeak(d){
 }
 const normRule = r => { r = String(r || '').toLowerCase().replace(/[_\s]+/g, '-'); return /phrase/.test(r) ? 'phrase' : /sentence/.test(r) ? 'sentence' : 'at-once'; };
 function onStopEvent(d){
-  const rule = normRule(d.rule || d.stop || d.at);
-  STOPS.push({ t: num(d.t, tnow()), rule });
-  voiceStop(rule, true, d.id);
+  const rule = normRule(d.rule || d.stop || d.at), silent = d.silent === true || LAST_FEED === 'replay';
+  STOPS.push({ t: num(d.t, tnow()), rule, silent, by: d.by ? String(d.by) : '' });
+  if (!silent) voiceStop(rule, true, d.id);   /* in a replay nothing sounds, so there is nothing to stop */
   DIRTY = true;
 }
 function onPeriod(d){
@@ -876,7 +913,8 @@ function onDone(d){
   clearTimeout(RUN.wakeTimer);
   if (RUN.state === 'on') endOn();
   RUN.state = 'asleep'; RUN.stoppedAt = performance.now();
-  hint('the run is done' + (d.reason ? ' — ' + esc(d.reason) : '') + (HOST.demo ? ' · press to play it again' : ''), 'ok');
+  const why = d.reason || d.message;
+  hint('the run is done' + (why ? ' — ' + esc(why) : '') + (HOST.demo ? ' · press to play it again' : ''), 'ok');
   paint();
 }
 function paintSpend(){
@@ -1442,14 +1480,15 @@ function drawScore(){
     ctx.restore();
     if (e.state === 'cut'){ ctx.strokeStyle = C.solid; ctx.lineWidth = 1.6; seg(x1 - 2, mid + 6 * k, x1 + 3, mid - 6 * k); }
   });
-  /* where the host stopped it: a caesura */
-  STOPS.forEach(s => { if (s.t < tL || s.t > tn) return; const x = X(s.t); ctx.strokeStyle = C.solid; ctx.lineWidth = 1.6; seg(x - 3, g.lis + 4 * g.lg + 2, x + 1, g.lis - 2); seg(x + 2, g.lis + 4 * g.lg + 2, x + 6, g.lis - 2); });
-  /* where it would have spoken (a replay): a ◆ on its staff, and a faint line down the score */
+  /* where the host stopped it: a caesura (on a replay, where it would have been stopped: fainter) */
+  STOPS.forEach(s => { if (s.t < tL || s.t > tn) return; const x = X(s.t); ctx.strokeStyle = s.silent ? A(C.srgb, 0.55) : C.solid; ctx.lineWidth = 1.6; seg(x - 3, g.lis + 4 * g.lg + 2, x + 1, g.lis - 2); seg(x + 2, g.lis + 4 * g.lg + 2, x + 6, g.lis - 2); });
+  /* where it would have spoken: a faint line down the score, and on a replay a ◆ on its staff
+     (in a live run the note it said stands there instead) */
   WOULDS.forEach(w => {
     if (w.t < tL || w.t > tR) return;
     const x = X(w.t);
     ctx.strokeStyle = A(C.frgb, 0.22); ctx.lineWidth = 1; ctx.setLineDash([2, 4]); seg(x, g.vTop - 6 * k, x, g.tY); ctx.setLineDash([]);
-    diamond(x, mid, 4.6 * k + 0.4, w.mode === 'ready' ? null : A(C.frgb, 0.9), C.foam);
+    if (LAST_FEED === 'replay') diamond(x, mid, 4.6 * k + 0.4, w.mode === 'ready' ? null : A(C.frgb, 0.9), C.foam);
   });
 
   /* the held thoughts, on ledger lines: one line a holder */
@@ -1494,7 +1533,7 @@ function drawScore(){
         ctx.strokeStyle = C.foam; ctx.lineWidth = 1.3;
         ctx.beginPath(); ctx.moveTo(ex, y - 4 * k); ctx.quadraticCurveTo(ex + 6, (y + mid) / 2, tx, mid + 4.5 * k); ctx.stroke();
       } else if (x.state === 'handed back'){   /* handed back: a dotted arrow up to the person whose it is */
-        const who = String(x.voice || '').toUpperCase(), wy = vy(who), top = wy != null ? wy + 6 * k : g.vBot;
+        const who = String(x.by || x.voice || '').toUpperCase(), wy = vy(who), top = wy != null ? wy + 6 * k : g.vBot;
         ctx.strokeStyle = wy != null ? spkCol(who, 0.85) : A(C.frgb, 0.6); ctx.lineWidth = 1.2;
         ctx.setLineDash([2, 3]); seg(ex, y - 4 * k, ex, top); ctx.setLineDash([]);
         ctx.beginPath(); ctx.moveTo(ex - 3, top + 4 * k); ctx.lineTo(ex, top); ctx.lineTo(ex + 3, top + 4 * k); ctx.stroke();
@@ -1608,6 +1647,7 @@ function drawScore(){
     if (w.t < tL || w.t > tR) return;
     const x = X(w.t);
     diamond(x, g.tY, 5 * k + 1, w.mode === 'ready' ? null : C.foam, C.foam);
+    if (w.safety){ ctx.strokeStyle = C.gone; ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, g.tY, 8.5 * k + 1, 0, 7); ctx.stroke(); }   /* a risk to someone's safety */
     if (w.judged != null) txt(w.judged ? '✓' : '✗', x, g.tY - 10 * k, w.judged ? C.bud : C.gone, 10, 'center', true);
   });
   MARKS.forEach(m => {
@@ -1707,17 +1747,18 @@ function renderWords(){
   const said = SPEAKS.filter(e => !e.cue && e.tStart != null).slice(-5).reverse(), would = WOULDS.slice(-4).reverse();
   if (!said.length && !would.length) out.push('<p class="q">nothing said yet — it holds</p>');
   said.forEach(e => out.push(row(mmss(e.tStart), chipOf(e.state === 'cut' ? 'cut' : e.state === 'unvoiced' ? 'cut' : 'spoken', e.state === 'cut' ? 'cut short' : e.state === 'unvoiced' ? 'no voice' : e.state === 'speaking' ? 'speaking' : 'said') + esc(e.text))));
-  would.forEach(w => out.push(row(mmss(w.t), chipOf('would', 'would speak · ' + (w.mode === 'ready' ? 'ready' : 'spoken to')) + esc(w.phrase || '…'))));
+  would.forEach(w => out.push(row(mmss(w.t), chipOf('would', 'would speak · ' + (w.mode === 'ready' ? 'ready' : 'spoken to')) + (w.safety ? chipOf('cut', 'safety') : '') + esc(w.phrase || '…') +
+    (w.urge != null || w.open != null ? ' <i>· ' + [w.urge != null ? 'urge ' + (+w.urge).toFixed(1) : '', w.open != null ? 'floor ' + (+w.open).toFixed(2) : ''].filter(Boolean).join(' · ') + '</i>' : ''))));
   out.push('<h4>held</h4>');
   const all = [...LED.values()], live = all.filter(x => LIVE.has(x.state)), gone = all.filter(x => !LIVE.has(x.state)).sort((a, b) => (b.end || 0) - (a.end || 0)).slice(0, 5);
   if (!all.length) out.push('<p class="q">nothing held yet</p>');
-  live.concat(gone).forEach(x => out.push(row(esc(x.holder), chipOf(x.state === 'handed back' ? 'handed' : x.state, x.state) + esc(x.text || '…') +
+  live.concat(gone).forEach(x => out.push(row(esc(x.holder), chipOf(x.state === 'handed back' ? 'handed' : x.state, x.state === 'handed back' && x.by ? 'handed back · ' + (NAMES[x.by] || x.by) + ' said it' : x.state) + esc(x.text || '…') +
     (x.parent ? ' <i>— answers ' + esc(x.parent) + '</i>' : '') + (LIVE.has(x.state) ? ' <i>· urge ' + (x.urge || 0) + ' of ' + SET.threshold + '</i>' : ''))));
   out.push('<h4>the cells</h4>');
   const cells = [...CELLS.values()].sort((a, b) => a.layer - b.layer || a.name.localeCompare(b.name, undefined, { numeric: true }));
   if (!cells.length) out.push('<p class="q">no cell has written yet</p>');
   cells.forEach(c => { const l = c.last; out.push(row(esc(c.name) + ' · ' + LAYER_NAMES[c.layer], l ? '<i>' + agoOf(tn - l.t) + ' · ' + esc(l.act || 'line') + (c.period ? ' · every ' + c.period.toFixed(1) + 's' : '') + '</i> ' + esc(l.text || '…') + (l.parent ? ' <i>— answers ' + esc(l.parent) + (l.horizon ? ' · looks ' + esc(l.horizon) + ' ahead' : '') + '</i>' : '') : '<i>' + (c.period ? 'every ' + c.period.toFixed(1) + 's' : 'quiet') + '</i>')); });
-  out.push('<h4>reading the score</h4><p class="legend">Time runs right to left past <b>now</b>. On the top staves, each person: a line while they speak, a bar where a thought lands, a ring where someone is about to speak. On verso’s own staff, a rest in each bar it held through, a note for each phrase it said, // where it was stopped, and on a replay a ◆ where it would have spoken (filled when spoken to, open when only ready). Below, the held thoughts, one line a holder: a fermata while held, bright when ripe, a tick for each release, a caesura when foreclosed, a curve up when voiced, a dotted arrow to the person it was handed back to. Then the floor in teal with its window dashed, and the urge in amber with its threshold dashed; pale where both pass at once — the middle point. Then each cell’s lines (filled, a release) and the loop under way. The three lamps at now: landed · nobody bidding · open enough. Drag the score sideways to look back; now › follows now again. On a replay, tap the score to mark a moment, or a ◆ to say whether it was a real one.</p>');
+  out.push('<h4>reading the score</h4><p class="legend">Time runs right to left past <b>now</b>. On the top staves, each person: a line while they speak, a bar where a thought lands, a ring where someone is about to speak. On verso’s own staff, a rest in each bar it held through, a note for each phrase it said, // where it was stopped, and on a replay a ◆ where it would have spoken (filled when spoken to, open when only ready). Below, the held thoughts, one line a holder: a fermata while held, bright when ripe, a tick for each release, a caesura when foreclosed, a curve up when voiced, a dotted arrow up to the person who said its words (handed back). Then the floor in teal with its window dashed, and the urge in amber with its threshold dashed; pale where both pass at once — the middle point. Then each cell’s lines (filled, a release) and the loop under way. The three lamps at now: landed · nobody bidding · open enough. Drag the score sideways to look back; now › follows now again. On a replay, tap the score to mark a moment, or a ◆ to say whether it was a real one.</p>');
   out.push('<p class="q">' + (Object.keys(NAMES).length ? 'the people: ' + Object.keys(NAMES).sort().map(s => esc(s) + ' ' + esc(NAMES[s])).join(' · ') + ' · ' : '') + 'the voice out: ' + esc(narrName()) + '</p>');
   $('wp').innerHTML = out.join('');
 }
@@ -1781,8 +1822,8 @@ function wireFeed(){
    three invented people (Mara, Tom and Ines) deciding where their Thursday group meets now the
    hall is going, as the host would send it: their words, a floor that opens and closes, three
    cells keeping time (two of them writing lines worth reading), five held thoughts that ripen,
-   foreclose, are handed back and one voiced, one speak of three phrases and one stop when Tom
-   starts over it. Played live it speaks; played as a replay it marks where it would have
+   are handed back as people say them, and one voiced once Mara turns to verso, one speak of
+   three phrases and one stop when Tom starts over it. Played live it speaks; played as a replay it marks where it would have
    spoken, and takes the judges' marks. Everything goes through the same events as the real
    host's, so the demo proves the page and nothing else. ── */
 function demoScript(){
@@ -1797,7 +1838,7 @@ function demoScript(){
     ['A', 0.5, 'do they charge'],
     ['C', 0.4, 'I think the choir pays something | I can ask'],
     ['B', 0.9, 'if it’s the school | then the kids could come too | which changes what we’d even do'],
-    ['A', 0.6, 'hm | yes'],
+    ['A', 0.6, 'hm | what do you think verso'],
     ['B', 5.2, 'well | that’s fair actually | my two would have opinions'],
     ['C', 0.5, 'mine would want the music room'],
     ['A', 0.7, 'so we ask them | and I’ll ask the school about Thursdays'],
@@ -1876,11 +1917,11 @@ function demoScript(){
   line('m1', T(25).t0 + 2.2, 'hold', 'C: if all else fails', 'it is settled; hold', 'the topic');
   line('s1', T(3).t1 + 1.2, 'hold', 'the talk so far', 'what the room is for has not been said', 'the topic');
   line('s1', T(9).t1 + 0.9, 'release', 'B: which changes what we’d even do', 'what the children want is the open question', 'the topic');
-  line('s1', T(18).t1 + 0.5, 'release', 'C: I didn’t ask', 'the quiet Ravi named may be the real question; it is Ines’s to ask', 'the topic');
+  line('s1', T(18).t1 + 0.5, 'release', 'C: I didn’t ask', 'the quiet Ravi named may be the real question; ask him', 'the topic');
   line('s1', T(23).t1 + 0.3, 'hold', 'A: so it meets the list', 'someone should write it up', 'the topic');
   let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   let fl = []; for (let x = 1.3; x < end - 0.4; x += 2.6 + rnd() * 0.6) fl.push(r2(x));
-  const rel = [[T(4).t1 + 0.3, 'Tom landed; the floor could open'], [T(8).t1 + 0.3, 'Tom landed; a thought is ready'], [T(9).t1 + 1.3, 'open, and nobody about to speak'],
+  const rel = [[T(4).t1 + 0.3, 'Tom landed; the floor could open'], [T(8).t1 + 0.3, 'Tom landed; a thought is ready'], [T(9).t1 + 1.3, 'Mara named verso; open, and nobody about to speak'],
     [T(13).t0 - 0.55, 'the floor is opening'], [T(18).t1 + 0.2, 'Ines landed; nobody about to speak']];
   const relAt = new Map();
   rel.forEach(([x, text]) => { let b = 0; fl.forEach((y, i) => { if (Math.abs(y - x) < Math.abs(fl[b] - x)) b = i; }); fl[b] = r2(x); relAt.set(fl[b], text); });
@@ -1902,31 +1943,38 @@ function demoScript(){
     lastOf[L.cell] = L.t; usd += cost; calls++;
     E.push({ t: L.t, m: { type: 'cost', usd: r4(usd), calls } });
   });
-  /* the ledger: five held thoughts — two foreclosed before they ripened (said by someone else),
-     one ripe and voiced (in the replay, foreclosed when Tom moved on), one ripe and handed back
-     to Ines, whose question it is, and one foreclosed as Tom took it on */
+  /* the ledger, as the host keeps it: a held thought is handed back when a person says its own
+     words, foreclosed when the talk has moved past it. Five: the school (Ines says it), the
+     children (verso says it, live; on the replay Mara does), the garden (Tom says it), Ravi
+     (ripe, but nobody has named verso since, so in 'spoken to' it holds; Tom says it), and who
+     writes it up (Tom takes it on). A would-speak mark is its own event at every mark, both
+     modes' flags apart: Mara has just turned to verso when the children ripen, so that one would
+     speak in either mode; Ravi, long after, only in 'ready'. */
   const mp = r2(T(9).t1 + 1.5), bid = r2(T(10).t0 - 0.35);
   const sayLine = ['Could the children say what they’d want there?', 'Nobody has asked them yet,', 'and it might settle the room as well.'];
   const L = (at, o, only) => E.push({ t: r2(at), m: Object.assign({ type: 'ledger', t: r2(at) }, o), only });
   L(T(3).t1 + 0.1, { id: 'e1', holder: 'm1', parent: 'A: that’s the list', landing: T(3).t1, state: 'withheld', urge: 0, voice: 'verso', text: 'the school might have a room on Thursdays' });
   L(T(4).t1 + 0.3, { id: 'e1', urge: 1 });
-  L(T(5).t0 + 1.3, { id: 'e1', state: 'foreclosed', urge: 0 });
+  L(T(5).t0 + 1.3, { id: 'e1', state: 'handed back', urge: 0, handed: 'C' });
   L(T(8).t0 + 4.3, { id: 'e2', holder: 'm1', parent: 'B: the kids could come too', landing: T(8).t1, state: 'withheld', urge: 1, voice: 'verso', text: 'nobody has asked the children what they’d want' });
   L(T(8).t1 + 0.3, { id: 'e2', urge: 2 });
   L(T(9).t1 + 0.9, { id: 'e2', state: 'ripe', urge: 3 });
+  E.push({ t: mp, m: { type: 'would', id: 'e2', entry: 'e2', phrase: sayLine.join(' '), cell: 'm1', t: mp, landing: 10, urge: 3, open: 0.89, mode: 'spoken-to', ready: true, spoken_to: true, safety: false } });
   L(mp, { id: 'e2', state: 'voiced' }, 'live');
-  L(T(10).t0 + 0.6, { id: 'e2', state: 'foreclosed', urge: 0 }, 'replay');
-  E.push({ t: mp, m: { type: 'speak', would: true, mode: 'spoken-to', id: 'e2', i: 0, phrase: sayLine.join(' '), t: mp, cell: 'm1', entry: 'e2' }, only: 'replay' });
+  /* on the replay nothing sounds: the same phrases come silent, and Tom's bid would have stopped the line */
+  sayLine.slice(0, 2).forEach((ph, i) => E.push({ t: r2(mp + i * 2.4), m: { type: 'speak', would: true, silent: true, mode: 'spoken-to', id: 'e2', entry: 'e2', i, n: 3, last: false, phrase: ph, t: r2(mp + i * 2.4), cell: 'm1', stop: 'phrase' }, only: 'replay' }));
+  E.push({ t: bid, m: { type: 'stop', silent: true, rule: 'at-once', id: 'e2', cell: 'm1', at_phrase: 1, by: 'B', t: bid }, only: 'replay' });
+  L(T(12).t0 + 1.0, { id: 'e2', state: 'handed back', urge: 0, handed: 'A' }, 'replay');
   L(T(12).t0 + 1.0, { id: 'e3', holder: 'm1', parent: 'A: so we ask them', state: 'withheld', urge: 1, voice: 'verso', text: 'share the cost with the garden group, who meet on Thursdays' });
   L(T(13).t0 - 0.55, { id: 'e3', urge: 2 });
-  L(T(13).t0 + 2.4, { id: 'e3', state: 'foreclosed', urge: 0 });
-  L(T(18).t0 + 0.8, { id: 'e4', holder: 'm1', parent: 'C: I didn’t ask', state: 'withheld', urge: 1, voice: 'C', text: 'ask Ravi what he meant by too quiet' });
+  L(T(13).t0 + 2.4, { id: 'e3', state: 'handed back', urge: 0, handed: 'B' });
+  L(T(18).t0 + 0.8, { id: 'e4', holder: 'm1', parent: 'C: I didn’t ask', state: 'withheld', urge: 1, voice: 'verso', text: 'ask Ravi what he meant by too quiet' });
   L(T(18).t1 + 0.2, { id: 'e4', urge: 2 });
   L(T(18).t1 + 0.5, { id: 'e4', state: 'ripe', urge: 3 });
-  E.push({ t: r2(T(18).t1 + 0.7), m: { type: 'speak', would: true, mode: 'ready', id: 'e4', i: 0, phrase: 'You could ask Ravi on Thursday what he meant.', t: r2(T(18).t1 + 0.7), cell: 'm1', entry: 'e4' }, only: 'replay' });
-  L(T(18).t1 + 1.5, { id: 'e4', state: 'handed back', urge: 0 });
+  E.push({ t: r2(T(18).t1 + 0.7), m: { type: 'would', id: 'e4', entry: 'e4', phrase: 'You could ask Ravi on Thursday what he meant.', cell: 'm1', t: r2(T(18).t1 + 0.7), landing: 19, urge: 3, open: 0.62, mode: 'spoken-to', ready: true, spoken_to: false, safety: false } });
+  L(T(19).t0 + 1.0, { id: 'e4', state: 'handed back', urge: 0, handed: 'B' });
   L(T(23).t1 + 0.3, { id: 'e5', holder: 's1', parent: 'A: so it meets the list', state: 'withheld', urge: 0, voice: 'verso', text: 'someone should write it up' });
-  L(T(24).t0 + 1.6, { id: 'e5', state: 'foreclosed', urge: 0 });
+  L(T(24).t0 + 1.6, { id: 'e5', state: 'handed back', urge: 0, handed: 'B' });
   E.sort((a, b) => a.t - b.t);
   return { names, floor, events: E, mp, bid, end, line: sayLine, e2bEnd: r2(T(12).t0 + 1.0) };
 }
@@ -1982,7 +2030,7 @@ function DemoHost(emit){
       st.back = true;
       const t = r2(at() + 0.4);
       insert(t, { type: 'ledger', id: 'e2b', holder: 'm1', parent: 'verso, cut short', state: 'withheld', urge: 1, voice: 'verso', text: String(m.cut), t });
-      insert(Math.max(t + 1, D.e2bEnd), { type: 'ledger', id: 'e2b', state: 'foreclosed', urge: 0, t: Math.max(t + 1, D.e2bEnd) });
+      insert(Math.max(t + 1, D.e2bEnd), { type: 'ledger', id: 'e2b', state: 'handed back', urge: 0, handed: 'A', t: Math.max(t + 1, D.e2bEnd) });   /* Mara: 'so we ask them' */
     }
     /* settings and marks are taken as a host takes them */
   }
