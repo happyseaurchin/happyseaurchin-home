@@ -1664,7 +1664,10 @@
     ['string',      'the string'],
     /* the middle point's app: one button over a host of cells that listen at several speeds and speak only at the middle
      * point, with the settings, the score and the voice out (the verso build record, §2.3; lane verso.1, 5 Nov 2026) */
-    ['verso',       'verso']
+    ['verso',       'verso'],
+    /* an open model in the visitor's own browser (WebLLM), with the beach as its memory, its knowledge and its company
+     * (lane web-llm.1, 6 Nov 2026, at David's GO) */
+    ['webllm',      'a mind in your browser']
   ];
 
   /* THE NAME THIS DEVICE SIGNS WITH — render:who, kept by whichever page last wrote
