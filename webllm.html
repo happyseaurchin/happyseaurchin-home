@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WebLLM on the beach</title>
+<meta name="description" content="An open model running in your own browser (WebLLM), with a beach as its memory, its knowledge and its company: it reads blocks into its window, keeps your conversation where the mirror keeps it, and sees who else is live. No key, no server of ours.">
+<meta property="og:title" content="WebLLM on the beach">
+<meta property="og:description" content="A mind in your browser, with the beach as its memory and its company.">
+<link rel="icon" href="/assets/torus.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<script id="voice" src="https://beach.happyseaurchin.com/button/voice.js"></script>
+<script src="/webllm/beach-mind.js"></script>
+<script src="/webllm/mcp.js"></script>
+<style>
+  *{box-sizing:border-box}
+  html{background:var(--abyss)}
+  html,body{margin:0}
+  body{
+    font-family:var(--body); color:var(--foam); font-size:17px; line-height:1.45; min-height:100dvh; overflow-x:hidden;
+    background:radial-gradient(1100px 560px at 70% -10%, rgba(var(--liquid-rgb),0.10), transparent 60%),
+      linear-gradient(180deg,var(--ground-top) 0px, var(--deep) 280px, var(--abyss) 900px);
+    -webkit-font-smoothing:antialiased;
+  }
+  .hidden{display:none !important}
+  a{color:var(--liquid);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button,select,input,textarea{font:inherit;color:inherit}
+  button{font-family:var(--mono);font-size:13px;cursor:pointer;background:none;border:1px solid var(--line);border-radius:6px;padding:8px 12px;color:var(--foam)}
+  button:hover{border-color:var(--line-strong)}
+  button.go{border-color:rgba(var(--liquid-rgb),0.6);color:var(--liquid)}
+  button:disabled{opacity:.45;cursor:default}
+  button:focus-visible,textarea:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
+
+  /* the bar — the site's own; theme.js gathers its buttons behind 'options' */
+  .bar{display:flex;align-items:center;gap:8px;padding:10px 16px 6px;font-family:var(--mono);font-size:12px;letter-spacing:0.06em;color:var(--vapour-dim)}
+  .bar .dot{width:7px;height:7px;border-radius:50%;background:var(--vapour-dim);flex:none}
+  .bar .dot.on{background:var(--liquid);box-shadow:0 0 10px var(--liquid)}
+  .bar b{color:var(--foam)}
+  .bar .where{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar .spacer{flex:1}
+
+  main{max-width:1120px;margin:0 auto;padding:6px 16px 48px}
+  h1{font-family:'Syne',var(--body);font-weight:700;font-size:clamp(26px,4.4vw,40px);line-height:1.1;margin:14px 0 6px}
+  .lede{color:var(--vapour-dim);max-width:62ch;margin:0 0 18px}
+  .grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:16px;align-items:start}
+  @media (max-width:860px){ .grid{grid-template-columns:minmax(0,1fr)} }
+  .card{border:1px solid var(--line);border-radius:14px;background:rgba(var(--card-rgb),0.32);padding:14px 14px 12px;margin-bottom:14px}
+  :root[data-theme="light"] .card{background:rgba(var(--card-rgb),0.78)}
+  .card h2{font-family:var(--mono);font-weight:700;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--vapour-dim);margin:0 0 10px}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .row > input[type=text],.row > input[type=password],.row > select{flex:1;min-width:0}
+  input[type=text],input[type=password],select,textarea{background:rgba(var(--card-rgb),0.5);border:1px solid var(--line);border-radius:6px;padding:8px 10px;color:var(--foam)}
+  :root[data-theme="light"] input,:root[data-theme="light"] select,:root[data-theme="light"] textarea{background:#fff}
+  .small{font-size:13px;color:var(--vapour-dim)}
+  .mono{font-family:var(--mono);font-size:12px}
+  .say{font-size:14px;color:var(--vapour-dim);margin:6px 0 0;min-height:1.2em}
+  .say.bad{color:var(--solid)}
+  label.check{display:flex;gap:8px;align-items:flex-start;font-size:14px;margin:8px 0;cursor:pointer}
+  label.check input{margin-top:4px}
+  .chips{display:flex;flex-direction:column;gap:6px;margin:6px 0}
+  .chip{border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-family:var(--mono);font-size:12px;display:flex;gap:8px;align-items:center}
+  .chip .name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chip button{padding:2px 8px;font-size:11px}
+  details.read{margin:2px 0 0}
+  details.read pre{white-space:pre-wrap;word-break:break-word;font-family:var(--mono);font-size:11px;color:var(--vapour-dim);max-height:220px;overflow:auto;margin:6px 0 0}
+  .live{list-style:none;margin:0;padding:0;font-family:var(--mono);font-size:12px}
+  .live li{padding:3px 0;display:flex;gap:8px}
+  .live li .ago{color:var(--vapour-dim)}
+  .progress{height:4px;border-radius:2px;background:var(--line);overflow:hidden;margin:8px 0 2px}
+  .progress i{display:block;height:100%;width:0;background:var(--liquid);transition:width .3s}
+
+  .chat{display:flex;flex-direction:column;min-height:420px}
+  .log{flex:1;display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+  .msg{border-radius:12px;padding:10px 12px;max-width:92%;white-space:pre-wrap;word-break:break-word}
+  .msg.you{align-self:flex-end;background:rgba(var(--liquid-rgb),0.12);border:1px solid rgba(var(--liquid-rgb),0.35)}
+  .msg.mind{align-self:flex-start;border:1px solid var(--line)}
+  .msg .after{display:block;font-family:var(--mono);font-size:11px;color:var(--vapour-dim);margin-top:6px}
+  .empty{color:var(--vapour-dim);font-size:15px}
+  .compose{display:flex;gap:8px;align-items:flex-end}
+  .compose textarea{flex:1;min-height:64px;resize:vertical}
+  footer{max-width:1120px;margin:0 auto;padding:0 16px 40px;font-size:14px;color:var(--vapour-dim)}
+</style>
+</head>
+<body data-beach-button="off">
+<div class="bar">
+  <span class="dot" id="dot"></span>
+  <span class="where">webllm · <b id="bar-state">no mind loaded</b></span>
+  <span class="spacer"></span>
+</div>
+<main>
+  <h1>A mind in your browser, with the beach as its memory</h1>
+  <p class="lede">An open model runs here, on your own device, through <a href="https://github.com/mlc-ai/web-llm">WebLLM</a>: no key, no account, nothing of ours in between. The beach gives it what WebLLM has no way to keep: what a beach holds, read into its window; your conversation, kept where the mirror keeps it; and who else is live.</p>
+
+  <div class="grid">
+    <div>
+      <section class="card" aria-labelledby="h-mind">
+        <h2 id="h-mind">The mind</h2>
+        <div class="row">
+          <select id="model" aria-label="the model"></select>
+          <button class="go" id="load">Load</button>
+        </div>
+        <div class="progress hidden" id="prog"><i id="prog-bar"></i></div>
+        <p class="say" id="mind-say">Chosen to fit this device. The first load downloads the model once; after that your browser keeps it.</p>
+      </section>
+
+      <section class="card" aria-labelledby="h-beach">
+        <h2 id="h-beach">The beach</h2>
+        <div class="row">
+          <input type="text" id="beach" aria-label="the beach's address" spellcheck="false" value="https://beach.happyseaurchin.com">
+        </div>
+        <div class="row">
+          <input type="text" id="name" aria-label="your name on the beach" placeholder="your name on the beach" spellcheck="false" autocomplete="username">
+        </div>
+        <label class="check"><input type="checkbox" id="remember"> <span>Remember this conversation on the beach: each turn kept in <span class="mono" id="mem-block">soft-llm-convos:…</span>, where the mirror keeps yours, open to anyone who reads it.</span></label>
+        <div class="row hidden" id="key-row">
+          <input type="password" id="key" aria-label="your key" placeholder="your key on this beach" autocomplete="current-password">
+          <button id="key-keep">Keep</button>
+        </div>
+        <label class="check"><input type="checkbox" id="seen" checked> <span>Be seen while it thinks: one line at the beach's now in <span class="mono" id="seen-block">torus-mirror:…</span>, what it is attending to and the first line of its reply. Never your words.</span></label>
+        <label class="check"><input type="checkbox" id="tools"> <span>Let it reach the beach itself: before it answers, it calls <span class="mono">bsp</span> through bsp-mcp (an MCP server, <span class="mono">bsp.hermitcrab.me</span>) to read what it judges it needs. WebLLM's own tool calls, made real.</span></label>
+        <p class="say" id="beach-say"></p>
+      </section>
+
+      <section class="card" aria-labelledby="h-in">
+        <h2 id="h-in">In its window</h2>
+        <div class="chips" id="chips"></div>
+        <div class="row">
+          <input type="text" id="add-block" aria-label="a block to read" placeholder="a block, e.g. passport:weft" spellcheck="false">
+          <input type="text" id="add-at" aria-label="an address in it" placeholder="address" spellcheck="false" style="max-width:96px;flex:none">
+          <button id="add">Read it in</button>
+        </div>
+        <p class="say" id="in-say"></p>
+      </section>
+
+      <section class="card" aria-labelledby="h-live">
+        <h2 id="h-live">Live on this beach</h2>
+        <ul class="live" id="live"></ul>
+        <p class="say small" id="live-say"></p>
+      </section>
+    </div>
+
+    <section class="card chat" aria-labelledby="h-talk">
+      <h2 id="h-talk">Talk</h2>
+      <div class="log" id="log" aria-live="polite"><p class="empty" id="empty">Load a mind, then say something. What the beach holds for this moment is read into its window before it answers.</p></div>
+      <div class="compose">
+        <textarea id="text" data-dictate aria-label="what you say" placeholder="say something" disabled></textarea>
+        <button class="go" id="send" disabled>Send</button>
+      </div>
+    </section>
+  </div>
+</main>
+<footer>WebLLM is <a href="https://github.com/mlc-ai/web-llm">mlc-ai/web-llm</a> (Apache-2.0), loaded at a pinned version and checked against its published hash before it runs. The beach is any beach that answers <span class="mono">/.well-known/pscale-beach</span>; this page reads it straight. The record: <a href="https://github.com/pscale-commons/pscale-mcp-server/blob/ccr-62e90719-b6e00f/docs/proposals/2026-11-06-web-llm.md">the beach as WebLLM's shared layer</a>.</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── what the page is given, as data ── */
+  // WebLLM, pinned, and the hash of the exact file npm published for it (sha256 of @mlc-ai/web-llm@0.2.87 lib/index.js)
+  const WEBLLM = { url: 'https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.87/lib/index.js', sha256: '3bff4c55cd2f0200711517341babcebe7a91a8ef85b983420439fcf26835a674' };
+  // the minds offered, smallest first, with WebLLM's own memory figures (MB) for its two builds
+  const MODELS = [
+    { base: 'SmolLM2-360M-Instruct', say: 'SmolLM2 360M — tiny, only for trying the wiring', mb: [376, 580] },
+    { base: 'Llama-3.2-1B-Instruct', say: 'Llama 3.2 1B — a phone', mb: [879, 1129] },
+    { base: 'Qwen3.5-2B', say: 'Qwen3.5 2B — small and quick', mb: [2245, 2592] },
+    { base: 'Llama-3.2-3B-Instruct', say: 'Llama 3.2 3B', mb: [2264, 2952] },
+    { base: 'Phi-4-mini-instruct', say: 'Phi-4 mini', mb: [3438, 4221] },
+    { base: 'Qwen3.5-4B', say: 'Qwen3.5 4B — a laptop', mb: [3868, 4680] },
+    { base: 'Qwen3.5-9B', say: 'Qwen3.5 9B — a strong laptop', mb: [6433, 7545] },
+  ];
+  // the frame every turn is given, before what the beach holds (to move into a block once its family stands)
+  const FRAME = 'You are a mind running inside this person\'s own web browser, on their own device. You are joined to a beach: an open record of small numbered blocks that people and AIs read and write. What the beach holds for this moment is below, each line opening with its address in its block. Answer the person plainly and briefly. Where the beach text does not hold an answer, say so rather than inventing one, and never invent an address.';
+  const SEEN_MIN = 15;
+  // the MCP server whose tools it may call, and the one tool it is given, slimmed to fit a small window
+  const MCP = { url: 'https://bsp.hermitcrab.me/mcp/v1', keep: { bsp: ['agent_id', 'block', 'spindle', 'pscale_attention'] } };
+
+  const $ = (id) => document.getElementById(id);
+  const say = (el, text, bad) => { el.textContent = text || ''; el.classList.toggle('bad', !!bad); };
+  const clean = (s) => String(s || '').trim().replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32);
+  const qs = new URLSearchParams(location.search);
+
+  let webllm = null, engine = null, modelId = '', ctxTokens = 4096, f16 = false;
+  let B = beachMind.beach($('beach').value);
+  const reads = [];          // { block, at, title, text }
+  const turns = [];          // this session's { role, content }
+  let memoryText = '', liveText = '';
+
+  /* ── the mind ── */
+  async function fitModels() {
+    let adapter = null;
+    if (navigator.gpu) { try { adapter = await navigator.gpu.requestAdapter(); } catch (e) {} }
+    f16 = !!(adapter && adapter.features && adapter.features.has('shader-f16'));
+    const sel = $('model');
+    MODELS.forEach((m, i) => {
+      const o = document.createElement('option');
+      o.value = m.base + '-' + (f16 ? 'q4f16_1' : 'q4f32_1') + '-MLC';
+      o.textContent = m.say + ' · ' + (Math.round((f16 ? m.mb[0] : m.mb[1]) / 100) / 10) + ' GB';
+      sel.appendChild(o);
+      if (m.base === 'Qwen3.5-2B') sel.selectedIndex = i;
+    });
+    const asked = qs.get('model');
+    if (asked) {
+      if (![...sel.options].some((o) => o.value === asked)) { const o = document.createElement('option'); o.value = asked; o.textContent = asked; sel.appendChild(o); }
+      sel.value = asked;
+    }
+    if (!adapter) {
+      say($('mind-say'), navigator.gpu ? 'This browser has WebGPU but no graphics adapter it will lend. Try Chrome or Edge on a laptop, or Safari 26.' : 'This browser has no WebGPU, so no model can run here. Chrome or Edge on a laptop, Safari 26 on a Mac or iPhone, and Firefox on Windows all have it.', true);
+      $('load').disabled = true;
+    }
+  }
+  async function loadLibrary() {
+    if (webllm) return webllm;
+    say($('mind-say'), 'Fetching WebLLM ' + WEBLLM.url.match(/@([0-9.]+)/)[1] + ' and checking it…');
+    const buf = await (await fetch(WEBLLM.url, { cache: 'force-cache' })).arrayBuffer();
+    const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map((b) => b.toString(16).padStart(2, '0')).join('');
+    if (hash !== WEBLLM.sha256) throw new Error('WebLLM did not match its published hash, so it was not run.');
+    const url = URL.createObjectURL(new Blob([buf], { type: 'text/javascript' }));
+    try { webllm = await import(url); } finally { URL.revokeObjectURL(url); }
+    return webllm;
+  }
+  async function load() {
+    const id = $('model').value;
+    $('load').disabled = true; $('prog').classList.remove('hidden');
+    try {
+      const w = await loadLibrary();
+      const rec = (w.prebuiltAppConfig.model_list || []).find((m) => m.model_id === id);
+      if (!rec) throw new Error('WebLLM does not offer ' + id);
+      ctxTokens = (rec.overrides && rec.overrides.context_window_size) || 4096;
+      if (engine) { try { await engine.unload(); } catch (e) {} }
+      engine = await w.CreateMLCEngine(id, {
+        initProgressCallback: (r) => { $('prog-bar').style.width = Math.round((r.progress || 0) * 100) + '%'; say($('mind-say'), r.text); }
+      });
+      modelId = id;
+      say($('mind-say'), id + ' is loaded and running on this device. Its window holds ' + ctxTokens + ' tokens.');
+      $('bar-state').textContent = id.replace(/-MLC$/, '');
+      $('dot').classList.add('on');
+      $('text').disabled = false; $('send').disabled = false; $('empty').textContent = 'Say something.';
+      $('text').focus();
+    } catch (e) {
+      say($('mind-say'), 'It did not load: ' + (e && e.message || e), true);
+    } finally {
+      $('load').disabled = false;
+    }
+  }
+
+  /* ── the beach ── */
+  function name() { return clean($('name').value); }
+  function keyName() { return 'next-latch:soft-llm-convos:' + name(); }
+  function showBlocks() {
+    const n = name() || '<you>';
+    $('mem-block').textContent = 'soft-llm-convos:' + n;
+    $('seen-block').textContent = 'torus-mirror:' + n;
+  }
+  function chip(r, i) {
+    const d = document.createElement('div');
+    d.className = 'chip';
+    const nm = document.createElement('span'); nm.className = 'name';
+    nm.textContent = r.block + (r.at ? ' ' + r.at : '') + ' · ' + (r.text ? r.text.length.toLocaleString() + ' chars' : 'reading…');
+    nm.title = r.title;
+    const x = document.createElement('button'); x.textContent = 'drop'; x.setAttribute('aria-label', 'drop ' + r.block);
+    x.onclick = () => { reads.splice(i, 1); drawChips(); };
+    d.appendChild(nm); d.appendChild(x);
+    const det = document.createElement('details'); det.className = 'read';
+    const s = document.createElement('summary'); s.className = 'small'; s.textContent = 'what the mind reads';
+    const pre = document.createElement('pre'); pre.textContent = r.text || '';
+    det.appendChild(s); det.appendChild(pre);
+    const wrap = document.createElement('div'); wrap.appendChild(d); wrap.appendChild(det);
+    return wrap;
+  }
+  function drawChips() {
+    const c = $('chips'); c.textContent = '';
+    reads.forEach((r, i) => c.appendChild(chip(r, i)));
+    if (memoryText) {
+      const m = { block: 'soft-llm-convos:' + name(), at: '', title: 'your memory here', text: memoryText };
+      const w = chip(m, -1); w.querySelector('button').remove(); c.appendChild(w);
+    }
+  }
+  async function readIn(block, at, title) {
+    const r = { block, at: at || '', title: title || block, text: '' };
+    reads.push(r); drawChips();
+    try {
+      r.text = await B.read(block, at || undefined);
+      if (!r.text) throw new Error('nothing stands there');
+      say($('in-say'), '');
+    } catch (e) {
+      reads.splice(reads.indexOf(r), 1);
+      say($('in-say'), block + (at ? ' ' + at : '') + ': ' + (e && e.message || e), true);
+    }
+    drawChips();
+  }
+  async function readMemory() {
+    memoryText = '';
+    if (!name()) { drawChips(); return; }
+    try { memoryText = beachMind.soft.formatSoftConvos(await B.memory(name(), '')); } catch (e) {}
+    drawChips();
+  }
+  async function readLive() {
+    try {
+      const l = await B.live(SEEN_MIN);
+      const ul = $('live'); ul.textContent = '';
+      l.forEach((p) => {
+        const li = document.createElement('li');
+        const a = document.createElement('span'); a.textContent = p.handle;
+        const ago = document.createElement('span'); ago.className = 'ago'; ago.textContent = Math.max(0, Math.round(p.ago / 60000)) + ' min ago';
+        li.appendChild(a); li.appendChild(ago); ul.appendChild(li);
+      });
+      liveText = l.length ? 'Live on this beach in the last ' + SEEN_MIN + ' minutes: ' + l.map((p) => p.handle + ' (' + Math.max(0, Math.round(p.ago / 60000)) + ' min ago)').join(', ') + '.' : '';
+      say($('live-say'), l.length ? '' : 'Nobody has spoken at the beach\'s now in the last ' + SEEN_MIN + ' minutes.');
+    } catch (e) { say($('live-say'), 'The beach did not answer: ' + (e && e.message || e), true); }
+  }
+  async function useBeach() {
+    const v = $('beach').value.trim().replace(/\/+$/, '');
+    if (!/^https?:\/\/[^\s/]+/.test(v)) { say($('beach-say'), 'A beach is an address such as https://beach.happyseaurchin.com', true); return; }
+    B = beachMind.beach(v);
+    reads.length = 0;
+    const onVoice = window.beachVoice && beachVoice.beach && v === String(beachVoice.beach).replace(/\/+$/, '');
+    $('seen').disabled = !onVoice;
+    say($('beach-say'), onVoice ? '' : 'Reading and memory work on any beach; being seen goes through a beach\'s own voice, and this page carries happyseaurchin\'s.');
+    await Promise.all([readIn('lighthouse', '', 'the beach\'s compass, every branch\'s opening line'), readMemory(), readLive()]);
+  }
+
+  /* ── the key, for memory: kept wrapped on this device (theme.js siteKeys), never shown ── */
+  async function keyFor() {
+    if (!window.siteKeys) return '';
+    await siteKeys.ready();
+    return siteKeys.get(keyName()) || siteKeys.forName(name()) || '';
+  }
+  async function needKey() {
+    const k = await keyFor();
+    $('key-row').classList.toggle('hidden', !!k || !$('remember').checked);
+    return k;
+  }
+
+  /* ── a turn ── */
+  function momentToAddress(when, fine) {   // the String's port of bsp-mcp src/temporal.ts: re-port, never fork
+    const y = when.getUTCFullYear(), month = when.getUTCMonth(), dom = when.getUTCDate();
+    const secOfDay = when.getUTCHours() * 3600 + when.getUTCMinutes() * 60 + when.getUTCSeconds() + when.getUTCMilliseconds() / 1000;
+    const partS = 86400 / 9, beatS = partS / 9;
+    const part = Math.floor(secOfDay / partS), beat = Math.floor((secOfDay - part * partS) / beatS);
+    const ten = [Math.floor(y / 1000) % 10, Math.floor(y / 100) % 10, Math.floor(y / 10) % 10, y % 10, Math.floor(month / 3) + 1, (month % 3) + 1,
+      Math.floor((dom - 1) / 7) + 1, ((dom - 1) % 7) + 1, part + 1, beat + 1].join('');
+    if (!fine) return ten;
+    let rem = secOfDay - part * partS - beat * beatS, w = beatS; const fd = [];
+    for (let i = 0; i < fine; i++) { w /= 9; const d = Math.min(8, Math.max(0, Math.floor(rem / w))); fd.push(d + 1); rem -= d * w; }
+    return ten + '.' + fd.join('');
+  }
+  function bubble(cls, text) {
+    $('empty') && $('empty').remove();
+    const d = document.createElement('div'); d.className = 'msg ' + cls;
+    const t = document.createElement('span'); t.className = 'text'; t.textContent = text; d.appendChild(t);
+    $('log').appendChild(d); d.scrollIntoView({ block: 'end' });
+    return d;
+  }
+  const words = (d, text) => { d.querySelector('.text').textContent = text; };
+  function note(d, text) {
+    let a = d.querySelector('.after');
+    if (!a) { a = document.createElement('span'); a.className = 'after'; d.appendChild(a); }
+    a.textContent = a.textContent ? a.textContent + ' · ' + text : text;
+  }
+  function systemText() {
+    const historyChars = turns.slice(-6).reduce((n, t) => n + t.content.length, 0);
+    const budget = Math.max(1200, (ctxTokens - 900) * 3 - historyChars - FRAME.length);
+    const parts = reads.filter((r) => r.text).map((r) => ({ title: r.title + ' — ' + r.block + (r.at ? ' ' + r.at : ''), text: r.text }));
+    if (memoryText) parts.unshift({ title: 'what this beach remembers of your conversations (soft-llm-convos:' + name() + ')', text: memoryText });
+    if (liveText) parts.unshift({ title: 'who else is live', text: liveText });
+    return FRAME + '\n\n' + beachMind.context(parts, budget);
+  }
+  let clearDraft = () => {}, mcp = null, mcpTools = null;
+  /* its own reach: one constrained turn of MCP-shaped tool calls (WebLLM's structural tags), each made for real at the
+     MCP server, the results laid in before it answers */
+  async function reach(messages, out) {
+    if (!mcp) { mcp = await beachMcp.connect(MCP.url); mcpTools = beachMcp.slim(mcp.tools, MCP.keep); }
+    const sys = messages[0].content + '\n\n' + beachMcp.toolPrompt(mcpTools) + '\nThe beach is ' + B.origin + ': give it as agent_id. A disc of any block is pscale_attention 0 with no spindle.';
+    const ask = [{ role: 'system', content: sys }].concat(messages.slice(1));
+    const r = await engine.chat.completions.create({ messages: ask, stream: false, max_tokens: 200, temperature: 0.2, response_format: beachMcp.structuralTag(mcpTools) });
+    const calls = beachMcp.parse(r.choices[0].message.content, mcpTools).slice(0, 2);
+    const results = [];
+    for (const c of calls) {
+      const res = await mcp.call(c.name, c.arguments).catch((e) => 'error: ' + e.message);
+      results.push({ call: c, text: String(res).slice(0, 2400) });
+      note(out, 'called ' + c.name + ' ' + [c.arguments.block, c.arguments.spindle].filter(Boolean).join(' '));
+    }
+    return results;
+  }
+  async function send() {
+    const text = $('text').value.trim();
+    if (!text || !engine) return;
+    $('send').disabled = true;
+    bubble('you', text);
+    $('text').value = ''; clearDraft();
+    const out = bubble('mind', '…');
+    const messages = [{ role: 'system', content: systemText() }].concat(turns.slice(-6), [{ role: 'user', content: text }]);
+    let reply = '';
+    try {
+      if ($('tools').checked) {
+        const got = await reach(messages, out).catch((e) => { note(out, 'could not reach: ' + e.message); return []; });
+        if (got.length) messages[0].content += '\n\n## what it read for this turn, through bsp-mcp\n' + got.map((g) => g.call.name + ' ' + JSON.stringify(g.call.arguments) + '\n' + g.text).join('\n\n');
+      }
+      const req = { messages, stream: true, temperature: 0.6, max_tokens: 600 };
+      if (/^Qwen3/.test(modelId)) req.extra_body = { enable_thinking: false };
+      const chunks = await engine.chat.completions.create(req);
+      for await (const c of chunks) {
+        reply += (c.choices && c.choices[0] && c.choices[0].delta && c.choices[0].delta.content) || '';
+        words(out, reply.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim() || '…');
+      }
+      reply = reply.replace(/<think>[\s\S]*?(<\/think>|$)/g, '').trim();
+      words(out, reply || '(no words)');
+    } catch (e) {
+      words(out, 'It could not answer: ' + (e && e.message || e));
+      $('send').disabled = false;
+      return;
+    }
+    turns.push({ role: 'user', content: text }, { role: 'assistant', content: reply });
+    $('send').disabled = false;
+    after(out, text, reply);
+  }
+  async function after(out, text, reply) {
+    const n = name();
+    if (n && $('remember').checked) {
+      const key = await needKey();
+      if (!key) note(out, 'not kept: give your key above to keep it');
+      else {
+        const r = await B.remember({ handle: n, secret: key, location: '', face: 'character', user: text, reply }).catch((e) => ({ ok: false, error: e.message }));
+        if (r.ok) note(out, 'kept at soft-llm-convos:' + n + ' ' + r.slot + (r.depth > 1 ? beachMind.soft.spineSuffix(r.depth) : '.1'));
+        else {
+          note(out, 'not kept: ' + (r.error || 'the beach refused it'));
+          if (r.status === 401 || r.status === 403 || /lock|secret|key/i.test(r.error || '')) { await siteKeys.del(keyName()); needKey(); }
+        }
+      }
+    }
+    if (n && $('seen').checked && !$('seen').disabled && window.beachVoice) {
+      const first = reply.split(/(?<=[.!?])\s|\n/)[0].slice(0, 160);
+      const at = reads.length > 1 ? 'at ' + reads[reads.length - 1].block + (reads[reads.length - 1].at ? ':' + reads[reads.length - 1].at : '') + ' — ' : '';
+      beachVoice.say({ field: 'torus-mirror', at: momentToAddress(new Date(), 3), text: at + first, name: n }).then((r) => {
+        note(out, r && r.ok ? 'seen at the beach\'s now' : 'not seen: ' + ((r && r.error) || 'the beach did not take it'));
+        readLive();
+      });
+    }
+  }
+
+  /* ── wiring ── */
+  $('load').onclick = load;
+  $('send').onclick = send;
+  $('text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } });
+  $('add').onclick = () => { const b = $('add-block').value.trim(), a = $('add-at').value.trim(); if (b) { readIn(b, a); $('add-block').value = ''; $('add-at').value = ''; } };
+  $('beach').addEventListener('change', useBeach);
+  $('name').addEventListener('change', () => { showBlocks(); readMemory(); needKey(); });
+  $('remember').addEventListener('change', needKey);
+  // the three choices are this device's, kept as conveniences (never a key, never a word said)
+  ['remember', 'seen', 'tools'].forEach((id) => {
+    try { const v = localStorage.getItem('webllm:' + id); if (v === '1' || v === '0') $(id).checked = v === '1'; } catch (e) {}
+    $(id).addEventListener('change', () => { try { localStorage.setItem('webllm:' + id, $(id).checked ? '1' : '0'); } catch (e) {} });
+  });
+  $('key-keep').onclick = async () => {
+    const k = $('key').value.trim(); $('key').value = '';
+    if (!k || !name()) { say($('beach-say'), 'Give your name, then your key.', true); return; }
+    await siteKeys.set(keyName(), k);
+    say($('beach-say'), 'Kept on this device, wrapped. It is only ever sent to the beach, as the latch on your memory.');
+    needKey();
+  };
+  window.addEventListener('DOMContentLoaded', () => {
+    if (window.siteDoors) siteDoors({ here: 'webllm', site: true });
+    clearDraft = window.keepDraft ? window.keepDraft($('text'), 'webllm:text') : () => {};
+    const n = clean(qs.get('name') || (window.beachVoice && beachVoice.name ? beachVoice.name() : ''));
+    if (n) $('name').value = n;
+    if (qs.get('beach')) $('beach').value = qs.get('beach');
+    showBlocks(); fitModels(); useBeach(); needKey();
+    setInterval(readLive, 60000);
+  });
+  // for scripts/smoke-webllm.mjs: a stand-in engine drives the page's whole turn where no GPU can run a model in time
+  function use(e, id) {
+    engine = e; modelId = id || 'stand-in';
+    $('text').disabled = false; $('send').disabled = false; $('empty').textContent = 'Say something.';
+  }
+  window.__webllm = { send, load, use, systemText, reads, turns, get engine() { return engine; } };
+})();
+</script>
+</body>
+</html>
