@@ -106,7 +106,7 @@ if (!process.argv.includes('--offline')) {
   ok('live: the disc carries branches 1 to 9', /\n\[1\] /.test(disc) && /\n\[9\] /.test(disc));
   const walk = await b.read('orientation:weft', '7.1');
   ok('live: a spindle read carries its ancestor first', /^\[7\] THE DOOR/.test(walk));
-  ok('live: then the point', /\n\[7\.1\] Fresh keyed boot/.test(walk));
+  ok('live: then the point', /\n\[7\.1\] \S/.test(walk));   // the point's own line, whatever its words say today
   ok('live: then one ring beneath it', /\n {2}\[7\.11\] /.test(walk));
   const live = await b.live(24 * 60);
   ok('live: someone touched the torus in the last day', Array.isArray(live) && live.length > 0 && typeof live[0].handle === 'string');
