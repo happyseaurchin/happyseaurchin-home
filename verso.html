@@ -257,6 +257,7 @@
   <p>Where verso’s cells run — the Mac, for now. Kept on this device.</p>
   <input id="h-addr" inputmode="url" placeholder="ws://localhost:8765" aria-label="the host’s address" autocomplete="off" autocapitalize="none" spellcheck="false">
   <p class="ph" id="h-hint"></p>
+  <p class="ph"><a id="h-flow" class="howto" target="_blank" rel="noopener">what each cell read, call by call — every window of the run, as it goes</a></p>
   <div class="row"><button type="button" class="no" id="s-cancel">cancel</button><button type="button" class="go2" id="s-done">done</button></div>
 </div></div>
 
@@ -477,6 +478,13 @@ const OWN_HOST = /^https?:$/.test(location.protocol) && !SITE_ORIGIN.test(locati
   ? (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host : '';
 const HOST = { url: store(HOST_HOME) || OWN_HOST, asked: !!(store(HOST_HOME) || OWN_HOST), ws: null, state: 'idle', tries: 0, timer: null, nextAt: 0, demo: null };
 function hostUrl(){ return HOST.url || DEFAULT_HOST; }
+/* The host writes its run's flow document beside the run and serves it at /flow.json, and serves the page at
+   mindflow/flow/ that draws it — every window each cell read, as the run goes. So the link is always the host's
+   own http origin (this page's, when the host serves it): a browser lets no https page read a plain-http host. */
+function flowLink(){
+  if (OWN_HOST) return '/mindflow/flow/?source=/flow.json&poll=5';
+  return hostUrl().replace(/^ws(s?):\/\//, 'http$1://').replace(/\/+$/, '') + '/mindflow/flow/?source=/flow.json&poll=5';
+}
 function dropSocket(){
   clearTimeout(HOST.timer); HOST.timer = null;
   if (HOST.ws){ const ws = HOST.ws; HOST.ws = null; ws.onopen = ws.onclose = ws.onmessage = ws.onerror = null; try { ws.close(); } catch(e){} }
@@ -1174,7 +1182,7 @@ function openSheet(focus){
   $('n-ostyle').value = NARR.openai.style || OPENAI_STYLE;
   $('n-rate').value = RATE;
   delete $('n-evoice').dataset.loaded;
-  $('h-addr').value = hostUrl();
+  $('h-addr').value = hostUrl(); $('h-flow').href = flowLink();
   paintVoices(); nsay(''); hsay(HOST.demo ? 'the demo is playing; the host is reached once you leave it' : '');
   $('sveil').classList.remove('hidden');
   paintNarrKind();
