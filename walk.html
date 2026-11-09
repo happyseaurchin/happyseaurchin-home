@@ -631,6 +631,26 @@ function plainHtml(line, n){
   if (n) t = short(t, n);
   return esc(t).replace(/\uE000(\d+)\uE001/g, (m, i) => '<a href="' + esc(refs[i]) + '">' + esc(refs[i]) + '</a>');
 }
+/* A PROJECT ON THE CLOCK, READ BY A PERSON (2026-11-09): every clock family but the now family,
+ * whose spine is content-free by law (function:now 4). Its lines are drawn in the person's reading
+ * (plain: references for minds dropped) unless the workings are on, as a branch family's are. */
+const clockSaid = () => MODE === 'clock' && VENTURE !== 'now';
+/* the law's opening sentence: the family's purpose said to a person; the rest of the law is how a
+ * line is written there, for minds, and stands whole under the workings and at its own address */
+function firstSentence(line){
+  const s = String(line || '').trim(), m = s.match(/^[^]*?[.!?](?=\s+[A-Z(\u2018\u201c]|\s*$)/);
+  return m ? m[0] : s;
+}
+/* THE ZERO RUNG ECHOES THE RUNG ABOVE IT (sundial 3.4): the year 2020 is the 2020s' own node and
+ * the 2000s the century's, so their cards repeated the line written one row up, as if someone had
+ * said it twice. A line is drawn at the rung it was written for; the echo is dropped wherever that
+ * rung's own row is showing, and kept where it is the only place the line can be seen. */
+const PARENT_LV = { de: 'ce', y: 'de', s: 'y', m: 's', w: 'm', d: 'w', g: 'd' };
+function zeroEcho(addr, raw, lv){
+  const a = String(addr || '');
+  if (MODE !== 'clock' || !raw || !a.endsWith('0') || !PARENT_LV[lv] || !PREFS.rows[PARENT_LV[lv]]) return false;
+  return lensText(a.slice(0, -1)) === raw;
+}
 /* the fold's line at a node — for a path, where that part stands (function:path 2) */
 function foldAt(addr){ return FOLD ? textAt(FOLD, addr) : null; }
 const MARK_RE = /^([A-Z]{3,})(?=[\s,.:;—-]|$)/;
@@ -1451,9 +1471,10 @@ function render(){
   if (LAW){
     const line = voice(LAW) || '';
     /* in branch mode the law's line keeps the row grammar too: its brackets are for minds */
-    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + (MODE === 'tree' && !PREFS.workings ? plainHtml(line, 520) : esc(short(line, 520)));
+    const said = clockSaid() && !PREFS.workings ? firstSentence(line) : line;
+    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + ((MODE === 'tree' || clockSaid()) && !PREFS.workings ? plainHtml(said, 520) : esc(short(said, 520)));
     fp.hidden = false;
-    fp.innerHTML = 'form: <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>' + (line.length > 520 ? ' \u2014 the whole line there' : '');
+    fp.innerHTML = 'form: <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>' + (said.length > 520 || said.length < line.length ? ' \u2014 the whole ' + (clockSaid() ? 'law' : 'line') + ' there' : '');
   } else {
     if (bp) bp.innerHTML = '<b>No form yet.</b> This family stands as a spine without its law, so its rows are drawn bare \u2014 ' + (MODE === 'clock' ? 'the shared clock' : 'its own branches') + ', with nothing to say what a line at a part means. To give it a form, its keeper writes the law at <b>function:' + esc(VENTURE) + '</b>: what the family is, what a line means, how the fold reads. <a href="/found">/found</a> founds a family with its form in a step.';
     fp.hidden = false; fp.textContent = 'form: none stands yet';
@@ -1555,13 +1576,18 @@ function inviteAt(lv, isNow, label){
     return (askAt(lv, label) || 'say what ' + what + ' is toward') + ' — tap twice to say it';
   }
   if (!isNow || !what) return 'nothing written here yet';
+  /* on a project's clock the spine says what is needed, and voices say what each person means to do */
+  if (clockSaid()) return lv === 'w'
+    ? 'nothing needed is written for this week, so the day hangs straight off the month — tap to see what people mean to do, and add yours'
+    : 'nothing needed is written for ' + what + ' yet — tap to see what people mean to do, and add yours';
   if (lv === 'w') return 'this week has no words yet, so the day hangs straight off the month — tap twice to give the week its line, or propose one in voices';
   return what + ' has no words yet — tap twice to give it a line, or propose one in voices';
 }
 function rcard(label, addr, isSel, isNow, data, extra, whole){
-  const raw = lensText(addr), tt = MODE === 'tree' && !PREFS.workings && raw ? titled(raw) : null;
-  const t = MODE === 'tree' && !PREFS.workings && raw ? plain(tt ? tt.line : raw) : raw;
   const lv = (String(data).match(/data-lv="(\w+)"/) || [])[1];
+  const raw0 = lensText(addr), raw = zeroEcho(addr, raw0, lv) ? null : raw0;
+  const tt = MODE === 'tree' && !PREFS.workings && raw ? titled(raw) : null;
+  const t = (MODE === 'tree' || clockSaid()) && !PREFS.workings && raw ? plain(tt ? tt.line : raw) : raw;
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
   /* data-addr carries the cell's own address into the markup. The rack already
    * SHOWS it (the work lens prints wireAddr), but showing is not carrying:
@@ -1571,7 +1597,7 @@ function rcard(label, addr, isSel, isNow, data, extra, whole){
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' +
     'data-addr="' + esc(addr) + '" ' + (isNow ? 'data-now="1" ' : '') + data + '>' +
     '<span class="lab">' + (lv === 'g' ? '<span data-when="' + esc(addr) + '">' + esc(label) + '</span>' : esc(label)) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
-    '<span class="say">' + (t && MODE === 'tree' && !PREFS.workings ? plainHtml(tt ? tt.line : raw, whole ? 0 : 240) : esc(t ? (whole ? t : short(t, 240)) : inviteAt(lv, isNow, label))) + '</span>' +
+    '<span class="say">' + (t && (MODE === 'tree' || clockSaid()) && !PREFS.workings ? plainHtml(tt ? tt.line : raw, whole ? 0 : 240) : esc(t ? (whole ? t : short(t, 240)) : inviteAt(lv, isNow, label))) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') +
     (MODE === 'tree' ? standChip(addr) + marksAt(addr) : '') + '</div>' + (extra || '') + '</div>';
@@ -1787,11 +1813,10 @@ function renderRack(){
    * the holder's own words — so the one line above the walk was spent saying
    * something twice. A card is the thing on this page nobody arrives knowing
    * (David, 2026-09-15), so the line says that instead. */
-  $('toward').innerHTML = '<b>cards</b> · something you mean to do, held at a rung '
-    + '— within hours, today, this week, this year. Each rung’s golden slot '
-    + 'counts what is waiting there — tap it to see them (turn them on under <b>options</b>); you take one up and finish it '
-    + 'at <a href="/hands' + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') + '">your hands</a>, '
-    + 'and once done it stands here in the timeline, at the rung it was held at.';
+  /* shortened 2026-11-09 with the masthead: one line, what a card is and where it goes */
+  $('toward').innerHTML = '<b>cards</b> · a thing someone means to do, held at a rung. The golden slot counts what waits there; '
+    + 'take one up at <a href="/hands' + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') + '">your hands</a>, '
+    + 'and once done it stands here, at the rung it was held at.';
   renderRowsFrom('ce');
 }
 /* THE NINTH BRANCH IS A BRANCH, unless it is the operator's own stem — and the stem says
@@ -2129,9 +2154,15 @@ function wirePileSheet(p, cs){
 /* THE SAY BOX: your reading at one address, into your own mirror (writeMirrorAt). One box and one
  * write path wherever the page offers it, the sheet's voices pane and the document; its draft is
  * kept under where the words are going, as every write box on this site keeps one. */
+/* ON A PROJECT'S CLOCK THE BOX ASKS FOR AN INTENTION (2026-11-09): what you mean to do at this rung,
+ * in your own words, said before or as the period opens; never a report of what was done, which goes
+ * on its thread. Anywhere else it takes a reading, as it always has. */
+const INTEND = { de: 'By the end of this decade I mean to', y: 'This year I mean to', s: 'This season I mean to', m: 'This month I mean to',
+                 w: 'This week I mean to', d: 'Today I mean to', g: 'In this part of the day I mean to' };
 function sayBoxHtml(addr){
-  return '<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
-    '<textarea id="mir-text" placeholder="a comment, or a suggestion to change what’s written — yours, at this point"></textarea>' +
+  const ask = clockSaid() && INTEND[SEL.level];
+  return '<div class="mirrorbox"><div class="sub">' + (ask ? 'what you mean to do here' : 'leave your reading here') + '</div>' +
+    '<textarea id="mir-text" placeholder="' + (ask ? esc(ask) + '\u2026 (a sentence or two, in your own words)' : 'a comment, or a suggestion to change what’s written — yours, at this point') + '"></textarea>' +
     '<div class="row"><span class="hint">signed with your key, so it stays yours' +
     '<span class="work"> · <b>' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(wireAddr(addr)) + '</b></span></span>' +
     '<button id="mir-go">into your mirror</button></div></div>';
@@ -2270,14 +2301,20 @@ function paintSheet(){
   if (mlink) $('sh-mirror').href = mirrorUrl(addr);
   tabs.querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.p === SHEET.pane);
-    if (b.dataset.p === 'voices') b.textContent = 'your mirror · ' + (vs.length ? vs.length + (vs.length === 1 ? ' voice' : ' voices') : 'voices');
+    if (b.dataset.p === 'voices') b.textContent = clockSaid()
+      ? 'what people intend' + (vs.length ? ' · ' + vs.length : '')
+      : 'your mirror · ' + (vs.length ? vs.length + (vs.length === 1 ? ' voice' : ' voices') : 'voices');
+    if (b.dataset.p === 'text') b.textContent = clockSaid() ? 'what\u2019s needed' : 'the spine';
     /* on a path the cards tab IS where the part stands: the fold's line and the cards behind it */
     if (b.dataset.p === 'cards')  b.textContent = (PATH_OF ? 'where it stands' : 'cards') + (cs.length ? ' · ' + cs.length + (PATH_OF ? (cs.length === 1 ? ' card' : ' cards') : '') : '');
   });
   const b = [];
   if (SHEET.pane === 'text'){
-    const rawLine = textAt(SPINE, addr), lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
-    b.push('<div class="fulltext">' + ((MODE === 'tree' && !PREFS.workings && rawLine ? plainHtml(lineTt ? lineTt.line : rawLine) : esc(rawLine)) || esc('nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it')) + '</div>');
+    const rawLine0 = textAt(SPINE, addr), rawLine = clockSaid() && rawLine0 && String(addr).endsWith('0') && PARENT_LV[SEL.level] && textAt(SPINE, String(addr).slice(0, -1)) === rawLine0 ? null : rawLine0;
+    const lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
+    b.push('<div class="fulltext">' + (((MODE === 'tree' || clockSaid()) && !PREFS.workings && rawLine ? plainHtml(lineTt ? lineTt.line : rawLine) : esc(rawLine))
+      || esc(clockSaid() ? 'nothing needed is written here yet — what the project needs at this rung is its keepers\u2019 line; what you mean to do goes in what people intend'
+                         : 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it')) + '</div>');
     /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
      * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
      * so a write at this rung would land a level up and eat what stands beneath —
@@ -2302,7 +2339,7 @@ function paintSheet(){
       b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
     b.push(scopeLine(lens));
     b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + (clockSaid() && !PREFS.workings ? plainHtml(v.t) : esc(v.t)) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
           /* a reading opens THE POINT, where it stands among the others. It
            * used to name its holder's own block — true of where the words
            * live, and the mirror shows the same view either way, so all the
@@ -2514,6 +2551,12 @@ document.getElementById('btn-refresh').addEventListener('click', () => load().th
    ═══════════════════════════════════════════════════════════════════════ */
 const HOW_ROWS = $('mast-how').textContent;
 const HOW_COLS = 'Each column is one level: tap a card to stand there, and what is beneath it opens in the next column, beside it. Tap it again for its words, the voices and — with your handle in the URL — your own writing.';
+/* A CLOCK FAMILY, SAID TO A PERSON (David, 2026-11-09: "There's a big block of text at the top of
+ * the page which I ignore and really doesn't explain much to anyone. It needs to be super clear for a
+ * human"): what a row is, what a card is, what to write there and what not to. The family's own law
+ * still speaks beneath it, its first sentence only until the workings are on (firstSentence). The now
+ * family keeps HOW_ROWS: its spine says nothing by law, so no card there says what is needed. */
+const HOW_CLOCK = 'Each row is a stretch of time, from the decade down to today. A card says what the project needs then. Tap it to see what each person means to do toward it, and add your own: a sentence or two, in your own words, about what you intend. What you have already done goes on its thread, not here.';
 const HOW_DOC = 'Every line in its own order, each nested under the line it belongs to. Tap a line to open it where it stands, and tap it again to fold it. Every hand’s reading stands with the line it answers; with your handle in the URL, yours lands in your own mirror at that line.';
 let DOC_OPEN = new Set();            /* the positions open, by address; a re-read keeps them open */
 let DOC_SEEDED = false;              /* the run down digit 1 opens once, on arrival */
@@ -2540,7 +2583,7 @@ function paintView(){
   $('btn-render').hidden = false;
   const eb = document.querySelector('#review .eyebrow');
   if (eb) eb.textContent = v === 'dropdown' ? 'the dropdown' : MODE === 'tree' ? 'the columns' : 'the rows';
-  $('mast-how').textContent = v === 'dropdown' ? HOW_DOC : MODE === 'tree' ? HOW_COLS : HOW_ROWS;
+  $('mast-how').textContent = v === 'dropdown' ? HOW_DOC : MODE === 'tree' ? HOW_COLS : clockSaid() ? HOW_CLOCK : HOW_ROWS;
   if (v === 'dropdown') $('band-title').textContent = 'Read ' + VENTURE + ' from the top.';
 }
 /* an address as the floor writes it: a floor-1 family's 1,1 reads 1.1 and its root 0 */
