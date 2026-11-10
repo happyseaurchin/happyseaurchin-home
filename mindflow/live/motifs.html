@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mindflow Motifs</title>
+  <meta name="description" content="The motif library of the live image cloud: small live drawings lifted from the films, each at three sizes.">
+  <style>
+    html, body { margin: 0; height: 100%; background: #0a0a0f; overflow: hidden; }
+    canvas { display: block; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <script src="motifs.js"></script>
+  <script>
+  // ?only=torus,shell  shows only those · ?sizes shows each at 36, 90 and 200 px · ?r=120 sets one size for all
+  const q = new URLSearchParams(location.search);
+  const only = q.get('only') ? q.get('only').split(',') : null;
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  let W, H, dpr;
+  function fit() { dpr = Math.min(2, window.devicePixelRatio || 1); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; }
+  fit(); addEventListener('resize', fit);
+  const states = {};
+  MOTIF.load(only || MOTIF.names).then(function () {
+    const names = (only || MOTIF.names).filter(function (n) { return MOTIFS[n]; });
+    const t0 = performance.now();
+    function frame() {
+      const t = (performance.now() - t0) / 1000;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+      const sizes = q.has('sizes') ? [36, 90, 200] : [q.get('r') ? +q.get('r') : 0];
+      const rows = q.has('sizes') ? names.length : Math.ceil(names.length / Math.ceil(Math.sqrt(names.length * W / H)));
+      const cols = q.has('sizes') ? 3 : Math.ceil(names.length / rows);
+      const cw = W / cols, ch = H / rows;
+      names.forEach(function (n, i) {
+        sizes.forEach(function (sz, j) {
+          const k = q.has('sizes') ? i * 3 + j : i, cx = (k % cols + 0.5) * cw, cy = (Math.floor(k / cols) + 0.45) * ch;
+          const r = sz || Math.min(cw, ch) * 0.38, key = n + ':' + j;
+          const o = states[key] || (states[key] = { seed: (i * 7 + j * 3 + 1) / 23 % 1, state: {} });
+          ctx.save(); ctx.translate(cx, cy);
+          try { MOTIFS[n].draw(ctx, t, r, o); } catch (e) { console.error(n, e); }
+          ctx.restore();
+          ctx.fillStyle = 'rgba(200,200,215,0.6)'; ctx.font = '12px -apple-system, sans-serif'; ctx.textAlign = 'center';
+          if (j === 0) ctx.fillText(n + ' · ' + MOTIFS[n].title, cx, Math.min(H - 6, cy + Math.max(r, 36) + 18));
+        });
+      });
+      requestAnimationFrame(frame);
+    }
+    frame();
+  });
+  </script>
+</body>
+</html>

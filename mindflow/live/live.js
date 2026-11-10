@@ -1,19 +1,26 @@
-// mindflow/live — the films a talk's words call up, behind the speaker as he talks.
+// mindflow/live — what a talk says, behind the speaker as he talks.
+//
+// The image cloud (the default): the words and ideas grow as live pictures, placed by Mindflow's rules
+// (cloud.js), each idea drawn as a motif lifted from the films (motifs/), and the Mac's Haiku composes
+// pictures from them. ?mode=films shows the films instead, one whole film at a time, chosen from the words.
 //
 //   ?source=wss://<host>   follow the Mac: verso's host (stage mode) hears the phone through whisper,
-//                          chooses by keywords and by Haiku, and sends {film, phrase} here
+//                          chooses by keywords and by Haiku, and sends {heard}, {film} and {compose} here
 //   ?listen                hear this room through this computer's own microphone (Chrome's speech
-//                          recognition) and choose by keywords alone: no key ever lives on this computer
-//   ?hold=30               the least seconds a film stays before a weaker match may replace it
+//                          recognition), by keywords alone: no key ever lives on this computer
+//   ?mode=films            the films, one at a time, instead of the cloud
+//   ?hold=30               (films) the least seconds a film stays before a weaker match may replace it
 //   ?film=<name>           open on one film (to check it on the projector)
-//   ?debug                 show why each film was chosen
+//   ?debug                 show why each film was chosen, or what the cloud holds
 //
-// Keys: f fullscreen, 0 words only, a back to the chooser.
+// A film picked on the phone shows over the cloud for 90 s. Keys: f fullscreen, 0 back to the words
+// (the cloud), a back to the chooser.
 
 const params = new URLSearchParams(location.search);
+const view = params.get('mode') === 'films' ? 'films' : 'cloud';
 const HOLD_MS = (parseFloat(params.get('hold')) || 30) * 1000;
 const MANUAL_MS = 90 * 1000;       // a pick from the phone holds the screen this long against the chooser
-const STRONG_GAP_MS = 8 * 1000;    // even a strong match waits this long after the last change
+const STRONG_GAP_MS = 15 * 1000;   // even a strong match waits this long after the last change
 const PENDING_MS = 25 * 1000;      // a match the hold kept back still counts this long
 const MIN_PLAY_MS = 60 * 1000;     // a film plays at least this long before it may fade to the words ...
 const QUIET_MS = 100 * 1000;       // ... once its idea has gone unheard this long
@@ -62,21 +69,23 @@ function chooseFromWords(phrase) {
   const t = Date.now();
   heard.push({ t, text: norm(phrase) });
   while (heard.length && t - heard[0].t > WINDOW_MS) heard.shift();
+  const latest = [];
   const scores = matchers.map(m => {
-    let s = 0;
-    for (const h of heard) {
+    let s = 0, last = 0;
+    heard.forEach((h, i) => {
       const k = Math.exp(-(t - h.t) / 1000 / FADE_S);
       for (const w of m.words) {
         const n = (h.text.match(w.re) || []).length;
-        if (n) s += n * w.weight * k;
+        if (n) { s += n * w.weight * k; if (i === heard.length - 1) last += n * w.weight; }
       }
-    }
+    });
+    latest.push(last);
     return s;
   });
   const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a]);
   const best = order[0];
-  if (best === undefined || scores[best] < 0.6) return;
-  const strong = scores[best] >= 1.8 && scores[best] - (scores[order[1]] || 0) >= 0.8;
+  if (best === undefined || scores[best] < 0.6 || !latest[best]) return;   // answer what was just said
+  const strong = scores[best] >= 2.2 && scores[best] - (scores[order[1]] || 0) >= 1.0;
   propose({ type: 'film', films: matchers[best].films, strong, why: 'words', phrase, score: +scores[best].toFixed(2) });
 }
 
@@ -102,6 +111,12 @@ function pickFilm(films) {
 function propose(p) {
   const t = Date.now();
   lastProposal = Object.assign({ at: t }, p);
+  if (view === 'cloud') {                       // the cloud: a pick from the phone shows its film a while; the chooser feeds the cloud
+    if (p.why === 'release') { manualUntil = 0; if (cur.film) show(null); }
+    else if (p.why === 'manual') { manualUntil = t + MANUAL_MS; if ((p.film || null) !== cur.film) show(p.film || null); }
+    else CLOUD.idea(p);
+    return;
+  }
   if (p.why === 'release') { manualUntil = 0; return; }
   if (p.why === 'manual') {
     manualUntil = t + MANUAL_MS;
@@ -125,7 +140,9 @@ function propose(p) {
 
 setInterval(() => {
   const t = Date.now();
-  if (t >= manualUntil) {
+  if (view === 'cloud') {
+    if (cur.film && t >= manualUntil) show(null);
+  } else if (t >= manualUntil) {
     if (pending && t - pending.at > PENDING_MS) pending = null;
     if (pending && cur.film && t - cur.since >= HOLD_MS) {
       const f = pending.film;
@@ -148,6 +165,7 @@ function show(film) {
   cur = { film, since: t, heardAt: t };
   if (film) shownAt.set(film, t);
   document.body.classList.toggle('film-on', !!film);
+  if (view === 'cloud') CLOUD.visible(!film);
   retarget();
   const my = ++gen;
   const olds = [...stage.children];
@@ -357,18 +375,21 @@ function render() {
   ctx.globalAlpha = 1;
 }
 
-(function animate() {
-  step();
-  render();
-  requestAnimationFrame(animate);
-})();
-setInterval(retarget, 2000);
+if (view === 'films') {
+  (function animate() {
+    step();
+    render();
+    requestAnimationFrame(animate);
+  })();
+  setInterval(retarget, 2000);
+}
 
 // ── What was heard ─────────────────────────────────────────
 
 function heardPhrase(text) {
   if (!text || !text.trim()) return;
   caption(text);
+  if (view === 'cloud') { CLOUD.hear(text); return; }
   addWords(text);
   if (mode === 'listen') chooseFromWords(text);
 }
@@ -393,10 +414,12 @@ function follow(url) {
       const kind = m.type || m.event;
       if (kind === 'heard') heardPhrase(m.text);
       else if (kind === 'film') propose(m);
+      else if (kind === 'compose') { if (view === 'cloud') CLOUD.compose(m); }
       else if (kind === 'state' && !caughtUp) {
         caughtUp = true;
-        (m.recent || []).forEach(addWords);
+        (m.recent || []).forEach(view === 'cloud' ? CLOUD.hear : addWords);
         if (m.film) propose(m.film);
+        if (m.compose && view === 'cloud') CLOUD.compose(m.compose);
       }
     };
     ws.onclose = () => { setDot('lost'); setTimeout(open, delay); delay = Math.min(delay * 2, 10000); };
@@ -466,6 +489,11 @@ addEventListener('mousemove', () => {
 function showDebug() {
   const t = Date.now();
   const p = lastProposal;
+  if (view === 'cloud') {
+    debugEl.textContent = `${mode} · the cloud\n` + CLOUD.debug() +
+      (cur.film ? `\nshowing ${cur.film}, picked on the phone, ${Math.max(0, Math.round((manualUntil - t) / 1000))}s more` : '');
+    return;
+  }
   debugEl.textContent = [
     `${mode} · hold ${HOLD_MS / 1000}s`,
     `showing ${cur.film || '(the words)'} for ${Math.round((t - cur.since) / 1000)}s, its idea last heard ${Math.round((t - cur.heardAt) / 1000)}s ago`,
@@ -480,7 +508,9 @@ function showDebug() {
 const mode = params.has('source') ? 'source' : params.has('listen') ? 'listen' : 'none';
 if (params.has('debug')) debugEl.style.display = 'block';
 
+document.body.classList.add(view);
 loadCatalogue().then(() => {
+  if (view === 'cloud') CLOUD.start({ canvas: document.getElementById('cloud'), catalogue, stop: STOP_WORDS });
   if (params.get('film')) propose({ why: 'manual', film: params.get('film') });
   if (mode === 'source') follow(params.get('source'));
   else if (mode === 'listen') listen();
