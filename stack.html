@@ -34,7 +34,11 @@
 
      The room's underscore is its law — what an entry is and how the room is read — so any LLM that engages the
      room reads it with the entries, the later reflection lane included. A meeting from B to A, keyed to its
-     members, is the next step (task:weft 33.5). ?beach=<origin> holds a meeting on another beach. -->
+     members, is the next step (task:weft 33.5). ?beach=<origin> holds a meeting on another beach.
+
+     THE CODE, FULL SCREEN (David, 10 November, for the beach-flyby talk): the room screen's code and a small one on the
+     phone, under the stack, each fill the screen at a tap, and Q does the same on any screen, so the back of a room, or
+     the person beside you, can scan it; a tap or Esc puts it away. -->
 <style>
   *{box-sizing:border-box} html,body{margin:0}
   /* C, B and A: the model's own colours (animations/the-state-stack), one value per register */
@@ -237,6 +241,21 @@
   .room.empty .join{margin:auto 0;flex-direction:column;align-items:flex-start}
   .room.empty .plate{width:clamp(180px,34vmin,440px)}
   .room.empty .join .j1{font-size:clamp(22px,3.6vmin,48px)}
+  /* any code fills the screen at a tap (or Q), so the back of a room can scan it; on a phone, so can the person beside you */
+  .plate.tap{cursor:zoom-in}
+  .plate.tap:hover,.plate.tap:focus-visible{outline:2px solid var(--b);outline-offset:3px}
+  .yjoin{display:flex;gap:14px;align-items:center;margin-top:16px}
+  .yjoin .plate{width:96px}
+  .yjoin p{margin:0;font-size:14px;line-height:1.45;color:var(--vapour)}
+  .yjoin b{display:block;font-family:var(--display);font-weight:700;color:var(--foam)}
+  #qr-full{width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:#000;color:#fff}
+  #qr-full::backdrop{background:#000}
+  #qr-full .qf{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2vh;padding:3vh 4vw;cursor:zoom-out}
+  #qr-full .qf-code{width:min(74vh,90vw);line-height:0;border-radius:min(2vh,2.4vw);overflow:hidden}
+  #qr-full .qf-code svg{display:block;width:100%;height:auto}
+  #qr-full .qf-say{margin:0;font-family:var(--display);font-weight:800;font-size:min(6vh,8vw);line-height:1;text-align:center;color:#F0BC63}
+  #qr-full .qf-url{margin:0;font-family:var(--mono);font-size:min(2.3vh,3.6vw);color:#c9c4e6;overflow-wrap:anywhere;text-align:center}
+  #qr-full .qf-x{margin:0;font-family:var(--mono);font-size:min(1.7vh,3vw);color:#6f6a93}
   .room.empty .waiting{display:block;margin:.6em 0 0;font-size:max(14px,1.9vmin);color:var(--vapour)}
   .room.empty .ctl-row .seg{visibility:hidden}
 
@@ -340,6 +359,7 @@
       </div>
       <p class="hint" id="y-who" hidden></p>
       <p class="status" id="y-status" role="status"></p>
+      <div class="yjoin" id="y-join" hidden><div class="plate tap" id="y-qr" role="button" tabindex="0" aria-label="Show the room’s code full screen"></div><p><b>Someone beside you?</b>Tap the code to fill your screen with it, and they scan it from yours.</p></div>
       <nav class="foot"><a href="#" id="y-room-view">the room screen →</a><a href="/animations/the-state-stack" target="_blank" rel="noopener">the State Stack, explained →</a></nav>
     </div>
   </section>
@@ -372,7 +392,7 @@
       <p class="counts" id="r-members" hidden></p>
       <ul class="key" id="r-key" hidden aria-label="Who is in the room"></ul>
       <div class="join">
-        <div class="plate" id="r-qr"></div>
+        <div class="plate tap" id="r-qr" role="button" tabindex="0" title="Tap, or press Q, to fill the screen with the code" aria-label="Show the room’s code full screen"></div>
         <div>
           <p class="j1">Set your own stack</p>
           <p class="j2" id="r-url"></p>
@@ -386,6 +406,9 @@
     </aside>
   </section>
 </main>
+<dialog id="qr-full" aria-label="The room’s code, full screen">
+  <div class="qf"><div class="qf-code"></div><p class="qf-say">Set your own stack</p><p class="qf-url" id="qf-url"></p><p class="qf-x">tap anywhere, or Esc, to close</p></div>
+</dialog>
 <noscript><p style="padding:24px">The State Stack runs in the page: it needs JavaScript.</p></noscript>
 
 <script>
@@ -937,7 +960,7 @@ function show(view){
   if (view !== 'door') try { sessionStorage.setItem(VKEY(), view); } catch(e){}
   if (gate){ keyinUi(); keepAwake(false); return; }
   keepAwake(view === 'room');
-  if (view === 'room') loadQr();
+  if (view === 'room' || view === 'hand') loadQr();
   if (view === 'hand'){ if (ME.v) holdStack(); else deal(ME.step); }
   paint();
   schedule(60);
@@ -1072,15 +1095,15 @@ document.querySelectorAll('.seg.look').forEach(b => b.addEventListener('click', 
 let lookSaved = ''; try { lookSaved = localStorage.getItem('stack:look') || ''; } catch(e){}
 if (Q.has('birds') || lookSaved === 'birds') setLook('birds');
 
-/* the code a phone scans — loaded when a screen first shows the room (vendor/qrcode.js, as the news sheets load it) */
-let qrLoading = null;
+/* the code a phone scans — loaded when a screen first shows the room or a phone its hand (vendor/qrcode.js, as the news sheets load it) */
+let qrLoading = null, QR_SVG = '';
 function loadQr(){
   const url = linkOf(MEETING, BEAT);
   $('r-url').textContent = url.replace(/^https?:\/\//, '');
   $('r-j3').textContent = KEYED ? 'Key in with your handle and your own key.' : 'No key, no login.';
   $('r-rec').innerHTML = 'Kept on the beach as <a href="' + RENDER + encodeURIComponent(ROOM()) + '" target="_blank" rel="noopener">' + esc(ROOM()) + '</a>' +
     ' · <a href="/ring/' + encodeURIComponent(MEETING) + '" target="_blank" rel="noopener">the meeting’s ring</a>';
-  if ($('r-qr').firstChild) return;
+  if (QR_SVG) return plates(url);
   if (!qrLoading) qrLoading = new Promise((ok, no) => {
     if (typeof window.qrcode === 'function') return ok();
     const s = document.createElement('script'); s.src = '/vendor/qrcode.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s);
@@ -1091,11 +1114,38 @@ function loadQr(){
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += 'M' + c + ' ' + r + 'h1v1h-1z';
     /* four modules of quiet margin, as the code's standard asks; the label rides the plate, since theme.css lays a dark
        plate behind any svg named an image in the light register */
-    $('r-qr').setAttribute('role', 'img'); $('r-qr').setAttribute('aria-label', 'A code for ' + url);
-    $('r-qr').innerHTML = '<svg viewBox="-4 -4 ' + (n + 8) + ' ' + (n + 8) + '" shape-rendering="crispEdges" aria-hidden="true">' +
+    QR_SVG = '<svg viewBox="-4 -4 ' + (n + 8) + ' ' + (n + 8) + '" shape-rendering="crispEdges" aria-hidden="true">' +
       '<rect x="-4" y="-4" width="' + (n + 8) + '" height="' + (n + 8) + '" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
+    plates(url);
   }, () => { qrLoading = null; });
 }
+/* the room screen's plate and the phone's both carry it, and either fills the screen with it at a tap */
+function plates(url){
+  ['r-qr', 'y-qr'].forEach(id => { const el = $(id); if (!el.firstChild) el.innerHTML = QR_SVG; el.setAttribute('aria-label', 'The code for ' + url + ': show it full screen'); });
+  $('y-join').hidden = false;
+}
+function qrFull(){
+  if (!QR_SVG) return;
+  const d = $('qr-full');
+  d.querySelector('.qf-code').innerHTML = QR_SVG;
+  d.querySelector('.qf-say').textContent = KEYED ? 'Key in, and set your own stack' : 'Set your own stack';
+  $('qf-url').textContent = linkOf(MEETING, BEAT).replace(/^https?:\/\//, '');
+  if (d.showModal){ if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+}
+function qrClose(){ const d = $('qr-full'); if (d.close){ if (d.open) d.close(); } else d.removeAttribute('open'); }
+['r-qr', 'y-qr'].forEach(id => {
+  $(id).addEventListener('click', qrFull);
+  $(id).addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); qrFull(); } });
+});
+$('qr-full').addEventListener('click', qrClose);
+/* Q: the code full screen, and away again — for the screen at the front of a room */
+document.addEventListener('keydown', ev => {
+  if (ev.key !== 'q' && ev.key !== 'Q') return;
+  const t = ev.target;
+  if (t && (/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || t.isContentEditable)) return;
+  if (VIEW !== 'room' && VIEW !== 'hand') return;
+  if ($('qr-full').open) qrClose(); else qrFull();
+});
 
 /* a screen left showing the room stays awake, where the browser allows it */
 let wake = null;
