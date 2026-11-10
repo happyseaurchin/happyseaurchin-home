@@ -33,6 +33,7 @@
   const rgba = (c, a) => window.MOTIF ? MOTIF.rgba(c, a) : 'rgba(220,220,230,' + a + ')';
   const pal = () => window.MOTIF ? MOTIF.C : {};
   const WORD_COLOURS = ['ink', 'sand', 'sea', 'steel', 'rose', 'lime', 'coral', 'violet', 'blue'];
+  const ground = a => (window.MOTIF && MOTIF.light ? 'rgba(244,241,234,' : 'rgba(10,10,15,') + a + ')';   // the screen's own ground
   const FILLER = new Set(('finally everything anything nothing everyone someone gives gets getting goes gone moves holding '
     + 'tonight evening morning good thanks thank today tell talk talking let start begin lived lives living away full one two three').split(' '));
 
@@ -270,7 +271,7 @@
     ctx.font = (italic ? 'italic ' : '') + '300 ' + size + "px -apple-system, 'Helvetica Neue', 'Segoe UI', Roboto, sans-serif";
     ctx.lineJoin = 'round';
     ctx.lineWidth = 5;
-    ctx.strokeStyle = 'rgba(10,10,15,' + (0.85 * a) + ')';       // a dark halo: a word drifting under it never hides it
+    ctx.strokeStyle = ground(0.85 * a);                          // a halo of the ground: a word drifting under it never hides it
     ctx.strokeText(text, x, y);
     ctx.fillStyle = rgba(c, a);
     ctx.fillText(text, x, y);
@@ -291,7 +292,7 @@
         const r = R * (i === 1 ? 0.5 : 0.24);
         ctx.save(); ctx.globalAlpha = clamp(a, 0, 1);              // a soft dark well for the inner one to read in
         const g = ctx.createRadialGradient(n.x, n.y, r * 0.5, n.x, n.y, r * 1.25);
-        g.addColorStop(0, 'rgba(10,10,15,0.72)'); g.addColorStop(1, 'rgba(10,10,15,0)');
+        g.addColorStop(0, ground(0.72)); g.addColorStop(1, ground(0));
         ctx.fillStyle = g; ctx.beginPath(); ctx.arc(n.x, n.y, r * 1.25, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
         drawMotif(parts[i], n.x, n.y, r, n.os[i], t, a);
@@ -413,6 +414,10 @@
       requestAnimationFrame(loop);
     },
     hear, idea, compose,
+    clear() {                                  // a clean screen: everything goes, and the ideas start from nothing
+      nodes.clear(); phrases.length = 0; links = new Map(); last = null; lastPicture = null;
+      concepts.forEach(c => { c.score = 0; c.at = 0; });
+    },
     visible(on) { viewTo = on ? 1 : 0; },
     debug() {
       const all = [...nodes.values()].filter(n => !n.dying), count = k => all.filter(n => n.kind === k).length;

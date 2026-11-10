@@ -12,12 +12,14 @@
 //   ?hold=30               (films) the least seconds a film stays before a weaker match may replace it
 //   ?film=<name>           open on one film (to check it on the projector)
 //   ?debug                 show why each film was chosen, or what the cloud holds
+//   ?light                 a pale ground and darker inks, for a screen that washes out dark; the phone can switch every screen
 //
-// A film picked on the phone shows over the cloud for 90 s. Keys: f fullscreen, 0 back to the words
-// (the cloud), a back to the chooser.
+// A film picked on the phone shows over the cloud for 90 s; the phone can clear every screen. Keys: f fullscreen,
+// 0 back to the words (the cloud), a back to the chooser, c clear this screen.
 
 const params = new URLSearchParams(location.search);
 const view = params.get('mode') === 'films' ? 'films' : 'cloud';
+const theme = params.has('light') || params.get('theme') === 'light' ? 'light' : 'dark';   // ?light: a pale ground
 const HOLD_MS = (parseFloat(params.get('hold')) || 30) * 1000;
 const MANUAL_MS = 90 * 1000;       // a pick from the phone holds the screen this long against the chooser
 const STRONG_GAP_MS = 15 * 1000;   // even a strong match waits this long after the last change
@@ -415,17 +417,36 @@ function follow(url) {
       if (kind === 'heard') heardPhrase(m.text);
       else if (kind === 'film') propose(m);
       else if (kind === 'compose') { if (view === 'cloud') CLOUD.compose(m); }
+      else if (kind === 'clear') clearScreen();
+      else if (kind === 'theme') follow.theme(m.theme);
       else if (kind === 'state' && !caughtUp) {
         caughtUp = true;
         (m.recent || []).forEach(view === 'cloud' ? CLOUD.hear : addWords);
         if (m.film) propose(m.film);
         if (m.compose && view === 'cloud') CLOUD.compose(m.compose);
+        if (m.theme) follow.theme(m.theme);
       }
     };
     ws.onclose = () => { setDot('lost'); setTimeout(open, delay); delay = Math.min(delay * 2, 10000); };
     ws.onerror = () => ws.close();
   };
   open();
+}
+
+follow.theme = t => {                 // the phone chose a ground for every screen: come back in it
+  if ((t === 'light' ? 'light' : 'dark') === theme) return;
+  const u = new URL(location.href);
+  u.searchParams.delete('light'); u.searchParams.delete('theme');
+  if (t === 'light') u.searchParams.set('theme', 'light');
+  location.replace(u.href);
+};
+
+function clearScreen() {               // a clean screen: the cloud, the words, any film picked, the caption
+  if (cur.film) { manualUntil = 0; show(null); }
+  if (view === 'cloud') CLOUD.clear();
+  else { words.clear(); sentences.length = 0; lastWord = null; }
+  heard.length = 0;
+  captionEl.classList.remove('on');
 }
 
 // ── Source 2: this computer's own microphone (?listen) ─────
@@ -477,6 +498,7 @@ addEventListener('keydown', e => {
   if (e.key === 'f') { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }
   else if (e.key === '0' || e.key === 'Escape') propose({ why: 'manual', film: null });
   else if (e.key === 'a') propose({ why: 'release' });
+  else if (e.key === 'c') clearScreen();
 });
 addEventListener('dblclick', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); });
 let idleTimer = 0;
@@ -508,7 +530,7 @@ function showDebug() {
 const mode = params.has('source') ? 'source' : params.has('listen') ? 'listen' : 'none';
 if (params.has('debug')) debugEl.style.display = 'block';
 
-document.body.classList.add(view);
+document.body.classList.add(view, theme);
 loadCatalogue().then(() => {
   if (view === 'cloud') CLOUD.start({ canvas: document.getElementById('cloud'), catalogue, stop: STOP_WORDS });
   if (params.get('film')) propose({ why: 'manual', film: params.get('film') });
