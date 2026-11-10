@@ -13,7 +13,7 @@
 //   CLOUD.visible(on)                          fade the cloud out under a film, and back
 
 (function () {
-  const WORDS_MAX = 18, MOTIFS_MAX = 7, PICTURES_MAX = 2;
+  const WORDS_MAX = 14, MOTIFS_MAX = 7, PICTURES_MAX = 2;
   const LIFE = { word: [30, 90], motif: [80, 220], picture: [60, 170] };   // s since last said: whole until the first, gone by the second
   const SCORE_FADE_S = 12, SCORE_AT = 0.6;     // an idea is called up once its mentions, fading, weigh this much (the chooser's own rule)
   const PHRASES_KEPT = 16;                     // the phrases whose togetherness links what they named
@@ -33,6 +33,8 @@
   const rgba = (c, a) => window.MOTIF ? MOTIF.rgba(c, a) : 'rgba(220,220,230,' + a + ')';
   const pal = () => window.MOTIF ? MOTIF.C : {};
   const WORD_COLOURS = ['ink', 'sand', 'sea', 'steel', 'rose', 'lime', 'coral', 'violet', 'blue'];
+  const FILLER = new Set(('finally everything anything nothing everyone someone gives gets getting goes gone moves holding '
+    + 'tonight evening morning good thanks thank today tell talk talking let start begin lived lives living away full one two three').split(' '));
 
   // ── the catalogue: ideas, their words, their motifs ──────
 
@@ -77,7 +79,7 @@
     }
     const toks = text.toLowerCase().replace(/[^\w\s'-]/g, '').split(/\s+/)
       .map(w => w.replace(/^'+|'+$/g, ''))
-      .filter(w => w.length > 1 && !STOP.has(w) && !covered.has(w) && !covered.has(w.replace(/(es|s)$/, '')));
+      .filter(w => (w.length > 3 || w === 'ai') && !STOP.has(w) && !FILLER.has(w) && !covered.has(w) && !covered.has(w.replace(/(es|s)$/, '')));
     for (const tok of toks) touched.push(touchWord(tok).key);
     remember(touched);
   }
@@ -203,11 +205,11 @@
 
   function radius(n) {
     if (n.kind === 'word') return Math.max(n.s * 0.75, n.label.length * n.s * 0.31) + 6;
-    return n.s * (n.kind === 'picture' ? 1.12 : 1.04) + 14;
+    return n.s * (n.kind === 'picture' ? 1.12 : 1.04) + (n.kind === 'picture' ? 16 : 24);   // the label beneath is inside it
   }
 
   function below(n) {                          // how far it reaches beneath its centre, its label included
-    return n.kind === 'word' ? n.s * 0.7 : n.kind === 'motif' ? n.s + 30 : n.s * 1.08 + 44;
+    return n.kind === 'word' ? n.s * 0.7 : n.kind === 'motif' ? n.s + 30 : n.s * 1.08 + 24;
   }
 
   function step(dt) {
@@ -320,7 +322,7 @@
       parts.forEach((p, i) => drawMotif(p, at[i][0], at[i][1], pr, n.os[i], t, a));
     }
     ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-    label(n.label, n.x, n.y + R * 1.08 + 10, clamp(Math.round(H * 0.019), 14, 22), C.sand, 0.8 * a, true);
+    label(n.label, n.x, n.y + R * 1.0 + 2, clamp(Math.round(H * 0.019), 14, 22), C.sand, 0.8 * a, true);
   }
 
   function thread(x1, y1, x2, y2, a, t, i) {     // a link: a slow cord, a knot travelling along it
