@@ -41,6 +41,32 @@
     font-size:12px;padding:5px 9px;cursor:pointer}
   .bar button:hover{color:var(--foam);border-color:var(--line-strong)}
   .bar button.on{color:var(--liquid);border-color:var(--liquid)}
+  .bar a.place{color:var(--solid);border:1px solid rgba(var(--solid-rgb),0.55);border-radius:4px;font-size:12px;padding:5px 9px;white-space:nowrap}
+  .bar a.place:hover{color:var(--foam);border-color:var(--solid)}
+
+  /* arrivals — a line for each person the census newly places while the page is open; a tap flies there */
+  #arrivals{position:fixed;right:14px;bottom:40px;z-index:17;display:flex;flex-direction:column;align-items:flex-end;gap:6px;pointer-events:none}
+  #arrivals button{pointer-events:auto;font-family:var(--mono);font-size:14px;letter-spacing:0.03em;color:var(--foam);
+    background:rgba(var(--well-rgb),0.88);backdrop-filter:blur(8px);border:1px solid rgba(var(--solid-rgb),0.6);border-radius:999px;
+    padding:8px 16px;cursor:pointer;opacity:0;transform:translateY(6px);transition:opacity 300ms ease, transform 300ms ease}
+  /* read from the back of a room when the globe is on a projector */
+  @media (min-width:1200px){ #arrivals button{font-size:16px;padding:9px 18px} }
+  #arrivals button.in{opacity:1;transform:none}
+  #arrivals button b{color:var(--solid);font-weight:700}
+  .folk-m.arrived .fd, .crowd-m.arrived .cd{animation:arrive 1.6s ease-out 4}
+  @keyframes arrive{0%{box-shadow:0 0 0 0 rgba(var(--solid-rgb),0.9)}100%{box-shadow:0 0 0 24px rgba(var(--solid-rgb),0)}}
+  @media (prefers-reduced-motion: reduce){ .folk-m.arrived .fd, .crowd-m.arrived .cd{animation:none} }
+
+  /* place yourself — on a big screen the door is a QR code for the room; on a phone it is the door itself */
+  dialog#place{width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;border:0;background:rgba(var(--well-rgb),0.95);color:var(--foam)}
+  dialog#place::backdrop{background:rgba(0,0,0,0.6)}
+  #place .pq{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2.2vh;padding:3vh 4vw;cursor:zoom-out;text-align:center}
+  #place .pq-code{width:min(54vh,80vw);background:#fff;padding:min(4vh,5vw);border-radius:min(2vh,2.4vw)}
+  #place .pq-code svg{width:100%;height:auto;display:block}
+  #place .pq-say{margin:0;font-family:var(--display);font-weight:700;font-size:min(5.6vh,8vw);line-height:1.05}
+  #place .pq-url{margin:0;font-family:var(--mono);font-size:min(2.8vh,4.2vw);color:var(--liquid)}
+  #place .pq-how{margin:0;max-width:680px;color:var(--vapour);font-size:min(2.3vh,3.8vw)}
+  #place .pq-x{margin:0;font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
 
   /* ── the sphere ── */
   #map{position:fixed;inset:0;width:100vw;height:100dvh;transition:opacity 700ms ease}
@@ -187,6 +213,7 @@
 
   @media (max-width:900px){ #ladder{display:none} }
   @media (max-width:760px){
+    #arrivals{top:54px;bottom:auto;left:10px;right:10px;align-items:center}
     #panel{top:auto;bottom:74px;left:10px;width:calc(100vw - 20px);max-height:38dvh;padding:12px 14px}
     #addr{bottom:12px}
     .bar{padding-right:48px}
@@ -200,6 +227,9 @@
   <span><b>earth</b> · the globe, by address</span>
   <span class="work" id="work-src"></span>
   <span class="spacer"></span>
+  <!-- a link, not a button: the bar gathers its buttons under 'options' (theme.js gatherActs), and this
+       door stays in sight — on a phone it is followed, on a big screen it shows the room a QR code -->
+  <a id="btn-place" class="place" href="/welcome#door-earth" title="put yourself on the globe — your own passport, your own words">place yourself</a>
   <button id="btn-workings" title="show the addresses and block names under the page">workings</button>
 </div>
 
@@ -233,6 +263,18 @@
 </div>
 
 <div id="attrib">globe © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/attributions">CARTO</a> · ground © the beach</div>
+
+<div id="arrivals" aria-live="polite"></div>
+
+<dialog id="place" aria-label="place yourself on the globe">
+  <div class="pq">
+    <div class="pq-code"></div>
+    <p class="pq-say">Put yourself on the globe</p>
+    <p class="pq-url">happyseaurchin.com/welcome</p>
+    <p class="pq-how">A name, one line about you and a key of your own — then where you are, typed or from your phone. You appear here within seconds.</p>
+    <p class="pq-x">tap anywhere, or Esc, to close</p>
+  </div>
+</dialog>
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1139,6 +1181,84 @@ function buildSolar(){
   }
 }
 
+/* ── live — the census re-read every ten seconds while the page is on screen ──
+   census:earth is refolded the moment anyone stands (api/earth-census.js, from
+   /welcome, /here, /walk and /connect), so a person who places themselves is
+   drawn here within seconds and named as they arrive. A hidden tab reads nothing. */
+const LIVE_MS = 10000;
+let CENSUS_TEXT = null, LIVE_BUSY = false;
+const placeName = path => { const s = semOf(nodeAt(SPATIAL, path)); return s ? nameOf(s) : 'unresolved ground'; };
+async function liveCensus(){
+  if (LAYER || document.hidden || LIVE_BUSY || !SPATIAL) return;
+  LIVE_BUSY = true;
+  try {
+    let fresh;
+    try { fresh = await readBlock('census:earth'); } catch(e){ return; }
+    const text = JSON.stringify(fresh);
+    if (text === CENSUS_TEXT) return;
+    const was = new Map(FOLK.map(f => [f.handle, f.path.join(',')]));
+    const crowdWas = new Map(CROWDS.map(c => [c.path.join(','), c.under]));
+    const first = CENSUS_TEXT === null;
+    CENSUS = fresh; CENSUS_TEXT = text;
+    loadCensus(); buildMarkers(); renderPanel(); updateOverlays();
+    if (first) return;
+    const news = [];
+    for (const f of FOLK) if (was.get(f.handle) !== f.path.join(','))
+      news.push({ who: f.handle, what: 'stands at ' + placeName(f.path), path: f.path, handle: f.handle });
+    /* a crowd too large to name says only how many more */
+    for (const c of CROWDS){ const before = crowdWas.get(c.path.join(',')); if (before && c.under > before)
+      news.push({ who: '+' + (c.under - before), what: 'at ' + c.name, path: c.path }); }
+    news.slice(0, 4).forEach(arrive);
+    /* /globe/<name> opened before its holder's fold landed: fly there the moment they appear */
+    const mine = HANDLE && news.find(n => n.handle && n.handle.toLowerCase() === HANDLE.toLowerCase());
+    if (mine && !USERMOVED) setAddress(mine.path);
+  } finally { LIVE_BUSY = false; }
+}
+function arrive(n){
+  const box = $('arrivals'); if (!box) return;
+  const b = document.createElement('button'); b.type = 'button'; b.title = 'fly there';
+  const who = document.createElement('b'); who.textContent = n.who;
+  b.appendChild(who); b.appendChild(document.createTextNode(' ' + n.what));
+  b.addEventListener('click', () => setAddress(n.path));
+  box.appendChild(b);
+  while (box.children.length > 4) box.firstChild.remove();
+  requestAnimationFrame(() => requestAnimationFrame(() => b.classList.add('in')));
+  setTimeout(() => { b.classList.remove('in'); setTimeout(() => b.remove(), 400); }, 9000);
+  /* and the marker where they now stand pulses a few times */
+  const k = n.path.join(',');
+  for (const m of FOLKMS.filter(m => m.f.path.join(',') === k).concat(CROWDMS.filter(m => m.c.path.join(',') === k))){
+    m.el.classList.add('arrived'); setTimeout(() => m.el.classList.remove('arrived'), 7000);
+  }
+}
+
+/* ── place yourself — the door to /welcome's earth card. On a phone it IS the
+   door; on a big screen (a talk, a projector) it is a QR code for the room, and
+   whoever scans it and stands arrives on this globe while it is showing. ── */
+const PLACE_URL = 'https://happyseaurchin.com/welcome#door-earth';
+let QR_LOADING = null;
+function qrLib(){
+  if (typeof window.qrcode === 'function') return Promise.resolve();
+  return QR_LOADING || (QR_LOADING = new Promise((ok, no) => {
+    const s = document.createElement('script'); s.src = '/vendor/qrcode.js'; s.onload = ok; s.onerror = no;
+    document.head.appendChild(s);
+  }));
+}
+/* drawn as /presentation draws its codes, from the same vendored library */
+function qrSVG(url){
+  const q = window.qrcode(0, 'M'); q.addData(url); q.make();
+  let svg = q.createSvgTag(4, 0);
+  const m = /width="(\d+)px"/.exec(svg) || /width="(\d+)"/.exec(svg);
+  if (m && svg.indexOf('viewBox') < 0) svg = svg.replace('<svg ', '<svg viewBox="0 0 ' + m[1] + ' ' + m[1] + '" ');
+  return svg.replace(/ width="[^"]*"/, '').replace(/ height="[^"]*"/, '');
+}
+async function placeYourself(ev){
+  if (matchMedia('(max-width: 760px)').matches || matchMedia('(pointer: coarse)').matches) return;   /* the link itself */
+  ev.preventDefault();
+  const d = $('place'), code = d.querySelector('.pq-code');
+  try { await qrLib(); code.innerHTML = qrSVG(PLACE_URL); } catch(e){ code.textContent = PLACE_URL; }
+  if (d.showModal){ if (!d.open) d.showModal(); } else d.setAttribute('open', '');
+}
+
 /* ── boot ────────────────────────────────────────────────────────────────── */
 (async function boot(){
   $('btn-workings').addEventListener('click', () => {
@@ -1146,6 +1266,10 @@ function buildSolar(){
     $('btn-workings').classList.toggle('on');
   });
   $('panel-tuck').addEventListener('click', () => $('panel').classList.toggle('tucked'));
+  /* a register drawn instead of the people has no one to place */
+  if (LAYER) $('btn-place').classList.add('hidden');
+  $('btn-place').addEventListener('click', placeYourself);
+  $('place').addEventListener('click', () => { const d = $('place'); if (d.close){ if (d.open) d.close(); } else d.removeAttribute('open'); });
   $('work-src').textContent = 'earth.beach.happyseaurchin.com';
   new MutationObserver(() => {
     map.setStyle(STYLES[themeNow()]); /* style.load re-applies globe + sky */
@@ -1174,7 +1298,7 @@ function buildSolar(){
   if (LAYER){ try { LAYERBLOCK = await readBlock(LAYER); } catch(e){ LAYERBLOCK = null; } }
   /* the tally the keeper's pass folded — absent on a beach that has never run one,
      which simply means nobody is drawn, not that the page breaks */
-  else { try { CENSUS = await readBlock('census:earth'); } catch(e){ CENSUS = null; } }
+  else { try { CENSUS = await readBlock('census:earth'); CENSUS_TEXT = JSON.stringify(CENSUS); } catch(e){ CENSUS = null; } }
   $('status').textContent = (GEOBLOCK
     ? 'ground: spatial:earth · anchors: geo:earth'
     : 'ground: spatial:earth · anchors: page gazetteer (geo:earth unreachable)')
@@ -1214,6 +1338,11 @@ function buildSolar(){
     spinStep();
   };
   if (map.loaded()) settle(); else map.once('load', settle);
+  /* live: re-read while seen, and at once on being seen again */
+  if (!LAYER){
+    setInterval(liveCensus, LIVE_MS);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) liveCensus(); });
+  }
 })();
 </script>
 </body>

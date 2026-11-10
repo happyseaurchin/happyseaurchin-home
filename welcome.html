@@ -62,6 +62,8 @@
   .say .row .why{font-family:var(--mono);font-size:11px;color:var(--vapour-dim);flex:1;min-width:160px}
   .say button{background:var(--solid);border:none;border-radius:8px;color:var(--abyss);font-weight:700;font-size:13px;padding:11px 18px}
   .say button:disabled{opacity:0.5;cursor:default}
+  .say button.ghost{background:none;border:1px solid var(--line-strong);color:var(--vapour);font-weight:400;padding:8px 14px}
+  .say button.ghost:hover{color:var(--foam);border-color:var(--foam)}
   .hint{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:8px 0 0;min-height:1.4em}
   .hint.ok{color:var(--solid)} .hint.err{color:var(--liquid)}
   .landed{margin-top:10px;padding:12px 14px;border:1px solid rgba(var(--solid-rgb),0.4);border-radius:10px;font-size:1rem}
@@ -186,6 +188,7 @@
     <div class="say">
       <input id="e-name" placeholder="your name — as your passport spells it" autocomplete="off" spellcheck="false" autocapitalize="none" maxlength="40">
       <input id="e-where" placeholder="where you are — a country, a town, a street…" autocomplete="off" maxlength="160">
+      <div class="row"><button id="e-locate" type="button" class="ghost hidden" title="your phone's position finds the place; only the place is written">use my location</button></div>
       <p class="quiet" id="e-where-at"></p>
       <div class="row">
         <span class="why">written into your own passport — its key serves here, so you are asked once</span>
@@ -232,7 +235,7 @@
   <a href="/experiences">the three doors, laid out →</a>
   <a href="/tree/experiences">the deep map →</a>
   <a href="/render?beach=beach.happyseaurchin.com&block=worlds">the worlds register →</a>
-  <span>reads the beach live · writes only passport:&lt;your name&gt; and now:&lt;your name&gt; at today, nothing else</span>
+  <span>reads the beach live · writes only passport:&lt;your name&gt; and now:&lt;your name&gt; at today, nothing else — and when you stand, the site refolds census:earth, the globe's tally, from everyone's passports</span>
 </div>
 
 <script>
@@ -524,12 +527,102 @@ function placeFor(map, words){
   hits.sort((a, b) => agree(b) - agree(a) || b.length - a.length);
   const best = hits[0];
   if (hits.some(h => h !== best && agree(h) === agree(best) && h.length === best.length)) return null;
+  return describe(map, best);
+}
+/* an address on the map as a stand writes it (full width) and as a person reads it: its own name, then
+   the city and the country above it where they add something */
+function describe(map, best){
   let width = 1; for (let n = map; n && n._ && typeof n._ === 'object'; n = n._) width++;
   const names = []; let n = map;
   for (const d of best){ n = n && typeof n === 'object' ? n[d === '0' ? '_' : d] : null; names.push(nameOfVoice(voiceOfNode(n))); }
   const shown = [names[names.length - 1], best.length > 5 ? names[4] : '', best.length > 3 ? names[2] : ''].filter((x, i, a) => x && a.indexOf(x) === i);
   return { addr: best + '0'.repeat(Math.max(0, width - best.length)), name: names[names.length - 1], shown: shown.join(', ') };
 }
+/* USE MY LOCATION — the phone's own position, walked down geo:earth (the map's geography, at spatial's
+   self-same addresses) to the finest named place whose anchor holds it, and never finer than a town:
+   a house or a room is a person's own to name, never found from a fix. The position is used on this
+   page and goes nowhere; only the place — its address and its name — is written, and only when they
+   press stand there. */
+let GEO = null, GEO_PICK = null;
+async function earthGeo(){
+  if (!GEO){ const r = await fetch(EARTH_WIRE + '?block=' + encodeURIComponent('geo:earth'), { headers:{Accept:'application/json'}, cache:'no-store' }); GEO = r.ok ? await r.json() : {}; }
+  return GEO;
+}
+/* an anchor as geo:earth writes it — "lat,lon · s,n,w,e" a ground's box, "lat,lon @zoom" a point seen at
+   that zoom — read as /globe reads it */
+function parseGeo(s){
+  if (typeof s !== 'string') return null;
+  let m = s.match(/^\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*@\s*([\d.]+)\s*$/);
+  if (m) return { lat: +m[1], lon: +m[2], z: +m[3] };
+  m = s.match(/^\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*[·•]\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*$/);
+  if (m) return { lat: +m[1], lon: +m[2], bbox: [+m[3], +m[4], +m[5], +m[6]] };
+  return null;
+}
+const KM = 111.32;
+const kmTo = (g, lat, lon) => Math.hypot((g.lat - lat) * KM, (g.lon - lon) * KM * Math.cos((g.lat + lat) * Math.PI / 360));
+/* a point holds what lies within half a map tile at its own zoom: a city at 11, a borough at 12 */
+const reachKm = z => 20037 / Math.pow(2, z);
+function holds(g, lat, lon){
+  if (g.bbox){ const [s, n, w, e] = g.bbox; return lat >= s && lat <= n && (w <= e ? lon >= w && lon <= e : lon >= w || lon <= e); }
+  return g.z != null && kmTo(g, lat, lon) <= reachKm(g.z);
+}
+function areaOf(g){
+  if (!g.bbox) return Math.PI * reachKm(g.z) ** 2;
+  const [s, n, w, e] = g.bbox;
+  return (n - s) * KM * (e >= w ? e - w : e - w + 360) * KM * Math.cos((s + n) * Math.PI / 360);
+}
+const TOWN = 7;   /* the finest rung a position walks to: depth 7 of floor 11, pscale 4, a town */
+function placeAtPoint(map, geo, lat, lon){
+  const nodeOf = (block, addr) => { let n = block; for (const d of addr) n = n && typeof n === 'object' ? n[d === '0' ? '_' : d] : undefined; return n; };
+  /* the named grounds one step finer whose anchors hold the point — through undecided ground to the first name */
+  const finer = (node, addr) => {
+    const out = [], kids = Object.keys(node).filter(k => /^[1-9]$/.test(k)).map(k => [k, node[k]]);
+    if (node._ && typeof node._ === 'object') kids.push(['0', node._]);
+    for (const [d, n] of kids){
+      const a = addr + d;
+      if (!n || a.length > TOWN) continue;
+      if (nameOfVoice(voiceOfNode(n))){
+        const g = parseGeo(voiceOfNode(nodeOf(geo, a)));
+        if (g && holds(g, lat, lon)) out.push({ a, n, g });
+      } else if (typeof n === 'object') out.push(...finer(n, a));
+    }
+    return out;
+  };
+  let addr = '3', node = map && map['3'];
+  if (!node || typeof node !== 'object') return null;
+  for (;;){
+    /* the smallest ground that holds the point; between equals, the nearest */
+    const c = finer(node, addr).sort((x, y) => areaOf(x.g) - areaOf(y.g) || kmTo(x.g, lat, lon) - kmTo(y.g, lat, lon));
+    if (!c.length) break;
+    addr = c[0].a; node = c[0].n;
+    if (!node || typeof node !== 'object') break;
+  }
+  return addr === '3' ? null : describe(map, addr);
+}
+async function useMyLocation(){
+  const at = $('e-where-at');
+  at.textContent = 'asking this device where it is…';
+  navigator.geolocation.getCurrentPosition(async pos => {
+    let s = null;
+    try { s = placeAtPoint(await earthMap(), await earthGeo(), pos.coords.latitude, pos.coords.longitude); } catch(e){}
+    if (!s){ GEO_PICK = null; at.textContent = 'where you are is not on the map yet — type it, and you stand on Earth until tonight\'s pass places it'; return; }
+    GEO_PICK = s;
+    $('e-where').value = s.shown;
+    at.textContent = 'on the globe at ' + s.shown + ' — found from this device\'s position, which stays on this page';
+  }, err => {
+    GEO_PICK = null;
+    at.textContent = err && err.code === 1 ? 'this device kept its position to itself — type where you are instead' : 'no position came back — type where you are instead';
+  }, { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
+}
+if (navigator.geolocation && window.isSecureContext){
+  $('e-locate').classList.remove('hidden');
+  $('e-locate').addEventListener('click', useMyLocation);
+}
+/* the globe draws people from census:earth, which the evening pass folds; the site refolds it the moment
+   someone stands, so they are on the globe in seconds (api/earth-census.js) */
+const refoldGlobe = () => fetch('/api/earth-census', { method: 'POST', keepalive: true }).catch(() => {});
+/* a stand pressed before its passport stood — founding goes on to it, so one intent is one act */
+let PENDING_STAND = false;
 async function foundPassport(){
   const name = cleanHandle($('p-name').value), line = $('p-line').value.trim(), key = $('p-key').value.trim();
   const say = (m, cls) => { const h = $('p-hint'); h.textContent = m || ''; h.className = 'hint' + (cls ? ' ' + cls : ''); };
@@ -555,11 +648,14 @@ async function foundPassport(){
   try { siteKeys.set('passport-latch:' + name, key); localStorage.removeItem('draft:welcome:passport'); } catch(e){}
   remember(name);
   say(''); $('p-key').value = ''; $('p-line').value = '';
-  const h = encodeURIComponent(name);
-  landed('Your passport stands, <b>' + esc(name) + '</b>. You stand on Earth.<br>' +
+  const h = encodeURIComponent(name), going = PENDING_STAND;
+  landed('Your passport stands, <b>' + esc(name) + '</b>. ' + (going ? 'Standing you where you said, below.' : 'You stand on Earth.') + '<br>' +
     '<a href="/passport/' + h + '">open it — add what you offer and would welcome →</a> &nbsp;·&nbsp; ' +
-    '<a href="#door-earth">say where you are, below →</a> &nbsp;·&nbsp; say what today is, below');
-  $('w-name').value = name; $('e-name').value = name; $('w-line').focus();
+    (going ? '' : '<a href="#door-earth">say where you are, below →</a> &nbsp;·&nbsp; ') + 'say what today is, below');
+  $('w-name').value = name; $('e-name').value = name;
+  /* a stand pressed before the passport stood goes on now, under the key just kept */
+  if (going){ PENDING_STAND = false; $('door-earth').scrollIntoView({ behavior: 'smooth', block: 'start' }); standThere(); }
+  else { refoldGlobe(); $('w-line').focus(); }
 }
 $('p-go').addEventListener('click', foundPassport);
 $('p-name').addEventListener('input', () => { const c = cleanHandle($('p-name').value, true); if (c !== $('p-name').value) $('p-name').value = c; });
@@ -577,8 +673,20 @@ async function standThere(){
   const done = (m, cls) => { $('e-go').disabled = false; say(m, cls); };
   const pp = await readBlock('passport:' + name).catch(() => undefined);
   if (pp === undefined) return done('the beach did not answer — nothing written', 'err');
-  if (pp === null) return done('no passport under ' + name + ' yet — found one above, then say where', 'err');
-  let stood = null; try { stood = placeFor(await earthMap(), where); } catch(e){}
+  if (pp === null){
+    /* no passport yet: found it above, and this stand goes on the moment it stands */
+    PENDING_STAND = true;
+    if (!$('p-name').value) $('p-name').value = name;
+    const self = document.querySelector('#p-offers [data-offer="self"]'); if (self && !self.classList.contains('on')) self.click();
+    done('no passport under ' + name + ' yet — found it above with a line and a key, and you stand here the moment it stands', 'err');
+    $('door-passport').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => $('p-line').focus({ preventScroll: true }), 450);
+    return;
+  }
+  /* the place a position found stands as found while its words are untouched; words typed are read afresh */
+  let stood = null;
+  if (GEO_PICK && GEO_PICK.shown === where) stood = GEO_PICK;
+  else try { stood = placeFor(await earthMap(), where); } catch(e){}
   const v3 = pp['3'], p3 = typeof v3 === 'string' ? v3 : (v3 && typeof v3._ === 'string' ? v3._ : '');
   const before = p3.split(/\s*\bLocation:/i)[0].trim();
   const body = { block: 'passport:' + name, spindle: '3',
@@ -595,10 +703,11 @@ async function standThere(){
   if (!w.ok) return done(lockRequired(w) ? 'that key does not open ' + name + '\'s passport — nothing written' : 'the beach refused it (' + w.status + ')', 'err');
   done('');
   remember(name);
+  refoldGlobe();
   const h = encodeURIComponent(name);
-  $('e-landed').innerHTML = (stood ? 'You stand at <b>' + esc(stood.name) + '</b> on the globe.'
+  $('e-landed').innerHTML = (stood ? 'You stand at <b>' + esc(stood.name) + '</b> — on the globe in a few seconds.'
       : 'You stand on Earth for now; tonight\'s pass places “' + esc(where) + '” and replies in your parlour.') +
-    '<br><a href="/globe/' + h + '">see yourself on the globe →</a> &nbsp;·&nbsp; <a href="/here/' + h + '">closer, on the map →</a>';
+    '<br><a href="/globe/' + h + (stood ? '#' + stood.addr : '') + '">see yourself on the globe →</a> &nbsp;·&nbsp; <a href="/here/' + h + '">closer, on the map →</a>';
   $('e-landed').classList.remove('hidden');
 }
 $('e-go').addEventListener('click', standThere);
