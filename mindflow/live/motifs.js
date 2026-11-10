@@ -16,6 +16,13 @@
     blue: [78, 131, 166], violet: [145, 115, 178], rose: [231, 154, 180], coral: [227, 160, 126], lime: [175, 199, 122],
     deep: [18, 40, 47],
   };
+  // ?light (or ?theme=light): the same drawings in darker inks on a pale ground, for a screen that washes out dark
+  const light = /[?&](light|theme=light)(&|=|$)/.test(location.search);
+  if (light) Object.assign(C, {
+    ink: [30, 42, 48], sand: [158, 112, 28], amber: [140, 96, 26], sea: [26, 118, 96], steel: [62, 92, 120],
+    blue: [34, 86, 136], violet: [106, 72, 146], rose: [176, 66, 104], coral: [182, 88, 54], lime: [84, 122, 34],
+    deep: [228, 232, 226],
+  });
   function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + (a < 0 ? 0 : a > 1 ? 1 : a) + ')'; }
   function rand(seed) {                       // a small seeded generator: rand(seed)() → 0..1
     let s = Math.floor((seed || 0) * 4294967296) >>> 0;
@@ -24,7 +31,7 @@
   const here = (document.currentScript && document.currentScript.src) || location.href;
   const MOTIFS = window.MOTIFS = window.MOTIFS || {};
   function MOTIF(name, m) { m.name = name; MOTIFS[name] = m; }
-  MOTIF.C = C; MOTIF.rgba = rgba; MOTIF.rand = rand;
+  MOTIF.C = C; MOTIF.rgba = rgba; MOTIF.rand = rand; MOTIF.light = light;
   MOTIF.names = ['torus', 'nested', 'spindle', 'sundial', 'clocks', 'murmuration', 'bricks', 'buckets', 'kernels',
                  'shell', 'mirror', 'quipu', 'wave', 'basin', 'rain'];   // the library, in the order the gallery shows it
   MOTIF.load = function (names) {
