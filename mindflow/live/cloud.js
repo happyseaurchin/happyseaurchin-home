@@ -24,7 +24,7 @@
   const phrases = [];                          // the keys each recent phrase touched, for co-occurrence
   let links = new Map();                       // 'a|b' → how often said together
   let last = null, view = 1, viewTo = 1, lastPicture = null;
-  let colour = 0, frames = 0, slow = 0, fps = 60;
+  let colour = 0, frames = 0, slow = 0, fps = 60, dprCap = 2;
 
   const norm = s => s.toLowerCase().replace(/→/g, ' to ').replace(/[^a-z0-9]+/g, ' ').trim();
   const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
@@ -378,7 +378,7 @@
   // ── the loop ──────────────────────────────────────────────
 
   function fit() {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
+    dpr = Math.min(dprCap, window.devicePixelRatio || 1);
     W = innerWidth; H = innerHeight;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
   }
@@ -393,6 +393,7 @@
       render();
       slow = slow * 0.95 + (performance.now() - t0) * 0.05;
       skip = slow > 14 ? true : slow < 8 ? false : skip;   // a slow computer draws every other frame
+      if (slow > 22 && dpr > 1 && frames > 120) { dprCap = 1; fit(); slow = 10; }   // and a very slow one draws fewer pixels
     }
     frames++;
     fps = fps * 0.95 + (1000 / dt) * 0.05;
