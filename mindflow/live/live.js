@@ -13,7 +13,7 @@
 const params = new URLSearchParams(location.search);
 const HOLD_MS = (parseFloat(params.get('hold')) || 30) * 1000;
 const MANUAL_MS = 90 * 1000;       // a pick from the phone holds the screen this long against the chooser
-const STRONG_GAP_MS = 8 * 1000;    // even a strong match waits this long after the last change
+const STRONG_GAP_MS = 15 * 1000;   // even a strong match waits this long after the last change
 const PENDING_MS = 25 * 1000;      // a match the hold kept back still counts this long
 const MIN_PLAY_MS = 60 * 1000;     // a film plays at least this long before it may fade to the words ...
 const QUIET_MS = 100 * 1000;       // ... once its idea has gone unheard this long
@@ -62,21 +62,23 @@ function chooseFromWords(phrase) {
   const t = Date.now();
   heard.push({ t, text: norm(phrase) });
   while (heard.length && t - heard[0].t > WINDOW_MS) heard.shift();
+  const latest = [];
   const scores = matchers.map(m => {
-    let s = 0;
-    for (const h of heard) {
+    let s = 0, last = 0;
+    heard.forEach((h, i) => {
       const k = Math.exp(-(t - h.t) / 1000 / FADE_S);
       for (const w of m.words) {
         const n = (h.text.match(w.re) || []).length;
-        if (n) s += n * w.weight * k;
+        if (n) { s += n * w.weight * k; if (i === heard.length - 1) last += n * w.weight; }
       }
-    }
+    });
+    latest.push(last);
     return s;
   });
   const order = scores.map((s, i) => i).sort((a, b) => scores[b] - scores[a]);
   const best = order[0];
-  if (best === undefined || scores[best] < 0.6) return;
-  const strong = scores[best] >= 1.8 && scores[best] - (scores[order[1]] || 0) >= 0.8;
+  if (best === undefined || scores[best] < 0.6 || !latest[best]) return;   // answer what was just said
+  const strong = scores[best] >= 2.2 && scores[best] - (scores[order[1]] || 0) >= 1.0;
   propose({ type: 'film', films: matchers[best].films, strong, why: 'words', phrase, score: +scores[best].toFixed(2) });
 }
 
