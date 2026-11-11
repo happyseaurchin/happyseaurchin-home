@@ -58,7 +58,7 @@
   @media (prefers-reduced-motion: reduce){ .folk-m.arrived .fd, .crowd-m.arrived .cd{animation:none} }
 
   /* find a place — the map's own names first, then the world's search; a place the map lacks can be proposed */
-  #find{display:flex;gap:6px;margin:0 30px 10px 0}
+  #find{display:flex;gap:6px;margin:0 0 10px}
   #find input{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;letter-spacing:0.02em;color:var(--foam);
     background:rgba(var(--well-rgb),0.6);border:1px solid var(--line);border-radius:999px;padding:6px 12px;outline:none}
   #find input:focus{border-color:var(--liquid)}
@@ -76,6 +76,9 @@
     font-weight:700;font-size:12px;padding:6px 14px;cursor:pointer}
   #find-out .add button:disabled{opacity:0.5;cursor:default}
   #find-out .q{display:block;font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);margin-top:6px;letter-spacing:0.03em}
+  /* where a found place would stand: the ground's digits, its undecided rungs as zeros, its own digit '?' */
+  #find-out .where{font-family:var(--mono);font-size:12.5px;letter-spacing:0.06em;color:var(--foam);white-space:nowrap}
+  #find-out .where .z{color:var(--vapour-dim)} #find-out .where .pick{color:var(--liquid)}
   /* a place proposed and not yet on the map — dashed, in the room's colour, until the keeper's pass answers it */
   .prop-m{display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:opacity 200ms linear}
   .prop-m .pl{font-family:var(--mono);font-size:11px;color:var(--liquid);white-space:nowrap;margin-bottom:3px;
@@ -185,7 +188,7 @@
   #panel h2{font-family:var(--mono);font-size:10.5px;font-weight:400;letter-spacing:0.2em;text-transform:uppercase;
     color:var(--vapour-dim);margin:18px 0 8px;display:flex;align-items:center;gap:10px}
   #panel h2::after{content:"";height:1px;background:var(--line);flex:1}
-  #crumb{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px}
+  #crumb{display:flex;flex-wrap:wrap;gap:6px;margin:0 30px 10px 0}
   .chip{font-family:var(--mono);font-size:11px;letter-spacing:0.04em;color:var(--vapour);
     background:rgba(var(--well-rgb),0.5);border:1px solid var(--line);border-radius:999px;
     padding:3px 10px;cursor:pointer}
@@ -224,6 +227,7 @@
   .rung2.zoomhere{box-shadow:inset 2px 0 0 var(--solid)}
   .rung2.dim .nm{color:var(--vapour-dim);font-style:italic}
   .rung2.blank .nm{color:rgba(var(--vapour-rgb),0.35)}
+  .rung2.prop .nm{color:var(--liquid);font-style:italic}
 
   /* ── the address line ── */
   #addr{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;text-align:center}
@@ -231,6 +235,7 @@
     background:rgba(var(--well-rgb),0.72);backdrop-filter:blur(8px);
     border:1px solid var(--line);border-radius:999px;padding:9px 18px;cursor:text}
   #addr .walk .z{color:var(--vapour-dim)}
+  #addr .walk .pick{color:var(--liquid)}
   #addr input{font-family:var(--mono);font-size:15px;letter-spacing:0.12em;color:var(--foam);
     background:rgba(var(--well-rgb),0.9);border:1px solid var(--liquid);border-radius:999px;
     padding:9px 18px;width:min(340px,80vw);text-align:center}
@@ -245,6 +250,8 @@
     #arrivals{top:54px;bottom:auto;left:10px;right:10px;align-items:center}
     #panel{top:auto;bottom:74px;left:10px;width:calc(100vw - 20px);max-height:38dvh;padding:12px 14px}
     #addr{bottom:12px}
+    /* the padded line under the pill stood the address block over the panel's foot, where the way back was */
+    body:not(.workings) #addr .padded{display:none}
     .bar{padding-right:48px}
   }
 </style>
@@ -272,12 +279,13 @@
 
 <aside id="panel">
   <button id="panel-tuck" title="tuck the panel away">◧</button>
+  <!-- the way back first: whatever card opens below, the rungs above stay in reach (David's phone, 10 November) -->
+  <div id="crumb"></div>
   <form id="find" autocomplete="off" role="search">
-    <input id="find-q" type="search" placeholder="find a place — a town, a city, an address" enterkeyhint="search" aria-label="find a place" maxlength="160">
+    <input id="find-q" type="search" placeholder="find a place — a town, a street, an address" enterkeyhint="search" aria-label="find a place" maxlength="160">
     <button id="find-me" type="button" class="hidden" title="where this device is — worked out here and sent nowhere">my location</button>
   </form>
   <div id="find-out" class="hidden" aria-live="polite"></div>
-  <div id="crumb"></div>
   <p id="here-rung"></p>
   <h1 id="here-name"></h1>
   <div id="sec-layer" class="hidden"><h2>listed here <span class="work" id="layer-src"></span></h2><div id="layer"></div></div>
@@ -812,8 +820,8 @@ function buildMarkers(){
     pl.textContent = P.name + (P.count > 1 ? ' ×' + P.count : '') + ' · proposed';
     const pd = document.createElement('span'); pd.className = 'pd';
     el.appendChild(pl); el.appendChild(pd);
-    el.title = P.name + ' — proposed for the map; the keeper checks it at the evening pass';
-    el.addEventListener('click', ev => { ev.stopPropagation(); flyToPoint(P.g, P.path); });
+    el.title = P.name + ' — ' + (P.p != null ? an(P.kind) + ' at pscale ' + P.p + ', ' : '') + 'proposed for the map; the keeper checks it at its next pass';
+    el.addEventListener('click', ev => { ev.stopPropagation(); flyToPoint(P.g, P.path, P.p, P); });
     const m = new maplibregl.Marker({ element: el, anchor: 'bottom', offset: [0, 7] })
       .setLngLat([P.g.lon, P.g.lat]).addTo(map);
     PROPMS.push({ P, el, m });
@@ -926,6 +934,7 @@ function buildRungZooms(){
 }
 function setAddress(path, opts){
   const o = opts || {};
+  FOCUS = null;
   const node = nodeAt(SPATIAL, path);
   if (node == null && path.length){ flashAddr(); return; }
   ADDR = path.slice();
@@ -1105,9 +1114,9 @@ function renderPanel(){
     const row = document.createElement('div'); row.className = 'folkrow';
     const h = document.createElement('span'); h.className = 'h prop';
     h.textContent = P.name + (P.count > 1 ? ' ×' + P.count : '');
-    h.addEventListener('click', () => flyToPoint(P.g, P.path));
+    h.addEventListener('click', () => flyToPoint(P.g, P.path, P.p, P));
     const at = document.createElement('span'); at.className = 'at';
-    at.textContent = 'in ' + placeName(P.path) + ' · checked at the evening pass';
+    at.textContent = (P.p != null ? an(P.kind) + ' at pscale ' + P.p + ', ' : '') + 'in ' + placeName(P.path) + ' · waiting for the keeper';
     row.appendChild(h); row.appendChild(at); props.appendChild(row);
   }
   $('sec-prop').classList.toggle('hidden', !props.children.length);
@@ -1147,6 +1156,7 @@ function renderPanel(){
 
 function renderLadder(){
   const el = $('ladder'); el.innerHTML = '';
+  const fh = foundHere();
   for (let p = FLOOR; p >= 0; p--){
     const L = FLOOR - p;
     const row = document.createElement('div'); row.dataset.p = p;
@@ -1157,6 +1167,8 @@ function renderLadder(){
       nm = s ? nameOf(s) : 'unresolved'; if (!s) cls = 'dim';
     } else { nm = ''; cls = 'blank'; }
     if (L === ADDR.length) cls += ' on';
+    /* below the address, a place found and not yet on the map: its own rung named, the rungs between undecided */
+    if (fh && L > ADDR.length && p >= fh.p){ nm = p === fh.p ? esc(fh.name || 'the place found') + ' · proposed here' : 'undecided'; cls = p === fh.p ? 'prop' : 'dim'; }
     row.className = 'rung2 ' + cls;
     row.innerHTML = `<span class="p">${p === 0 ? '0' : '+'+p}</span>
       <span class="nm">${nm ? nm : '<span class="gl">' + rungGloss(p) + '</span>'}</span>`;
@@ -1187,6 +1199,14 @@ function renderAddr(){
       s.textContent = (i ? ',' : '') + d;
       walk.appendChild(s);
     });
+    /* a place found and not yet on the map: where it would stand — a zero for each rung between, still
+       undecided, and '?' for its own digit, which the keeper chooses */
+    const fh = foundHere();
+    if (fh){
+      const gap = FLOOR - fh.p - ADDR.length - 1;
+      if (gap > 0){ const z = document.createElement('span'); z.className = 'z'; z.textContent = ',0'.repeat(gap); walk.appendChild(z); }
+      const q = document.createElement('span'); q.className = 'pick'; q.textContent = ',?'; walk.appendChild(q);
+    }
   }
   $('addr-padded').textContent = ADDR.length ? 'spatial:earth : ' + padded(ADDR) : 'spatial:earth : the root';
 }
@@ -1300,23 +1320,42 @@ function arrive(n){
 }
 
 /* ── finding a place, and proposing one the map lacks ───────────────────────
-   'my location' walks this device's position down geo:earth to the finest named
-   ground whose anchor holds it — never finer than a town — and flies there; the
-   position is worked out here and sent nowhere. Typed words are matched against
-   the map's own names first, and only then asked of OpenStreetMap's search
-   (Nominatim), once, on Enter. Where the map stops short, the card offers to
-   propose the place: one line in the earth world's room, pool:earth, with no
-   passport and no key, drawn at once as a dashed pin. The keeper's evening pass
-   checks it against the world, mints it into spatial:earth and geo:earth, and
-   answers beneath the line (function:earth 7.1, from 10 November 2026). Only the
-   place is ever written, to about a kilometre — never a street or a house. ── */
-const TOWN = 7;   /* the finest rung a position or a search walks to: depth 7 of floor 11, pscale 4, a town */
+   Typed words are matched against the map's own names first, and only then asked
+   of OpenStreetMap's search (Nominatim), once, on Enter, leaning toward what the
+   camera shows. 'my location' walks this device's position down geo:earth to the
+   finest named ground whose anchor holds it and flies there; the position is
+   worked out here and sent nowhere. To name the place you are at, the name goes to
+   the search with a box of some 30 km around you, and the nearest answer is chosen
+   here. A place the world knows comes back with its kind and the rung its
+   population sets (a street pscale 2, a village or a neighbourhood 3, a suburb or a
+   town 4, a city 6), and the card says where it would stand: inside the finest
+   ground the map holds that contains it, a zero for each rung between (undecided
+   ground) and '?' for its own digit, which is the keeper's to choose. Where the map
+   stops short, the card offers to propose it: one line in the earth world's room,
+   pool:earth, with no passport and no key, carrying the place's own point, its kind,
+   its rung and its OpenStreetMap entry. It is drawn at once as a dashed pin while
+   the camera rises back to the planet. The keeper's next pass checks it against the
+   world, mints it into spatial:earth and geo:earth, and answers beneath the line
+   (function:earth 7.1 and 7.2, from 10 November 2026). A street is the finest a
+   proposal reaches: a house, a shop or a postcode is narrowed to its street, and a
+   house or a room is never proposed, because those are a person's own to name. ── */
+const STREET_P = 2;   /* the finest rung a proposal reaches: a street, depth 9 of floor 11 */
+/* the rung a kind tends to stand at when the world gives no population — the ladder's own legend */
+const KIND_P = { hamlet: 2, village: 3, neighbourhood: 3, quarter: 4, suburb: 4, town: 4, island: 4,
+  borough: 5, city_district: 5, municipality: 5, city: 6, county: 7, state_district: 7, region: 7,
+  province: 7, state: 7, country: 8, continent: 9 };
+/* the camera for a rung, when a place carries no box of its own */
+const RUNG_Z = { 2: 15.5, 3: 14, 4: 13, 5: 11.5, 6: 10.5, 7: 8.5, 8: 6, 9: 4 };
+/* how near a place of the same name must stand to be the same place, by its rung */
+const nearKm = p => ({ 2: 1.5, 3: 4, 4: 8, 5: 15, 6: 30, 7: 80, 8: 300, 9: 1500 })[p] || 30;
 const KM = 111.32;
 const kmTo = (g, lat, lon) => Math.hypot((g.lat - lat) * KM, (g.lon - lon) * KM * Math.cos((g.lat + lat) * Math.PI / 360));
 /* a point anchor holds what lies within half a map tile at its own zoom: a city at 11, a borough at 12 */
 const reachKm = z => 20037 / Math.pow(2, z);
-const r2 = x => Math.round(x * 100) / 100;
+const r2 = x => Math.round(x * 100) / 100, r3 = x => Math.round(x * 1000) / 1000, r4 = x => Math.round(x * 1e4) / 1e4;
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const an = w => (/^[aeiou]/i.test(w) ? 'an ' : 'a ') + w;
+const rungsWord = n => (['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight'][n] || n) + (n === 1 ? ' rung' : ' rungs');
 function holdsPt(g, lat, lon){
   if (g.bbox){ const [s, n, w, e] = g.bbox; return lat >= s && lat <= n && (w <= e ? lon >= w && lon <= e : lon >= w || lon <= e); }
   return g.z != null && kmTo(g, lat, lon) <= reachKm(g.z);
@@ -1326,12 +1365,13 @@ function areaOf(g){
   const [s, n, w, e] = g.bbox;
   return (n - s) * KM * (e >= w ? e - w : e - w + 360) * KM * Math.cos((s + n) * Math.PI / 360);
 }
-/* the finest named ground whose anchor holds the point — the walk /welcome's 'use my location' makes */
-function placeAt(lat, lon){
+/* the finest named ground whose anchor holds the point, no deeper than maxDepth — a street at the finest */
+function placeAt(lat, lon, maxDepth){
+  const cap = maxDepth == null ? FLOOR - STREET_P : maxDepth;
   const finer = (node, path) => {
     const out = [];
     const take = (ch, p) => {
-      if (ch == null || p.length > TOWN) return;
+      if (ch == null || p.length > cap) return;
       if (semOf(ch)){ const g = geoOwn(p); if (g && holdsPt(g, lat, lon)) out.push({ p, ch, g }); }
       else if (typeof ch === 'object') out.push(...finer(ch, p));   /* undecided ground: look through it to the first name */
     };
@@ -1370,30 +1410,93 @@ function nameOnMap(words){
   if (hits.some(h => h !== best && agree(h) === agree(best) && h.length === best.length)) return null;
   return best;
 }
-/* OpenStreetMap's search, asked once on Enter: a town, a city or a region is itself; a street, a house or a
-   shop is narrowed to the town that holds it, so nothing finer than a town is ever proposed */
-async function searchWorld(q){
-  const u = 'https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&addressdetails=1&accept-language=en&q=' + encodeURIComponent(q);
-  const r = await fetch(u, { headers: { Accept: 'application/json' } });
+
+/* OpenStreetMap's search. A street is a highway at the search's own street ranks; a house, a shop, a
+   building or a postcode is finer than the map goes */
+const NOMINATIM = 'https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&accept-language=en&';
+const isStreet = h => h.category === 'highway' || (+h.place_rank >= 26 && +h.place_rank <= 27);
+const tooFine = h => !isStreet(h) && (+h.place_rank >= 28 || /^(postcode|house|building|isolated_dwelling|farm)$/.test(h.addresstype || h.type || ''));
+const nearest = (hs, lat, lon) => hs.slice().sort((a, b) => kmTo({ lat: +a.lat, lon: +a.lon }, lat, lon) - kmTo({ lat: +b.lat, lon: +b.lon }, lat, lon));
+const vbox = (s, n, w, e) => [w, n, e, s].map(x => x.toFixed(3)).join(',');   /* west,north,east,south, as the search takes it */
+async function nominatim(params){
+  const r = await fetch(NOMINATIM + new URLSearchParams(params), { headers: { Accept: 'application/json' } });
   if (!r.ok) throw new Error('search ' + r.status);
-  const hit = (await r.json())[0];
-  if (!hit) return null;
-  const a = hit.address || {}, kind = hit.addresstype || hit.type || '';
-  const area = /^(city|town|village|hamlet|suburb|quarter|neighbourhood|borough|city_district|municipality|county|state_district|state|region|province|island|country|continent)$/.test(kind);
-  const name = area ? (hit.name || String(hit.display_name || '').split(',')[0])
-                    : (a.city || a.town || a.village || a.suburb || a.municipality || '');
-  const bb = (hit.boundingbox || []).map(Number);
-  return { lat: +hit.lat, lon: +hit.lon, name, bbox: area && bb.length === 4 && bb.every(isFinite) ? bb : null };
+  return r.json();
 }
+/* the rung the earth law reads (function:earth 7.2): the pscale its population sets, 10ⁿ lives; else its kind's */
+function rungOf(h){
+  if (isStreet(h)) return STREET_P;
+  const pop = parseInt(String((h.extratags || {}).population || '').replace(/[^0-9]/g, ''), 10);
+  if (pop > 0) return Math.max(STREET_P, Math.min(9, Math.round(Math.log10(pop))));
+  const k = KIND_P[h.addresstype] || KIND_P[h.type];
+  if (k) return k;
+  const r = +h.place_rank || 0;   /* the search's own ranking, for a kind the ladder does not name: a park or a block is street-sized */
+  return r >= 21 ? 2 : r >= 20 ? 3 : r >= 17 ? 4 : r >= 13 ? 6 : r >= 5 ? 7 : 8;
+}
+const kindOf = h => isStreet(h) ? 'street' : String(h.addresstype || h.type || 'place').replace(/^(city|state)_district$/, 'district').replace(/_/g, ' ');
+function asFound(h){
+  const bb = (h.boundingbox || []).map(Number);
+  return { lat: +h.lat, lon: +h.lon, name: h.name || String(h.display_name || '').split(',')[0].trim(),
+    kind: kindOf(h), p: rungOf(h), bbox: bb.length === 4 && bb.every(isFinite) ? bb : null,
+    osm: h.osm_type && h.osm_id ? h.osm_type + ' ' + h.osm_id : null };
+}
+/* Asked once on Enter. With `near` — this device's position — the name goes with a box of some 30 km around a
+   point rounded to a tenth of a degree, never the position itself, and the nearest answer is chosen here;
+   without it the search leans toward what the camera shows. A house, a shop or a postcode is narrowed to its
+   street by a second ask, a second later, as the search's own usage rules want. */
+async function searchWorld(q, near){
+  const params = { q, limit: near ? 10 : 1 };
+  if (near){
+    const la = Math.round(near.lat * 10) / 10, lo = Math.round(near.lon * 10) / 10;
+    Object.assign(params, { viewbox: vbox(la - 0.15, la + 0.15, lo - 0.25, lo + 0.25), bounded: 1 });
+  } else if (map.getZoom() >= 5){
+    try { const b = map.getBounds(); params.viewbox = vbox(b.getSouth(), b.getNorth(), b.getWest(), b.getEast()); } catch(e){}
+  }
+  let hits = await nominatim(params);
+  if (near) hits = nearest(hits, near.lat, near.lon);
+  const h = hits[0];
+  if (!h) return null;
+  if (!tooFine(h)) return asFound(h);
+  const road = (h.address || {}).road, lat = +h.lat, lon = +h.lon;
+  if (!road) return { tooFine: true };
+  await new Promise(ok => setTimeout(ok, 1100));
+  let roads = [];
+  try { roads = (await nominatim({ q: road, limit: 5, viewbox: vbox(lat - 0.01, lat + 0.01, lon - 0.015, lon + 0.015), bounded: 1 })).filter(isStreet); } catch(e){}
+  const st = nearest(roads, lat, lon)[0];
+  return st ? asFound(st) : { lat: r3(lat), lon: r3(lon), name: road, kind: 'street', p: STREET_P, bbox: null, osm: null };
+}
+const TOO_FINE = 'That is finer than the map goes — a house, a shop or a postcode. Type its street, its neighbourhood or its town.';
+
 function sayFound(html){ const o = $('find-out'); o.innerHTML = html || ''; o.classList.toggle('hidden', !html); }
 let FOUND = null, FOUND_M = null;
 function dropFound(){ if (FOUND_M){ FOUND_M.remove(); FOUND_M = null; } }
-function flyToPoint(g, path){
+function setFound(f){ FOUND = f; renderAddr(); renderLadder(); }
+/* a proposal the camera has flown to — the address shows where it would stand, until the reader moves on */
+let FOCUS = null;
+/* the place found (or the proposal flown to), when the reader stands at the ground it would fall in and its rung is known */
+const foundHere = () => [FOUND, FOCUS].find(f => f && f.p != null && f.path && f.path.join(',') === ADDR.join(',')) || null;
+/* where a found place would stand: the ground's digits, a zero for each rung between, '?' for its own digit */
+function whereHTML(path, p){
+  const gap = Math.max(0, FLOOR - p - path.length - 1);
+  return '<span class="where">' + path.join(',') + (gap ? '<span class="z">' + ',0'.repeat(gap) + '</span>' : '') + '<span class="pick">,?</span></span>';
+}
+/* The camera on a point rather than on the address, at the place's own size: its box, its zoom, or its rung.
+   USERMOVED holds it there, so neither a return to the tab nor a settling flight pulls it back to the
+   address's own anchor (on 10 November a phone came back from another app at Sheffield Central). */
+function flyToPoint(g, path, p, focus){
   if (path) setAddress(path, { fly: false });
-  /* a flight to an address may still be settling — its guard would pull the camera back there */
+  if (focus){ FOCUS = focus; renderAddr(); renderLadder(); }
   clearTimeout(FLYGUARD);
-  SPIN = false;
-  map.flyTo({ center: [g.lon, g.lat], zoom: g.bbox ? Math.min(11, zoomFor(g)) : 10.5, essential: true });
+  SPIN = false; USERMOVED = true;
+  const z = g.bbox ? Math.min(16.5, zoomFor(g)) : g.z != null ? g.z : (RUNG_Z[p] || 12);
+  map.flyTo({ center: [g.lon, g.lat], zoom: z, essential: true });
+}
+/* after a proposal, back out to the planet with the place in the middle of it, so the dashed pin is seen on the sphere */
+function backToGlobe(g){
+  setAddress([3], { fly: false });
+  clearTimeout(FLYGUARD);
+  SPIN = false; USERMOVED = true;
+  map.flyTo({ center: [g.lon, g.lat], zoom: Math.max(WORLDZ + 0.5, 1.8), essential: true });
 }
 async function findPlace(q){
   q = String(q || '').replace(/\s+/g, ' ').trim();
@@ -1411,43 +1514,84 @@ async function findPlace(q){
   let hit = null;
   try { hit = await searchWorld(q); } catch(e){ sayFound('the search did not answer — try again in a moment'); return; }
   if (!hit){ sayFound('nothing found for “' + esc(q) + '”'); return; }
-  showFound({ lat: hit.lat, lon: hit.lon, name: hit.name, bbox: hit.bbox, how: 'search' });
+  if (hit.tooFine){ sayFound(TOO_FINE); return; }
+  showFound({ ...hit, how: 'search' });
 }
 function locateMe(){
   sayFound('asking this device where it is…');
   navigator.geolocation.getCurrentPosition(
-    pos => showFound({ lat: pos.coords.latitude, lon: pos.coords.longitude, name: '', bbox: null, how: 'device' }),
+    pos => showFound({ lat: pos.coords.latitude, lon: pos.coords.longitude, z: 14, how: 'device' }),
     err => sayFound(err && err.code === 1 ? 'this device kept its position to itself — type a place instead' : 'no position came back — type a place instead'),
     { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 });
 }
 function showFound(f){
   /* a place the map already holds by that name, near: nothing to propose, only to go there */
-  const known = f.name && PLACES.find(p => p.name.toLowerCase() === f.name.toLowerCase() && kmTo(f, p.lonlat[1], p.lonlat[0]) < 30);
+  const known = f.name && PLACES.find(p => p.name.toLowerCase() === f.name.toLowerCase() && kmTo(f, p.lonlat[1], p.lonlat[0]) < nearKm(f.p));
   if (known){ FOUND = null; dropFound(); setAddress(known.path); sayFound('On the map: <b>' + esc(known.name) + '</b>.'); return; }
-  const path = placeAt(f.lat, f.lon), here = placeName(path);
-  const g = { lat: r2(f.lat), lon: r2(f.lon), bbox: f.bbox ? f.bbox.map(r2) : null };
-  flyToPoint(g, path);
+  const device = f.how === 'device';
+  /* the ground that holds it is coarser than the place itself; a position walks down to a street at the finest */
+  const path = placeAt(f.lat, f.lon, device || f.p == null ? FLOOR - STREET_P : FLOOR - f.p - 1), here = placeName(path);
+  flyToPoint(f, path, f.p);
   dropFound();
   const el = document.createElement('div'); el.className = 'prop-m found';
   const pd = document.createElement('span'); pd.className = 'pd'; el.appendChild(pd);
-  FOUND_M = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([g.lon, g.lat]).addTo(map);
-  if (LAYER || path.length >= TOWN){ FOUND = null; sayFound('On the map: <b>' + esc(here) + '</b>.'); return; }
-  FOUND = { ...g, path };
-  sayFound((path.length > 1 ? 'The map holds <b>' + esc(here) + '</b> here, and nothing finer.' : 'The map holds nothing here yet.') +
+  FOUND_M = new maplibregl.Marker({ element: el, anchor: 'center' }).setLngLat([f.lon, f.lat]).addTo(map);
+  if (LAYER || (device && path.length >= FLOOR - STREET_P)){ setFound(null); sayFound('On the map: <b>' + esc(here) + '</b>.'); return; }
+  if (device){
+    setFound({ ...f, path, name: '', kind: null, p: null });
+    sayFound('You are in <b>' + esc(here) + '</b> — the finest ground the map holds here.' +
+      '<span class="add"><input id="prop-name" maxlength="80" placeholder="name it — a street, a village, a neighbourhood" enterkeyhint="search">' +
+      '<button id="prop-go" type="button">find it</button></span>' +
+      '<span class="q">your position was worked out on this device and is sent nowhere · the name goes to OpenStreetMap\'s search with a box of some 30 km around you, and the nearest answer is chosen here</span>');
+    wireCard(nameHere);
+    return;
+  }
+  setFound({ ...f, path });
+  /* proposed already and not yet answered: say so — another line for the same place is one more voice for it */
+  const twin = PROPOSALS.find(P => P.name.toLowerCase() === String(f.name || '').toLowerCase() && kmTo(P.g, f.lat, f.lon) < Math.max(nearKm(f.p), nearKm(P.p)));
+  sayFound('<b>' + esc(f.name || 'this place') + '</b> — ' + an(f.kind) + ', pscale ' + f.p + '.' +
+    (twin ? ' Already proposed' + (twin.count > 1 ? ' ' + twin.count + ' times' : '') + ', and waiting for the keeper.' : '') + ' The map holds <b>' + esc(here) +
+    '</b> here and nothing finer; it would stand ' + rungsWord(FLOOR - f.p - path.length) + ' below, at ' + whereHTML(path, f.p) + '.' +
     '<span class="add"><input id="prop-name" maxlength="80" placeholder="what is this place called?" value="' + esc(f.name || '') + '">' +
     '<button id="prop-go" type="button">propose it for the map</button></span>' +
-    '<span class="q">anyone may propose · the keeper checks it at the evening pass and puts it on the map, or says why not, in the earth room · only the place is written, to about a kilometre' +
-    (f.how === 'device' ? ' · your position was worked out on this device' : ' · found by OpenStreetMap\'s search') + '</span>');
-  $('prop-go').addEventListener('click', propose);
-  $('prop-name').addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.preventDefault(); propose(); } });
-  if (!f.name) $('prop-name').focus();
+    '<span class="q">anyone may propose · the keeper\'s next pass checks it against the world and puts it on the map, or says why not, in the earth room · a street at the finest, never a house or a room · ' +
+    (f.osm ? 'OpenStreetMap ' + esc(f.osm) : 'found by OpenStreetMap\'s search') + '</span>');
+  wireCard(propose);
+}
+function wireCard(act){
+  $('prop-go').addEventListener('click', act);
+  $('prop-name').addEventListener('keydown', ev => { if (ev.key === 'Enter'){ ev.preventDefault(); act(); } });
+  /* not on a phone: a keyboard rising unasked would cover the place just found */
+  if (!$('prop-name').value && !matchMedia('(pointer: coarse)').matches) $('prop-name').focus();
+}
+const cardName = () => ($('prop-name').value || '').replace(/\s+/g, ' ').replace(/ — /g, ' - ').trim();
+/* 'my location', then a name: the world's own entry for it, near this device */
+async function nameHere(){
+  const name = cardName();
+  if (!FOUND || !name){ $('prop-name').focus(); return; }
+  const at = { lat: FOUND.lat, lon: FOUND.lon };
+  $('prop-go').disabled = true;
+  let hit = null;
+  try { hit = await searchWorld(name, at); } catch(e){ $('prop-go').disabled = false; return; }
+  if (hit && hit.tooFine){ $('prop-go').disabled = false; sayFound(TOO_FINE); return; }
+  if (hit && kmTo(hit, at.lat, at.lon) < 20) return showFound({ ...hit, how: 'near' });
+  /* the world does not know it here: it can still be proposed, at this position rounded to about a kilometre */
+  setFound({ ...FOUND, name });
+  sayFound('OpenStreetMap does not know “' + esc(name) + '” near you. Propose it anyway, in <b>' + esc(placeName(FOUND.path)) + '</b>, at your position rounded to about a kilometre?' +
+    '<span class="add"><input id="prop-name" maxlength="80" value="' + esc(name) + '">' +
+    '<button id="prop-go" type="button">propose it for the map</button></span>' +
+    '<span class="q">anyone may propose · the keeper\'s next pass checks it against the world, sets its rung and puts it on the map, or says why not, in the earth room · a street at the finest, never a house or a room</span>');
+  wireCard(propose);
 }
 async function propose(){
-  const name = ($('prop-name').value || '').replace(/\s+/g, ' ').replace(/ — /g, ' - ').trim();
+  const name = cardName();
   if (!FOUND || !name){ $('prop-name').focus(); return; }
-  const f = FOUND, addr = padded(f.path);
-  const anchor = f.bbox ? f.lat + ',' + f.lon + ' · ' + f.bbox.join(',') : f.lat + ',' + f.lon + ' @12';
-  const line = name + ' — a place the map lacks, proposed from the globe at ' + anchor + '; it falls in ' + placeName(f.path) + ' (spatial:earth:' + addr + ').';
+  const f = FOUND, addr = padded(f.path), world = f.p != null;
+  /* the world's own point and box for a place it knows; this device's position only to about a kilometre */
+  const pt = world ? { lat: r4(f.lat), lon: r4(f.lon) } : { lat: r2(f.lat), lon: r2(f.lon) };
+  const anchor = pt.lat + ',' + pt.lon + (world && f.bbox ? ' · ' + f.bbox.map(r4).join(',') : ' @' + (world ? RUNG_Z[f.p] || 12 : 12));
+  const what = world ? an(f.kind) + ' the map lacks (pscale ' + f.p + (f.osm ? ', OpenStreetMap ' + f.osm : '') + ')' : 'a place the map lacks';
+  const line = name + ' — ' + what + ', proposed from the globe at ' + anchor + '; it falls in ' + placeName(f.path) + ' (spatial:earth:' + addr + ').';
   $('prop-go').disabled = true;
   let ok = false;
   try {
@@ -1456,8 +1600,13 @@ async function propose(){
     ok = r.ok;
   } catch(e){}
   if (!ok){ $('prop-go').disabled = false; sayFound('the earth room did not take it — try again in a moment'); return; }
-  FOUND = null; dropFound();
-  sayFound('Proposed: <b>' + esc(name) + '</b>. It stands as a dashed pin until the evening pass checks it and puts it on the map; the answer lands in the earth room.');
+  /* a phone's keyboard down before the camera moves */
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  dropFound();
+  sayFound('Proposed: <b>' + esc(name) + '</b>' + (world ? ', ' + an(f.kind) + ' at pscale ' + f.p : '') + ', in ' + esc(placeName(f.path)) +
+    '. It stands on the globe as a dashed pin until the keeper\'s next pass checks it and puts it on the map; the answer lands in the earth room.');
+  FOUND = null;
+  backToGlobe(pt);
   await liveRoom(true);
 }
 
@@ -1482,15 +1631,19 @@ function loadProposals(){
     if ([5, 6, 7, 8, 9].some(d => v[d] !== undefined)) continue;      /* answered beneath: the keeper has spoken */
     const m = v._.match(ANCHOR_RE), name = v._.split(' — ')[0].trim();
     if (!m || !name || name.length > 80) continue;
-    const g = { lat: +m[1], lon: +m[2], bbox: m[3] != null ? [+m[3], +m[4], +m[5], +m[6]] : null };
+    const g = { lat: +m[1], lon: +m[2], bbox: m[3] != null ? [+m[3], +m[4], +m[5], +m[6]] : null, z: m[7] != null ? +m[7] : null };
     if (!isFinite(g.lat) || !isFinite(g.lon)) continue;
+    /* its kind and rung, when the world knew it: 'Quarry Lane — a street the map lacks (pscale 2, OpenStreetMap way …)' */
+    const k = v._.match(/^[^—]*— an? (.+?) the map lacks(?: \(pscale (\d))?/);
+    const kind = k && (k[2] || k[1] !== 'place') ? k[1] : null, p = k && k[2] ? +k[2] : null;
     /* on the map by that name, near: the pin has done its work */
-    if (PLACES.some(p => p.name.toLowerCase() === name.toLowerCase() && kmTo(g, p.lonlat[1], p.lonlat[0]) < 30)) continue;
+    if (PLACES.some(pl => pl.name.toLowerCase() === name.toLowerCase() && kmTo(g, pl.lonlat[1], pl.lonlat[0]) < nearKm(p))) continue;
     const digits = String(v[2] || '').replace(/[^0-9]/g, '').replace(/0+$/, '');
     const path = digits ? digits.split('').map(Number) : [3];
-    const twin = PROPOSALS.find(P => P.name.toLowerCase() === name.toLowerCase() && kmTo(P.g, g.lat, g.lon) < 25);
-    if (twin){ twin.count++; continue; }
-    PROPOSALS.push({ name, g, path, count: 1 });
+    /* the same place proposed twice is one pin; the line that knows its rung draws it */
+    const twin = PROPOSALS.find(P => P.name.toLowerCase() === name.toLowerCase() && kmTo(P.g, g.lat, g.lon) < Math.max(nearKm(p), nearKm(P.p)));
+    if (twin){ twin.count++; if (p != null && twin.p == null) Object.assign(twin, { g, path, kind, p }); continue; }
+    PROPOSALS.push({ name, g, path, kind, p, count: 1 });
   }
 }
 async function liveRoom(force){
@@ -1505,7 +1658,7 @@ async function liveRoom(force){
   loadProposals(); buildMarkers(); renderPanel(); updateOverlays();
   if (first) return;
   for (const P of PROPOSALS) if ((was.get(P.name.toLowerCase()) || 0) < P.count)
-    arrive({ who: P.name, what: 'proposed for the map', path: P.path, prop: P.name, go: () => flyToPoint(P.g, P.path) });
+    arrive({ who: P.name, what: 'proposed for the map', path: P.path, prop: P.name, go: () => flyToPoint(P.g, P.path, P.p, P) });
 }
 
 /* ── place yourself — the door to /welcome's earth card. On a phone it IS the
