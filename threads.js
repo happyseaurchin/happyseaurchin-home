@@ -355,7 +355,38 @@
     '.th-tap{font-family:var(--mono);font-size:0.72rem;font-weight:700;letter-spacing:0.04em;border:1px solid rgba(var(--liquid-rgb),0.6);background:rgba(var(--liquid-rgb),0.1);color:var(--liquid);border-radius:5px;padding:0.15rem 0.55rem;cursor:pointer;white-space:nowrap;margin-left:0.25rem}' +
     '.th-tap:hover{background:rgba(var(--liquid-rgb),0.24)}.th-tap:disabled{cursor:progress;opacity:0.55}' +
     '.th-tap:focus-visible{outline:2px solid var(--liquid);outline-offset:1px}' +
-    '.th-sn{font-family:var(--mono);font-size:0.7rem;color:var(--vapour-dim);margin-left:0.35rem}';
+    '.th-sn{font-family:var(--mono);font-size:0.7rem;color:var(--vapour-dim);margin-left:0.35rem}' +
+    /* the cord (function:thread 8 on a page): the route one line at one indent, the ways not taken
+       leading off it as short faint ends, the ways open now dashed, a fork a cord set in */
+    '.th-cord{list-style:none;margin:0.8rem 0 0.4rem;padding:0 0 0 1.75rem;position:relative;display:grid;gap:1rem;z-index:0}' +
+    '.th-cord::before{content:"";position:absolute;left:0.6rem;top:0.55rem;bottom:0.7rem;width:3px;border-radius:3px;background:var(--foam,currentColor);opacity:0.5;z-index:2}' +
+    '.th-k{position:relative;min-width:0}' +
+    '.th-k::before{content:"";position:absolute;left:-1.49rem;top:0.33rem;width:0.85rem;height:0.85rem;box-sizing:border-box;border-radius:50%;background:var(--th-hand,var(--liquid,currentColor));box-shadow:0 0 0 3px var(--paper,transparent);z-index:3}' +
+    '.th-k.th-live::before{box-shadow:0 0 0 3px var(--paper,transparent),0 0 0 6px rgba(var(--liquid-rgb,128,128,128),0.35)}' +
+    '.th-k.th-bare::before{background:var(--paper,transparent);border:2px solid var(--line-strong,currentColor)}' +
+    '.th-act{margin:0;line-height:1.5;color:var(--foam,inherit);overflow-wrap:anywhere}' +
+    '.th-act+.th-act{margin-top:0.45rem}' +
+    '.th-kaddr{font-family:var(--mono,monospace);font-size:0.72rem;letter-spacing:0.02em;color:var(--vapour-dim,inherit);margin-right:0.5rem;white-space:nowrap}' +
+    '.th-khand{font-weight:700;margin-right:0.1rem}' +
+    '.th-quiet{color:var(--vapour-dim,inherit)}' +
+    '.th-ending{font-family:var(--mono,monospace);font-size:0.7rem;white-space:nowrap;border:1px solid var(--line-strong,currentColor);border-radius:999px;padding:0.02rem 0.45rem;color:var(--vapour-dim,inherit)}' +
+    '.th-live .th-ending{border-color:rgba(var(--liquid-rgb,128,128,128),0.7);color:var(--liquid,inherit)}' +
+    '.th-cross{font-family:var(--mono,monospace);font-size:0.7rem;color:var(--vapour-dim,inherit)}' +
+    '.th-reads{display:block;margin-top:0.15rem;font-family:var(--mono,monospace);font-size:0.68rem;line-height:1.4;color:var(--vapour-dim,inherit);opacity:0.8;overflow-wrap:anywhere}' +
+    '.th-ends{list-style:none;margin:0.4rem 0 0.1rem 1.4rem;padding:0;display:grid;gap:0.25rem}' +
+    '.th-end{position:relative;padding-left:1.2rem;font-size:0.84rem;line-height:1.45;color:var(--vapour-dim,inherit);opacity:0.68;overflow-wrap:anywhere}' +
+    '.th-end::before{content:"";position:absolute;left:-2.46rem;top:-0.44rem;width:3.4rem;height:1.05rem;border-bottom:1.5px solid currentColor;border-bottom-left-radius:2rem 1.05rem;opacity:0.7;z-index:1}' +
+    '.th-end .th-kaddr{font-size:0.66rem}' +
+    '.th-ends.th-open .th-end{color:var(--foam,inherit);opacity:1}' +
+    '.th-ends.th-open .th-end::before{border-bottom-style:dashed;border-bottom-color:var(--liquid,currentColor);opacity:0.9}' +
+    '.th-fork{margin:0.7rem 0 0 1.4rem}' +
+    '.th-fork::after{content:"";position:absolute;left:-2.46rem;top:-0.5rem;width:3.15rem;height:1.05rem;border-top:3px solid var(--foam,currentColor);border-right:3px solid var(--foam,currentColor);border-top-right-radius:1rem;opacity:0.5;box-sizing:border-box}' +
+    '.th-key{display:flex;flex-wrap:wrap;gap:0.3rem 1.1rem;margin:0.4rem 0 0;font-size:0.78rem;color:var(--vapour-dim,inherit)}' +
+    '.th-key i{display:inline-block;vertical-align:0.08rem;margin-right:0.4rem;box-sizing:border-box}' +
+    '.th-key .ck-on{width:0.7rem;height:0.7rem;border-radius:50%;background:var(--liquid,currentColor)}' +
+    '.th-key .ck-off{width:1.3rem;height:0.55rem;border-bottom:1.5px solid currentColor;border-bottom-left-radius:0.9rem 0.55rem;opacity:0.7}' +
+    '.th-key .ck-open{width:1.3rem;height:0.55rem;border-bottom:1.5px dashed var(--liquid,currentColor);border-bottom-left-radius:0.9rem 0.55rem}' +
+    'svg.th-q .q-faint{fill:var(--vapour-dim);opacity:0.6;font-size:10px}';
   function style() {
     if (document.getElementById('threads-css')) return;
     var s = document.createElement('style'); s.id = 'threads-css'; s.textContent = CSS;
@@ -376,13 +407,15 @@
     var t = String(l.text || ''), w = l.who.toLowerCase(), m = t.toLowerCase().indexOf(w) === 0 && /^\s*(\([^)]{0,40}\))?\s*[:—–-]\s*/.exec(t.slice(w.length));
     return m ? t.slice(w.length + m[0].length) : t;   /* 'weft (lane x): built' reads 'built'; 'weft takes 2.41' keeps its name */
   }
+  /* the ways a knot offered and no one took sit right beneath it, before the strand that went on */
   function rowsOf(t) {
     var rows = [], lanes = 1;
     (function rec(n, lane) {
       n.lane = lane; n.row = rows.length; rows.push(n);
+      n.kids.forEach(function (k) { if (!k.taken) { k.lane = lane; k.row = rows.length; rows.push(k); } });
       var first = true;
       n.kids.forEach(function (k) {
-        if (!k.taken) { k.lane = lane; k.row = rows.length; rows.push(k); return; }
+        if (!k.taken) return;
         var l = first ? lane : lanes++; first = false;
         rec(k, l);
       });
@@ -421,10 +454,12 @@
           head = x.addr + (hs.length ? ' · ' + hs.map(function (l) { return l.who; }).join(', ') : '');
           words = hs.length ? said(hs[0]) : x.option;
         } else {
+          /* a way not taken is set aside: a short end, and its words faint, smaller and set in */
           out.push('<line class="q-short" x1="' + cx + '" y1="' + y + '" x2="' + (cx + 16) + '" y2="' + y + '"/><circle class="q-open" cx="' + (cx + 20) + '" cy="' + y + '" r="4"><title>' + esc(x.addr + ' · offered by ' + x.offerer + ', not taken: ' + x.option) + '</title></circle>');
-          head = x.addr + ' · not taken'; words = x.option;
+          out.push('<text x="' + (tx + 14) + '" y="' + (y + 4) + '" class="q-faint">' + esc(clip(x.addr + '  ' + x.option, 38)) + '</text>');
+          return;
         }
-        out.push('<text x="' + tx + '" y="' + (y - 3) + '"' + (x.taken ? '' : ' class="q-dim"') + '>' + esc(clip(head, 38)) + '</text>');
+        out.push('<text x="' + tx + '" y="' + (y - 3) + '">' + esc(clip(head, 38)) + '</text>');
         out.push('<text x="' + tx + '" y="' + (y + 11) + '" class="q-dim">' + esc(clip(words, 40)) + (x.crosses && x.crosses.length ? ' ⨯ thread:' + esc(x.crosses[0]) : '') + '</text>');
       });
     } else {
@@ -462,7 +497,47 @@
         esc('says this in thread:' + w + ' at ' + n.addr + ', and puts thread:' + n.addr + ' in ' + to + '’s room: ' + text) + '">take this' + (p.waits.length > 1 ? ', as ' + esc(w) : '') + '</button>';
     }).join(' ') + '<span class="th-sn" aria-live="polite"></span>';
   }
-  /* every knot, each option set in beneath the knot that offered it (function:thread 8) */
+  /* ── THE CORD (function:thread 8, drawn in words): the route one line, the ways not taken set aside ──
+     A thread reads as one line: from its opening knot to its live end every act on the route stands at
+     one indent, whole, joined by one cord; the options a knot offered and no one took lead off that knot
+     as short faint ends, their words smaller and set in, never in the route's type; the options still
+     open at a live end lead off it dashed and in full, with the tap that takes them; a second option
+     taken beneath one knot is a fork, a cord of its own set in one step. The look is the page's (the
+     tokens it keeps); the structure is the form's, the same on every page. */
+  function partsOf(l) {
+    var full = String(l.text || ''), body = bodyOf(full), reads = full.length > body.length ? full.slice(body.length + READS.length).trim() : '';
+    var m = CLAUSE.exec(body), ending = '';
+    if (m) { ending = m[0].replace(/^\s·\s/, '').trim(); body = body.slice(0, m.index); }
+    return { words: said({ who: l.who, text: body.trim() }), ending: ending, reads: reads };
+  }
+  function cordHTML(t) {
+    /* a knot passed shows its words alone (the knot after it answers its ending); the live end shows
+       whom it waits on and what it read, which is where the work stands */
+    function act(n, l) {
+      var p = partsOf(l);
+      return '<p class="th-act"><span class="th-kaddr">' + esc(n.addr) + '</span><b class="th-khand" style="color:' + handColour(l.who) + '">' + esc(l.who) + '</b> ' +
+        esc(capFirst(p.words)) + (n.live && p.ending ? ' <span class="th-ending">' + esc(p.ending) + '</span>' : '') +
+        (n.crosses && n.crosses.length ? ' <span class="th-cross">⨯ thread:' + esc(n.crosses[0]) + '</span>' : '') +
+        (n.live && p.reads ? '<span class="th-reads">read: ' + esc(p.reads) + '</span>' : '') + '</p>';
+    }
+    function knot(n) {
+      var hs = n.hands, c = hs.length ? handColour(hs[0].who) : '';
+      var out = '<li class="th-k' + (n.live ? ' th-live' : '') + (hs.length ? '' : ' th-bare') + '"' + (c ? ' style="--th-hand:' + c + '"' : '') + '>';
+      out += hs.length ? hs.map(function (l) { return act(n, l); }).join('')
+        : '<p class="th-act th-quiet"><span class="th-kaddr">' + esc(n.addr) + '</span>' + esc(capFirst(n.option || 'taken up beneath')) + '</p>';
+      var ends = n.kids.filter(function (k) { return !k.taken && k.option; });
+      if (ends.length) out += '<ul class="th-ends' + (n.live ? ' th-open' : '') + '" aria-label="' + (n.live ? 'ways open now' : 'ways offered, not taken') + '">' +
+        ends.map(function (k) { return '<li class="th-end"><span class="th-kaddr">' + esc(k.addr) + '</span>' + esc(capFirst(k.option)) + tapsHTML(k) + '</li>'; }).join('') + '</ul>';
+      var on = n.kids.filter(function (k) { return k.taken; });
+      on.slice(1).forEach(function (k) { out += '<ol class="th-cord th-fork" aria-label="a fork, from ' + esc(n.addr) + '">' + strand(k) + '</ol>'; });
+      return { html: out + '</li>', next: on[0] || null };
+    }
+    function strand(n) { var out = ''; while (n) { var r = knot(n); out += r.html; n = r.next; } return out; }
+    return '<ol class="th-cord" aria-label="the route, knot by knot">' + strand(t) + '</ol>';
+  }
+  var CORD_KEY = '<p class="th-key"><span><i class="ck-on"></i>the way taken, each knot in the colour of the hand that tied it</span><span><i class="ck-off"></i>a way offered, not taken</span><span><i class="ck-open"></i>a way open now</span></p>';
+  /* every knot, each option set in beneath the knot that offered it (function:thread 8): the old list,
+     kept for a page that asks for it; a thread is drawn as its cord */
   function knotsHTML(th) {
     var out = [];
     (function rec(n) {
@@ -503,7 +578,7 @@
           '<span class="th-tag">' + nh + (nh === 1 ? ' hand' : ' hands') + '</span>' +
           '<a class="th-tag" href="' + esc(BEACH + '?block=spine:thread&spindle=' + encodeURIComponent(th.registry)) + '" title="its line in the registry">spine:thread ' + esc(th.registry) + '</a></div>' +
         '<p class="th-carries">' + esc(capFirst(th.carries || th.line || '')) + '</p>' +
-        (t && t.lines.length ? '<div class="th-quipu">' + quipu([th]) + '</div>' + LEGEND + knotsHTML(th)
+        (t && t.lines.length ? cordHTML(t) + CORD_KEY
           : '<p class="th-empty">' + (th.unread ? 'Its mirrors couldn’t be read just now.' : 'Opened in the registry; no knot tied yet.') + '</p>') +
       '</article>';
     }
@@ -659,7 +734,7 @@
     }, function (e) { b.disabled = false; if (note) note.textContent = 'not said: ' + ((e && e.message) || 'the beach could not be reached'); });
   });
 
-  window.beachThreads = { read: read, draw: draw, quipu: quipu, legend: LEGEND, style: style, parseRung: parseRung, parseThread: parseThread, linksIn: linksIn,
+  window.beachThreads = { read: read, draw: draw, quipu: quipu, legend: LEGEND, cord: cordHTML, cordKey: CORD_KEY, style: style, parseRung: parseRung, parseThread: parseThread, linksIn: linksIn,
     waiting: waiting, handOn: handOn, forget: forget, waitsOn: waitsOn };
 
   function auto() {
