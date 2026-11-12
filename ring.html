@@ -290,6 +290,8 @@ try { if (localStorage.getItem('ring:words') !== '1') document.documentElement.c
         <div class="acts" id="acts" hidden>
           <a class="make" id="invitelink" href="/invite" title="The invitation: who is invited, and how each one's AI finds a time with everyone else's">Invite</a>
           <button type="button" class="plain" id="joinbtn" title="Join the meeting: its call, its time and its room on the beach">Join</button>
+          <a class="plain" id="metlink" hidden title="The meeting after the hour: what was said, what's next, and each person's answer">met-review ↗</a>
+          <a class="plain" id="snazzylink" hidden title="The meeting's own crafted page">Snazzy ↗</a>
         </div>
       </div>
       <p class="fixed" id="fixed" hidden></p>
@@ -514,7 +516,7 @@ function parseLine(s){
 }
 
 /* ---------- the design ---------- */
-let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [], COPIES = [], IS_DESIGN = false;
+let M = null, SPINE = null, LAW = null, FOLD = null, IX = null, MIRRORS = [], RUNS = [], MEETINGS = [], COPIES = [], IS_DESIGN = false, WAS_HELD = false;
 /* a copy's law says where it came from, at its 9: "PROVENANCE: copied from: <name>" */
 const copiedFrom = law => { const m = /copied from:\s*([a-z0-9][a-z0-9-]*)/i.exec(voiceOf(law && law['9']) || ''); return m ? m[1].toLowerCase() : ''; };
 function buildModel(spine){
@@ -634,10 +636,14 @@ async function load(){
      ARRANGED line from before reads the same, its design the source); the latest line for a name stands, and a
      line counts only where the copy's law stands and the name is not one of the meetings the form lists */
   const room = has.has('pool:meeting') ? await readBlock('pool:meeting').catch(() => null) : null, reg = new Map();
+  /* and a meeting once held stands there too, 'HELD — <name> — …' (function:meeting 2.31): its page after the hour is /met/<name> */
+  WAS_HELD = false;
   (function walk(n){
     if (!n || typeof n !== 'object') return;
     if (n['_'] && typeof n['_'] === 'object') walk(n['_']);
     digits(n).forEach(d => {
+      const held = (voiceOf(n[d]) || '').match(/^HELD\s*[—–-]\s*([a-z0-9-]+)\s*[—–-]/i);
+      if (held && held[1].toLowerCase() === FAMILY) WAS_HELD = true;
       const m = (voiceOf(n[d]) || '').match(/^(?:COPIED|ARRANGED)\s*[—–-]\s*([a-z0-9-]+)\s*[—–-]\s*([^;]+);\s*(?:from|design):\s*([a-z0-9-]+)(?:;\s*by\s+([^;,]+))?/i);
       const name = m ? m[1].toLowerCase() : '';
       if (name && has.has('function:' + name) && !MEETINGS.some(x => x.name === name)){ reg.delete(name); reg.set(name, { name, title: m[2].trim(), from: m[3].toLowerCase(), by: (m[4] || '').trim() }); }
@@ -1480,6 +1486,7 @@ function drawHow(){
   $('foot').innerHTML = '<a href="' + RENDER + encodeURIComponent('function:' + FAMILY) + '" target="_blank" rel="noopener">this meeting’s law →</a>' +
     '<a href="' + RENDER + encodeURIComponent('function:meeting') + '" target="_blank" rel="noopener">the meeting form →</a>' +
     '<a href="https://happyseaurchin.com/walk/' + encodeURIComponent(FAMILY) + '" target="_blank" rel="noopener">walk the family →</a>' +
+    '<a href="' + SITE + '/met">every meeting held →</a>' +
     (M.source ? '<a href="' + ringHref(M.source.name) + '">the meeting it was copied from →</a>' : '');
 }
 function drawControls(){
@@ -1609,6 +1616,12 @@ function start(){
   $('invitelink').href = '/invite/' + encodeURIComponent(FAMILY);
   $('invitelink').title = isDesign ? 'A design is never held: duplicate it as a meeting of your own, and its invitation opens, with you on its list'
     : 'The invitation: who is invited, and how each one’s AI finds a time with everyone else’s';
+  /* the meeting's other views, as /met/<name> offers this one: its page after the hour, once it was held, and its
+     crafted page, where its law names one at 6 ('THE PAGE — https://…') */
+  $('metlink').hidden = !WAS_HELD; $('metlink').href = SITE + '/met/' + encodeURIComponent(FAMILY);
+  const law6 = LAW ? String(voiceOf(LAW['6']) || '') : '';
+  const crafted = /^THE PAGE\b/i.test(law6) ? ((law6.match(/https?:\/\/[^\s]+/) || [''])[0].replace(/[.,;:)]+$/, '')) : '';
+  $('snazzylink').hidden = !crafted; if (crafted) $('snazzylink').href = crafted.replace(/^https?:\/\/(www\.)?happyseaurchin\.com/i, SITE);
   /* every duplicate made from this meeting, and the duplicates of those, as the form's room lists them */
   const tree = [];
   (function under(name, depth, seen){
