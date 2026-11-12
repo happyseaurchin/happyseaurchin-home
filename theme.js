@@ -1567,7 +1567,11 @@
      * carried in the query and the ring moves it to /ring/<name>/<handle>, where it
      * fills the reader's name, so the browser can fill their key (David, 2026-10-10: "Are
      * meetings included in the drop-down go menu"; "can we do a /ring/<name>/<handle>") */
-    ['meetings',     'ring',     'carry'],
+    ['ring-meetings','ring',     'carry'],
+    /* every meeting held, after the hour — /met lists them all and /met?who=<handle> this
+     * hand's own, each opening its page after the hour (David, 2026-11-12, meetings.personal:
+     * "rename meetings to ring-meetings and met-reviews so that I can find the /met page") */
+    ['met-reviews',  'met',      'who'],
     /* when people are free — each person's calendar on the clock, filled by their own
      * AI, drawn as a week; the handle rides the query and marks their own lane
      * (David, 2026-10-10, availability.1: "an /availability o-page … a traditional
@@ -1650,7 +1654,9 @@
     ['mindflow/reflection', 'the reflection, live'],
     ['path',        'part by part', '/path/beach-venture'],
     ['tracks',      'the tracks',   '/tracks/beach-venture'],
-    ['ring',        'meetings'],
+    ['ring',        'ring-meetings'],
+    /* every meeting held, after the hour, each opening its own page (meetings.personal, 2026-11-12) */
+    ['met',         'met-reviews'],
     /* a meeting's State Stack, live: phones set their stacks, one screen draws the room (task:weft 33, 2026-10-14) */
     ['stack',       'the state stack'],
     ['availability','availability'],
@@ -1806,6 +1812,8 @@
     if (shape === 'bare')   return '/' + page;
     /* carry: the page's path names something else (a meeting), so the handle rides in the query */
     if (shape === 'carry')  return handle ? '/' + page + '?h=' + h : '/' + page;
+    /* who: the page lists everyone's and narrows to one person's by ?who= (/met) */
+    if (shape === 'who')    return handle ? '/' + page + '?who=' + h : '/' + page;
     /* optional: the page does not need a handle to work, but carries one so the
      * chain of doors is not broken by passing through it. */
     if (shape === 'optional') return handle ? '/' + page + '/' + h : '/' + page;

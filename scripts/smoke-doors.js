@@ -53,6 +53,9 @@ t('handle shape with nobody is no link at all', href('now', 'handle', '', ''), n
 t('optional shape carries a handle when there is one', href('globe', 'optional', ME, ''), '/globe/' + ME);
 t('optional shape stands alone when there is not', href('globe', 'optional', '', ''), '/globe');
 t('bare shape takes no path', href('rpg', 'bare', ME, ''), '/rpg');
+t('carry shape rides the query as h', href('ring', 'carry', ME, ''), '/ring?h=' + ME);
+t('who shape narrows the list to one person', href('met', 'who', ME, ''), '/met?who=' + ME);
+t('who shape with nobody lists everyone', href('met', 'who', '', ''), '/met');
 t('external shape is left whole',
   href('https://mirror.onen.ai/', 'external', ME, ''), 'https://mirror.onen.ai/');
 
