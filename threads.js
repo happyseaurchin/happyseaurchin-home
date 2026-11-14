@@ -45,12 +45,14 @@
  * ending (the threads tied from 3 to 4 November). The tap writes the option's words and ' · waits on <the
  * hand that offered it>' again, and still rings that hand's room.
  *
- * THE FOLD (function:thread 8.11, 14 November 2026, at David's word: 'concatenated versions of the
+ * THE FOLD (14 November 2026, at David's word: 'concatenated versions of the
  * quipu/threads, so that the graphic can be shortened and the user can expand it'): a strand longer than
  * nine knots shows its opening knot, one line counting the earlier knots folded away, and its newest seven
  * down to its end with its open choices. A knot a fork leaves from is never folded, so nothing live is
  * hidden, and each fork folds as a cord of its own. A tap unfolds it; the fold is the reader's, stored
- * nowhere. The same fold serves the cord in words, a keeper's ladder and the quipu's pendant.
+ * nowhere. The same fold serves the cord in words, a keeper's ladder and the quipu's pendant. The rule is
+ * bsp-mcp proposals/2026-11-14-threads-fold.md; its sentence for function:thread 8.11 went to the thread battery,
+ * which held it out (F4 missed its gate), so the law itself says nothing of a thread's length.
  */
 (function () {
   'use strict';
@@ -393,7 +395,7 @@
     '.th-key .ck-on{width:0.7rem;height:0.7rem;border-radius:50%;background:var(--liquid,currentColor)}' +
     '.th-key .ck-off{width:1.3rem;height:0.55rem;border-bottom:1.5px solid currentColor;border-bottom-left-radius:0.9rem 0.55rem;opacity:0.7}' +
     '.th-key .ck-open{width:1.3rem;height:0.55rem;border-bottom:1.5px dashed var(--liquid,currentColor);border-bottom-left-radius:0.9rem 0.55rem}' +
-    /* the fold (function:thread 8.11): the earlier knots tucked into one line, three dots on the cord where
+    /* the fold: the earlier knots tucked into one line, three dots on the cord where
        they are; a tap opens them on the same cord, at the same indent */
     '.th-k.th-fold::before,.th-rung.th-fold::before{top:0.08rem;width:0.6rem;height:1.3rem;border:0;border-radius:0;box-shadow:none;' +
       'background:radial-gradient(circle,var(--line-strong,currentColor) 0 2px,transparent 2.6px) center top/100% 33.34% repeat-y,var(--paper,transparent)}' +
@@ -420,7 +422,7 @@
 
   function clip(t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t; }
 
-  /* ── THE FOLD (function:thread 8.11): a strand shows nine knots at most ──
+  /* ── THE FOLD: a strand shows nine knots at most ──
      its opening knot, one line counting the earlier knots folded away, and its newest seven; a knot a
      fork leaves from stays, so the fold takes only straight runs of two or more. A strand is an array,
      oldest first; each run is [first, last], inclusive. */
@@ -493,7 +495,7 @@
     })(t, 0);
     return { rows: rows, lanes: lanes };
   }
-  /* a pendant's fold line (function:thread 8.11): three dots on the cord where the earlier knots are tucked,
+  /* a pendant's fold line: three dots on the cord where the earlier knots are tucked,
      the count beside them, a tap to show them */
   function foldRow(cx, y, tx, W, f) {
     var say = f.n + ' earlier ' + f.unit + 's folded' + (f.range ? ', ' + f.range : '') + ': show them';
@@ -593,7 +595,7 @@
   }
   /* a project's threads as one quipu: the main cord across the top, each thread a pendant hanging
      from it; on a narrow screen the pendants wrap beneath one another. A pendant that folds is drawn
-     folded and whole, and a tap on its fold swaps them (function:thread 8.11) */
+     folded and whole, and a tap on its fold swaps them (the fold, above) */
   function quipu(threads, opts) {
     opts = opts || {};
     var ps = (threads || []).filter(function (th) { return th.tree || (th.rungs && th.rungs.length); }).map(function (th) {
@@ -652,7 +654,7 @@
       on.slice(1).forEach(function (k) { out += '<ol class="th-cord th-fork" aria-label="a fork, from ' + esc(n.addr) + '">' + strand(k) + '</ol>'; });
       return { html: out + '</li>', next: on[0] || null };
     }
-    /* a strand longer than nine knots folds its earlier straight runs into a line that opens (function:thread 8.11) */
+    /* a strand longer than nine knots folds its earlier straight runs into a line that opens (the fold, above) */
     function strand(n) {
       var ns = [], hs = [];
       while (n) { var r = knot(n); ns.push(n); hs.push(r.html); n = r.next; }
@@ -860,7 +862,7 @@
   });
 
   /* a tap or a key on a pendant's fold shows its earlier knots, and on 'fold them' tucks them away again: the
-     reader's, stored nowhere, so the next drawing starts folded (function:thread 8.11) */
+     reader's, stored nowhere, so the next drawing starts folded */
   function unfold(ev) {
     var b = ev.target && ev.target.closest ? ev.target.closest('[data-th-unfold]') : null, w = b && b.closest('.q-fold');
     if (!w) return;
