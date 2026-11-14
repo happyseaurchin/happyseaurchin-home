@@ -576,12 +576,21 @@
       });
       return { svg: s.join(''), y: y };
     }
+    /* a thread's cord holds nine at most (function:thread 8.11): past nine, the opening knot, a break in the cord
+       with three dots where the earlier ones are folded, then the newest seven, then the open ring; a long cord
+       draws its knots closer */
     function threadCord(x, th) {
-      var top = 10, s = ['<path class="q-thr" d="M' + x + ' ' + cordY + ' V' + top + '"/>'], space = 10, y = cordY - 13;
-      var fit = Math.max(1, Math.floor((y - top - 6) / space)), n = th.rungs, show = n > fit ? fit - 1 : n;
-      for (var i = 0; i < show; i++) s.push('<circle class="q-k rung" cx="' + x + '" cy="' + (y - i * space) + '" r="3.3"/>');
-      if (n > show) s.push('<text class="q-more" x="' + (x + 6) + '" y="' + (y - show * space + 3) + '">+' + (n - show) + '</text>');
-      s.push('<circle class="q-open" cx="' + x + '" cy="' + (y - (n > show ? show + 1 : show) * space) + '" r="3.3"><title>' + esc(th.name) + ': the next rung, not yet tied</title></circle>');
+      var top = 10, y = cordY - 13, n = th.rungs, fold = n > 9 ? n - 8 : 0, marks = (fold ? 9 : n) + 1;
+      var space = Math.min(10, (y - top - 5) / Math.max(1, marks - 1)), r = Math.min(3.3, space * 0.37), at = 0, gap = y - space;
+      var s = ['<path class="q-thr" d="M' + x + ' ' + cordY + (fold ? ' V' + (gap + space * 0.5).toFixed(1) + ' M' + x + ' ' + (gap - space * 0.5).toFixed(1) : '') + ' V' + top + '"/>'];
+      for (var i = 0; i < n; i++) {
+        if (fold && i === 1) {
+          s.push('<g><title>' + esc(th.name) + ': ' + fold + ' earlier knots folded</title>' + [-1, 0, 1].map(function (d) { return '<circle class="q-tassel" cx="' + x + '" cy="' + (gap + d * space * 0.3).toFixed(1) + '" r="1.2"/>'; }).join('') + '</g>');
+          at++; i += fold - 1; continue;
+        }
+        s.push('<circle class="q-k rung" cx="' + x + '" cy="' + (y - at * space).toFixed(1) + '" r="' + r.toFixed(1) + '"/>'); at++;
+      }
+      s.push('<circle class="q-open" cx="' + x + '" cy="' + (y - at * space).toFixed(1) + '" r="' + r.toFixed(1) + '"><title>' + esc(th.name) + ': the next knot, not yet tied</title></circle>');
       return s.join('');
     }
     var r = Math.max(2.3, Math.min(4.6, col / 7)), space = r * 2 + 3, rw = Math.min(10, col * 0.55);
@@ -621,9 +630,15 @@
     var order = {}; d.tokens.forEach(function (t, i) { order[t[0]] = i; });
     return answersAt(mirrors, d).sort(function (a, b) { return (a.token in order ? order[a.token] : 99) - (b.token in order ? order[b.token] : 99); });
   }
+  /* the knots a thread has tied: a keeper's ladder its rungs, a registry thread every knot an act stands at */
+  function tiedOf(t) {
+    var n = (t.rungs || []).length;
+    (function rec(x) { if (!x) return; if (x.hands && x.hands.length) n++; (x.kids || []).forEach(rec); })(t.tree);
+    return n;
+  }
   function quipuGroup(name, steps, mirrors, threads) {
     var byStep = {}, addrs = {};
-    (threads || []).forEach(function (t) { (byStep[t.step] = byStep[t.step] || []).push({ name: t.name, rungs: t.rungs.length }); });
+    (threads || []).forEach(function (t) { (byStep[t.step] = byStep[t.step] || []).push({ name: t.name, rungs: tiedOf(t) }); });
     steps.forEach(function (s) { addrs[s.addr] = 1; });
     return {
       steps: steps.map(function (s) {
@@ -632,13 +647,13 @@
           rooms: s.sides.map(function (r) { return { dec: r.decision ? sortedAnswers(mirrors, r.decision) : null }; }),
           threads: byStep[s.addr] || [] };
       }),
-      loose: (threads || []).filter(function (t) { return !t.step || !addrs[t.step]; }).map(function (t) { return { name: t.name, rungs: t.rungs.length }; })
+      loose: (threads || []).filter(function (t) { return !t.step || !addrs[t.step]; }).map(function (t) { return { name: t.name, rungs: tiedOf(t) }; })
     };
   }
   /* drawn at the figure's own width, so a knot is the same size on a phone as on a desk */
   function figW(f, least) { return Math.round(Math.max(least || 330, Math.min(680, (f && f.clientWidth) || 640))); }
   var LEGEND = 'Each cord hanging is a step: a dash for each side-room of detail, then a knot for each answer to its decision, <i class="go"></i>GO, <i class="wait"></i>NOT YET, <i class="change"></i>CHANGE, <i class="open"></i>still waiting; a side-room’s own decision hangs on a cord beside it. ' +
-    'Each cord rising is a thread, a <i class="th"></i>knot for each rung tied, the open ring the next. Lit bars at the top of a cord are its step’s state.';
+    'Each cord rising is a thread, a <i class="th"></i>knot for each one tied, past nine the earlier ones folded into three dots, the open ring the next. Lit bars at the top of a cord are its step’s state.';
 
   /* ── the decisions: each card takes an answer into its answerer's own mirror, <family>:<handle> ── */
   /* what each word does (function:proposal 3): a line under the buttons, for the words this card offers */

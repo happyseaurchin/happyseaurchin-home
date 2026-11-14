@@ -44,6 +44,13 @@
  * 'later' row; a place in a room is the doorbell, and makes a card only where the place's own lines carry no
  * ending (the threads tied from 3 to 4 November). The tap writes the option's words and ' · waits on <the
  * hand that offered it>' again, and still rings that hand's room.
+ *
+ * THE FOLD (function:thread 8.11, 14 November 2026, at David's word: 'concatenated versions of the
+ * quipu/threads, so that the graphic can be shortened and the user can expand it'): a strand longer than
+ * nine knots shows its opening knot, one line counting the earlier knots folded away, and its newest seven
+ * down to its end with its open choices. A knot a fork leaves from is never folded, so nothing live is
+ * hidden, and each fork folds as a cord of its own. A tap unfolds it; the fold is the reader's, stored
+ * nowhere. The same fold serves the cord in words, a keeper's ladder and the quipu's pendant.
  */
 (function () {
   'use strict';
@@ -386,6 +393,24 @@
     '.th-key .ck-on{width:0.7rem;height:0.7rem;border-radius:50%;background:var(--liquid,currentColor)}' +
     '.th-key .ck-off{width:1.3rem;height:0.55rem;border-bottom:1.5px solid currentColor;border-bottom-left-radius:0.9rem 0.55rem;opacity:0.7}' +
     '.th-key .ck-open{width:1.3rem;height:0.55rem;border-bottom:1.5px dashed var(--liquid,currentColor);border-bottom-left-radius:0.9rem 0.55rem}' +
+    /* the fold (function:thread 8.11): the earlier knots tucked into one line, three dots on the cord where
+       they are; a tap opens them on the same cord, at the same indent */
+    '.th-k.th-fold::before,.th-rung.th-fold::before{top:0.08rem;width:0.6rem;height:1.3rem;border:0;border-radius:0;box-shadow:none;' +
+      'background:radial-gradient(circle,var(--line-strong,currentColor) 0 2px,transparent 2.6px) center top/100% 33.34% repeat-y,var(--paper,transparent)}' +
+    '.th-k.th-fold::before{left:-1.365rem}.th-rung.th-fold::before{left:-1.19rem}' +
+    '.th-fd>summary{cursor:pointer;list-style:none;font-family:var(--mono,monospace);font-size:0.74rem;line-height:1.5;color:var(--vapour-dim,inherit);overflow-wrap:anywhere}' +
+    '.th-fd>summary::-webkit-details-marker{display:none}' +
+    '.th-fd>summary:focus-visible{outline:2px solid var(--liquid,currentColor);outline-offset:2px;border-radius:4px}' +
+    '.th-fd .th-frange{margin-right:0.3rem;letter-spacing:0.02em}' +
+    '.th-fd .th-go{color:var(--liquid,inherit);text-decoration:underline dotted;text-underline-offset:0.2em}' +
+    '.th-fd[open] .th-sh,.th-fd:not([open]) .th-hd{display:none}' +
+    '.th-cord.th-folded{margin:0.9rem 0 0 -1.75rem;z-index:auto}.th-cord.th-folded::before{display:none}' +
+    '.th-rungs.th-folded{margin:0.8rem 0 0 -1.35rem}.th-rungs.th-folded::before{display:none}' +
+    '.q-fold{flex:none;min-width:0}.q-fold>.q-all{display:none}.q-fold.q-unfolded>.q-all{display:block}.q-fold.q-unfolded>.q-folded{display:none}' +
+    'svg.th-q [data-th-unfold]{cursor:pointer;outline:none}' +
+    'svg.th-q .q-hit{fill:transparent;pointer-events:all}' +
+    'svg.th-q [data-th-unfold]:hover .q-hit,svg.th-q [data-th-unfold]:focus-visible .q-hit{fill:rgba(var(--liquid-rgb,128,128,128),0.1);stroke:var(--liquid);stroke-width:1.2}' +
+    'svg.th-q .q-dots{fill:currentColor}svg.th-q .q-go{fill:var(--liquid)}' +
     'svg.th-q .q-faint{fill:var(--vapour-dim);opacity:0.6;font-size:10px}';
   function style() {
     if (document.getElementById('threads-css')) return;
@@ -394,6 +419,52 @@
   }
 
   function clip(t, n) { t = String(t || '').replace(/\s+/g, ' ').trim(); return t.length > n ? t.slice(0, n).replace(/\s+\S*$/, '') + '…' : t; }
+
+  /* ── THE FOLD (function:thread 8.11): a strand shows nine knots at most ──
+     its opening knot, one line counting the earlier knots folded away, and its newest seven; a knot a
+     fork leaves from stays, so the fold takes only straight runs of two or more. A strand is an array,
+     oldest first; each run is [first, last], inclusive. */
+  var FOLD_NEW = 7, FOLD_MOST = FOLD_NEW + 2;
+  function foldRuns(strand, stays) {
+    var runs = [], run = null;
+    if (strand.length <= FOLD_MOST) return runs;
+    for (var i = 1; i < strand.length - FOLD_NEW; i++) {
+      if (stays && stays(strand[i])) { run = null; continue; }
+      if (run) run[1] = i; else runs.push(run = [i, i]);
+    }
+    return runs.filter(function (r) { return r[1] > r[0]; });
+  }
+  function forksFrom(n) { return n.kids.filter(function (k) { return k.taken; }).length > 1; }
+  /* a tree's strands, oldest knot first: the route, then each fork, a cord of its own */
+  function strandsOf(t) {
+    var out = [];
+    (function from(n) {
+      var s = [], forks = [];
+      while (n) {
+        s.push(n);
+        var on = n.kids.filter(function (k) { return k.taken; });
+        forks = forks.concat(on.slice(1)); n = on[0] || null;
+      }
+      out.push(s); forks.forEach(from);
+    })(t);
+    return out;
+  }
+  /* a list's items with each run tucked into one line that opens at a tap (a <details>, so it needs no
+     script): li and ol name the list's own classes, so a folded knot opens on the same cord */
+  function foldHTML(items, runs, rangeOf, li, ol, unit) {
+    var out = '', r = 0;
+    for (var i = 0; i < items.length; i++) {
+      var run = runs[r];
+      if (!run || i !== run[0]) { out += items[i]; continue; }
+      var k = run[1] - run[0] + 1, range = rangeOf ? rangeOf(run[0], run[1]) : '';
+      out += '<li class="' + li + ' th-fold"><details class="th-fd"><summary>' + (range ? '<span class="th-frange">' + esc(range) + '</span> ' : '') +
+        '<span class="th-sh">' + k + ' earlier ' + unit + 's, folded · <span class="th-go">show them</span></span>' +
+        '<span class="th-hd">' + k + ' earlier ' + unit + 's · <span class="th-go">fold them</span></span></summary>' +
+        '<ol class="' + ol + ' th-folded">' + items.slice(run[0], run[1] + 1).join('') + '</ol></details></li>';
+      i = run[1]; r++;
+    }
+    return out;
+  }
 
   /* ── THE QUIPU (function:thread 8): knots by position, cords by what they are about ──
      A pendant hangs as a quipu's does: its strand runs down, one row to each address in address
@@ -422,15 +493,57 @@
     })(t, 0);
     return { rows: rows, lanes: lanes };
   }
-  /* one pendant, its own svg: a registry thread's knots, or a keeper's ladder */
-  function pendant(th) {
-    var out = [], rows, lanes;
-    if (th.tree) { var r = rowsOf(th.tree); rows = r.rows; lanes = r.lanes; }
-    else { rows = (th.rungs || []).map(function (g, i) { return { ladder: g, lane: 0, row: i, taken: true }; }); lanes = 1; }
+  /* a pendant's fold line (function:thread 8.11): three dots on the cord where the earlier knots are tucked,
+     the count beside them, a tap to show them */
+  function foldRow(cx, y, tx, W, f) {
+    var say = f.n + ' earlier ' + f.unit + 's folded' + (f.range ? ', ' + f.range : '') + ': show them';
+    return '<g class="q-foldrow" data-th-unfold role="button" tabindex="0" aria-label="' + esc(say) + '"><title>' + esc(say) + '</title>' +
+      '<rect class="q-hit" x="0" y="' + (y - 17) + '" width="' + W + '" height="34" rx="6"/>' +
+      [-7, 0, 7].map(function (d) { return '<circle class="q-dots" cx="' + cx + '" cy="' + (y + d) + '" r="2.3"/>'; }).join('') +
+      '<text x="' + tx + '" y="' + (y - 3) + '">' + f.n + ' earlier ' + f.unit + 's, folded</text>' +
+      '<text x="' + tx + '" y="' + (y + 11) + '" class="q-go">' + esc(clip('show them' + (f.range ? ' · ' + f.range : ''), 40)) + '</text></g>';
+  }
+  /* one pendant, its own svg: a registry thread's knots, or a keeper's ladder; folded unless all, and it
+     says whether it folds anything (a pendant that does is drawn both ways, and a tap swaps them) */
+  function pendant(th, all) {
+    var out = [], rows, lanes, foldAt = {}, gone = {}, folds = 0;
+    if (th.tree) {
+      var r = rowsOf(th.tree); rows = r.rows; lanes = r.lanes;
+      strandsOf(th.tree).forEach(function (s) {
+        foldRuns(s, forksFrom).forEach(function (run) {
+          folds++;
+          foldAt[s[run[0]].addr] = { n: run[1] - run[0] + 1, range: s[run[0]].addr + ' to ' + s[run[1]].addr, unit: 'knot' };
+          for (var i = run[0]; i <= run[1]; i++) {
+            if (i > run[0]) gone[s[i].addr] = 1;
+            s[i].kids.forEach(function (k) { if (!k.taken) gone[k.addr] = 1; });
+          }
+        });
+      });
+      if (folds && !all) {
+        rows = rows.filter(function (x) { return !gone[x.addr]; });
+        rows.forEach(function (x, i) { x.row = i; });
+      }
+    } else {
+      var rungs = th.rungs || [], runs = foldRuns(rungs);
+      folds = runs.length;
+      rows = [];
+      rungs.forEach(function (g, i) {
+        var run = !all && runs.filter(function (rn) { return i >= rn[0] && i <= rn[1]; })[0];
+        if (run && i > run[0]) return;
+        rows.push(run ? { fold: { n: run[1] - run[0] + 1, range: '', unit: 'rung' }, lane: 0, row: rows.length, taken: true }
+          : { ladder: g, lane: 0, row: rows.length, taken: true });
+      });
+      lanes = 1;
+    }
     var X = function (lane) { return 14 + lane * LANE; }, Y = function (row) { return TOP + row * ROWH; };
     var tx = X(lanes - 1) + 30, n = rows.length, W = tx + WORDS, H = Y(n) + (th.tree ? 4 : ROWH);
     var label = th.registry ? 'thread ' + th.registry : th.name;
     out.push('<text x="' + (X(0) + 8) + '" y="12" class="q-dim">' + esc(label) + '</text>');
+    if (folds && all) {
+      var fx = X(0) + 8 + Math.ceil(label.length * 6.8) + 12;
+      out.push('<g data-th-unfold role="button" tabindex="0" aria-label="fold the earlier ' + (th.tree ? 'knots' : 'rungs') + ' again"><rect class="q-hit" x="' + (fx - 4) + '" y="0" width="' + Math.max(40, W - fx + 4) + '" height="18" rx="4"/>' +
+        '<text x="' + fx + '" y="12" class="q-go">fold them</text></g>');
+    }
     if (th.tree) {
       var lastIn = {};
       rows.forEach(function (x) { if (x.taken) lastIn[x.lane] = x.row; });
@@ -446,6 +559,7 @@
       });
       rows.forEach(function (x) {
         var y = Y(x.row), cx = X(x.lane), head, words;
+        if (!all && foldAt[x.addr]) { out.push(foldRow(cx, y, tx, W, foldAt[x.addr])); return; }
         if (x.taken) {
           var hs = x.hands;
           if (x.live && hs.length) out.push('<circle cx="' + cx + '" cy="' + y + '" r="' + (10 + 3 * hs.length) + '" fill="' + handColour(hs[0].who) + '" opacity="0.18"/>');
@@ -466,20 +580,26 @@
       out.push('<line class="q-cord" x1="' + X(0) + '" y1="0" x2="' + X(0) + '" y2="' + Y(n) + '"/>');
       rows.forEach(function (x) {
         var y = Y(x.row), g = x.ladder;
+        if (x.fold) { out.push(foldRow(X(0), y, tx, W, x.fold)); return; }
         out.push('<circle class="q-rung" cx="' + X(0) + '" cy="' + y + '" r="6"><title>' + esc((g.block || g.url || '') + ' ' + (g.addr || '') + ' — ' + (g.words || '')) + '</title></circle>');
         out.push('<text x="' + tx + '" y="' + (y - 3) + '">' + esc(clip(g.words || g.block || g.url, 40)) + '</text>');
         out.push('<text x="' + tx + '" y="' + (y + 11) + '" class="q-dim">' + esc(clip((g.block || '') + (g.addr ? ' ' + g.addr : ''), 40)) + '</text>');
       });
       out.push('<circle class="q-next" cx="' + X(0) + '" cy="' + Y(n) + '" r="6"/><text x="' + tx + '" y="' + (Y(n) + 4) + '" class="q-dim">next, untied</text>');
     }
-    return '<svg class="th-q" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" role="img" aria-label="' +
-      esc(label + ', drawn as a quipu pendant: ' + n + (th.tree ? ' addresses' : ' rungs') + '.') + '">' + out.join('') + '</svg>';
+    /* a group, not an image, where it holds a control: a role of img would hide the fold's button */
+    return { folds: folds, svg: '<svg class="th-q' + (folds ? (all ? ' q-all' : ' q-folded') : '') + '" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" role="' + (folds ? 'group' : 'img') + '" aria-label="' +
+      esc(label + ', drawn as a quipu pendant: ' + n + (th.tree ? ' addresses' : ' rungs') + (folds && !all ? ', the earlier ones folded' : '') + '.') + '">' + out.join('') + '</svg>' };
   }
   /* a project's threads as one quipu: the main cord across the top, each thread a pendant hanging
-     from it; on a narrow screen the pendants wrap beneath one another */
+     from it; on a narrow screen the pendants wrap beneath one another. A pendant that folds is drawn
+     folded and whole, and a tap on its fold swaps them (function:thread 8.11) */
   function quipu(threads, opts) {
     opts = opts || {};
-    var ps = (threads || []).filter(function (th) { return th.tree || (th.rungs && th.rungs.length); }).map(pendant);
+    var ps = (threads || []).filter(function (th) { return th.tree || (th.rungs && th.rungs.length); }).map(function (th) {
+      var f = pendant(th, false);
+      return f.folds ? '<div class="q-fold">' + f.svg + pendant(th, true).svg + '</div>' : f.svg;
+    });
     if (!ps.length) return '';
     return '<div class="q-wrap">' + (opts.title ? '<div class="q-main"><span>' + esc(opts.title) + '</span></div>' : '<div class="q-main"></div>') +
       '<div class="q-pendants">' + ps.join('') + '</div></div>';
@@ -532,7 +652,12 @@
       on.slice(1).forEach(function (k) { out += '<ol class="th-cord th-fork" aria-label="a fork, from ' + esc(n.addr) + '">' + strand(k) + '</ol>'; });
       return { html: out + '</li>', next: on[0] || null };
     }
-    function strand(n) { var out = ''; while (n) { var r = knot(n); out += r.html; n = r.next; } return out; }
+    /* a strand longer than nine knots folds its earlier straight runs into a line that opens (function:thread 8.11) */
+    function strand(n) {
+      var ns = [], hs = [];
+      while (n) { var r = knot(n); ns.push(n); hs.push(r.html); n = r.next; }
+      return foldHTML(hs, foldRuns(ns, forksFrom), function (a, b) { return ns[a].addr + ' to ' + ns[b].addr; }, 'th-k', 'th-cord', 'knot');
+    }
     return '<ol class="th-cord" aria-label="the route, knot by knot">' + strand(t) + '</ol>';
   }
   var CORD_KEY = '<p class="th-key"><span><i class="ck-on"></i>the way taken, each knot in the colour of the hand that tied it</span><span><i class="ck-off"></i>a way offered, not taken</span><span><i class="ck-open"></i>a way open now</span></p>';
@@ -589,7 +714,7 @@
         '<a class="th-tag" href="/walk/' + encodeURIComponent(th.name) + '">walk it</a></div>' +
       (th.carries ? '<p class="th-carries">' + esc(th.carries.charAt(0).toUpperCase() + th.carries.slice(1)) + '</p>' : '') +
       (th.who ? '<p class="th-who">' + esc(clip(th.who, 220)) + '</p>' : '') +
-      (n ? '<ol class="th-rungs">' + th.rungs.map(function (r, i) { return rungHTML(r, i === n - 1); }).join('') +
+      (n ? '<ol class="th-rungs">' + foldHTML(th.rungs.map(function (r, i) { return rungHTML(r, i === n - 1); }), foldRuns(th.rungs), null, 'th-rung', 'th-rungs', 'rung') +
         '<li class="th-next"><span>the next rung, not yet tied</span></li></ol>'
         : '<p class="th-empty">Named in the law, its ladder not yet begun.</p>') +
     '</article>';
@@ -733,6 +858,18 @@
       });
     }, function (e) { b.disabled = false; if (note) note.textContent = 'not said: ' + ((e && e.message) || 'the beach could not be reached'); });
   });
+
+  /* a tap or a key on a pendant's fold shows its earlier knots, and on 'fold them' tucks them away again: the
+     reader's, stored nowhere, so the next drawing starts folded (function:thread 8.11) */
+  function unfold(ev) {
+    var b = ev.target && ev.target.closest ? ev.target.closest('[data-th-unfold]') : null, w = b && b.closest('.q-fold');
+    if (!w) return;
+    if (ev.type === 'keydown') { if (ev.key !== 'Enter' && ev.key !== ' ') return; ev.preventDefault(); }
+    var open = w.classList.toggle('q-unfolded'), to = w.querySelector((open ? '.q-all' : '.q-folded') + ' [data-th-unfold]');
+    if (to && ev.type === 'keydown') to.focus();
+  }
+  document.addEventListener('click', unfold);
+  document.addEventListener('keydown', unfold);
 
   window.beachThreads = { read: read, draw: draw, quipu: quipu, legend: LEGEND, cord: cordHTML, cordKey: CORD_KEY, style: style, parseRung: parseRung, parseThread: parseThread, linksIn: linksIn,
     waiting: waiting, handOn: handOn, forget: forget, waitsOn: waitsOn };
