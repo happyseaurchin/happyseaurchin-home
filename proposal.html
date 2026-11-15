@@ -505,7 +505,7 @@
       if (!L.page && (m = /\bpage:\s*(https?:\/\/\S+)/i.exec(p[1]))) L.page = m[1].replace(/[.,;)]+$/, '');
       if (!L.accent && (m = /\blook:\s*accent\s*(#[0-9a-f]{6})\b/i.exec(p[1]))) L.accent = m[1];
       if (!L.look && (m = /\blook:\s*([a-z][\w-]*)\s*$/i.exec(p[1])) && !/^(accent|page)$/i.test(m[1])) L.look = m[1];
-      if (!L.phase && (m = /^phase:\s*(proposal|project|complete|set aside)\b/i.exec(p[1]))) L.phase = m[1].toLowerCase();
+      if (!L.phase && (m = /^phase:\s*(proposal|project|complete|set aside|inquiry)\b/i.exec(p[1]))) L.phase = m[1].toLowerCase();
       if (p[0] === 9) L.provenance = p[1];
     });
     if (!L.room) L.room = name;
@@ -662,10 +662,10 @@
     var said = words.filter(function (w) { return M[w]; }).map(function (w) { return M[w]; });
     return said.length ? '<p class="means">' + said.join(' · ') + '</p>' : '';
   }
-  function cardHTML(d) {
+  function cardHTML(d, tag) {
     var id = 'd-' + d.at.replace('.', '');
     return '<div class="decide" id="' + id + '" data-at="' + d.at + '">' +
-      '<div class="top"><span class="tag">Decide · ' + esc(d.at) + '</span>' + (d.who ? '<span class="who">' + esc(d.who) + '</span>' : '') + '</div>' +
+      '<div class="top"><span class="tag">' + esc(tag || 'Decide') + ' · ' + esc(d.at) + '</span>' + (d.who ? '<span class="who">' + esc(d.who) + '</span>' : '') + '</div>' +
       '<p class="q">' + rich(d.q) + '</p>' +
       '<div class="tally" data-at="' + d.at + '"></div>' +
       '<div class="reading" hidden></div>' +
@@ -687,7 +687,8 @@
 
   /* ════════ one proposal, drawn from its blocks ════════ */
   function proposalPage() {
-    var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '', PAGE = '';
+    var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '', PAGE = '', ASKED = 'decision';
+    function asked(n) { return n === 1 ? ASKED : ASKED + 's'; }
     $('bar-name').textContent = FAM;
     Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM), readBlock('proposals')]).then(function (four) {
       SPINE = four[0]; LAW = four[1];
@@ -705,6 +706,9 @@
       if (window.beachLook && (L.accent || L.look)) beachLook.wear(L);   /* its look, by function:look 2 (look.js) */
       STEPS = stepsOf(SPINE); DECS = decisionsOf(STEPS);
       PHASE = L.phase || (STEPS.some(function (s) { return s.state; }) ? 'project' : 'proposal');
+      /* an inquiry proposes nothing to build: its decisions are open questions (function:proposal 6), so the page
+         says questions wherever it counts them (water-geometry, 15 Nov 2026) */
+      ASKED = PHASE === 'inquiry' ? 'question' : 'decision';
       paint();
       readMirrors(FAM).then(function (m) { MIRRORS = m.mirrors || {}; FOLD = m.fold; TOUCHED = m.touched || {}; paintAnswers(); landOnHash(); }, function () {
         document.querySelectorAll('.decide .answers').forEach(function (u) { u.innerHTML = '<li><span></span><span class="empty">The beach couldn’t be read just now.</span></li>'; });
@@ -745,8 +749,8 @@
       document.title = TITLE;
       var lede = sentences(cap(root.rest), 320), page = PAGE;
       var when = (/(\d{1,2} (?:January|February|March|April|May|June|July|August|September|October|November|December) 20\d\d)/.exec(L.provenance || textOf(SPINE['9'])) || [])[1] || '';
-      var label = PHASE === 'project' ? 'A project' : PHASE === 'complete' ? 'Complete' : PHASE === 'set aside' ? 'Set aside' : 'A proposal';
-      var asks = DECS.length ? (DECS.length === 1 ? 'the decision' : 'the ' + count(DECS.length) + ' decisions') : '';
+      var label = PHASE === 'project' ? 'A project' : PHASE === 'complete' ? 'Complete' : PHASE === 'set aside' ? 'Set aside' : PHASE === 'inquiry' ? 'An inquiry' : 'A proposal';
+      var asks = DECS.length ? (DECS.length === 1 ? 'the ' + asked(1) : 'the ' + count(DECS.length) + ' ' + asked(2)) : '';
       $('bandText').innerHTML = '<div class="eyebrow">' + label + (when ? ' · ' + esc(when) : '') + '</div>' +
         '<h1><a href="/proposal/' + esc(FAM) + '">' + esc(TITLE) + '</a></h1>' +
         '<p class="lede">' + rich(lede) + '</p>' +
@@ -754,7 +758,8 @@
         '<div class="actions">' + (DECS.length ? '<a class="btn primary" href="#stands">See where it stands</a>' : '') +
           '<a class="btn line" href="https://mirror.onen.ai/?pool=' + encodeURIComponent(L.room) + '">Talk in the room</a>' +
           (page ? '<a class="btn line" href="' + esc(page) + '">Snazzy</a>' : '') + '</div>' +
-        (PHASE === 'set aside' ? '<p class="phase"><b>Set aside.</b> The work now lives in its own blocks; this is the proposal as it last stood.</p>' :
+        (PHASE === 'inquiry' ? '<p class="phase"><b>An inquiry, not a proposal.</b> Nothing here is to be built: each step ends in an open question, and the answers say what is known, what is still open and what would settle it.</p>' :
+          PHASE === 'set aside' ? '<p class="phase"><b>Set aside.</b> The work now lives in its own blocks; this is the proposal as it last stood.</p>' :
           PHASE === 'complete' ? '<p class="phase"><b>Complete.</b> The work it proposed is done; this page keeps the record of how it was decided and built.</p>' : '');
       /* a project leads with its trail and its threads, and so does one complete (function:proposal 6) */
       var built = PHASE === 'project' || PHASE === 'complete';
@@ -798,7 +803,7 @@
       }).join('') + '</ol>' : '';
       if (!DECS.length && !trail) return '';
       return '<section id="stands"><div class="addr">live from the beach</div><h2>Where it stands</h2>' +
-        (DECS.length ? '<p class="note" id="standsNote">' + (DECS.length === 1 ? 'One decision' : cap(count(DECS.length)) + ' decisions') + ' and everyone’s answers so far, with the latest shared reading of them. Tap one to read it and answer.</p>' : '') +
+        (DECS.length ? '<p class="note" id="standsNote">' + (DECS.length === 1 ? 'One ' + asked(1) : cap(count(DECS.length)) + ' ' + asked(2)) + ' and everyone’s answers so far, with the latest shared reading of them. Tap one to read it and answer.</p>' : '') +
         '<div class="reading" id="wholeReading" hidden></div>' + trail +
         (DECS.length ? (trail ? '<h3>The decisions</h3>' : '') + '<ol class="stands">' + DECS.map(function (d) {
           return '<li><a href="#d-' + d.at.replace('.', '') + '"><span class="at">' + esc(d.at) + '</span><span class="what">' + esc(sentenceCase(d.title || d.q.slice(0, 60))) + '</span><span class="tally" data-at="' + d.at + '"></span></a></li>';
@@ -824,11 +829,11 @@
           return '<details class="fold"><summary>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</summary><div class="in">' +
             (r.rest && r.title ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + pointsHTML(r.points) + '</div></details>';
         }).join('') + '</div>' : '') +
-        (s.decision ? cardHTML(s.decision) : '') +
+        (s.decision ? cardHTML(s.decision, PHASE === 'inquiry' ? 'The question' : '') : '') +
         open.map(function (r) {
           return '<div class="sideopen" data-at="' + esc(r.at) + '" id="' + esc(r.at) + '"><div class="addr">beside it, at <b>' + esc(r.at) + '</b></div><h3>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</h3>' +
             (r.rest ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + (r.points.length ? '<div class="more"><details class="fold"><summary>What to know</summary><div class="in">' + pointsHTML(r.points) + '</div></details></div>' : '') +
-            cardHTML(r.decision) + '</div>';
+            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : '') + '</div>';
         }).join('') +
         '<div class="th-under" data-step="' + esc(s.addr) + '"></div>' +
       '</section>';
@@ -868,7 +873,7 @@
       if (!STEPS.length) return;
       var g = quipuGroup(FAM, STEPS, MIRRORS, THREADS), n = Object.keys(MIRRORS).length;
       var w = figW($('quipu')), h = 200;
-      $('quipu').innerHTML = quipuSVG(g, { w: w, h: h, label: TITLE + ': ' + STEPS.length + ' steps, ' + DECS.length + ' decisions, answered by ' + n + (n === 1 ? ' person' : ' people') + ', ' + THREADS.length + (THREADS.length === 1 ? ' thread' : ' threads') + '. Each step links to its section.' }) +
+      $('quipu').innerHTML = quipuSVG(g, { w: w, h: h, label: TITLE + ': ' + STEPS.length + ' steps, ' + DECS.length + ' ' + asked(DECS.length) + ', answered by ' + n + (n === 1 ? ' person' : ' people') + ', ' + THREADS.length + (THREADS.length === 1 ? ' thread' : ' threads') + '. Each step links to its section.' }) +
         '<figcaption class="qcap">' + LEGEND + '</figcaption>';
     }
     /* the reader's own answer at a decision, once the beach is read: their word chosen, their line in the box and the
@@ -916,7 +921,7 @@
       });
       var note = $('standsNote'), people = Object.keys(who), latest = '';
       Object.keys(TOUCHED).forEach(function (h) { if (who[h] && String(TOUCHED[h]) > latest) latest = TOUCHED[h]; });
-      if (note && people.length) note.textContent = (DECS.length === 1 ? 'One decision' : cap(count(DECS.length)) + ' decisions') + ', answered so far by ' + people.length + (people.length === 1 ? ' person' : ' people') +
+      if (note && people.length) note.textContent = (DECS.length === 1 ? 'One ' + asked(1) : cap(count(DECS.length)) + ' ' + asked(2)) + ', answered so far by ' + people.length + (people.length === 1 ? ' person' : ' people') +
         (latest ? ', the latest ' + rel(latest) : '') + ', with the latest shared reading of them. Tap one to read it and answer.';
       paintAs();
       drawQuipu();
@@ -930,10 +935,11 @@
       });
       document.querySelectorAll('.decide .notme').forEach(function (b) { b.onclick = function () { ME = ''; store.del('render:who'); forgetOwn(); paintAnswers(); }; });
       var ats = DECS.map(function (d) { return d.at; }).join(', ');
-      if ($('askLine')) $('askLine').value = 'Read the proposal spine:' + FAM + ' on https://beach.happyseaurchin.com (its law is function:' + FAM + ') and help me answer its decision points (' + ats + ') under my own handle' +
-        (ME ? ', ' + ME : '') + '. Each answer goes in my own mirror, ' + FAM + ':' + (ME || '<my handle>') + ', at the decision’s address, opening with one of the words that decision ends with (GO, NOT YET or CHANGE unless it names its own), then a line in my own words.';
-      if ($('foldLine')) $('foldLine').value = 'Sum up the answers to the proposal spine:' + FAM + ' on https://beach.happyseaurchin.com. For each decision, at ' + ats + ', call pscale_stream_engage with field ' + FAM + ', handle ' +
-        (ME || '<my handle>') + ' and that address, and fold the answers it returns under the law that comes with them: who answered what, where they agree, where they differ, and what is still open. Keep each fold for everyone with keep=collective, then keep one fold of the whole proposal the same way at address 1.';
+      var kind = PHASE === 'inquiry' ? 'inquiry' : 'proposal';
+      if ($('askLine')) $('askLine').value = 'Read the ' + kind + ' spine:' + FAM + ' on https://beach.happyseaurchin.com (its law is function:' + FAM + ') and help me answer its ' + (PHASE === 'inquiry' ? 'questions' : 'decision points') + ' (' + ats + ') under my own handle' +
+        (ME ? ', ' + ME : '') + '. Each answer goes in my own mirror, ' + FAM + ':' + (ME || '<my handle>') + ', at the ' + ASKED + '’s address, opening with one of the words that ' + ASKED + ' ends with (GO, NOT YET or CHANGE unless it names its own), then a line in my own words.';
+      if ($('foldLine')) $('foldLine').value = 'Sum up the answers to the ' + kind + ' spine:' + FAM + ' on https://beach.happyseaurchin.com. For each ' + ASKED + ', at ' + ats + ', call pscale_stream_engage with field ' + FAM + ', handle ' +
+        (ME || '<my handle>') + ' and that address, and fold the answers it returns under the law that comes with them: who answered what, where they agree, where they differ, and what is still open. Keep each fold for everyone with keep=collective, then keep one fold of the whole ' + kind + ' the same way at address 1.';
       if ($('askWrap')) $('askWrap').hidden = !btn;
     }
     function wireCard(card) {
@@ -1026,7 +1032,8 @@
   }
   /* a card's counts, each number keeping its word on a narrow card: '0 threads' never breaks between them */
   function countsOf(x, withDecisions) {
-    return [x.steps + ' steps'].concat(withDecisions ? [x.decs + (x.decs === 1 ? ' decision' : ' decisions')] : [],
+    var asked = x.phase === 'inquiry' ? ' question' : ' decision';   /* an inquiry's decisions are open questions */
+    return [x.steps + ' steps'].concat(withDecisions ? [x.decs + asked + (x.decs === 1 ? '' : 's')] : [],
       [x.answers + (x.answers === 1 ? ' answer' : ' answers') + (x.people ? ' from ' + x.people + (x.people === 1 ? ' person' : ' people') : ''),
        x.threads + (x.threads === 1 ? ' thread' : ' threads')]);
   }
@@ -1148,8 +1155,9 @@
             none: 'None yet. A keeper marks theirs complete with one line in its law: <code>phase: complete</code>.' }
         ],
         groupOf: function (x) { return x.phase === 'complete' || x.phase === 'set aside' ? 'done' : x.phase === 'project' ? 'building' : x.answers ? 'deciding' : 'new'; },
-        /* the section says the phase, so a card says it only where its section holds two: complete, or set aside */
-        statOf: function (x, g) { return (g === 'done' ? [x.phase] : []).concat(countsOf(x, true)).join(' · ') + latestOf(x); }
+        /* the section says the phase, so a card says it only where its section holds two: complete, or set aside; and an
+           inquiry says it is one wherever it stands, since it proposes nothing to build */
+        statOf: function (x, g) { return (g === 'done' ? [x.phase] : x.phase === 'inquiry' ? ['an inquiry'] : []).concat(countsOf(x, true)).join(' · ') + latestOf(x); }
       });
     }, function () {
       $('bandText').innerHTML = '<div class="eyebrow">Proposals</div><h1>Proposals</h1><p class="lede">The beach couldn’t be read just now. Try again in a moment.</p>';
@@ -1211,7 +1219,7 @@
           ],
           groupOf: function (x) { return x.phase === 'complete' || x.phase === 'set aside' || !x.decs || x.mine >= x.decs ? 'done' : x.mine ? 'partly' : 'todo'; },
           statOf: function (x) {
-            return (x.phase === 'complete' || x.phase === 'set aside' ? [x.phase] : [])
+            return (x.phase === 'complete' || x.phase === 'set aside' ? [x.phase] : x.phase === 'inquiry' ? ['an inquiry'] : [])
               .concat([x.decs ? x.mine + ' of ' + x.decs + ' answered' : 'no decisions'], countsOf(x, false)).join(' · ') + latestOf(x);
           }
         });
