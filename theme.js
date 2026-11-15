@@ -3489,3 +3489,171 @@
     });
   };
 })();
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * WITH YOUR AI — the door every page a person is handed carries (spine:o-page-unit
+ * 1.1; David's GO at 1.18, 15 November 2026; thread:41).
+ *
+ * A page that is the face of one family carries one button, 'with your AI', in the
+ * same place on every page: the bottom left, the beach button's corner being the
+ * bottom right. A tap fetches /door.js (never before), which opens a sheet over the
+ * page: how to add the beach to one's AI, a first message written for this page and
+ * the place the reader has reached, and /connect for the rest.
+ *
+ * The page says which family it is, as it already does: data-proposal, data-meeting
+ * or data-schematic on its <html> (data-family for any other), or its address
+ * (/proposal/<name>, /schematic/<name>, /met/<name>). A page with its own door
+ * (window.openDoor: o-page-unit, first-meeting, waterline) keeps it and this stands
+ * aside, so no page shows two; never in a frame; never where the html or the body
+ * says data-ai-door="off". Any element marked data-ai-door opens the same door, so a
+ * page can set it in its own header, and the corner button then stands aside.
+ * (Not data-door: five pages already use that word for doors of their own.)
+ * ───────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  function slug(v){ return String(v || '').toLowerCase().replace(/[^a-z0-9-]/g, ''); }
+  function familyOf(){
+    var h = document.documentElement, p = location.pathname, m, q;
+    try { q = new URLSearchParams(location.search); } catch(e){ q = { get: function(){ return null; } }; }
+    var fam = null;
+    if (h.getAttribute('data-family')) fam = { name: slug(h.getAttribute('data-family')) };
+    else if (h.getAttribute('data-proposal')) fam = { name: slug(h.getAttribute('data-proposal')) };
+    else if (h.getAttribute('data-meeting')) fam = { name: slug(h.getAttribute('data-meeting')), kind: 'meeting' };
+    else if (h.getAttribute('data-schematic')) fam = { name: slug(h.getAttribute('data-schematic')).replace(/-schematic$/, '') + '-schematic', kind: 'schematic' };
+    else if ((m = /^\/proposal(?:\.html)?(?:\/([A-Za-z0-9-]+))?\/?$/.exec(p)) && (m[1] || q.get('p'))) fam = { name: slug(m[1] || q.get('p')) };
+    else if ((m = /^\/schematic(?:\.html)?(?:\/([A-Za-z0-9-]+))?\/?$/.exec(p)) && (m[1] || q.get('s'))) fam = { name: slug(m[1] || q.get('s')).replace(/-schematic$/, '') + '-schematic', kind: 'schematic' };
+    else if ((m = /^\/met(?:\.html)?(?:\/([^\/?#]+))?\/?$/.exec(p)) && (m[1] || q.get('f'))) {
+      var n = ''; try { n = decodeURIComponent(m[1] || ''); } catch(e){}
+      fam = { name: slug(n || q.get('f')), kind: 'meeting' };
+    }
+    /* a document or a recipe drawn plainly at /walk/<name>; never /walk/<family>/<handle>, a hand's own */
+    else if ((m = /^\/walk\/([A-Za-z0-9-]+)\/?$/.exec(p))) fam = { name: slug(m[1]) };
+    return fam && fam.name && fam.name !== '-schematic' ? fam : null;
+  }
+  window.siteDoorFamily = familyOf;
+
+  var loading = null;
+  function load(){
+    if (window.siteDoor) return Promise.resolve(window.siteDoor);
+    if (!loading) loading = new Promise(function(ok, no){
+      var s = document.createElement('script');
+      s.src = '/door.js';
+      s.onload = function(){ window.siteDoor ? ok(window.siteDoor) : no(new Error('the door did not load')); };
+      s.onerror = function(){ loading = null; no(new Error('the door did not load')); };
+      document.head.appendChild(s);
+    });
+    return loading;
+  }
+  /* the page's own door where it has one; else this one; /connect if neither loads */
+  window.siteDoorOpen = function(from, opts){
+    if (typeof window.openDoor === 'function') return window.openDoor(from);
+    load().then(function(d){
+      var o = opts || {}; o.from = from || o.from;
+      d.open(o);
+    }, function(){ location.href = '/connect'; });
+  };
+
+  var CSS =
+    '.aid-pill{position:fixed;left:max(14px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));z-index:45;' +
+      'display:inline-flex;align-items:center;gap:7px;margin:0;padding:8px 14px 8px 11px;border-radius:999px;' +
+      'border:1px solid rgba(91,63,207,.42);background:#fbfaf7;color:#3d2a96;' +
+      'font:600 13px/1.1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.01em;' +
+      'box-shadow:0 4px 18px rgba(20,10,60,.18);cursor:pointer;-webkit-tap-highlight-color:transparent;' +
+      'transition:opacity .2s ease,transform .2s ease}' +
+    '.aid-pill:hover{border-color:#5b3fcf}' +
+    '.aid-pill:focus-visible{outline:2px solid #5b3fcf;outline-offset:3px}' +
+    'html[data-theme="dark"] .aid-pill{background:#201d29;color:#cdbfff;border-color:rgba(171,152,255,.5);box-shadow:0 4px 18px rgba(0,0,0,.45)}' +
+    'html[data-theme="dark"] .aid-pill:hover{border-color:#ab98ff}' +
+    '.aid-pill svg{width:16px;height:16px;flex:none}' +
+    '.aid-pill.aid-away{opacity:0;pointer-events:none;transform:translateY(10px)}' +
+    'html.aid-open .aid-pill,body:has(dialog[open]) .aid-pill,body:has(.pop-back:not([hidden]):not(.hidden)) .aid-pill,' +
+      'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-pill{display:none}' +
+    '@media print{.aid-pill{display:none}}';
+  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M3.5 21h17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="14.6" cy="12.4" r="1.3" fill="currentColor"/></svg>';
+
+  function pill(){
+    if (document.querySelector('.aid-pill')) return;
+    var st = document.createElement('style');
+    st.textContent = CSS;
+    document.head.appendChild(st);
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'aid-pill';
+    b.setAttribute('aria-haspopup', 'dialog');
+    b.setAttribute('aria-label', 'With your AI: bring your own AI to this page');
+    b.innerHTML = ICON + '<span>with your AI</span>';
+    b.addEventListener('click', function(){ window.siteDoorOpen(b); });
+    document.body.appendChild(b);
+    keepClear(b);
+    /* a phone's keyboard: the corner button steps away while words are being typed */
+    function typing(el){ return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|submit|checkbox|radio|range|color|file|reset)$/i.test(el.type)) || el.isContentEditable); }
+    document.addEventListener('focusin', function(e){ if (window.innerWidth < 700 && typing(e.target)) b.classList.add('aid-away'); });
+    document.addEventListener('focusout', function(){ b.classList.remove('aid-away'); });
+  }
+
+  /* THE CORNER IS SHARED: a page's own fixed control, or a sticky one while it stands stuck (a
+   * rail down the left, a player along the foot), keeps its place and the button steps clear of it:
+   * above a bar, beside a rail. Only what stands still counts, so a sticky heading still moving
+   * with the page never makes the button jump. Looked for once the page has drawn, and again as
+   * it grows; checked as the page scrolls or the window changes. */
+  function stuck(el, cs, r){
+    if (cs.position === 'fixed') return true;
+    if (cs.position !== 'sticky') return false;
+    var t = parseFloat(cs.top), bt = parseFloat(cs.bottom), l = parseFloat(cs.left);
+    return (!isNaN(t) && Math.abs(r.top - t) < 2) || (!isNaN(bt) && Math.abs(window.innerHeight - r.bottom - bt) < 2) || (!isNaN(l) && Math.abs(r.left - l) < 2);
+  }
+  function keepClear(b){
+    var held = [], ticking = false;
+    function scan(){
+      held = [];
+      var all = document.body.getElementsByTagName('*');
+      for (var i = 0; i < all.length; i++){
+        var el = all[i];
+        if (el === b || b.contains(el) || (el.closest && el.closest('.aid-back'))) continue;
+        var cs = window.getComputedStyle(el);
+        if (cs.position === 'fixed' || cs.position === 'sticky') held.push({ el: el, cs: cs });
+      }
+      place();
+    }
+    function place(){
+      ticking = false;
+      b.style.left = ''; b.style.bottom = '';
+      if (!held.length) return;
+      var p = b.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, left = null, bottom = null;
+      held.forEach(function(o){
+        if (o.cs.display === 'none' || o.cs.visibility === 'hidden') return;
+        var r = o.el.getBoundingClientRect();
+        if (!r.width || !r.height || (r.width > W * 0.6 && r.height > H * 0.6)) return;   /* a whole-screen layer is no neighbour */
+        if (!(r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top)) return;
+        if (!stuck(o.el, o.cs, r)) return;
+        if (r.width >= r.height) bottom = Math.max(bottom || 0, H - r.top + 10);           /* a bar: stand above it */
+        else left = Math.max(left || 0, r.right + 12);                                       /* a rail: stand beside it */
+      });
+      if (bottom !== null) b.style.bottom = bottom + 'px';
+      if (left !== null) b.style.left = left + 'px';
+    }
+    function soon(){ if (!ticking){ ticking = true; window.requestAnimationFrame(place); } }
+    window.addEventListener('scroll', soon, { passive: true });
+    window.addEventListener('resize', function(){ setTimeout(scan, 150); });
+    setTimeout(scan, 300); setTimeout(scan, 1500); setTimeout(scan, 4000);
+  }
+
+  function wire(){
+    if (window.top !== window) return;
+    var h = document.documentElement, body = document.body;
+    if (!body || h.getAttribute('data-ai-door') === 'off' || body.getAttribute('data-ai-door') === 'off') return;
+    if (typeof window.openDoor === 'function') return;                       /* the page's own door */
+    document.addEventListener('click', function(e){
+      var t = e.target && e.target.closest ? e.target.closest('[data-ai-door]') : null;
+      if (!t || t.getAttribute('data-ai-door') === 'off') return;
+      e.preventDefault();
+      window.siteDoorOpen(t, { family: t.getAttribute('data-ai-door') || undefined });
+    });
+    if (document.querySelector('[data-ai-door]:not([data-ai-door="off"])')) return;   /* set in the page's own header */
+    if (!familyOf()) return;
+    pill();
+  }
+  /* after the page's own scripts, which is where a page defines a door of its own */
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire, 0); });
+  else setTimeout(wire, 0);
+})();
