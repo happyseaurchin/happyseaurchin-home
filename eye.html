@@ -334,6 +334,27 @@ button{font:inherit;color:inherit}
 .zc>.card{background:var(--c-bg,linear-gradient(180deg,#121e28,#0e1820))}
 :root[data-look="standard"] .zc>.card{background:var(--c-bg,#123742)}
 .zc>.card.tent{border-style:dashed}
+/* weft (eye.5), 16 Nov 2026: your spindles, a row of tabs kept on this device */
+.tabsbar{padding-top:0;padding-bottom:6px;gap:6px;overflow-x:auto;overflow-y:hidden;flex-wrap:nowrap;scrollbar-width:none;min-width:0;justify-content:safe center}
+.tabsbar::-webkit-scrollbar{display:none}
+.tabsbar .call{flex:none;font-family:var(--mono);font-size:.7rem;letter-spacing:.04em;color:var(--mist);padding:0 4px}
+.stab-keep,.stab{flex:none;display:inline-flex;align-items:center;height:28px;border-radius:14px;border:1px solid var(--line);background:var(--glass);font-size:.78rem;white-space:nowrap}
+.stab-keep{gap:5px;padding:0 11px;color:var(--mist);cursor:pointer;font-family:inherit}
+.stab-keep .g{color:var(--iris);font-weight:700}
+.stab-keep:disabled{opacity:.45;cursor:default}
+.stab{max-width:240px;overflow:hidden}
+.stab .go{display:inline-flex;align-items:baseline;gap:6px;min-width:0;height:100%;padding:0 11px;background:none;border:0;color:var(--mist);font:inherit;cursor:pointer}
+.stab .go .lb{overflow:hidden;text-overflow:ellipsis}
+.stab .go .ad{font-family:var(--mono);font-size:.66rem;color:var(--mist);opacity:.8}
+.stab[aria-current="true"]{border-color:color-mix(in srgb,var(--iris) 60%,var(--line))}
+.stab[aria-current="true"] .go{color:var(--ink);padding-right:4px}
+.stab .x{flex:none;width:26px;height:100%;background:none;border:0;color:var(--mist);font-size:1rem;line-height:1;cursor:pointer}
+.stab .x:hover,.stab .go:hover,.stab-keep:not(:disabled):hover{color:var(--ink)}
+/* weft (eye.5), 16 Nov 2026: on the line the eye looks along, the spindle's own card solid, the eye's own way dashed */
+.card.was.ahead{border-style:dashed}
+.tr.was{background:color-mix(in srgb,rgba(230,165,74,.16) 60%,transparent);box-shadow:inset 2px 0 0 rgba(230,165,74,.55)}
+.tr.was.ahead{background:none;box-shadow:inset 2px 0 0 rgba(230,165,74,.35)}
+.frow.spindle-row .frow-ring>.card.was{opacity:.84}
 .zr>.card{background:var(--c-bg,rgba(13,21,29,.9))}
 .zr>.card.s-title{padding:6px 12px}
 .zr>.card.s-title .t{font-size:.84rem}
@@ -468,6 +489,8 @@ button{font:inherit;color:inherit}
     <div class="tg" id="tg-size"></div>
     <div class="tg" id="tg-look"></div>
   </div>
+  <!-- weft (eye.5), 16 Nov 2026: your spindles, a row of tabs kept on this device, each a whole call -->
+  <div class="navbar tabsbar" id="tabsBar" role="toolbar" aria-label="Your spindles"></div>
   <main id="stage" class="stage" aria-live="polite">
     <canvas id="field" aria-hidden="true"></canvas>
   </main>
@@ -510,7 +533,7 @@ const store = { blocks: new Map(), snap: new Set(Object.keys(RAW.blocks || {})),
 let knownCache = null;
 const mirrorCache = new Map(), famPageCache = new Map(), famLookCache = new Map();
 let famLineCache = null;
-function invalidate() { knownCache = null; mirrorCache.clear(); famPageCache.clear(); famLookCache.clear(); }
+function invalidate() { knownCache = null; mirrorCache.clear(); famPageCache.clear(); famLookCache.clear(); if (store.ways) store.ways.clear(); }
 function known() { if (knownCache) return knownCache; const s = new Set(store.snap); for (const n of store.blocks.keys()) s.add(n); if (store.live) for (const n of store.liveNames) s.add(n); return (knownCache = s); }
 // weft, 16 Nov 2026: a block a page keeps at another beach (META.where, the Brackenfoot map at /w/brackenfoot) is loadable too
 function loadable(name) { return store.blocks.has(name) || store.snap.has(name) || (store.live && (store.liveNames.has(name) || has(WHERE, name))); }
@@ -1054,6 +1077,106 @@ const lastChild = new Map();
 function cur() { return store.blocks.get(state.block) || blockSync(state.block); }
 const isPrefix = (a, b) => a.length <= b.length && a.every((k, i) => k === b[i]);
 
+/* ---------------- the place: one bsp call (weft, eye.5, 16 Nov 2026) ----------------
+ * Where the eye stands is the call bsp() would make (pscale://whetstone 2): the block; the SPINDLE, its second argument,
+ * the whole line of meaning, a rung for every digit; and the POINT, its third, pscale_attention. The point is a rung
+ * anywhere on the spindle, not only at its end, and the spindle travels with it (2.4); a point past the spindle's end
+ * is the descent, the sub-directory beneath its terminus (2.5). Iris and the Magic Eye are two drawings of this one
+ * call, so switching between them keeps all three, and a link carries all three (David, 16 Nov 2026).
+ *   state.spindle  the spindle, decided: a link's or a tab's, or the reader's own way (going in, across or by a tap
+ *                  decides it; coming out keeps it)
+ *   state.path     the point: the spindle itself, or a rung along it
+ *   state.beneath  how many rungs the eye looks past the spindle's end: 0 at a point; P = floor − |spindle| − beneath
+ * Past the decided spindle nothing is decided, so the eye makes the rest as it looks (aheadOf), writing nothing and
+ * drawing it as provisional: the block's own way where its shape gives one (wayOf), then one ring, a candidate at its
+ * centre. Nothing here is written anywhere. */
+state.spindle = []; state.beneath = 0;
+const zCandMem = new Map();          // the child looked at, at the ring past the end, before it is chosen
+// the way already walked beneath a point (keel's lastChild): a way walked is a way decided
+function wayWalked(b, path) {
+  const out = path.slice();
+  for (let i = 0; i < 64; i++) { const k = lastChild.get(keyOf(b, out)); if (k == null || !childKeys(b, out).includes(k)) break; out.push(k); }
+  return out;
+}
+function remember(b, S) { for (let i = 0; i < S.length; i++) lastChild.set(keyOf(b, S.slice(0, i)), S[i]); }
+// the place set: a point on the spindle keeps it; a point off it takes the way walked from there
+function setPlace(b, path, S, beneath) {
+  path = deepestExisting(b, path || []);
+  S = S ? deepestExisting(b, S) : null;
+  if (!S || !isPrefix(path, S)) S = wayWalked(b, path);
+  state.path = path; state.spindle = S; state.spindleOf = b.name;
+  // beneath a terminus with nothing nested beneath it there is nothing to look at: the eye stands on the point
+  state.beneath = path.length === S.length && beneath > 0 && childKeys(b, S).length ? Math.min(9, Math.floor(beneath)) : 0;
+}
+// the call as bsp() takes it: the spindle, and pscale_attention (P_end is the spindle's own end)
+function callOf(b) {
+  const S = state.spindle, Pend = b.floor - S.length;
+  return { S, P: state.beneath > 0 ? Pend - state.beneath : b.floor - state.path.length, Pend };
+}
+// the clock's now, as the beach writes it: bsp-mcp src/temporal.ts momentToAddress with three fine digits (string.html
+// ports the same; re-port, never fork): the ten digits of the beat, then the minute, the breath and the second
+function clockNow(when) {
+  when = when || new Date();
+  const y = when.getUTCFullYear(), month = when.getUTCMonth(), dom = when.getUTCDate();
+  const secOfDay = when.getUTCHours() * 3600 + when.getUTCMinutes() * 60 + when.getUTCSeconds() + when.getUTCMilliseconds() / 1000;
+  const partS = 86400 / 9, beatS = partS / 9;
+  const part = Math.floor(secOfDay / partS), beat = Math.floor((secOfDay - part * partS) / beatS);
+  const ten = [Math.floor(y / 1000) % 10, Math.floor(y / 100) % 10, Math.floor(y / 10) % 10, y % 10, Math.floor(month / 3) + 1, (month % 3) + 1,
+    Math.floor((dom - 1) / 7) + 1, ((dom - 1) % 7) + 1, part + 1, beat + 1].join('');
+  let rem = secOfDay - part * partS - beat * beatS, w = beatS; const fd = [];
+  for (let i = 0; i < 3; i++) { w /= 9; const d = Math.min(8, Math.max(0, Math.floor(rem / w))); fd.push(d + 1); rem -= d * w; }
+  return ten + '.' + fd.join('');
+}
+/* ---- the block's own way: one small piece, to be replaced (weft, eye.5, 16 Nov 2026) ----
+ * Where the reader has decided nothing, the eye takes the way the block's own shape gives, read off the block and never
+ * written into it: on the clock (a floor of ten, pscale://sundial) the way is now, and on a rung now does not reach,
+ * the time nearest it; in an accumulator, its newest entry, the highest digit at each rung down to the floor, where
+ * entries stand; in a spine, its steps, down 1. Any other block gives no way, and the eye rests at each ring instead,
+ * the first digit at its centre. Whether a block should carry a default spindle itself (in its underscore), or the eye
+ * keep a list of them as the mirror keeps its link-tabs, is David's open question (16 Nov 2026): either is read here,
+ * in place of the shapes, and nothing else changes. */
+function wayOf(b, path) {
+  const wayCache = store.ways || (store.ways = new Map());   // cleared with every block read (invalidate)
+  const now = b.floor === 10 ? clockNow() : '';
+  const ck = b.name + '|' + (b.source || '') + '|' + path.join('.') + '|' + now.slice(0, 11);
+  if (wayCache.has(ck)) return wayCache.get(ck);
+  const out = [], digits = p => childKeys(b, p).filter(isDigit);
+  let how = '';
+  if (b.floor === 10 && path.every(isDigit)) {
+    how = 'now';
+    const nd = now.replace('.', '').split(''), at = nd.slice(0, path.length).join(''), here = path.join('');
+    let lean = here === at ? 0 : here < at ? -1 : 1;           // on now's own line; behind it, the latest; ahead of it, the soonest
+    for (const p = path.slice(); out.length < 40;) {
+      const ks = digits(p); if (!ks.length) break;
+      const want = nd[p.length]; let k;
+      if (!lean && want != null) {
+        if (ks.includes(want)) k = want;
+        else { const lo = ks.filter(x => x < want); if (lo.length) { k = lo[lo.length - 1]; lean = -1; } else { k = ks[0]; lean = 1; } }
+      } else k = lean > 0 ? ks[0] : ks[ks.length - 1];
+      out.push(k); p.push(k);
+    }
+  } else if (b.accum) {
+    how = 'newest';
+    for (const p = path.slice(); p.length < b.floor;) { const ks = digits(p); if (!ks.length) break; const k = ks[ks.length - 1]; out.push(k); p.push(k); }
+  } else if (/^spine:/.test(b.name)) {
+    how = 'steps';
+    for (const p = path.slice(); out.length < 64 && childKeys(b, p).includes('1');) { out.push('1'); p.push('1'); }
+  }
+  const r = { keys: out, how: out.length ? how : '' };
+  if (wayCache.size > 600) wayCache.clear();
+  wayCache.set(ck, r);
+  return r;
+}
+// the provisional line past the decided spindle: the block's way, then the ring past its end with its candidate
+function aheadOf(b, S) {
+  const w = wayOf(b, S), end = S.concat(w.keys), kids = childKeys(b, end), k = zCandMem.get(keyOf(b, end));
+  return { way: w.keys, how: w.how, end, cand: kids.length ? (kids.includes(k) ? k : kids[0]) : null };
+}
+// the whole line the eye can see along: the spindle, the block's way, the candidate
+function placeLine(b) { const a = aheadOf(b, state.spindle); return a.cand == null ? a.end : a.end.concat([a.cand]); }
+// on the line at this path: 'spindle' where it is decided, 'ahead' where the eye made it
+function onLine(b, path, E) { E = E || placeLine(b); return isPrefix(path, E) ? (path.length <= state.spindle.length ? 'spindle' : 'ahead') : ''; }
+
 /* ---------------- the address bar (weft, 16 Nov 2026) ----------------
  * Where you are is always a link: happyseaurchin.com/eye/<block>/<address>, the address the beach's own,
  * anchored at the block's floor (spine:the-sea/1.18, proposals/40), with ?beach=<url> for a block read from
@@ -1069,23 +1192,61 @@ const Q0 = (function () { try { return new URLSearchParams(location.search); } c
   state.look = pick('look', ['eye', 'standard', 'snazzy']) || state.look;
   state.size = pick('size', ['title', 'icon', 'card', 'big', 'page']) || state.size;
 })();
+/* weft (eye.5), 16 Nov 2026: a link is the call itself. /eye/<block>/<spindle>/<pscale>, or as the beach's wire writes
+ * it, ?block=<block>&spindle=<address>&pscale=<n>: the spindle the whole address, the point its pscale_attention, a
+ * rung on the spindle or, below its end, the sub-directory beneath it. /eye/<block>/<address> (and ?at=) is a spindle
+ * with its point at its end, as every link before this one meant; a pscale with no spindle puts the point on the
+ * block's own way (wayOf). */
 function readLink() {
-  let block = Q0.get('block') || '', at = Q0.get('at') || '';
-  const m = /^\/(?:eye|i)\/([^/]+)(?:\/([^/]+))?\/?$/.exec(location.pathname);
-  if (m) { try { block = block || decodeURIComponent(m[1]); at = at || decodeURIComponent(m[2] || ''); } catch (e) { /* a broken link reads as none */ } }
+  const sp = (Q0.get('spindle') || '').trim();
+  let block = Q0.get('block') || '', at = (/^[\d.]+$/.test(sp) ? sp : '') || Q0.get('at') || '', ps = Q0.get('pscale') || '';
+  const m = /^\/(?:eye|i)\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?\/?$/.exec(location.pathname);
+  if (m) { try { block = block || decodeURIComponent(m[1]); at = at || decodeURIComponent(m[2] || ''); ps = ps || decodeURIComponent(m[3] || ''); } catch (e) { /* a broken link reads as none */ } }
   const beach = (Q0.get('beach') || '').trim();
-  return { block: block.trim(), at: /^\d+(?:\.\d+)?$/.test(at.trim()) ? at.trim() : '', beach: /^https:\/\/[^\s/?#]+(?:\/[^\s?#]*)?$/.test(beach) ? beach.replace(/\/$/, '') : '' };
+  ps = String(ps).trim().replace(/^[\u2212\u2013]/, '-');
+  return { block: block.trim(), at: /^\d+(?:\.\d+)?$/.test(at.trim()) ? at.trim() : '', pscale: /^[+-]?\d{1,3}$/.test(ps) ? parseInt(ps, 10) : null, beach: /^https:\/\/[^\s/?#]+(?:\/[^\s?#]*)?$/.test(beach) ? beach.replace(/\/$/, '') : '' };
+}
+// the place a call asks for; where it is not well formed, the eye makes what it can and says so (nothing written)
+function placeAsked(b, link) {
+  let S = null, note = '';
+  if (link.at) {
+    const asked = addrToPath(b, link.at); S = deepestExisting(b, asked);
+    if (S.length < asked.length) note = link.at + ' is not in ' + b.name + (S.length && S.every(isDigit) ? ': the eye looks on from ' + addrOf(b, S) : ': the eye looks from its top');
+  }
+  let path = S || [], beneath = 0;
+  if (link.pscale != null) {
+    const depth = b.floor - link.pscale;
+    if (!S) S = wayOf(b, []).keys.slice(0, Math.max(0, depth));      // no spindle: the point on the block's own way
+    if (depth <= 0) path = [];
+    else if (depth <= S.length) path = S.slice(0, depth);
+    else { path = S; beneath = depth - S.length; }                   // past the spindle's end: the sub-directory beneath it
+  }
+  return { path, S: S || [], beneath, note };
+}
+function placeFromLink(b, link) {
+  const a = placeAsked(b, link);
+  setPlace(b, a.path, a.S, a.beneath);
+  if (state.beneath > 1) state.depth = Math.min(4, state.beneath);   // the directory opens as deep as the call looks
+  return a.note;
 }
 const LINKED = /^https?:$/.test(location.protocol) && /^\/(?:eye|i)(?:\.html)?(?:\/|$)/.test(location.pathname);
 const pathPart = s => encodeURIComponent(s).replace(/%3A/gi, ':').replace(/%40/g, '@');
 function linkOf() {
   const b = cur(); if (!b || b.source === 'yours') return '/eye';
-  let nb = b, p = state.path;
-  if (b.source === 'hidden') { nb = blockSync(b.host) || b; p = (b.hostPath || []).slice(); }
+  let nb = b, p = state.path, S = state.spindle, beneath = state.beneath;
+  if (b.source === 'hidden') { nb = blockSync(b.host) || b; p = (b.hostPath || []).slice(); S = p; beneath = 0; }
   let u = '/eye/' + pathPart(nb.name);
-  if (p.length && p.every(isDigit)) u += '/' + addrOf(nb, p);
-  if (nb.beach) u += '?beach=' + encodeURIComponent(nb.beach);
-  return u;
+  // weft (eye.5), 16 Nov 2026: the spindle, then the point's pscale where the point is not the spindle's end
+  let n = 0; while (n < S.length && isDigit(S[n])) n++;
+  if (n < p.length) { S = p; n = p.length; beneath = 0; }             // a point off the digits (a JSON key) has no address
+  const q = [];
+  if (n && p.every(isDigit)) {
+    const Sd = S.slice(0, n), P = beneath > 0 && p.length === S.length ? nb.floor - Sd.length - beneath : nb.floor - p.length;
+    u += '/' + addrOf(nb, Sd);
+    if (P !== nb.floor - Sd.length) u += '/' + P;
+  } else if (!n && !p.length && beneath > 0) q.push('pscale=' + (nb.floor - beneath));   // the top's own ring, before any spindle
+  if (nb.beach) q.push('beach=' + encodeURIComponent(nb.beach));
+  return u + (q.length ? '?' + q.join('&') : '');
 }
 function syncLink() {
   const b = cur(); if (!b) return;
@@ -1224,7 +1385,7 @@ function doorItem(t) {
 }
 function readingItem(r) {
   const bt = h('button', 'li amber', '<span class="sigil-wrap">' + sigil(state.path) + '</span><span><span class="k">' + esc(r.m.who) + '</span><b>' + titleHTML(r.lab.title) + '</b>' + (r.lab.body ? '<small>' + esc(clip(r.lab.body, 260)) + '</small>' : '') + '</span>');
-  bt.type = 'button'; bt.addEventListener('click', () => jump({ block: r.m.name, path: state.path.slice(), how: 'mirror' }));
+  bt.type = 'button'; bt.addEventListener('click', () => jump({ block: r.m.name, path: state.path.slice(), spindle: state.spindle.slice(), how: 'mirror' }));
   return bt;
 }
 function doorsRow(b, p) {
@@ -1312,8 +1473,8 @@ function renderIris() {
   L._after = () => fitAnc(anc, p);
   if (kids.length && size !== 'page') {
     const wrap = h('div', 'kids-wrap'); const row = h('div', 'kids');
-    const pref = lastChild.get(keyOf(b, p));
-    kids.forEach(k => { const cp = p.concat([k]); row.append(card(b, cp, nbSize, { cls: 'kid' + (k === pref ? ' was' : ''), onClick: () => descendTo(cp) })); });
+    const E = placeLine(b), next = E[p.length], tag = onLine(b, p.concat([next]), E); // weft (eye.5): the spindle's next, or the eye's own
+    kids.forEach(k => { const cp = p.concat([k]); row.append(card(b, cp, nbSize, { cls: 'kid' + (k === next ? (tag === 'spindle' ? ' was' : ' was ahead') : ''), onClick: () => descendTo(cp) })); });
     wrap.append(h('span', 'dir-mark', '−'), row); L.append(wrap);
     L._after = () => { fitAnc(anc, p); const w = row.querySelector('.was'); if (w) row.scrollLeft = w.offsetLeft - row.clientWidth / 2 + w.offsetWidth / 2; };
   } else if (kids.length) {
@@ -1350,12 +1511,25 @@ function renderFlat() {
     row.append(ring); col.append(row);
     if (isF) { pointRow = row; const d = doorsRow(b, p); if (d) { const w = h('div', 'frow-doors'); w.append(d); col.append(w); } }
   }
-  const kids = childKeys(b, p);
+  // weft (eye.5), 16 Nov 2026: the point is a point IN the spindle, so the spindle goes on past it, a row for each rung,
+  // its own card lit; then the ring past its end, the eye's own next marked as provisional
+  const S = state.spindle, E = placeLine(b);
+  for (let i = p.length + 1; i <= S.length; i++) {
+    const rp = S.slice(0, i), s2 = siblingsOf(b, rp), [lo, hi] = ringWindow(s2.index, s2.list.length);
+    const row = h('section', 'frow spindle-row'); row.dataset.depth = String(i);
+    row.append(h('div', 'frow-lab', rungLabel(b, rp) || (i === p.length + 1 ? 'the spindle goes on' : '')));
+    const ring = h('div', 'frow-ring');
+    if (lo) ring.append(h('span', 'fmore', '‹ ' + lo + ' more'));
+    for (let j = lo; j < hi; j++) { const sp = s2.pathAt(j), on = j === s2.index; ring.append(card(b, sp, small, { cls: on ? 'was' : '', onClick: () => moveTo(sp, 'soft') })); }
+    if (hi < s2.list.length) ring.append(h('span', 'fmore', (s2.list.length - hi) + ' more ›'));
+    row.append(ring); col.append(row);
+  }
+  const kids = childKeys(b, S);
   if (kids.length) {
-    const row = h('section', 'frow beneath'); row.append(h('div', 'frow-lab', 'beneath' + (state.addr ? ' · pscale ' + fmtPs(b.floor - p.length - 1) : '')));
-    const ring = h('div', 'frow-ring'); const pref = lastChild.get(keyOf(b, p));
-    const [lo, hi] = ringWindow(Math.max(0, kids.indexOf(pref)), kids.length);
-    for (let j = lo; j < hi; j++) { const cp = p.concat([kids[j]]); ring.append(card(b, cp, small, { cls: kids[j] === pref ? 'was' : '', onClick: () => descendTo(cp) })); }
+    const row = h('section', 'frow beneath'); row.append(h('div', 'frow-lab', 'beneath' + (state.addr ? ' · pscale ' + fmtPs(b.floor - S.length - 1) : '')));
+    const ring = h('div', 'frow-ring'); const next = E[S.length];
+    const [lo, hi] = ringWindow(Math.max(0, kids.indexOf(next)), kids.length);
+    for (let j = lo; j < hi; j++) { const cp = S.concat([kids[j]]); ring.append(card(b, cp, small, { cls: kids[j] === next ? 'was ahead' : '', onClick: () => S.length === p.length ? descendTo(cp) : moveTo(cp, 'soft') })); }
     if (hi < kids.length) ring.append(h('span', 'fmore', (kids.length - hi) + ' more ›'));
     row.append(ring); col.append(row);
   }
@@ -1396,15 +1570,14 @@ function renderColumns() {
     if (isF) { pointCol = c; const d = doorsRow(b, p); if (d) c.append(d); }
     sc.append(c);
   }
-  let level = [p], count = 0;
+  let level = [p], count = 0; const E = placeLine(b); // weft (eye.5): the spindle and the eye's way, marked as they run beneath
   for (let dd = 1; dd <= state.depth && level.length && count < 420; dd++) {
     const c = h('section', 'colm beneath'), next = [];
     c.append(h('div', 'colm-h', dd === 1 ? 'beneath' : dd + ' rungs beneath' + (state.addr ? ' · pscale ' + fmtPs(b.floor - p.length - dd) : '')));
     for (const pp of level) {
       const ks = childKeys(b, pp); if (!ks.length) continue;
       if (dd > 1) c.append(h('div', 'colm-g', titleHTML(labelOf(b, pp).title)));
-      const pref = lastChild.get(keyOf(b, pp));
-      for (const k of ks) { if (count++ >= 420) break; const cp = pp.concat([k]); c.append(card(b, cp, small, { cls: dd === 1 && k === pref ? 'was' : '', onClick: () => moveTo(cp, 'soft') })); next.push(cp); }
+      for (const k of ks) { if (count++ >= 420) break; const cp = pp.concat([k]), tag = onLine(b, cp, E); c.append(card(b, cp, small, { cls: tag ? (tag === 'spindle' ? 'was' : 'was ahead') : '', onClick: () => moveTo(cp, 'soft') })); next.push(cp); }
     }
     if (!next.length) break;
     sc.append(c); level = next;
@@ -1426,14 +1599,15 @@ function renderDir() {
   col.append(card(b, p, size === 'page' ? 'big' : size === 'title' ? 'icon' : size, { focus: true }));
   const d = doorsRow(b, p); if (d) col.append(d);
   col.append(depthCtl());
-  const tree = h('div', 'tree'); let count = 0, idx = 0;
+  const tree = h('div', 'tree'); let count = 0, idx = 0; const E = placeLine(b); // weft (eye.5): the line marked in the tree
   const showBody = size !== 'title' && size !== 'icon';
   (function build(path, level, parentEl) {
     for (const k of childKeys(b, path)) {
       if (count++ > 420) return;
       const cp = path.concat([k]); const l = labelOf(b, cp);
       const it = h('div', 'ti'); it.style.setProperty('--i', String(Math.min(idx++, 40)));
-      const bt = h('button', 'tr', sigil(cp) + '<span><b>' + titleHTML(l.title) + '</b>' + (level === 1 && showBody && l.body ? '<small>' + esc(clip(l.body, 150)) + '</small>' : '') + '</span>'); bt.type = 'button';
+      const tag = onLine(b, cp, E);
+      const bt = h('button', 'tr' + (tag ? (tag === 'spindle' ? ' was' : ' was ahead') : ''), sigil(cp) + '<span><b>' + titleHTML(l.title) + '</b>' + (level === 1 && showBody && l.body ? '<small>' + esc(clip(l.body, 150)) + '</small>' : '') + '</span>'); bt.type = 'button';
       bt.addEventListener('click', () => moveTo(cp, 'soft'));
       it.append(bt); parentEl.append(it);
       if (level < state.depth && childKeys(b, cp).length) { const sub = h('div', 'sub'); it.append(sub); build(cp, level + 1, sub); }
@@ -1462,34 +1636,36 @@ function renderDir() {
  * pscale: a sibling takes the centre. Nothing here writes. */
 const ZK = 3;                       // across one rung: keel's own measure (eyeIn scaled by .34)
 const ZRING_MAX = 10;               // a ring holds the ten digits; more children rest as a grid
-const Z = { d: 0, goal: 0, S: [], block: '', mode: 'glide', layer: null, world: null, els: new Map(), anim: null, swap: null, raf: 0, wg: null, pg: null, restAt: null, ringFrom: null };
-const zCandMem = new Map();         // the child looked at, past the spindle's end, before it is chosen
+const Z = { d: 0, goal: 0, block: '', mode: 'glide', layer: null, world: null, els: new Map(), anim: null, swap: null, raf: 0, wg: null, pg: null, restAt: null, ringFrom: null };
+// weft (eye.5), 16 Nov 2026: the spindle the eye holds is the place's (state.spindle, above), one for both views
+Object.defineProperty(Z, 'S', { get() { return state.spindle; }, set(v) { state.spindle = v; } });
 try { const m = localStorage.getItem('iris-magic-eye.zoom'); if (m === 'glide' || m === 'step') Z.mode = m; } catch (e) { /* storage unavailable */ }
-(function () { const v = Q0.get('spindle'); if (v === 'glide' || v === 'step') Z.mode = v; })();
+// ?zoom=glide|step (?spindle= said it until the spindle took that name, eye.5)
+(function () { const v = Q0.get('zoom') || Q0.get('spindle'); if (v === 'glide' || v === 'step') Z.mode = v; })();
 // the sundial's ladder (pscale://sundial 2): a floor of ten is the clock, the millennium at +9 down to the beat at 0
 const SUNDIAL = { 9: 'millennium', 8: 'century', 7: 'decade', 6: 'year', 5: 'season', 4: 'month', 3: 'week', 2: 'day', 1: 'gathering', 0: 'beat', '-1': 'minute', '-2': 'breath', '-3': 'second' };
 function zRung(b, depth) { const p = b.floor - depth; const n = b.floor === 10 ? SUNDIAL[p] : ''; return { p, ps: fmtPs(p), name: n ? 'the ' + n : '' }; }
 
-/* the spindle: the way walked beneath a point, as the eye remembers it */
-function zChain(b, path) {
-  const out = path.slice();
-  for (let i = 0; i < 64; i++) { const k = lastChild.get(keyOf(b, out)); if (k == null || !childKeys(b, out).includes(k)) break; out.push(k); }
-  return out;
-}
-function zRemember(b, S) { for (let i = 0; i < S.length; i++) lastChild.set(keyOf(b, S.slice(0, i)), S[i]); }
-function zCand(b) { const kids = childKeys(b, Z.S); if (!kids.length) return null; const k = zCandMem.get(keyOf(b, Z.S)); return kids.includes(k) ? k : kids[0]; }
-function zExt(b) { const c = zCand(b); return c == null ? Z.S : Z.S.concat([c]); }
-function zMax(b) { return Z.S.length + (childKeys(b, Z.S).length ? 0.5 : 0); }
-function zHolds(b) { return Z.block === b.name && isPrefix(state.path, Z.S) && Math.floor(Z.goal + 1e-6) === state.path.length; }
+/* the line the eye looks along: the spindle decided, then the block's own way (glided along, as a spindle is), then
+ * the ring past its end, where a choice is made (weft, eye.5: the place's aheadOf) */
+function zChain(b, path) { return wayWalked(b, path); }
+function zRemember(b, S) { remember(b, S); }
+function zAhead(b) { return aheadOf(b, Z.S); }
+function zEnd(b) { return zAhead(b).end; }
+function zCand(b) { return zAhead(b).cand; }
+function zExt(b) { const a = zAhead(b); return a.cand == null ? a.end : a.end.concat([a.cand]); }
+function zMax(b) { const a = zAhead(b); return a.end.length + (a.cand != null ? 0.5 : 0); }
+function zHolds(b) { return Z.block === b.name && Math.floor(Z.goal + 1e-6) === state.path.length && (state.beneath > 0) === (!zIsPoint(Z.goal) && state.path.length === Z.S.length); }
 const zIsPoint = x => Math.abs(x - Math.round(x)) < 1e-6;
-// where the eye can rest: every point on the spindle, the ring past its end, and in step every ring
+// where the eye can rest: every point on the line (the spindle, and the block's way past it), the ring past its end,
+// in step every ring, and a ring the eye was sent to
 function zStops(b) {
-  const out = []; const n = Z.S.length;
-  for (let d = 0; d <= n; d++) out.push(d);
-  if (Z.mode === 'step') for (let d = 0; d < n; d++) out.push(d + .5);
-  if (childKeys(b, Z.S).length) out.push(n + .5);
-  if (Z.restAt != null && Z.restAt <= n) out.push(Z.restAt);
-  return out.sort((a, c) => a - c);
+  const out = [], a = zAhead(b), m = a.end.length;
+  for (let d = 0; d <= m; d++) out.push(d);
+  if (Z.mode === 'step') for (let d = 0; d < m; d++) out.push(d + .5);
+  if (a.cand != null) out.push(m + .5);
+  if (Z.restAt != null && Z.restAt <= m + .5) out.push(Z.restAt);
+  return out.sort((x, c) => x - c);
 }
 
 /* geometry: the stage, the rest ring (an ellipse the children of one rung sit on), the five sizes */
@@ -1529,9 +1705,10 @@ const zRingOp = r => { const o = 1 - Math.abs(Math.log(r)) / Math.log(Math.pow(Z
 /* the layer */
 function renderEye() {
   const b = cur(), L = layer('eye zoom');
-  // the spindle is kept while it still holds the point (or the eye is moving along it); otherwise it is taken afresh
+  // weft (eye.5), 16 Nov 2026: the eye stands where the place is (the spindle is the place's own): at its point, or at
+  // the ring past the spindle's end where the call looks beneath it; while it moves, it is left to move
   const moving = Z.block === b.name && !!(Z.anim || Z.swap || Z.wg || Z.pg || Z.drag);
-  if (!moving && !zHolds(b)) { Z.block = b.name; Z.S = zChain(b, state.path); Z.d = Z.goal = state.path.length; Z.anim = Z.swap = null; Z.restAt = Z.ringFrom = null; }
+  if (!moving && !zHolds(b)) { const ring = state.beneath > 0 && state.path.length === Z.S.length; Z.block = b.name; Z.d = Z.goal = state.path.length + (ring ? .5 : 0); Z.anim = Z.swap = null; Z.restAt = ring ? Z.d : null; Z.ringFrom = null; }
   Z.layer = L; Z.els = new Map();
   Z.world = h('div', 'zworld'); L.append(Z.world);
   Z.rim = h('button', 'rim zrim'); Z.rim.type = 'button'; Z.rim.addEventListener('click', () => { const od = Z.rim._owner; if (od != null) zTo(od); }); L.append(Z.rim);
@@ -1549,14 +1726,14 @@ function zRail() {
 function zChrome(b) {
   if (!Z.btn) return;
   const x = Z.goal, pt = zIsPoint(x), d = Math.floor(x + 1e-6), c = Math.ceil(x - 1e-6), E = zExt(b);
-  const kidsHere = childKeys(b, Z.S.slice(0, d));
+  const kidsHere = childKeys(b, E.slice(0, d)), a = zAhead(b), way = a.how && d >= Z.S.length && d < a.end.length;
   const sibs = c > 0 ? childKeys(b, E.slice(0, c - 1)) : [], si = c > 0 ? sibs.indexOf(E[c - 1]) : -1;
   const set = (bt, label, dis, aria) => { bt.disabled = !!dis; bt.setAttribute('aria-label', aria); bt.title = aria; const lb = bt.querySelector('.lb'); if (lb && label != null) lb.textContent = label; };
   set(Z.btn.out, pt ? 'Out' : 'Back', pt && d === 0 && !state.trail.length, pt ? 'Out: a rung up, pscale +1' : 'Back out of the ring');
   set(Z.btn.prev, null, si <= 0, 'Across: the point before, at the same pscale');
   set(Z.btn.next, null, si < 0 || si >= sibs.length - 1, 'Across: the point after, at the same pscale');
   set(Z.btn.ring, pt ? 'Ring' : 'Point', pt && c === 0, pt ? 'The ring: this point among its siblings' : 'Back to the point');
-  set(Z.btn.in, pt ? (kidsHere.length ? 'In · ' + kidsHere.length : 'In') : 'In', pt && !kidsHere.length, pt ? 'In: a rung down, pscale −1' : 'In: into the one at the centre');
+  set(Z.btn.in, pt ? (kidsHere.length ? 'In · ' + kidsHere.length : 'In') : 'In', pt && !kidsHere.length, pt ? 'In: a rung down, pscale −1' + (way ? ', along ' + ({ now: 'now', newest: 'the newest', steps: 'the steps' }[a.how] || 'the block\'s way') + ' (provisional)' : '') : 'In: into the one at the centre');
   Z.btn.mode.innerHTML = '<span class="g">' + (Z.mode === 'glide' ? '⇣' : '⋮') + '</span><span class="lb2">' + (Z.mode === 'glide' ? 'glide' : 'step') + '</span>';
   const ma = Z.mode === 'glide' ? 'Glide along the spindle: tap to rest at every ring instead' : 'Step through every ring: tap to glide along the spindle instead';
   Z.btn.mode.setAttribute('aria-label', ma); Z.btn.mode.title = ma; Z.btn.mode.setAttribute('aria-pressed', String(Z.mode === 'step'));
@@ -1582,7 +1759,7 @@ function zPlace(el, x, y, s, op, z, live) {
 }
 function zFrame() {
   const L = Z.layer, b = cur(); if (!L || !L.isConnected || !b) return;
-  const g = zGeom(), E = zExt(b), sw = Z.swap, su = sw ? zEase(Math.min(1, sw.u || 0)) : 0;
+  const g = zGeom(), E = zExt(b), mEnd = zEnd(b).length, sw = Z.swap, su = sw ? zEase(Math.min(1, sw.u || 0)) : 0;
   const d = sw && sw.dip ? Z.d - sw.dip * Math.sin(Math.PI * su) : Z.d;   // the lateral hop lifts and comes back
   const moving = !!(Z.anim || Z.wg || Z.pg || Z.drag || sw);
   L.classList.toggle('moving', moving);
@@ -1602,7 +1779,7 @@ function zFrame() {
       x = px + (g.cx - px) * su; y = py + (g.cy - py) * su; sc = r * (1 - su) + q.scale * su;
     }
     if (op <= .01) continue;
-    if (tent && s >= .99) continue;                          // past the end of the spindle nothing is reached without a choice
+    if (e > mEnd && s >= .99) continue;                      // past the end of the line nothing is reached without a choice
     const el = zEl(b, path, q.cls, 'c'); keep.add(el);
     const near = Math.abs(d - e) < .5;
     zPlace(el, x, y, sc, op * (tent ? .92 : 1), 60 - e * 2, near || (s < 1 && s > .45 && !moving));
@@ -1693,7 +1870,11 @@ function zSettle(quiet) {
   const b = cur(); if (!b || !Z.layer) return;
   Z.d = Z.goal = Math.round(Z.d * 2) / 2;
   const pt = zIsPoint(Z.d), depth = Math.floor(Z.d + 1e-6);
+  // weft (eye.5), 16 Nov 2026: resting on the block's way decides it, as far as the eye went; at the ring past the
+  // spindle's end the call looks beneath its terminus (beneath 1, the descent)
+  if (depth > Z.S.length) Z.S = zEnd(b).slice(0, depth);
   state.path = Z.S.slice(0, Math.min(depth, Z.S.length));
+  state.beneath = !pt && state.path.length === Z.S.length ? 1 : 0;
   state.eye = 'focus'; state.choiceOf = null; state.highlight = null;
   zRemember(b, Z.S);
   zFrame();
@@ -1742,10 +1923,10 @@ function zTick(now) {
 function zStop() { if (Z.anim) { Z.anim = null; Z.goal = Z.d; } }
 function zIn() {
   const b = cur(); if (!b) return;
-  const x = Z.goal, n = Z.S.length;
-  if (!zIsPoint(x)) { const dd = Math.floor(x); if (dd >= n) { const c = zCand(b); if (c == null) return; Z.S = zChain(b, Z.S.concat([c])); } return zTo(dd + 1); }
+  const x = Z.goal, a = zAhead(b), n = a.end.length;
+  if (!zIsPoint(x)) { const dd = Math.floor(x); if (dd >= n) { if (a.cand == null) return; Z.S = zChain(b, a.end.concat([a.cand])); } return zTo(dd + 1); }
   if (x < n) return zTo(Z.mode === 'glide' ? x + 1 : x + .5);
-  if (childKeys(b, Z.S).length) return zTo(x + .5);
+  if (a.cand != null) return zTo(x + .5);
   bump('Nothing is nested beneath this');
 }
 function zOut() {
@@ -1760,7 +1941,7 @@ function zRing() {
   const b = cur(); if (!b) return;
   const x = Z.goal;
   if (zIsPoint(x)) { if (x <= 0) return bump('The top of a block has no siblings'); Z.ringFrom = x; Z.restAt = x - .5; return zTo(x - .5); }
-  const c = Math.ceil(x); const back = Z.ringFrom != null ? Z.ringFrom : c <= Z.S.length ? c : Math.floor(x);
+  const c = Math.ceil(x); const back = Z.ringFrom != null ? Z.ringFrom : c <= zEnd(b).length ? c : Math.floor(x);
   Z.ringFrom = null; zTo(back);
 }
 function zSide(dir) {
@@ -1776,8 +1957,9 @@ function zPick(c, k, anim) {
   const b = cur(); if (!b) return;
   const E = zExt(b), from = E[c - 1];
   if (from === k) return zIn();
-  if (c - 1 >= Z.S.length) zCandMem.set(keyOf(b, Z.S), k);
-  else { zRemember(b, Z.S); Z.S = zChain(b, Z.S.slice(0, c - 1).concat([k])); }
+  const end = zEnd(b);
+  if (c - 1 >= end.length) zCandMem.set(keyOf(b, end), k);
+  else { zRemember(b, Z.S); Z.S = zChain(b, E.slice(0, c - 1).concat([k])); }
   const x = Z.goal, pt = zIsPoint(x);
   if (RM || anim === false) { Z.swap = null; zFrame(); zSettle(); return; }
   Z.swap = { c, from, to: k, t0: performance.now(), dur: pt ? 620 : 440, dip: pt ? .34 : 0, u: 0 };
@@ -1800,10 +1982,15 @@ function zModeToggle() {
   toast(Z.mode === 'glide' ? 'Glide: + and − ride the spindle, resting only where nothing is decided' : 'Step: every + and − rests at a ring, the siblings in view');
 }
 // a point reached some other way (a heading in the page, a link): out to where the two ways meet, then in
-function zGoPath(path) {
+function zGoPath(path, S, beneath) {
   const b = cur(); if (!b) return;
-  let k = 0; while (k < path.length && k < Z.S.length && path[k] === Z.S[k]) k++;
-  const go = () => { zRemember(b, Z.S); Z.S = zChain(b, path); zTo(path.length); };
+  // weft (eye.5), 16 Nov 2026: a point on the spindle is glided to along it, the spindle kept; any other place is a new
+  // call, reached out to where the two spindles meet and then in along the new one
+  const ring = () => beneath > 0 && state.path.length === Z.S.length;
+  const go = () => { zRemember(b, Z.S); setPlace(b, path, S || Z.S, beneath); Z.restAt = ring() ? state.path.length + .5 : null; zTo(state.path.length + (ring() ? .5 : 0)); };
+  if (!S && isPrefix(path, Z.S)) return go();
+  const T = S && isPrefix(path, S) ? S : path;
+  let k = 0; while (k < T.length && k < Z.S.length && T[k] === Z.S[k]) k++;
   if (k >= Math.min(path.length, Z.S.length) || RM) return go();
   zTo(Math.min(Z.goal, k), null, go);
 }
@@ -1826,7 +2013,7 @@ function renderMirror() {
   L.append(h('div', 'panel-head', '<span class="g">◐</span><span>The same address in other blocks: <b>' + titleHTML(labelOf(b, p).title || blockTitle(b)) + '</b></span>'));
   const list = h('div', 'panel-list');
   mr.here.forEach(r => list.append(readingItem(r)));
-  mr.beneath.forEach(r => { const bt = h('button', 'li', '<span class="sigil-wrap">' + sigil(p) + '</span><span><span class="k">' + esc(r.m.who) + '</span><b>' + r.count + (r.count === 1 ? ' reading' : ' readings') + ' further in</b><small>Nothing at this address itself</small></span>'); bt.type = 'button'; bt.addEventListener('click', () => jump({ block: r.m.name, path: p.slice(), how: 'mirror' })); list.append(bt); });
+  mr.beneath.forEach(r => { const bt = h('button', 'li', '<span class="sigil-wrap">' + sigil(p) + '</span><span><span class="k">' + esc(r.m.who) + '</span><b>' + r.count + (r.count === 1 ? ' reading' : ' readings') + ' further in</b><small>Nothing at this address itself</small></span>'); bt.type = 'button'; bt.addEventListener('click', () => jump({ block: r.m.name, path: p.slice(), spindle: state.spindle.slice(), how: 'mirror' })); list.append(bt); });
   if (!list.childElementCount) list.append(h('p', 'empty', 'No one else has written at this address.'));
   L.append(list);
   const c = h('button', 'panel-close', 'Back to the point'); c.type = 'button'; c.addEventListener('click', closePanel); L.append(c);
@@ -1885,7 +2072,7 @@ function swapLayer(next, tr, flipKey) {
 function render(tr, flipKey) {
   const b = cur();
   if (!b) return;
-  state.path = deepestExisting(b, state.path);
+  setPlace(b, state.path, state.spindleOf === b.name ? state.spindle : null, state.beneath); // weft (eye.5): the place kept whole
   let L;
   if (state.view === 'stars') L = renderStars();
   else if (state.view === 'mirror') L = renderMirror();
@@ -1906,7 +2093,9 @@ function moveTo(path, dir) {
   if (state.axis === 'eye' && state.view === 'main' && Z.layer && Z.layer.isConnected) return zGoPath(path);
   const b = cur();
   if (path.length < state.path.length && isPrefix(path, state.path)) lastChild.set(keyOf(b, path), state.path[path.length]);
-  state.path = path.slice(); state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
+  // weft (eye.5), 16 Nov 2026: a point on the spindle moves along it and keeps it; any other point takes its own
+  remember(b, state.spindle); setPlace(b, path, state.spindle, 0);
+  state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
   let tr = dir;
   if (state.axis === 'iris' && !curved()) tr = 'soft';
   if (state.axis === 'eye') tr = dir === 'up' ? 'eyeOut' : dir === 'down' ? 'eyeChoose' : 'fade';
@@ -1916,7 +2105,7 @@ function descendTo(cp) { if (state.axis === 'eye') { state.choiceOf = cp.slice(0
 function go(dir) {
   const b = cur(), p = state.path;
   if (dir === 'up') { if (p.length) return moveTo(p.slice(0, -1), 'up'); if (state.trail.length) return back(); return bump('This is the top of the block'); }
-  if (dir === 'down') { const kids = childKeys(b, p); if (!kids.length) return bump('Nothing is nested beneath this'); const pref = lastChild.get(keyOf(b, p)); return moveTo(p.concat([kids.includes(pref) ? pref : kids[0]]), 'down'); }
+  if (dir === 'down') { const kids = childKeys(b, p); if (!kids.length) return bump('Nothing is nested beneath this'); const next = placeLine(b)[p.length]; return moveTo(p.concat([kids.includes(next) ? next : kids[0]]), 'down'); }
   const s = siblingsOf(b, p);
   if (s.index < 0) return bump('The top of a block has no siblings');
   const j = s.index + (dir === 'left' ? -1 : 1);
@@ -1941,17 +2130,17 @@ function closePanel() { const was = state.view; state.view = 'main'; render(was 
 async function jump(t) {
   const tb = t.hidden ? ensureHidden(t.block) : await ensureBlock(t.block, t.beach);
   if (!tb) return toast(notHere(t.block));
-  state.trail.push({ block: state.block, path: state.path.slice() });
+  state.trail.push({ block: state.block, path: state.path.slice(), spindle: state.spindle.slice(), beneath: state.beneath });
   state.block = tb.name;
   const path = t.path ? t.path.slice() : t.addr ? addrToPath(tb, t.addr) : [];
-  state.path = deepestExisting(tb, path);
+  setPlace(tb, path, t.spindle || null, 0); // weft (eye.5): a star lands on a point; a mirror keeps the spindle
   state.view = 'main'; state.eye = 'focus'; state.choiceOf = null; state.highlight = null;
   render('star');
 }
 function back() {
   const o = state.trail.pop(); if (!o) return;
   const ob = blockSync(o.block); if (!ob) return;
-  state.block = ob.name; state.path = o.path.slice(); state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
+  state.block = ob.name; setPlace(ob, o.path, o.spindle || null, o.beneath || 0); state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
   render('star');
 }
 // weft, 16 Nov 2026: the hosted copy carries no snapshot, so a block not yet read is read first, not passed over
@@ -1959,7 +2148,7 @@ async function openBlock(name, path) {
   let b = blockSync(name);
   if (!b && (store.live || has(WHERE, name))) { toast('Reading ' + name + '…'); b = await ensureBlock(name); }
   if (!b) return toast(notHere(name));
-  state.trail = []; state.block = b.name; state.path = path || []; state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
+  state.trail = []; state.block = b.name; setPlace(b, path || [], null, 0); state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
   closeSheet(); render('star');
 }
 function notHere(name) { return store.live ? 'Could not read ' + name + ' from the beach' : name + ' is on the beach but not in this snapshot'; }
@@ -2080,6 +2269,50 @@ function kindOf(b) {
   if (b.accum) return 'list';
   return 'block';
 }
+/* ---------------- your spindles (weft, eye.5, 16 Nov 2026) ----------------
+ * A row of tabs, each a whole call (a block, its spindle and the point on it), kept on this device and nowhere else,
+ * as the mirror keeps its chain of link-tabs: ＋ keeps the place you stand on, a tap takes you back to it, × lets it
+ * go. With # on, the row opens with the call itself. Nothing is written to the beach or into any block. */
+const TABS_KEY = 'iris-magic-eye.spindles';
+let tabs = (function () { try { const v = JSON.parse(localStorage.getItem(TABS_KEY) || '[]'); return Array.isArray(v) ? v.filter(t => t && typeof t.block === 'string' && typeof t.at === 'string').slice(-24) : []; } catch (e) { return []; } })();
+function saveTabs() { try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)); } catch (e) { /* storage unavailable: the tabs last this visit */ } }
+function hereTab() {
+  const b = cur(); if (!b || b.source === 'yours' || b.source === 'hidden' || !state.spindle.every(isDigit)) return null;
+  return { block: b.name, beach: b.beach || '', at: state.spindle.length ? addrOf(b, state.spindle) : '', p: callOf(b).P, t: clip(labelOf(b, state.path).title || blockTitle(b), 48) };
+}
+const sameSpindle = (a, c) => !!a && !!c && a.block === c.block && (a.beach || '') === (c.beach || '') && a.at === c.at;
+async function goTab(t) {
+  const b = await ensureBlock(t.block, t.beach || undefined);
+  if (!b) return toast(notHere(t.block));
+  const a = placeAsked(b, { at: t.at, pscale: typeof t.p === 'number' ? t.p : null });
+  if (b.name !== state.block) {
+    state.trail.push({ block: state.block, path: state.path.slice(), spindle: state.spindle.slice(), beneath: state.beneath });
+    state.block = b.name; setPlace(b, a.path, a.S, a.beneath); state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
+    render('star');
+  } else if (state.axis === 'eye' && state.view === 'main' && Z.layer && Z.layer.isConnected) zGoPath(a.path, a.S, a.beneath);
+  else { remember(b, state.spindle); setPlace(b, a.path, a.S, a.beneath); state.view = 'main'; render('soft'); }
+  if (a.note) toast(a.note);
+}
+function renderTabs() {
+  const bar = $('#tabsBar'); if (!bar) return;
+  const b = cur(), here = hereTab(); bar.innerHTML = '';
+  if (state.addr && b) { const c = callOf(b); bar.append(h('span', 'call', 'spindle ' + esc(state.spindle.length && state.spindle.every(isDigit) ? addrOf(b, state.spindle) : '—') + ' · point pscale ' + fmtPs(c.P) + (c.P < c.Pend ? ' · beneath' : ''))); }
+  const keep = h('button', 'stab-keep', '<span class="g">＋</span><span>' + (tabs.length ? 'keep' : 'keep this spindle') + '</span>'); keep.type = 'button';
+  keep.setAttribute('aria-label', 'Keep this spindle and its point as a tab, on this device'); keep.title = 'Keep this spindle as a tab';
+  keep.disabled = !here || tabs.some(t => sameSpindle(t, here) && t.p === here.p);
+  keep.addEventListener('click', () => { const t = hereTab(); if (!t) return; tabs = tabs.filter(x => !sameSpindle(x, t)).concat([t]).slice(-24); saveTabs(); renderTabs(); toast('Kept: ' + t.t); const last = bar.querySelector('.stab:last-of-type'); if (last && last.scrollIntoView) last.scrollIntoView({ inline: 'nearest', block: 'nearest' }); });
+  bar.append(keep);
+  tabs.forEach((t, i) => {
+    const on = sameSpindle(t, here), wrap = h('span', 'stab'); if (on) wrap.setAttribute('aria-current', 'true');
+    const go = h('button', 'go', '<span class="lb">' + esc(t.t || t.block) + '</span>' + (state.addr ? '<span class="ad">' + esc((t.at || t.block) + ' · ' + fmtPs(t.p)) + '</span>' : '')); go.type = 'button';
+    const what = (t.t || t.block) + ', in ' + t.block + (t.at ? ' on ' + t.at : '') + ', at pscale ' + fmtPs(t.p);
+    go.setAttribute('aria-label', 'Go to ' + what); go.title = what;
+    go.addEventListener('click', () => goTab(t));
+    wrap.append(go);
+    if (on) { const x = h('button', 'x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Let this spindle go'); x.title = 'Let this spindle go'; x.addEventListener('click', () => { tabs.splice(i, 1); saveTabs(); renderTabs(); }); wrap.append(x); }
+    bar.append(wrap);
+  });
+}
 function updateChrome() {
   const b = cur();
   $('#blockSig').innerHTML = sigil([]);
@@ -2090,6 +2323,7 @@ function updateChrome() {
   else tb.hidden = true;
   $('#addrBtn').setAttribute('aria-pressed', String(state.addr));
   renderToggles(); // weft, 16 Nov 2026 (eye.2): every toggle, in the style the reader chose
+  renderTabs();    // weft (eye.5): your spindles
   document.documentElement.dataset.look = state.look;
   if (state.look !== 'eye') { wantFace('Syne'); wantFace('Newsreader'); wantFace('Space Mono'); }
   let acc;
@@ -2218,20 +2452,24 @@ function openHelp() {
   body.innerHTML =
     '<p>Two ways to look at a pscale block, and one set of moves for both. X is the point you are on.</p>' +
     '<dl class="moves"><dt>+X</dt><dd>Out, a rung up: the point that contains this one.</dd><dt>−X</dt><dd>In, a rung down: the points nested inside this one.</dd><dt>~X</dt><dd>Across: this point\'s siblings, the other points in the same rung.</dd><dt class="a">*X</dt><dd>Star: jump to another block. A block named in the text, a proposal\'s own spine, or what lies hidden beneath a place.</dd><dt class="a">◐</dt><dd>Mirror: the same address in someone else\'s block, every reading side by side. A kind of star that keeps your place.</dd></dl>' +
+    // weft (eye.5), 16 Nov 2026: the place as one call, the eye's own way, and your spindles
+    '<h3>The spindle and the point</h3><p>Where you stand is one call, as bsp() makes it: the block, the <b>spindle</b> (the whole address, a rung of meaning for every digit) and the <b>point</b> on it, named by its pscale. The point can be any rung along the spindle, not only its end: come out and the spindle stays, so going in again goes back the way you came. Past the spindle\'s end is the sub-directory, the points beneath it laid out to choose from. Iris and Magic Eye draw the same place, so switching between them keeps it.</p>' +
+    '<p>Where nothing is decided, the eye makes the rest as it looks, and draws it dashed: on a clock, the way to now; in a block that grows by entries (a history, a room, a list), its newest; in a spine, its steps, down 1; anywhere else, a ring to choose from, the first point at its centre. Going there decides it. Nothing is written anywhere.</p>' +
+    '<p><b>Your spindles.</b> <i>＋ keep</i>, in the row beneath the toggles, keeps the place you stand on as a tab on this device; a tap on a tab takes you back to it, and × on the one you are on lets it go. With # on, the row opens with the call itself: the spindle, and the point\'s pscale.</p>' +
     // weft, 16 Nov 2026 (eye.2): the views as the shapes they draw, and which way is which on every device
     '<h3>Iris</h3><p>The surface of the eye, two ways of reading one block. <b>The walk</b> is the path from the top of the block down to the point you are on, every rung of it, with the point\'s siblings across it and the points inside it waiting beneath. <b>The directory</b> is the same walk with everything nested beneath the point opened, one to four rungs deep.</p>' +
     '<p>The walk is drawn <b>curved</b> or <b>flat</b>: the same points and the same moves, drawn two ways. Curved is the eye: the point in the pupil, the walk above it receding up the eyeball, its siblings curving off left and right, the points inside it along the bottom; ⚙ makes it convex, the eye seen from outside, or concave, seen from inside. Flat is the walk as /walk draws it: each rung a row, its ring laid out with the card you came through in the middle and the ones you passed beside it; tap any card on any row to stand there, and the rows beneath follow. The longer the walk, the more of it stands above you, in both.</p>' +
     '<p>The directory is a <b>dropdown</b>, everything beneath nested downward, or <b>columns</b>, one column a rung: the walk\'s rings to the left, then what lies beneath, rung by rung, to the right.</p>' +
-    '<h3>Which way is which</h3><dl class="moves"><dt>Wheel</dt><dd>In the curved walk: roll down to go in (−), up to come out (+), sideways for the siblings (~). One click of the wheel, or one flick of a trackpad with its glide, is one move; flick back and it comes back at once. Over words or a strip that scrolls, the wheel scrolls it first.</dd><dt>Drag</dt><dd>With a finger or the mouse, the surface moves the way you drag it: drag up to go in, down to come out, left for the next sibling, right for the one before. A drag on a strip or a column that scrolls scrolls it.</dd><dt>Tap</dt><dd>Any card you can see takes you to it: a neighbour, a rung of the walk, a row, a column.</dd><dt>Keys</dt><dd>↓ in, ↑ out, → the next sibling, ← the one before, in every view. * or S for the star, M for the mirror, Esc to come back.</dd></dl>' +
+    '<h3>Which way is which</h3><dl class="moves"><dt>Wheel</dt><dd>In the curved walk, and in the Magic Eye: roll down, or push two fingers up a trackpad that scrolls naturally, to go in (−); up to come out (+); sideways for the siblings (~). One click of the wheel, or one flick of a trackpad with its glide, is one move; flick back and it comes back at once. Over words or a strip that scrolls, the wheel scrolls it first.</dd><dt>Drag</dt><dd>With a finger or the mouse, the surface moves the way you drag it: drag up to go in, down to come out, left for the next sibling, right for the one before. A drag on a strip or a column that scrolls scrolls it.</dd><dt>Tap</dt><dd>Any card you can see takes you to it: a neighbour, a rung of the walk, a row, a column.</dd><dt>Keys</dt><dd>↓ in, ↑ out, → the next sibling, ← the one before, in every view. * or S for the star, M for the mirror, Esc to come back.</dd></dl>' +
     '<p>Flat and columns scroll and move by tap, the keys still moving; the dropdown scrolls, and takes sideways moves as siblings. To copy words, double- or triple-click them.</p>' +
     '<h3>The toggles</h3><p>Every toggle at the top names its state. ⚙ chooses how they show themselves: cycle, a tap stepping to the next state; drop-down, a tap opening the list; or flat, every state laid out.</p>' +
     // weft (eye.3), 16 Nov 2026: the Magic Eye as a zoom through pscale
     '<h3>Magic Eye</h3><p>Depth, where depth is scale: pscale is the line you look along. The point you are on stands straight ahead; the rung that holds it is around and behind you; the rungs inside it lie ahead, each a power smaller. <b>−</b> zooms in a rung, <b>+</b> out a rung, and the rings drawn round you are the rungs, each named by its pscale (on a clock, the day, the gathering, the beat).</p>' +
-    '<p>Where the eye holds a <b>spindle</b>, the address a link gave or the way you walked, it glides along it, every rung above riding round the point. Where nothing is decided, past the spindle\'s end, or everywhere when you choose <b>step</b>, it rests at a <b>ring</b>: the points at one pscale laid round the centre at their digits\' angles, as the sigil draws an address, the one on the spindle in the middle and the rung above as their frame. <b>~</b> shows that ring from the point and goes back; <b>‹ ›</b> go across, a sibling at the same pscale taking the centre.</p>' +
-    '<p>Scroll or pinch to zoom, smoothly; let go and it settles on the nearest rung. Swipe or scroll sideways to go across. Drag a finger up to go in, down to come out. Keys: ↓ or − in, ↑ or + out, ← → across, ~ the ring, Home the top, End the spindle\'s end.</p>' +
+    '<p>Where the eye holds a <b>spindle</b>, the address a link gave or the way you walked, it glides along it, every rung above riding round the point, and on along the block\'s own way past it (the way to now, the newest, the steps), drawn dashed. Where nothing is decided, past the end of both, or everywhere when you choose <b>step</b>, it rests at a <b>ring</b>: the points at one pscale laid round the centre at their digits\' angles, as the sigil draws an address, the one on the spindle in the middle and the rung above as their frame. <b>~</b> shows that ring from the point and goes back; <b>‹ ›</b> go across, a sibling at the same pscale taking the centre.</p>' +
+    '<p>Scroll or pinch to zoom, smoothly; let go and it settles on the nearest rung. Scroll down to go in and up to come out, as in the Iris, or spread a pinch to go in. Swipe or scroll sideways to go across. Drag a finger up to go in, down to come out. Keys: ↓ or − in, ↑ or + out, ← → across, ~ the ring, Home the top, End the spindle\'s end.</p>' +
     '<h3>Size</h3><p>Each point has five sizes, pscale versions of itself: the whole page at pscale 0, then a large card, a card, an icon with its title, and the title alone, each a rung further out. A larger size shows more of the point\'s own words, never more structure. The page is the point and everything beneath it read as one page, or, where this navigator can frame it, the point\'s own web page, which you can then use as a browser. The icon is the address drawn as a walk from the rim toward the centre, or in Snazzy the page\'s own picture. # shows each address and pscale.</p>' +
     '<h3>Look</h3><p><b>Eye</b> is this navigator\'s own look: every point drawn from its own words. <b>Standard</b> and <b>Snazzy</b> show the thing itself where a point has one. A point with a page of its own on this site (a proposal, a document, a page its words name) shows that page on the card you look at, live and in miniature once you rest on it; tap the miniature, or choose page size, to use it here. Standard shows the plain page drawn from its blocks; Snazzy the page its law names, in its own colours and letters, with its picture. A share on the String shows the thing shared in Snazzy, and the share\'s own page in Standard. A link anywhere else stays a link, opened beside the eye.</p>' +
-    '<h3>Links</h3><p>Every place here is a link you can share or put in a page: the address bar reads happyseaurchin.com/eye/, then the block\'s name, then the address, as in <a href="/eye/spine:the-sea/1.18">/eye/spine:the-sea/1.18</a>. A link can also ask for a look or a size, as <a href="/eye/proposals?look=snazzy&amp;size=page">?look=snazzy&amp;size=page</a> does.</p>' +
+    '<h3>Links</h3><p>Every place here is a link you can share or put in a page, and the link is the call: the address bar reads happyseaurchin.com/eye/, then the block\'s name, then the spindle, then, where the point is not the spindle\'s end, the point\'s pscale, as in <a href="/eye/spine:the-sea/1.118/0">/eye/spine:the-sea/1.118/0</a> (the first step, on the spindle that runs to 1.118). The beach\'s own wire writes the same three as <a href="/eye?block=spine:the-sea&amp;spindle=1.118&amp;pscale=0">?block=&amp;spindle=&amp;pscale=</a>, which works here too. A pscale below the spindle\'s end opens the sub-directory beneath it; a pscale with no spindle puts the point on the block\'s own way, as <a href="/eye/now:happyseaurchin?pscale=2">/eye/now:happyseaurchin?pscale=2</a> does (today); a link with the address alone, as <a href="/eye/spine:the-sea/1.18">/eye/spine:the-sea/1.18</a>, stands at the spindle\'s end. A link can also ask for a look or a size, as <a href="/eye/proposals?look=snazzy&amp;size=page">?look=snazzy&amp;size=page</a> does.</p>' +
     '<p class="src">' + (store.snap.size ? 'Snapshot taken ' + esc(fmtStamp(META.stamp)) + '. ' : '') + (store.live ? 'This copy is reading the beach live.' : store.snap.size ? 'This copy reads the snapshot; hosted on happyseaurchin.com it reads the beach live.' : 'The beach could not be read just now.') + ' Iris and Magic Eye is keel\'s, one of the pages at <a href="/">happyseaurchin.com</a>.</p>';
   openSheet('How to move', body);
 }
@@ -2401,7 +2639,7 @@ document.addEventListener('keydown', e => {
  * and only while the Magic Eye is looking, so the handlers above stay as they are for the Iris. Nothing
  * locks: each wheel event moves the eye at once, a flick made inside another's momentum adds to it, and
  * when the input rests the eye settles on the nearest stop, one stop on the way it went for a small move.
- *   wheel or two-finger scroll, up in and down out; a trackpad pinch, spread in; sideways, across.
+ *   wheel or two-finger scroll, down in and up out, as in the Iris (eye.5); a trackpad pinch, spread in; sideways, across.
  *   a finger dragged up goes in, down comes out; swiped sideways, across; two fingers pinch.
  *   keys: ↓ PageDown − Enter in, ↑ PageUp + Backspace out, ← → across, ~ the ring, Home the root, End the spindle's end. */
 function zActive() { return state.axis === 'eye' && state.view === 'main' && sheet.hidden && !!Z.layer && Z.layer.isConnected; }
@@ -2417,7 +2655,7 @@ function zDrive(G, t) {
   // pushing on past the end of the spindle, from a rest at its ring, chooses the one at the centre
   if (t > hi + .02 && Z.d >= hi - 1e-6 && G.d0 >= hi - 1e-6 && !zIsPoint(hi)) {
     G.push = (G.push || 0) + (t - Math.max(Z.d, hi));
-    if (G.push > .3) { const c = zCand(b); if (c != null) { Z.S = zChain(b, Z.S.concat([c])); hi = zMax(b); G.d0 = Z.d; G.base = Z.d - (G.acc || 0); G.wallHi = Z.mode === 'step' ? Z.d + .5 : Infinity; G.push = 0; } }
+    if (G.push > .3) { const a = zAhead(b); if (a.cand != null) { Z.S = zChain(b, a.end.concat([a.cand])); hi = zMax(b); G.d0 = Z.d; G.base = Z.d - (G.acc || 0); G.wallHi = Z.mode === 'step' ? Z.d + .5 : Infinity; G.push = 0; } }
   }
   // and out past the root, back across the star it came by
   if (t < -.3 && Z.d <= 1e-6 && G.d0 <= 1e-6 && state.trail.length && !G.backed) { G.backed = true; Z.wg = Z.pg = null; Z.drag = false; return back(); }
@@ -2448,8 +2686,11 @@ function zWheel(e) {
   G.sx += dx; G.sy += dy;
   if (!G.axis) { if (Math.abs(G.sx) < 10 && Math.abs(G.sy) < 10) return zWheelRest(); G.axis = Math.abs(G.sx) > Math.abs(G.sy) * 1.2 ? 'x' : 'z'; }
   if (G.axis === 'x') { const want = Math.trunc(G.sx / 150); while (G.lat < want) { G.lat++; zSide(1); } while (G.lat > want) { G.lat--; zSide(-1); } return zWheelRest(); }
-  if (RM) { if (!G.stepped && Math.abs(G.sy) > 10) { G.stepped = true; G.sy < 0 ? zIn() : zOut(); } return zWheelRest(); }
-  G.acc += -dy / (pinch ? 90 : 220);
+  // weft (eye.5), 16 Nov 2026: one direction for both views: the wheel rolled down, or two fingers pushed up a trackpad
+  // that scrolls naturally (deltaY > 0 both), goes in, as it goes down in the Iris and as a finger dragged up goes in
+  // here; a pinch spread still goes in
+  if (RM) { if (!G.stepped && Math.abs(G.sy) > 10) { G.stepped = true; (pinch ? G.sy < 0 : G.sy > 0) ? zIn() : zOut(); } return zWheelRest(); }
+  G.acc += pinch ? -dy / 90 : dy / 220;
   zDrive(G, G.base + G.acc);
   zWheelRest();
 }
@@ -2540,12 +2781,12 @@ window.addEventListener('resize', () => { cancelAnimationFrame(rsz); rsz = reque
   const link = readLink();
   if (link.block) { state.block = link.block; state.path = []; }
   if (store.live || link.beach) await Promise.all([ensureBlock(state.block, link.beach || undefined), store.live && state.block !== 'proposals' ? ensureBlock('proposals') : null].map(p => p && p.catch(() => null)));
-  if (link.block && cur() && link.at) state.path = addrToPath(cur(), link.at);
+  let asked = ''; if (link.block && cur()) asked = placeFromLink(cur(), link); // weft (eye.5): the link is the call
   const missed = link.block && !cur() ? link.block : '';
   if (!cur()) { state.block = loadable('proposals') ? 'proposals' : Array.from(store.snap)[0] || ''; state.path = state.block === 'proposals' ? ['4'] : []; if (store.live && !cur()) await ensureBlock(state.block).catch(() => null); }
   if (!cur()) { ld.innerHTML = '<p>The beach could not be read here, and this copy carries no snapshot of it.</p>'; return; }
   render(null);
-  if (missed) toast(notHere(missed));
+  if (missed) toast(notHere(missed)); else if (asked) toast(asked);
 })();
 })();
 </script>
