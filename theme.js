@@ -1644,6 +1644,9 @@
     /* every schematic on the beach, each a running process drawn at the face of whoever reads it, and the form that
      * draws one (function:schematic; David's GO at spine:schematics 1.111118, 28 Oct 2026) */
     ['schematic',   'schematics'],
+    /* keel's navigator: any block walked on two axes, Iris and Magic Eye, and at page size the site's own pages framed
+     * like a browser; every place in it a link, /eye/<block>/<address> (pool:weft 526, lane eye.1, 16 Nov 2026) */
+    ['eye',         'the eye'],
     /* one screen for what is live and what asks of David, every lane, project and decision in four colours
      * (spine:loom 1.1; David's GO at the build order and 'loom sounds good', 27 Oct 2026) */
     ['loom',        'the loom'],
