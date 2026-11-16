@@ -244,8 +244,9 @@ button{font:inherit;color:inherit}
    one rung is a power of the zoom; the rings are one pscale's children at their digits' angles. */
 .zoom{overflow:hidden}
 .zworld{position:absolute;inset:0;pointer-events:none}
-.zn{position:absolute;left:0;top:0;transform-origin:50% 50%}
+.zn{position:absolute;left:0;top:0;transform-origin:50% 50%;pointer-events:auto}
 .zoom.moving .zn{will-change:transform,opacity}
+.zoom.zdrag,.zoom.zdrag *{user-select:none;-webkit-user-select:none;cursor:grabbing}
 .zn>.card{width:100%}
 .zn.z-icon>.card,.zn.z-title>.card{width:auto;max-width:100%}
 .zc>.card{background:var(--c-bg,linear-gradient(180deg,#121e28,#0e1820))}
@@ -1284,7 +1285,7 @@ function zPlace(el, x, y, s, op, z, live) {
   el.style.transform = 'translate(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px) translate(-50%,-50%) scale(' + s.toFixed(4) + ')';
   el.style.opacity = op.toFixed(3); el.style.zIndex = String(z);
   el.style.visibility = op < .01 ? 'hidden' : '';
-  el.style.pointerEvents = live ? '' : 'none';
+  el.style.pointerEvents = live ? 'auto' : 'none';
 }
 function zFrame() {
   const L = Z.layer, b = cur(); if (!L || !L.isConnected || !b) return;
@@ -1418,6 +1419,7 @@ function zSettle(quiet) {
       const grid = h('div', 'choices zgrid'), inner = h('div', 'choices-inner'), E = zExt(b), lit = E[depth];
       kids.forEach((kk, i) => { const cp = Z.S.slice(0, depth).concat([kk]); const cd = card(b, cp, g.narrow ? 'title' : 'card', { cls: 'choice' + (kk === lit ? ' hl' : ''), onClick: () => { const same = zExt(b)[depth] === kk; zPick(depth + 1, kk, false); if (!same) zIn(); } }); cd.style.setProperty('--i', String(Math.min(i, 30))); inner.append(cd); });
       grid.append(inner); D.append(grid);
+      if (grid.scrollHeight <= grid.clientHeight + 2) grid.style.touchAction = 'none';   // nothing to scroll: a swipe is depth
       for (const el of Z.els.values()) if (el.classList.contains('zc') && el.firstChild && !el.firstChild.dataset.focus) el.style.visibility = 'hidden';
     }
   }
@@ -1969,7 +1971,7 @@ function zSnap(d0, d1, lead) {
   const b = cur(); if (!b) return;
   const st = zStops(b), moved = d1 - d0, dir = Math.sign(moved);
   const near = v => st.reduce((a, s) => Math.abs(s - v) < Math.abs(a - v) ? s : a, st[0]);
-  let t = near(d1 + (lead || .22) * dir);
+  let t = near(d1 + Math.min(.6, lead || 0) * dir);
   if (Math.abs(moved) < .04) t = near(d0);
   else if (t === near(d0) && dir) { const on = st.filter(s => dir > 0 ? s > d0 + 1e-6 : s < d0 - 1e-6); if (on.length) t = dir > 0 ? on[0] : on[on.length - 1]; }
   zTo(t);
@@ -2001,8 +2003,11 @@ const ZP = new Map();
 function zPinchDist() { const v = Array.from(ZP.values()); return v.length < 2 ? 0 : Math.hypot(v[0].x - v[1].x, v[0].y - v[1].y); }
 function zDown(e) {
   if (!zActive()) return;
-  if (e.pointerType === 'mouse' && (e.button !== 0 || (e.target.closest && e.target.closest('.card, button, a, .doors, .rail')))) return;
-  ZP.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), axis: '' });
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  // weft (eye.3), 16 Nov 2026: a mouse drags the depth as a finger does, as the Iris's drag moves its surface (eye.2); a
+  // control, a field or something that scrolls keeps its own pointer, and a double or triple click still selects words
+  if (e.target.closest && e.target.closest('button, a, input, textarea, select, .doors, .rail, .doc, .s-big .b, .choices, .ref')) return;
+  ZP.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), axis: '', mouse: e.pointerType === 'mouse' });
   if (ZP.size === 2) { zGrab(); const dd = zPinchDist(); if (dd > 10) { Z.pg = { dist0: dd, d0: Z.d, base: Z.d, acc: 0 }; ZP.forEach(p => { p.axis = 'pinch'; }); } }
 }
 function zMove(e) {
@@ -2014,6 +2019,7 @@ function zMove(e) {
   if (!p.axis) {
     if (Math.hypot(dx, dy) < 9) return;
     p.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'z';
+    if (p.mouse) { Z.layer.classList.add('zdrag'); try { const sel = getSelection(); if (sel && !sel.isCollapsed) sel.removeAllRanges(); } catch (er) { /* nothing selected */ } }
     if (p.axis === 'z') { zGrab(); p.G = { d0: Z.d, base: Z.d, acc: 0 }; Z.drag = true; }
     try { stage.setPointerCapture(e.pointerId); } catch (er) { /* the pointer is gone */ }
   }
@@ -2023,6 +2029,8 @@ function zUp(e) {
   if (!zActive()) { ZP.delete(e.pointerId); return; }
   const p = ZP.get(e.pointerId);
   e.stopImmediatePropagation();                       // the Iris's swipe never reads an eye gesture
+  g = null; stage.classList.remove('dragging');       // and its drag, begun on the same press, is let go here
+  Z.layer.classList.remove('zdrag');
   ZP.delete(e.pointerId);
   if (Z.pg) { if (ZP.size < 2) { const pg = Z.pg; Z.pg = null; ZP.clear(); swallowClick = performance.now() + 350; if (RM) { if (Math.abs(pg.acc) > .15) pg.acc > 0 ? zIn() : zOut(); } else zSnap(pg.d0, Z.d); } return; }
   if (!p || !p.axis || p.axis === 'pinch') return;
@@ -2031,10 +2039,10 @@ function zUp(e) {
   if (p.axis === 'x') { if (Math.abs(dx) > 44) zSide(dx < 0 ? 1 : -1); return; }
   Z.drag = false;
   if (RM) { if (Math.abs(dy) > 44) dy < 0 ? zIn() : zOut(); return; }
-  const fling = Math.max(-1.2, Math.min(1.2, (p.vy || 0) * .9));   // a flick carries on, a little
-  zSnap(p.G.d0, Z.d, .22 + Math.abs(fling) * (Math.sign(fling) === Math.sign(Z.d - p.G.d0) ? 1 : 0));
+  const fling = (p.vy || 0) * .35;                    // a flick carries on, a little
+  zSnap(p.G.d0, Z.d, Math.sign(fling) === Math.sign(Z.d - p.G.d0) ? Math.abs(fling) : 0);
 }
-function zCancel(e) { ZP.delete(e.pointerId); if (ZP.size < 2 && Z.pg) { const pg = Z.pg; Z.pg = null; zSnap(pg.d0, Z.d); } if (!ZP.size && Z.drag) { Z.drag = false; zSnap(Z.d, Z.d); } }
+function zCancel(e) { if (zActive()) { g = null; stage.classList.remove('dragging'); Z.layer.classList.remove('zdrag'); } ZP.delete(e.pointerId); if (ZP.size < 2 && Z.pg) { const pg = Z.pg; Z.pg = null; zSnap(pg.d0, Z.d); } if (!ZP.size && Z.drag) { Z.drag = false; zSnap(Z.d, Z.d); } }
 function zKey(e) {
   if (!zActive() || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.target.closest && e.target.closest('input, textarea, select')) return;
