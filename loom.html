@@ -322,7 +322,7 @@
       <details class="how"><summary>how each colour is read</summary><div class="in">
         <p><b>Red</b> — <code>lanes:weft</code> 1 (a lane waiting on a decision of yours) and 2 (waiting on your look or merge); and on every proposal in the list at <code>proposals</code>, a decision at a step's 8 whose words name David, with nothing at that address in your own mirror <code>&lt;name&gt;:happyseaurchin</code>. A red lane closes with one word from you, GO, NOT YET, CHANGE or STOP; a red decision with the words its card offers. Tap one and it is said: a decision's in your own mirror at its card's address, as its card says it; a lane's in <code>bee:happyseaurchin</code> at the lane's first entry in the pile, as the word box on its thread says it, where the bee reads it at its next pass (GO and CHANGE then show green, NOT YET and STOP blue). A line of your own goes where the tile's link lands: a decision's card, a lane's thread.</p>
         <p><b>Red, a thread</b> — every live end whose act closes <code>· waits on happyseaurchin</code>, and every one that closes <code>· waits on happyseaurchin from &lt;date&gt;</code> once that day has come (until then it is green, later). And, for the threads tied without endings on 3 and 4 November, every place another hand has put in your room, <code>pool:happyseaurchin</code>, written <code>thread:&lt;address&gt;</code>, that still waits on you: none of its options taken yet or, where it offers none, nothing of yours at it or beneath it. Each is read from the registry of threads (<code>spine:thread</code>, each hand's knots in <code>thread:&lt;handle&gt;</code>), whether or not a proposal names the thread (function:thread 2, 3 and 5). Each option still open beneath it carries TAKE: a tap says the option's words and <code>· waits on</code> the hand that offered it, in your own mirror <code>thread:happyseaurchin</code> at the option's address, and rings that hand's room. An end that offers no option asks you in its words; answer it where its link lands, or in chat.</p>
-        <p><b>Green</b> — <code>lanes:weft</code> 3 (lanes carrying on); a proposal where you have said GO or CHANGE and the step it belongs to has no STATE at its 9 of BUILT or LIVE yet (its STATE line is the next move, and the tile says which lane holds it, or that none does); and your own cards in <code>ahead:happyseaurchin</code> that are neither done nor dropped.</p>
+        <p><b>Green</b> — <code>lanes:weft</code> 3 (lanes carrying on); a proposal where you have said GO or CHANGE and the step it belongs to is not yet complete by its threads (where no thread serves it, a STATE line at its 9 of BUILT or LIVE; the step's state is the next move, and the tile says which lane holds it, or that none does); and your own cards in <code>ahead:happyseaurchin</code> that are neither done nor dropped.</p>
         <p><b>Yellow</b> — <code>lanes:weft</code> 9.2, the work with no lane yet and the debts no lane owns, each line weft's offer; and a decision weft has answered in its own mirror that does not wait on you.</p>
         <p><b>Blue</b> — <code>lanes:weft</code> 4 (settled); a proposal where every decision naming you has your word and nothing you said GO to is still short of BUILT or LIVE; a card of yours flipped done this week.</p>
         <p><b>Parked</b> — <code>lanes:weft</code> 5, the lanes whose ask stood for days with no word from you, moved there by the bee on 27 October: 5.1 those that waited on a decision, 5.2 those that waited on a look or a merge. One folded tile, each line opening on its lane.</p>
@@ -701,7 +701,12 @@ async function readProposal(p){
   }
   if (mine !== undefined){ if (mine) mirrors[ME] = mine; else delete mirrors[ME]; }
   const phase = (() => { if (!law || typeof law !== 'object') return ''; for (let d = 1; d <= 9; d++){ const m = /^phase:\s*(proposal|project|complete|set aside)\b/i.exec(lineOf(law[String(d)])); if (m) return m[1].toLowerCase(); } return ''; })();
-  return { steps: stepsOf(spine), mirrors, phase, threads: threadsOfLaw(law) };
+  /* each step stands where its threads say (beachThreads.stepStates, the one rule every page reads; function:proposal 6,
+     16 November 2026), else a STATE line still standing at its 9; complete reads as built, waiting or under way as begun */
+  const steps = stepsOf(spine);
+  const ST = window.beachThreads && beachThreads.stepStates ? await beachThreads.stepStates(p.name, spine).catch(() => null) : null;
+  if (ST) steps.forEach(s => { const S = ST[s.addr]; s.state = S ? { word: S.word, level: Math.max(0, S.level), rest: S.legacy ? S.rest : S.title, legacy: !!S.legacy, threads: S.threads || '' } : null; });
+  return { steps, mirrors, phase, threads: threadsOfLaw(law) };
 }
 
 /* ---------- colouring ---------- */
@@ -745,7 +750,7 @@ function proposalTile(p, got, lanes){
     why = 'a decision naming ' + (ME === DAVID ? 'David' : ME) + ' at a step\'s 8, nothing at that address in ' + p.name + ':' + ME;
   } else if (colour === 'green'){
     const g = greens.slice().sort((x, y) => (y.s.state ? y.s.state.level + 1 : 0) - (x.s.state ? x.s.state.level + 1 : 0))[0], st = g.s.state;   /* the step furthest along leads */
-    line = 'You said ' + (g.a.token || 'your word') + ' at “' + clip(lower(g.s.title), 60) + '”: ' + (st ? st.word.toLowerCase() + (st.rest ? ' — ' + clip(st.rest, 140) : '') : 'no STATE at its 9 yet, so not begun') + '.';
+    line = 'You said ' + (g.a.token || 'your word') + ' at “' + clip(lower(g.s.title), 60) + '”: ' + (st ? st.word.toLowerCase() + (st.rest ? ' — ' + clip(st.rest, 140) : '') : 'no state yet, so not begun') + '.';
     why = (holder ? 'held by lane ' + holder : 'no lane holds it yet') + ' · ' + greens.length + ' of yours in motion';
   } else if (colour === 'yellow'){
     line = 'Weft has answered where nobody it waits on has yet.';
@@ -1086,7 +1091,7 @@ function focusProject(p){
     '<h3>' + esc(p.name) + '<button type="button" data-go="">let go</button></h3>' +
     '<p>' + esc(cap(clip(p.what, 260))) + '</p>' +
     (t.line ? '<p class="meta">' + esc(t.line) + '</p>' : '') +
-    (steps.length ? '<h4>STATE · where each step stands</h4><ul>' + steps.map(s => '<li class="st9"><b>' + esc(s.state.word) + '</b>' + esc(clip(lower(s.title), 60)) + ' <span class="meta">' + esc(s.addr) + '.9</span></li>').join('') + '</ul>' : (got ? '<p class="meta">no step carries a STATE yet</p>' : '')) +
+    (steps.length ? '<h4>Where each step stands</h4><ul>' + steps.map(s => '<li class="st9"><b>' + esc(s.state.word) + '</b>' + esc(clip(lower(s.title), 60)) + ' <span class="meta">' + esc(s.state.legacy ? s.addr + '.9' : (s.state.threads || s.addr)) + '</span></li>').join('') + '</ul>' : (got ? '<p class="meta">no step has a state yet</p>' : '')) +
     (t.decs && t.decs.length ? '<h4>Decisions · ' + t.decs.length + '</h4>' + decsHTML(t.decs, plain) : '') +
     (got && got.threads.length ? '<h4>Threads tied to it</h4><ul>' + got.threads.map(th => '<li><a href="' + esc(plain + '#threads') + '">' + esc(th.name) + '</a>' + (th.carries ? ' — ' + esc(clip(th.carries, 120)) : '') + (th.step ? ' <span class="meta">· step ' + esc(th.step) + '</span>' : '') + '</li>').join('') + '</ul>' : '') +
     '<h4>Lanes that serve it</h4>' + (lanes.length ? '<div class="gos">' + lanes.map(x => goBtn('l:' + x.key, x.name, x.colour, V.lanes.includes(x) ? '' : 'folded')).join('') + '</div>' : '<p class="meta">no lane on the loom serves it just now</p>') +

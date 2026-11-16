@@ -873,8 +873,63 @@
   document.addEventListener('click', unfold);
   document.addEventListener('keydown', unfold);
 
+  /* WHERE A STEP STANDS, read from its threads (function:proposal 6; David, 16 November 2026: 'the threads are
+     the universal way to track things, including the state'). The registry threads a law names at a step: every
+     live end closing ' · complete' is complete, one still waiting names whom, any other is under way. A keeper's
+     ladder carries no endings, so it says nothing of a step's state. Where no registry thread serves a step, a
+     STATE line at its 9 is read, the legacy the threads replace, for as long as any still stand. One rule for
+     every page: the standard view, the loom and each crafted page read a step's state here.
+     stepStateOf(threads, addr) is the threads' answer alone, or null; stepStates(family[, spine]) resolves to
+     { <address>: { say, word, label, title, level, all, legacy } } for every step either says something of. */
+  var LEVELS = ['NOT STARTED', 'SCOPED', 'SPECIFIED', 'BUILDING', 'BUILT', 'LIVE'];
+  function legacyStateOf(t) {
+    var m = /^\s*(NOT STARTED|SCOPED|SPECIFIED|BUILDING|BUILT|LIVE)\b/.exec(t || '');
+    if (!m) return null;
+    var say = m[1].toLowerCase();
+    return { word: m[1], say: say, label: capFirst(say), title: String(t).trim(), level: LEVELS.indexOf(m[1]), legacy: true,
+      rest: String(t).slice(m[0].length).replace(/^[\s,—–:-]+/, '') };
+  }
+  function stepStateOf(threads, addr) {
+    var mine = (threads || []).filter(function (t) { return t.step === addr && t.registry && !t.unread && t.tree; });
+    if (!mine.length) return null;
+    var who = [], done = true;
+    mine.forEach(function (t) {
+      var ends = [];
+      (function rec(x) { if (!x) return; if (x.live) ends.push(x); (x.kids || []).forEach(rec); })(t.tree);
+      if (!ends.length) { done = false; return; }
+      ends.forEach(function (e) {
+        (e.waits || []).forEach(function (w) { if (who.indexOf(w) < 0) who.push(w); });
+        if (!(e.hands || []).some(function (l) { return /\s·\scomplete\s*$/.test(bodyOf(l.text)); })) done = false;
+      });
+    });
+    var names = mine.map(function (t) { return t.name; }).join(', ');
+    if (who.length) {
+      var all = who.join(', '), short = who.length > 2 ? who.slice(0, 2).join(', ') + ' +' + (who.length - 2) : all;
+      return { word: 'WAITS ON ' + all, say: 'waits on ' + short, label: 'Waits on ' + short, all: all, level: 3, threads: names, title: 'waits on ' + all + ' (' + names + ')' };
+    }
+    return done ? { word: 'COMPLETE', say: 'complete', label: 'Complete', level: 5, threads: names, title: 'complete (' + names + ')' }
+      : { word: 'UNDER WAY', say: 'under way', label: 'Under way', level: 3, threads: names, title: 'under way (' + names + ')' };
+  }
+  function stepStates(family, spine) {
+    return Promise.all([read(family).catch(function () { return null; }),
+      spine ? Promise.resolve(spine) : get('spine:' + family).catch(function () { return null; })]).then(function (two) {
+      var threads = (two[0] && two[0].threads) || [], sp = two[1], out = {};
+      threads.forEach(function (t) { if (t.step && !out[t.step]) { var s = stepStateOf(threads, t.step); if (s) out[t.step] = s; } });
+      var floor = Math.max(1, floorOf(sp || {}));
+      (function rec(n, ds) {
+        if (!n || typeof n !== 'object') return;
+        Object.keys(n).forEach(function (k) {
+          if (k === '_') return;
+          if (k === '9' && ds.length) { var a = dotted(ds, floor); if (!out[a]) { var l = legacyStateOf(textOf(n[k])); if (l) out[a] = l; } }
+          else rec(n[k], ds.concat(k));
+        });
+      })(sp, []);
+      return out;
+    });
+  }
+
   window.beachThreads = { read: read, draw: draw, quipu: quipu, legend: LEGEND, cord: cordHTML, cordKey: CORD_KEY, style: style, parseRung: parseRung, parseThread: parseThread, linksIn: linksIn,
-    waiting: waiting, handOn: handOn, forget: forget, waitsOn: waitsOn };
+    waiting: waiting, handOn: handOn, forget: forget, waitsOn: waitsOn, stepStateOf: stepStateOf, stepStates: stepStates, legacyStateOf: legacyStateOf };
 
   function auto() {
     document.querySelectorAll('[data-threads]').forEach(function (el) {

@@ -1054,7 +1054,28 @@ footer p { color: var(--muted); font-size: 0.95rem; max-width: 52rem; }
     who = who.replace(/\s*[A-Z][A-Z ]*(?:,\s*[A-Z][A-Z ]*)*\s+or\s+[A-Z][A-Z ]*\.\s*$/, '').replace(/[.\s]+$/, '');
     return { q: q.trim(), who: who.trim() };
   }
-  var STATES = /^(NOT STARTED|SCOPED|SPECIFIED|BUILDING|BUILT|LIVE)\b\s*—?\s*/;
+  /* each step's state, as its threads say (beachThreads.stepStates; function:proposal 6, 16 November 2026: the
+     threads are the universal way to track things, including the state), else a STATE line still standing at its 9;
+     painted with what is known, and again once the threads are read */
+  var STEPSTATE = null, stepStatesAsked = false, stepStatesWait = false;
+  function paintStepStates(sp) {
+    if (!stepStatesAsked && window.beachThreads && beachThreads.stepStates) {
+      stepStatesAsked = true;
+      beachThreads.stepStates(FAM, sp).then(function (m) { STEPSTATE = m || {}; paintStepStates(sp); }, function () {});
+    } else if (!window.beachThreads && !stepStatesWait) {
+      stepStatesWait = true;
+      window.addEventListener('load', function () { paintStepStates(sp); });
+    }
+    document.querySelectorAll('section[data-step]').forEach(function (sec) {
+      var S = STEPSTATE && STEPSTATE[sec.getAttribute('data-step')];
+      var chip = sec.querySelector('.stepno .state'), line = sec.querySelector('.stateline');
+      if (!S) { if (chip) chip.remove(); if (line) line.remove(); return; }
+      if (!chip) { chip = document.createElement('span'); chip.className = 'state'; sec.querySelector('.stepno').appendChild(chip); }
+      chip.textContent = S.word;
+      if (!line) { line = document.createElement('p'); line.className = 'stateline'; sec.querySelector('.lead').insertAdjacentElement('afterend', line); }
+      line.innerHTML = '<b>' + esc(S.word) + '</b> · ' + esc(S.legacy ? capFirst(S.rest) : 'as ' + S.threads + ' says');
+    });
+  }
   function paintSpine(sp) {
     if (!sp || typeof sp !== 'object') return;
     walkTexts(sp);
@@ -1074,15 +1095,7 @@ footer p { color: var(--muted); font-size: 0.95rem; max-width: 52rem; }
       else if (part === 'who' && d.who) el.textContent = d.who;
     });
     /* a step's STATE at its 9, once the work runs (function:proposal 6) */
-    document.querySelectorAll('section[data-step]').forEach(function (sec) {
-      var st = textOf(nodeAt(sp, sec.getAttribute('data-step') + '9')), m = STATES.exec(st || '');
-      var chip = sec.querySelector('.stepno .state'), line = sec.querySelector('.stateline');
-      if (!m) { if (chip) chip.remove(); if (line) line.remove(); return; }
-      if (!chip) { chip = document.createElement('span'); chip.className = 'state'; sec.querySelector('.stepno').appendChild(chip); }
-      chip.textContent = m[1];
-      if (!line) { line = document.createElement('p'); line.className = 'stateline'; sec.querySelector('.lead').insertAdjacentElement('afterend', line); }
-      line.innerHTML = '<b>' + esc(m[1]) + '</b> · ' + esc(capFirst(st.slice(m[0].length)));
-    });
+    paintStepStates(sp);
   }
   function paintLaw(law) {
     var ph = law ? textOf(law['7']) : '';
