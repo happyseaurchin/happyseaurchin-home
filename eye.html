@@ -206,7 +206,7 @@ button{font:inherit;color:inherit}
 /* weft (eye.2): the point fits between the walk above and the ring beneath: its picture of the page at most two fifths
    of the room, and the card scrolling within itself where its words run longer */
 .iris:not(.is-page) .focus-slot{container-type:size}
-.iris:not(.is-page) .focus-slot>.card{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.iris:not(.is-page) .focus-slot>.card{flex:0 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;touch-action:none}
 .iris:not(.is-page) .focus-slot .mini{max-height:40cqh;min-width:calc(100% + 30px)}
 .iris .focus-slot>.card.s-title,.iris .focus-slot>.card.s-icon{width:auto;max-width:min(100%,440px)}
 .iris.is-page .focus-slot{top:6.5%;bottom:7%;padding:0 30px}
@@ -640,6 +640,8 @@ function labelOf(b, path) {
     }
   }
   if (n === undefined) return { title: '', body: '', raw: '' };
+  // weft, 16 Nov 2026 (eye.2): on the clock (floor 10, the sundial) an unvoiced rung is named by its own address, which is its time
+  if (b.floor === 10 && path.length && path.every(isDigit) && !voiceOf(n)) { const t = clockName(path); if (t) return { title: t, body: '', raw: '', clock: true }; }
   const last = path[path.length - 1];
   const parent = path.length ? nodeAt(b, path.slice(0, -1)) : null;
   const generic = parent && (Array.isArray(parent) || (last !== undefined && !isDigit(last)));
@@ -659,6 +661,35 @@ function labelOf(b, path) {
   return Object.assign(splitVoice(v), { raw: v });
 }
 function blockTitle(b) { if (!b) return ''; const t = splitVoice(voiceOf(b.data)).title; return t || b.name; }
+/* weft, 16 Nov 2026 (eye.2): the sundial's arithmetic, as /walk reads it: year digits, season, month in the season,
+ * the week's band, the day in the band, the gathering, the beat; then the minute, the breath, the second. A 0 is the
+ * whole of the rung above. Only a name for an unvoiced rung: what a rung says for itself always comes first. */
+const CLK_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const CLK_SEASONS = ['January–March', 'April–June', 'July–September', 'October–December'];
+const CLK_PARTS = ['deep night', 'dawn', 'early morning', 'morning', 'midday', 'afternoon', 'late afternoon', 'evening', 'night'];
+const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
+function clockName(path) {
+  const d = path.map(Number), k = d.length, at = i => d[i - 1];
+  if (k === 1) return 'the ' + at(1) + '000s';
+  if (k === 2) return 'the ' + ordinal(at(1) * 10 + at(2) + 1) + ' century';
+  if (k === 3) return 'the ' + d.slice(0, 3).join('') + '0s';
+  const y = +d.slice(0, 4).join('');
+  if (k === 4) return String(y);
+  const s = at(5); if (!s) return 'all of ' + y;
+  if (k === 5) return (CLK_SEASONS[s - 1] || 'season ' + s) + ' ' + y;
+  const m = at(6); if (!m) return 'all of ' + (CLK_SEASONS[s - 1] || 'that season');
+  const m0 = (s - 1) * 3 + (m - 1), mon = CLK_MONTHS[m0] || 'month ' + m;
+  if (k === 6) return mon + ' ' + y;
+  const days = new Date(Date.UTC(y, m0 + 1, 0)).getUTCDate(), w = at(7); if (!w) return 'all of ' + mon;
+  if (k === 7) return ((w - 1) * 7 + 1) + '–' + Math.min(w * 7, days) + ' ' + mon.slice(0, 3);
+  const dd = at(8); if (!dd) return 'that week';
+  const day = (w - 1) * 7 + dd, wd = new Date(Date.UTC(y, m0, day)).toUTCString().slice(0, 3);
+  if (k === 8) return day <= days ? wd + ' ' + day + ' ' + mon : 'day ' + dd;
+  const g = at(9); if (!g) return 'all day';
+  if (k === 9) return CLK_PARTS[g - 1] || 'gathering ' + g;
+  const words = ['gathering', 'beat', 'minute', 'breath', 'second'];
+  return k <= 13 ? (at(k) ? words[k - 9] + ' ' + at(k) : 'all of the ' + words[k - 10]) : '';
+}
 
 /* references: *:<beach>:<block>:<address>, a block named in the text, a link */
 const TOKEN = /(\*:https?:\/\/[^\s<>"]+)|(https?:\/\/[^\s<>"')\]]+)|(\b(?:[a-z0-9-]+\.)+(?:com|ai|org|net|io|uk|dev|app)\b(?:\/[^\s<>"')\],;·]*)?)|((?<![\w/.:@-])[a-z][a-z0-9-]*(?::[A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9])+(?:\s\d+(?:\.\d+)?(?![\d.:]))?)/g;
@@ -1187,7 +1218,7 @@ function layer(cls) { return h('div', 'layer ' + cls); }
 // and the ring beneath, the choice the walk ends in, along the bottom. Convex or concave is the reader's (⚙).
 function fitAnc(anc, p) {
   if (!anc || !anc.isConnected) return;
-  const over = () => anc.scrollHeight > anc.clientHeight + 1;
+  const over = () => { const f = anc.firstElementChild; return !!f && f.offsetTop < 2; }; // stacked from the bottom, an overflow runs off the top, where scrollHeight cannot see it
   let gone = 0, more = null;
   while (over() && anc.querySelector('.nb.rung')) {
     anc.querySelector('.nb.rung').remove(); gone++;
@@ -1961,12 +1992,13 @@ function swipe(d, target) {
  * cannot go back a page; a pinch (ctrl) is left to the browser. Magic Eye's moves are as they were (eye.3's). */
 const WH = { t: 0, ax: '', sg: 0, acc: 0, n: 0, fired: false, last: 0, mode: '', hist: [], prev: 0, same: 0, timer: 0 };
 const QUIET = 150;
+const WHEEL_SCROLLERS = SCROLLERS + ', .iris .focus-slot>.card'; // the wheel also scrolls a card longer than its room; a finger or a drag on it moves
 function wheelMode(target, ax, sg) {
   if (state.axis === 'eye') {
     const sc = target && target.closest && target.closest('.doc, .choices, .s-big .b, .panel-list');
     return sc && (ax === 'y' ? sc.scrollHeight > sc.clientHeight + 2 : sc.scrollWidth > sc.clientWidth + 2) ? 'native' : 'move';
   }
-  for (let el = target && target.closest ? target.closest(SCROLLERS) : null; el && stage.contains(el); el = el.parentElement && el.parentElement.closest(SCROLLERS)) {
+  for (let el = target && target.closest ? target.closest(WHEEL_SCROLLERS) : null; el && stage.contains(el); el = el.parentElement && el.parentElement.closest(WHEEL_SCROLLERS)) {
     const cs = getComputedStyle(el), ov = ax === 'x' ? cs.overflowX : cs.overflowY;
     if (!/(auto|scroll)/.test(ov)) continue;
     const pos = ax === 'x' ? el.scrollLeft : el.scrollTop, max = ax === 'x' ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight;
