@@ -132,13 +132,14 @@
   .stands .at{font-family:var(--mono);font-size:12px;color:var(--solid)}
   .stands .what{font-family:var(--display);font-weight:700;min-width:0;overflow-wrap:anywhere}
   .trail{list-style:none;padding:0;margin:0.4rem 0 1.2rem;display:grid;gap:0.35rem}
-  .trail a{display:grid;grid-template-columns:1.6rem minmax(0,1fr) auto;gap:0.7rem;align-items:center;text-decoration:none;color:var(--foam);padding:0.4rem 0.1rem}
+  .trail a{display:grid;grid-template-columns:1.6rem minmax(8rem,1fr) minmax(0,auto);gap:0.7rem;align-items:center;text-decoration:none;color:var(--foam);padding:0.4rem 0.1rem}
   .trail .n{font-family:var(--display);font-weight:800;color:var(--acc)}
   .trail .t{min-width:0;overflow-wrap:anywhere}
   .trail .bars{display:inline-flex;gap:3px}
   .trail .bars i{display:block;width:12px;height:6px;border-radius:2px;background:var(--line-strong)}
   .trail .bars i.on{background:var(--acc)}
   .trail .w{font-family:var(--mono);font-size:11px;letter-spacing:0.06em;color:var(--vapour-dim);margin-left:0.5rem}
+  .trail a>span:last-child{text-align:right;overflow-wrap:anywhere}
   .tally{display:flex;flex-wrap:wrap;gap:0.3rem;justify-content:flex-end}
   .chip{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;padding:0.12rem 0.5rem;border-radius:999px;border:1px solid currentColor;white-space:nowrap}
   .chip.go{color:var(--bud)} .chip.wait{color:var(--solid)} .chip.change{color:var(--ghost)} .chip.none{color:var(--vapour-dim)}
@@ -456,6 +457,35 @@
     if (!(word in LEVELS)) { var w2 = /^(NOT STARTED|SCOPED|SPECIFIED|BUILDING|BUILT|LIVE)\b/.exec(t); if (!w2) return null; word = w2[1]; s.rest = t.slice(word.length).replace(/^[\s,:;.—–-]+/, ''); }
     return { word: word, level: LEVELS[word], rest: s.rest };
   }
+  /* where a step stands, read off the threads its law ties to it ('<thread> — … · step <address>', function:proposal
+     5) and never stored: each thread's live ends say whose move it is (' · waits on <handle>') or that the branch is
+     done (' · complete'), function:thread 3 and 4. Every end complete is complete; an end still waiting names whom;
+     a thread whose ends close neither way is under way. A step no thread serves keeps the word an older project
+     wrote at its 9 (NOT STARTED to LIVE), the legacy this replaces (David, 16 Nov 2026: "the threads are the
+     universal way to track things, including the state"); a step with neither stands blank. */
+  function legacyState(st) { return st ? { word: st.word, level: st.level, say: st.word.toLowerCase(), rest: st.rest, legacy: true } : null; }
+  function liveEnds(t) {
+    var ends = [];
+    (function rec(x) { if (!x) return; if (x.live) ends.push(x); (x.kids || []).forEach(rec); })(t && t.tree);
+    return ends;
+  }
+  function closedComplete(text) { return /\s·\scomplete\s*$/.test(String(text || '').split(' · read: ')[0]); }
+  function stepStateFrom(threads, addr, legacy) {
+    var mine = (threads || []).filter(function (t) { return t.step === addr && !t.unread && (t.tree || (t.rungs || []).length); });
+    if (!mine.length) return legacyState(legacy);
+    var who = [], done = true;
+    mine.forEach(function (t) {
+      var ends = liveEnds(t);
+      if (!ends.length) { done = false; return; }
+      ends.forEach(function (e) {
+        (e.waits || []).forEach(function (w) { if (who.indexOf(w) < 0) who.push(w); });
+        if (!(e.hands || []).some(function (l) { return closedComplete(l.text); })) done = false;
+      });
+    });
+    if (who.length) return { word: 'WAITS ON ' + who.join(', '), level: 3, all: who.join(', '),
+      say: 'waits on ' + (who.length > 2 ? who.slice(0, 2).join(', ') + ' +' + (who.length - 2) : who.join(', ')) };
+    return done ? { word: 'COMPLETE', level: 5, say: 'complete' } : { word: 'UNDER WAY', level: 3, say: 'under way' };
+  }
   function pointsOf(node, from, to) {
     var out = [];
     if (!node || typeof node !== 'object') return out;
@@ -641,13 +671,14 @@
     (function rec(x) { if (!x) return; if (x.hands && x.hands.length) n++; (x.kids || []).forEach(rec); })(t.tree);
     return n;
   }
-  function quipuGroup(name, steps, mirrors, threads) {
+  function quipuGroup(name, steps, mirrors, threads, built) {
     var byStep = {}, addrs = {};
     (threads || []).forEach(function (t) { (byStep[t.step] = byStep[t.step] || []).push({ name: t.name, rungs: tiedOf(t) }); });
     steps.forEach(function (s) { addrs[s.addr] = 1; });
     return {
       steps: steps.map(function (s) {
-        return { id: s.id, title: s.title ? sentenceCase(s.title) : '', word: s.state ? s.state.word : '', level: s.state ? s.state.level : -1,
+        var st = built ? stepStateFrom(threads, s.addr, s.state) : legacyState(s.state);
+        return { id: s.id, title: s.title ? sentenceCase(s.title) : '', word: st ? (st.legacy ? st.word : st.say) : '', level: st ? st.level : -1,
           main: s.decision ? sortedAnswers(mirrors, s.decision) : null,
           rooms: s.sides.map(function (r) { return { dec: r.decision ? sortedAnswers(mirrors, r.decision) : null }; }),
           threads: byStep[s.addr] || [] };
@@ -767,7 +798,7 @@
       });
       if (window.beachThreads) {
         beachThreads.draw($('threadsBody'), FAM, { stepHref: function (a) { return '#s-' + a.replace('.', ''); } }).then(function (got) {
-          THREADS = (got && got.threads) || []; drawQuipu();
+          THREADS = (got && got.threads) || []; paintStates(); drawQuipu();
           return Promise.all(STEPS.map(function (s) { var el = document.querySelector('.th-under[data-step="' + s.addr + '"]'); return el ? beachThreads.draw(el, FAM, { step: s.addr }) : null; }));
         }).then(landOnHash, landOnHash);
       }
@@ -847,12 +878,7 @@
     }
 
     function standsHTML() {
-      var trail = PHASE === 'project' || PHASE === 'complete' ? '<h3>The trail</h3><ol class="trail" aria-label="The steps, each lit by its state">' + STEPS.map(function (s, i) {
-        var lv = s.state ? s.state.level : -1, bars = '';
-        for (var b = 0; b < 5; b++) bars += '<i class="' + (b < lv ? 'on' : '') + '"></i>';
-        return '<li><a href="#' + s.id + '"><span class="n">' + (i + 1) + '</span><span class="t">' + esc(sentenceCase(s.title || 'Step ' + (i + 1))) + '</span>' +
-          '<span>' + (s.state ? '<span class="bars" aria-hidden="true">' + bars + '</span><span class="w">' + esc(s.state.word.toLowerCase()) + '</span>' : '<span class="w">—</span>') + '</span></a></li>';
-      }).join('') + '</ol>' : '';
+      var trail = PHASE === 'project' || PHASE === 'complete' ? '<h3>The trail</h3><ol class="trail" id="trail" aria-label="The steps, each lit by its state">' + trailRows() + '</ol>' : '';
       if (!DECS.length && !trail) return '';
       return '<section id="stands"><div class="addr">live from the beach</div><h2>Where it stands</h2>' +
         (DECS.length ? '<p class="note" id="standsNote">' + (DECS.length === 1 ? 'One ' + asked(1) : cap(count(DECS.length)) + ' ' + asked(2)) + ' and everyone’s answers so far, with the latest shared reading of them. Tap one to read it and answer.</p>' : '') +
@@ -869,14 +895,44 @@
         '</div></details></div>' : '') +
       '</section>';
     }
+    /* a step's state as shown: read off its threads once they are read (paintStates), the legacy 9 until then */
+    function shownOf(s) { return s.shown !== undefined ? s.shown : legacyState(s.state); }
+    function trailRows() {
+      return STEPS.map(function (s, i) {
+        var st = shownOf(s), lv = st ? st.level : -1, bars = '';
+        for (var b = 0; b < 5; b++) bars += '<i class="' + (b < lv ? 'on' : '') + '"></i>';
+        return '<li><a href="#' + s.id + '"><span class="n">' + (i + 1) + '</span><span class="t">' + esc(sentenceCase(s.title || 'Step ' + (i + 1))) + '</span>' +
+          '<span>' + (st ? '<span class="bars" aria-hidden="true">' + bars + '</span><span class="w"' + (st.all ? ' title="waits on ' + esc(st.all) + '"' : '') + '>' + esc(st.say) + '</span>' : '<span class="w">—</span>') + '</span></a></li>';
+      }).join('');
+    }
+    function chipHTML(s) {
+      var st = shownOf(s);
+      return '<span class="state' + (st ? ' lv' + st.level : '') + '" data-state-at="' + esc(s.addr) + '"' + (st ? '' : ' hidden') + (st && st.all ? ' title="waits on ' + esc(st.all) + '"' : '') + '>' + (st ? esc(st.legacy ? st.word : st.say) : '') + '</span>';
+    }
+    function noteHTML(s) {
+      var st = shownOf(s);
+      return st && st.legacy && st.rest ? '<p class="statenote" data-note-at="' + esc(s.addr) + '"><b>' + esc(st.word) + '</b> · ' + rich(cap(st.rest)) + '</p>' : '';
+    }
+    /* once the threads are read: in a project, each step's state from the threads that serve it */
+    function paintStates() {
+      if (PHASE !== 'project' && PHASE !== 'complete') return;
+      STEPS.forEach(function (s) { s.shown = stepStateFrom(THREADS, s.addr, s.state); });
+      var ol = $('trail'); if (ol) ol.innerHTML = trailRows();
+      STEPS.forEach(function (s) {
+        var chip = document.querySelector('.state[data-state-at="' + s.addr + '"]');
+        if (chip) { var tmp = document.createElement('span'); tmp.innerHTML = chipHTML(s); chip.replaceWith(tmp.firstChild); }
+        var note = document.querySelector('.statenote[data-note-at="' + s.addr + '"]');
+        if (note && !(s.shown && s.shown.legacy)) note.remove();
+      });
+    }
     function stepHTML(s, i) {
       var folds = s.sides.filter(function (r) { return !r.decision; }), open = s.sides.filter(function (r) { return r.decision; });
       return '<section class="step" id="' + s.id + '" data-at="' + esc(s.addr) + '">' +
         '<div class="addr">step ' + (i + 1) + ' of ' + STEPS.length + ' · on the beach at <b>' + esc(s.addr) + '</b>' +
-          (s.state ? '<span class="state lv' + s.state.level + '">' + esc(s.state.word) + '</span>' : '') + '</div>' +
+          chipHTML(s) + '</div>' +
         '<h2>' + esc(sentenceCase(s.title || 'Step ' + (i + 1))) + '</h2>' +
         (s.rest ? '<p class="lead">' + rich(cap(s.rest)) + '</p>' : '') +
-        (s.state && s.state.rest ? '<p class="statenote"><b>' + esc(s.state.word) + '</b> · ' + rich(cap(s.state.rest)) + '</p>' : '') +
+        noteHTML(s) +
         (folds.length ? '<div class="more">' + folds.map(function (r) {
           return '<details class="fold"><summary>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</summary><div class="in">' +
             (r.rest && r.title ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + pointsHTML(r.points) + '</div></details>';
@@ -923,7 +979,7 @@
 
     function drawQuipu() {
       if (!STEPS.length) return;
-      var g = quipuGroup(FAM, STEPS, MIRRORS, THREADS), n = Object.keys(MIRRORS).length;
+      var g = quipuGroup(FAM, STEPS, MIRRORS, THREADS, PHASE === 'project' || PHASE === 'complete'), n = Object.keys(MIRRORS).length;
       var w = figW($('quipu')), h = 200;
       $('quipu').innerHTML = quipuSVG(g, { w: w, h: h, label: TITLE + ': ' + STEPS.length + ' steps, ' + DECS.length + ' ' + asked(DECS.length) + ', answered by ' + n + (n === 1 ? ' person' : ' people') + ', ' + THREADS.length + (THREADS.length === 1 ? ' thread' : ' threads') + '. Each step links to its section.' }) +
         '<figcaption class="qcap">' + legendOf(STEPS, ASKED) + '</figcaption>';
@@ -1143,7 +1199,7 @@
         /* the snazzy page as the standard view finds it (its law's 6, its spine's root 2, then its line), so a card whose
            line names none, as leros-on-the-commons's, still offers it */
         place(i, g, shelfCard(s, i, stat, snazzyAt(pageOf(L2, spine, s), true), true));
-        SHELF[s.name] = { g: quipuGroup(s.name, steps, mirrors, th), label: s.name + ': ' + phase + ' · ' + stat + '. Each step links to its section on the proposal’s page.' };
+        SHELF[s.name] = { g: quipuGroup(s.name, steps, mirrors, th, phase === 'project' || phase === 'complete'), label: s.name + ': ' + phase + ' · ' + stat + '. Each step links to its section on the proposal’s page.' };
         drawShelfQuipu(s.name);
       }).catch(function () {
         if (root._run === run && !root.querySelector('#c-' + s.name)) place(i, 'unread', shelfCard(s, i, 'couldn’t be read just now', snazzyAt(s.page, true), false));
