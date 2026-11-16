@@ -551,8 +551,8 @@ const getJSON = u => fetch(u, { headers: { Accept: 'application/json' }, cache: 
 const block = n => getJSON(BEACH + '?block=' + encodeURIComponent(n)), index = () => getJSON(BEACH);
 const IX = Promise.race([index(), new Promise((_, no) => setTimeout(() => no(new Error('slow')), 9000))]);
 const LIVE = IX.then(ix => ({ ix, live: true }), () => ({ ix: SNAP, live: false }));
-const STATES = /^(NOT STARTED|SCOPED|SPECIFIED|BUILDING|BUILT|LIVE)\b/, KIND = DRAWN.kinds;
-const kindOf = t => { const m = STATES.exec(t || ''); return !m ? '' : m[1] === 'LIVE' ? 'live' : m[1] === 'NOT STARTED' ? 'none' : 'part'; };
+const KIND = DRAWN.kinds;
+const kindOfState = S => !S ? '' : S.legacy ? (S.word === 'LIVE' ? 'live' : S.word === 'NOT STARTED' ? 'none' : 'part') : S.word === 'COMPLETE' ? 'live' : 'part';
 const glyphs = () => $$('[data-glyph]').forEach(g => { const k = KIND[g.dataset.glyph]; g.setAttribute('class', 'glyph' + (k ? ' k-' + k : '')); });
 let redraw = () => {};
 function paintWords(sp) {
@@ -564,8 +564,13 @@ if (el.dataset.part === 'title' && s.title) el.textContent = P.caseTitle(s.title
 else if (el.dataset.part === 'body') el.innerHTML = P.linked(P.capFirst(s.body));
 });
 $$('[data-dec]').forEach(el => { const d = P.decision(P.textAt(sp, el.dataset.dec)); if (el.dataset.part === 'q' && d.q) el.textContent = d.q; else if (el.dataset.part === 'who' && d.who) el.textContent = d.who; });
-['1', '1.1', '1.11', '1.111'].forEach(s => { const k = kindOf(P.textAt(sp, s.includes('.') ? s + '9' : s + '.9')); if (k) KIND[s] = k; });
 glyphs();
+/* each step's glyph as its threads say (beachThreads.stepStates; function:proposal 6, 16 November 2026), else a STATE
+   line still standing at its 9: complete or live a full ring, under way or waiting part of one */
+if (!paintWords.asked && window.beachThreads && beachThreads.stepStates) {
+paintWords.asked = true;
+beachThreads.stepStates('happening', sp).then(m => { ['1', '1.1', '1.11', '1.111'].forEach(s => { const k = kindOfState(m && m[s]); if (k) KIND[s] = k; }); glyphs(); }, () => {});
+}
 const now = P.voiced(sp), moved = Object.keys(now).filter(a => DRAWN_H[a] !== P.hash(now[a])).concat(Object.keys(DRAWN_H).filter(a => !(a in now)));
 $$('.since-mark').forEach(n => n.remove());
 const mark = '<span class="since-mark">written since ' + DRAWN.short + '</span>';

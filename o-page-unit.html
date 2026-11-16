@@ -1105,7 +1105,25 @@ details.phase1 .hero { padding-top: 6px; }
     }).join(' ');
   }
   function capFirst(t) { return t ? t.replace(/^(['‘“"]?)(.)/, function (m, q, c) { return q + c.toUpperCase(); }) : t; }
-  var STATES = /^(NOT STARTED|SCOPED|SPECIFIED|BUILDING|BUILT|LIVE)\b/;
+  /* each step's state, as its threads say (beachThreads.stepStates; function:proposal 6, 16 November 2026: the
+     threads are the universal way to track things, including the state), else a STATE line still standing at its 9;
+     painted with what is known, and again once the threads are read */
+  var STEPSTATE = null, stepStatesAsked = false, stepStatesWait = false;
+  function paintStepStates(sp) {
+    if (!stepStatesAsked && window.beachThreads && beachThreads.stepStates) {
+      stepStatesAsked = true;
+      beachThreads.stepStates(FAM, sp).then(function (m) { STEPSTATE = m || {}; paintStepStates(sp); }, function () {});
+    } else if (!window.beachThreads && !stepStatesWait) {
+      stepStatesWait = true;
+      window.addEventListener('load', function () { paintStepStates(sp); });
+    }
+    document.querySelectorAll('section[data-step]').forEach(function (sec) {
+      var S = STEPSTATE && STEPSTATE[sec.getAttribute('data-step')];
+      var h = sec.querySelector('h2'), old = h && h.querySelector('.state');
+      if (old) old.remove();
+      if (S && h) h.insertAdjacentHTML('beforeend', ' <span class="chip state" title="' + esc(S.title) + '">' + esc(S.label) + '</span>');
+    });
+  }
   /* 'DECIDE — <question>? <a note>. Asked of <whom>.' */
   function decisionParts(t) {
     var m = /^DECIDE\s+—\s+([\s\S]*?\?)\s*([\s\S]*)$/.exec(t || '');
@@ -1130,12 +1148,7 @@ details.phase1 .hero { padding-top: 6px; }
       if (part === 'q') el.textContent = d.q;
       else if (part === 'who' && d.who) el.textContent = 'asks ' + d.who.replace(/,? and of /g, ', and ') + ', then anyone';
     });
-    document.querySelectorAll('section[data-step]').forEach(function (sec) {
-      var st = textOf(nodeAt(sp, sec.getAttribute('data-step') + '9')), m = STATES.exec(st || '');
-      var h = sec.querySelector('h2'), old = h.querySelector('.state');
-      if (old) old.remove();
-      if (m) h.insertAdjacentHTML('beforeend', ' <span class="chip state" title="' + esc(st) + '">' + esc(m[1].charAt(0) + m[1].slice(1).toLowerCase()) + '</span>');
-    });
+    paintStepStates(sp);
     try { window.dispatchEvent(new CustomEvent('opu:words')); } catch (e) {}
   }
   function paintLaw(law) {

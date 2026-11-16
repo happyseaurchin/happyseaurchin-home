@@ -991,7 +991,25 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
     el.appendChild(rest); el.appendChild(more);
   }
   document.querySelectorAll('section[data-step] p.lead[data-sp]').forEach(function (el) { setLede(el, el.textContent); });
-  var STATES = /^(NOT STARTED|SCOPED|SPECIFIED|BUILDING|BUILT|LIVE)\b/;
+  /* each step's state, as its threads say (beachThreads.stepStates; function:proposal 6, 16 November 2026: the
+     threads are the universal way to track things, including the state), else a STATE line still standing at its 9;
+     painted with what is known, and again once the threads are read */
+  var STEPSTATE = null, stepStatesAsked = false, stepStatesWait = false;
+  function paintStepStates(sp) {
+    if (!stepStatesAsked && window.beachThreads && beachThreads.stepStates) {
+      stepStatesAsked = true;
+      beachThreads.stepStates(FAM, sp).then(function (m) { STEPSTATE = m || {}; paintStepStates(sp); }, function () {});
+    } else if (!window.beachThreads && !stepStatesWait) {
+      stepStatesWait = true;
+      window.addEventListener('load', function () { paintStepStates(sp); });
+    }
+    document.querySelectorAll('section[data-step]').forEach(function (sec) {
+      var S = STEPSTATE && STEPSTATE[sec.getAttribute('data-step')];
+      var addr = sec.querySelector('.addr'), old = addr && addr.querySelector('.state');
+      if (old) old.remove();
+      if (S && addr) addr.insertAdjacentHTML('beforeend', '<span class="state" title="' + esc(S.title) + '">' + esc(S.word) + '</span>');
+    });
+  }
   function paintSpine(sp) {
     if (!sp || typeof sp !== 'object') return;
     walkTexts(sp);
@@ -1010,12 +1028,7 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
       else if (part === 'who' && d.who) el.textContent = d.who;
     });
     /* a step's STATE at its 9, once the work runs (function:proposal 6) */
-    document.querySelectorAll('section[data-step]').forEach(function (sec) {
-      var st = textOf(nodeAt(sp, sec.getAttribute('data-step') + '9')), m = STATES.exec(st || '');
-      var addr = sec.querySelector('.addr'), old = addr && addr.querySelector('.state');
-      if (old) old.remove();
-      if (m && addr) addr.insertAdjacentHTML('beforeend', '<span class="state" title="' + esc(st) + '">' + esc(m[1]) + '</span>');
-    });
+    paintStepStates(sp);
   }
   function paintLaw(law) {
     var ph = law ? textOf(law['7']) : '';

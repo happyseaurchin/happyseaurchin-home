@@ -363,7 +363,22 @@ footer p { font-size: 0.92rem; color: var(--muted); }
   ];
   var CARDS = [];
   PARTS.forEach(function (p) { p.rows.forEach(function (r) { CARDS.push(r.card); }); });
-  var LEVELS = { 'NOT STARTED': 0, 'SCOPED': 1, 'SPECIFIED': 2, 'BUILDING': 3, 'BUILT': 4, 'LIVE': 5 };
+  /* each part's state, as its threads say (beachThreads.stepStates; function:proposal 6, 16 November 2026), else a STATE
+     line still standing at its 9; its level (0 not started to 5 live or complete) lights the tab */
+  var STEPSTATE = null, stepStatesAsked = false;
+  function paintParts() {
+    if (!stepStatesAsked && SPINE && window.beachThreads && beachThreads.stepStates) {
+      stepStatesAsked = true;
+      beachThreads.stepStates(FAM, SPINE).then(function (m) { STEPSTATE = m || {}; paintParts(); }, function () {});
+    }
+    PARTS.forEach(function (p) {
+      var S = STEPSTATE && STEPSTATE[p.at];
+      var tab = $('tab-' + p.key); tab.setAttribute('data-level', S ? Math.max(0, S.level) : 0);
+      tab.querySelector('.tstate').textContent = S ? S.say + ' ·' : '';
+      var chip = document.querySelector('#panel-' + p.key + ' .state');
+      chip.hidden = !S; chip.textContent = S ? S.word : ''; chip.title = S ? (S.legacy ? S.rest : S.title) : '';
+    });
+  }
   var SPINE = null, MIRRORS = {}, FOLD = null;
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('span'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
@@ -540,14 +555,8 @@ footer p { font-size: 0.92rem; color: var(--muted); }
     } else if (!SPINE) {
       $('nowText').textContent = 'The beach couldn’t be read just now.';
     }
-    PARTS.forEach(function (p) {
-      var st = split(SPINE ? voiceOf(nodeAt(SPINE, p.at + '9')) : ''), word = (st.title || '').toUpperCase(), lvl = word in LEVELS ? LEVELS[word] : 0;
-      var tab = $('tab-' + p.key); tab.setAttribute('data-level', lvl);
-      tab.querySelector('.tstate').textContent = word ? word.toLowerCase() + ' ·' : '';
-      var chip = document.querySelector('#panel-' + p.key + ' .state');
-      chip.hidden = !word; chip.textContent = word; chip.title = st.rest;
-      p.rows.forEach(function (r, j) { $('info-' + p.key + '-' + j).innerHTML = infoHTML(r); });
-    });
+    paintParts();
+    PARTS.forEach(function (p) { p.rows.forEach(function (r, j) { $('info-' + p.key + '-' + j).innerHTML = infoHTML(r); }); });
     var one = SPINE ? nodeAt(SPINE, '1') : null;
     $('tronicRooms').innerHTML = one ? '<p>' + esc(cap(split(voiceOf(one)).rest)) + '</p>' + pointsHTML(pointsOf(one, 2)) : '<p class="note">The beach couldn’t be read just now.</p>';
     var cs = $('copySpec');
