@@ -162,6 +162,18 @@ for (const view of VIEWS) {
       if (!sheet.family || !sheet.msg.includes(sheet.family)) probs.push('the message does not name the family');
       if (!/ways:(reader|recipe)/.test(sheet.msg)) probs.push('the message names no way');
       if (!sheet.inView) probs.push('the sheet runs off the screen');
+      /* the code that hands the page on: drawn on a press, naming the page's own address */
+      await page.click('.aid-back [data-hand]');
+      const code = await page.waitForSelector('.aid-back .aid-qr-img svg', { timeout: 8000 }).then(() => page.evaluate(() => {
+        const back = document.querySelector('.aid-back'), r = back.querySelector('.aid-qr-img').getBoundingClientRect();
+        return { url: back.querySelector('.aid-qr-url').textContent, w: Math.round(r.width), wide: document.documentElement.scrollWidth - window.innerWidth };
+      }), () => null);
+      if (!code) probs.push('no code drawn when asked');
+      else {
+        if (!code.url || !code.url.endsWith(path.replace(/\/+$/, ''))) probs.push('the code names ' + code.url + ', not this page');
+        if (code.w < 120) probs.push('the code is too small to scan (' + code.w + 'px)');
+        if (code.wide > 1) probs.push('the code pushes the page sideways');
+      }
       if (SHOTS) await page.screenshot({ path: join(SHOTS, (path.replace(/\//g, '_') || 'root') + '-' + view.name + '.png') });
       await page.keyboard.press('Escape');
       await page.waitForTimeout(250);
