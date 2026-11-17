@@ -1644,6 +1644,9 @@
     /* every schematic on the beach, each a running process drawn at the face of whoever reads it, and the form that
      * draws one (function:schematic; David's GO at spine:schematics 1.111118, 28 Oct 2026) */
     ['schematic',   'schematics'],
+    /* every whole system on the beach, a person's or an AI's, each with its standard view and, where its holder has
+     * made one, its snazzy page (the list block whole-systems; David, 17 Nov 2026: "like proposals") */
+    ['whole-system', 'whole systems'],
     /* keel's navigator: any block walked on two axes, Iris and Magic Eye, and at page size the site's own pages framed
      * like a browser; every place in it a link, /eye/<block>/<address> (pool:weft 526, lane eye.1, 16 Nov 2026) */
     ['eye',         'the eye'],
