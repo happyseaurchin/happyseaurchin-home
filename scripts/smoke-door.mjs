@@ -9,8 +9,11 @@
  *   - nothing covers it;
  *   - a tap opens the sheet over the page, its first message naming the family, ways:reader
  *     and, where the page marks its parts, the place reached;
+ *   - its 'Someone beside you?' button opens theme.js's code card (siteHand) over it, the code
+ *     naming the page's own address; Escape closes the card back to the button, then the door;
  *   - Escape closes it and gives focus back to the button;
  *   - no script error and no sideways scroll.
+ * A page with a door of its own keeps it, and its sheet carries the same code button.
  * A page with no family (the list at /proposal) carries no corner button.
  *
  *   NODE_PATH=$(npm root -g) node scripts/smoke-door.mjs [page …] [--shots <dir>]
@@ -100,6 +103,34 @@ const VIEWS = [
 ];
 const writes = [];
 const results = [];
+/* the code card, opened by a data-hand-on button inside a door: drawn, naming this page, and closed
+   by Escape back to that button with the door beneath still open */
+async function codeCard(page, scope, path, doorOpen) {
+  const probs = [];
+  const before = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  await page.click(scope + ' [data-hand-on]');
+  const code = await page.waitForSelector('dialog.site-hand[open] .sh-img svg', { timeout: 8000 }).then(() => page.evaluate(() => {
+    const d = document.querySelector('dialog.site-hand'), img = d.querySelector('.sh-img'), r = img.getBoundingClientRect();
+    return { url: img.getAttribute('data-for') || '', shown: d.querySelector('.sh-url').textContent, w: Math.round(r.width), inView: r.top >= -1 && r.bottom <= window.innerHeight + 1, wide: document.documentElement.scrollWidth - window.innerWidth };
+  }), () => null);
+  if (!code) { probs.push('no code drawn when asked'); return probs; }
+  const want = path.replace(/\/+$/, '');
+  if (!code.url.startsWith('https://') || !(code.url.endsWith(want) || code.url.split('?')[0].endsWith(want))) probs.push('the code names ' + code.url + ', not this page');
+  if (code.shown !== code.url.replace(/^https:\/\//, '')) probs.push('the card says ' + code.shown + ' under a code for ' + code.url);
+  if (code.w < 120) probs.push('the code is too small to scan (' + code.w + 'px)');
+  if (!code.inView) probs.push('the code runs off the screen');
+  if (code.wide > Math.max(1, before)) probs.push('the code pushes the page sideways (' + before + 'px before, ' + code.wide + 'px with it)');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(250);
+  const back = await page.evaluate(([scope, doorOpen]) => {
+    const d = document.querySelector('dialog.site-hand'), btn = document.querySelector(scope + ' [data-hand-on]');
+    return { closed: !d.open, focus: document.activeElement === btn, door: doorOpen ? !document.querySelector(scope).hidden : true };
+  }, [scope, doorOpen]);
+  if (!back.closed) probs.push('Escape did not close the code');
+  else if (!back.door) probs.push('closing the code closed the door too');
+  else if (!back.focus) probs.push('closing the code did not give focus back to its button');
+  return probs;
+}
 function line(ok, page, view, note) { results.push({ ok, page, view, note }); console.log(`  ${ok ? '✓' : '✗'} ${page} · ${view}${note ? ' — ' + note : ''}`); }
 
 for (const view of VIEWS) {
@@ -125,8 +156,25 @@ for (const view of VIEWS) {
         await page.close(); continue;
       }
       if (own.has(path)) {
+        const probs = [];
         const ownDoor = await page.evaluate(() => typeof window.openDoor === 'function');
-        line(has === 0 && ownDoor && !errors.length, path, view.name, has ? 'two doors: the corner button stood beside the page\'s own' : errors.length ? 'errors: ' + errors.slice(0, 2).join(' | ') : 'its own door kept; the corner stands aside');
+        if (has) probs.push('two doors: the corner button stood beside the page\'s own');
+        if (!ownDoor) probs.push('its own door is gone');
+        else {
+          /* its own door, opened as its buttons open it, carries the same code */
+          await page.evaluate(() => window.openDoor());
+          await page.waitForSelector('#door:not([hidden])', { timeout: 8000 });
+          await page.waitForTimeout(500);
+          probs.push(...await codeCard(page, '#door', path, true));
+          if (SHOTS) await page.screenshot({ path: join(SHOTS, (path.replace(/\//g, '_') || 'root') + '-' + view.name + '-own.png') });
+          await page.keyboard.press('Escape');
+          await page.waitForTimeout(300);
+          if (await page.evaluate(() => !document.querySelector('#door').hidden)) probs.push('Escape did not close its own door');
+        }
+        const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        if (wide > 1) probs.push('sideways scroll ' + wide + 'px');
+        if (errors.length) probs.push('errors: ' + errors.slice(0, 2).join(' | '));
+        line(!probs.length, path, view.name, probs.length ? probs.join('; ') : 'its own door kept, with the code; the corner stands aside');
         await page.close(); continue;
       }
       if (!has) { line(false, path, view.name, 'no corner button'); await page.close(); continue; }
@@ -162,19 +210,9 @@ for (const view of VIEWS) {
       if (!sheet.family || !sheet.msg.includes(sheet.family)) probs.push('the message does not name the family');
       if (!/ways:(reader|recipe)/.test(sheet.msg)) probs.push('the message names no way');
       if (!sheet.inView) probs.push('the sheet runs off the screen');
-      /* the code that hands the page on: drawn on a press, naming the page's own address */
-      await page.click('.aid-back [data-hand]');
-      const code = await page.waitForSelector('.aid-back .aid-qr-img svg', { timeout: 8000 }).then(() => page.evaluate(() => {
-        const back = document.querySelector('.aid-back'), r = back.querySelector('.aid-qr-img').getBoundingClientRect();
-        return { url: back.querySelector('.aid-qr-url').textContent, w: Math.round(r.width), wide: document.documentElement.scrollWidth - window.innerWidth };
-      }), () => null);
-      if (!code) probs.push('no code drawn when asked');
-      else {
-        if (!code.url || !code.url.endsWith(path.replace(/\/+$/, ''))) probs.push('the code names ' + code.url + ', not this page');
-        if (code.w < 120) probs.push('the code is too small to scan (' + code.w + 'px)');
-        if (code.wide > 1) probs.push('the code pushes the page sideways');
-      }
       if (SHOTS) await page.screenshot({ path: join(SHOTS, (path.replace(/\//g, '_') || 'root') + '-' + view.name + '.png') });
+      /* the code that hands the page on: a card over the door, naming the page's own address */
+      probs.push(...await codeCard(page, '.aid-back', path, true));
       await page.keyboard.press('Escape');
       await page.waitForTimeout(250);
       const closed = await page.evaluate(() => document.querySelector('.aid-back').hidden && document.activeElement && document.activeElement.classList.contains('aid-pill'));

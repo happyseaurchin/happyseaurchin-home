@@ -3660,3 +3660,134 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire, 0); });
   else setTimeout(wire, 0);
 })();
+
+/* ───────────────────────────────────────────────────────────
+ * siteHand: hand the page on in person (David, 17 November 2026, thread 49: 'a simple qr code
+ * I can flash them'; 'add the code to the pages with their own doors too'). One card over the
+ * page, opened by the corner door's 'Someone beside you? Show this page as a code' and by any
+ * element marked data-hand-on (the pages that keep a door of their own put one in their sheet):
+ * the page's own address as a QR code a phone beside you can scan, dark on white in either
+ * theme, /vendor/qrcode.js fetched on the first use, never before.
+ *
+ * A page may say what its code carries for the person showing it: window.siteHandUrl(handle)
+ * returns the address to encode, and window.siteHandAsk = { label, empty } names that handle,
+ * so the card shows it, the name this device signs with to start (render:who), and redraws the
+ * code as it is changed. /mind-meld does: its code carries ?with=<handle>, so whoever scans it
+ * melds with the person who showed it. It writes nothing and keeps nothing.
+ * ─────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  var lib = null;
+  function loadQr(){
+    if (typeof window.qrcode === 'function') return Promise.resolve();
+    if (!lib) lib = new Promise(function(ok, no){
+      var sc = document.createElement('script');
+      sc.src = '/vendor/qrcode.js'; sc.async = true;
+      sc.onload = function(){ typeof window.qrcode === 'function' ? ok() : no(); };
+      sc.onerror = function(){ lib = null; no(); };
+      document.head.appendChild(sc);
+    });
+    return lib;
+  }
+  /* a QR code of url drawn into el as an SVG, dark modules on white with a quiet zone */
+  function draw(el, url){
+    return loadQr().then(function(){
+      var q = window.qrcode(0, 'M'); q.addData(url); q.make();
+      var svg = q.createSvgTag(4, 16), m = /width="(\d+)px"/.exec(svg) || /width="(\d+)"/.exec(svg);
+      if (m && svg.indexOf('viewBox') < 0) svg = svg.replace('<svg ', '<svg viewBox="0 0 ' + m[1] + ' ' + m[1] + '" ');
+      el.innerHTML = svg.replace(/ width="[^"]*"/, '').replace(/ height="[^"]*"/, '');
+      el.setAttribute('data-for', url);
+    }, function(){ el.textContent = url; });
+  }
+  /* the page's own address, as the door gives it: canonical host and path, never a query or hash */
+  function base(){
+    var c = document.querySelector('link[rel="canonical"]'), o = document.querySelector('meta[property="og:url"]');
+    var href = (c && c.getAttribute('href')) || (o && o.getAttribute('content')) || '';
+    try { if (href) { var u = new URL(href, location.href); return 'https://' + u.host + u.pathname.replace(/\/+$/, ''); } } catch(e){}
+    var host = /(^|\.)happyseaurchin\.com$/.test(location.hostname) ? location.host : 'happyseaurchin.com';
+    return 'https://' + host + location.pathname.replace(/\.html$/, '').replace(/\/+$/, '');
+  }
+  function clean(v){ return window.cleanHandle ? window.cleanHandle(v) : String(v || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32); }
+  function me(){ try { return clean(localStorage.getItem('render:who')) || ''; } catch(e){ return ''; } }
+  function url(h){ return typeof window.siteHandUrl === 'function' ? window.siteHandUrl(h || '') : base(); }
+
+  var CSS =
+    '.site-hand{border:0;border-radius:18px;padding:18px 18px 16px;width:min(360px,92vw);max-height:92vh;overflow:auto;background:#fbfaf7;color:#17161a;' +
+      'box-shadow:0 22px 70px rgba(0,0,0,.4);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
+    '.site-hand::backdrop{background:rgba(10,10,16,.62)}' +
+    '.site-hand .sh-x{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:50%;border:1px solid #d8d3c9;background:#fff;color:#17161a;font-size:21px;line-height:1;cursor:pointer}' +
+    '.site-hand .sh-k{margin:0 0 2px;font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6c675e}' +
+    '.site-hand .sh-h{margin:0 44px 12px 0;font:700 20px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
+    '.site-hand .sh-ask{margin:0 0 10px}' +
+    '.site-hand .sh-lab{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-weight:600;font-size:14px}' +
+    '.site-hand .sh-in{flex:1;min-width:8em;border:1px solid #cdc7bb;border-radius:10px;padding:7px 10px;font:15px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;background:#fff;color:#17161a}' +
+    '.site-hand .sh-note{margin:6px 0 0;font-size:13px;color:#6c675e}' +
+    '.site-hand .sh-img{width:min(262px,72vw);margin:2px auto 8px;background:#fff;border-radius:10px}' +
+    '.site-hand .sh-img svg{display:block;width:100%;height:auto}' +
+    '.site-hand .sh-cap{margin:0;text-align:center;font-size:13.5px;color:#4b4840}' +
+    '.site-hand .sh-cap b{color:#17161a;overflow-wrap:anywhere}' +
+    '.sh-btn{border:1px solid currentColor;background:transparent;color:inherit;border-radius:999px;padding:5px 12px;font-family:inherit;font-weight:600;font-size:13px;line-height:1.3;cursor:pointer}' +
+    '.sh-btn:hover{background:color-mix(in srgb,currentColor 10%,transparent)}';
+
+  /* the style goes in at once, so a page's own data-hand-on button wears it before the card first opens */
+  (function(){ var st = document.createElement('style'); st.setAttribute('data-site-hand', ''); st.textContent = CSS; (document.head || document.documentElement).appendChild(st); })();
+  var dlg = null, timer = 0;
+  function $(s){ return dlg.querySelector(s); }
+  function build(){
+    if (dlg) return;
+    dlg = document.createElement('dialog');
+    dlg.className = 'site-hand';
+    dlg.setAttribute('aria-labelledby', 'shH');
+    dlg.innerHTML =
+      '<button type="button" class="sh-x" aria-label="Close">×</button>' +
+      '<p class="sh-k">Hand this page on</p>' +
+      '<h2 class="sh-h" id="shH">Show them this code</h2>' +
+      '<div class="sh-ask" hidden><label class="sh-lab"><span class="sh-labt"></span><input class="sh-in" type="text" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your name on the beach"></label><p class="sh-note" aria-live="polite"></p></div>' +
+      '<div class="sh-img" role="img" aria-label="A code that opens this page on another phone"></div>' +
+      '<p class="sh-cap">Point a phone’s camera at it. It opens <b class="sh-url"></b> there.</p>';
+    document.body.appendChild(dlg);
+    $('.sh-x').addEventListener('click', close);
+    dlg.addEventListener('click', function(e){ if (e.target === dlg) close(); });
+    /* the card's keys are its own: a page's door beneath it never sees them */
+    dlg.addEventListener('keydown', function(e){ e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    dlg.addEventListener('cancel', function(e){ e.preventDefault(); close(); });
+    $('.sh-in').addEventListener('input', function(){
+      var c = clean(this.value);
+      if (c !== this.value) this.value = c;
+      clearTimeout(timer); timer = setTimeout(refresh, 220);
+    });
+  }
+  function refresh(){
+    var ask = window.siteHandAsk, h = '';
+    $('.sh-ask').hidden = !ask;
+    if (ask) {
+      $('.sh-labt').textContent = ask.label || 'Yours';
+      h = clean($('.sh-in').value);
+      $('.sh-note').textContent = h ? '' : (ask.empty || '');
+    }
+    var u = url(h);
+    $('.sh-url').textContent = u.replace(/^https:\/\//, '');
+    var img = $('.sh-img');
+    if (img.getAttribute('data-for') !== u || !img.firstChild) draw(img, u);
+  }
+  var opener = null;
+  function open(from){
+    build();
+    opener = from || document.activeElement;
+    if (window.siteHandAsk && !$('.sh-in').value) $('.sh-in').value = me();
+    refresh();
+    if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else dlg.setAttribute('open', '');
+  }
+  function close(){
+    if (!dlg) return;
+    if (dlg.close) { if (dlg.open) dlg.close(); } else dlg.removeAttribute('open');
+    if (opener && opener.focus) { try { opener.focus({ preventScroll: true }); } catch(e){ opener.focus(); } }
+  }
+  window.siteHand = { open: open, close: close, url: url, draw: draw };
+  document.addEventListener('click', function(e){
+    var t = e.target && e.target.closest ? e.target.closest('[data-hand-on]') : null;
+    if (!t) return;
+    e.preventDefault();
+    open(t);
+  });
+})();
