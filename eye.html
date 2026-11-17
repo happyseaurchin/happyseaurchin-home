@@ -464,6 +464,24 @@ button{font:inherit;color:inherit}
 .snap-lane h4 small{color:var(--mist);font-weight:400;font-size:.8rem}
 .snap-call{display:block;font-family:var(--mono);font-size:.72rem;color:var(--iris);overflow-wrap:anywhere;margin-bottom:6px}
 .snap-text{font-family:var(--mono);font-size:.7rem;line-height:1.5;color:var(--text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:260px;overflow-y:auto;margin:0;padding:8px;border-radius:8px;background:rgba(0,0,0,.22)}
+/* weft (eye.9), 17 Nov 2026, at David's word: the free look. A long press grabs the sphere you stand in: the ring at its
+   equator, what is inside each point above and below it in its own slice, the next shell out; the ring's lanes stand
+   under it, hidden, and the rail stays over it */
+.zoom{-webkit-touch-callout:none}
+.stage.zpress,.stage.zpress *{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.freelook>.zlane,.freelook>.ztop{visibility:hidden}
+.zsphere{position:absolute;inset:0;z-index:65;overflow:hidden;cursor:grab;touch-action:none;animation:zfade .24s ease-out both}
+.zsphere.grabbing,.zsphere.grabbing *{cursor:grabbing}
+.zsphere,.zsphere *{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.zs-field{position:absolute;left:0;top:0;pointer-events:none}
+.zs-world{position:absolute;inset:0;pointer-events:none}
+.zsphere .zn{pointer-events:auto}
+.zsphere .zn.zs2>.card:not(.is-focus){opacity:.9}
+.zsphere .zn>.card.s-card{max-height:var(--zsmaxh,300px)}
+.zs-head{z-index:80;pointer-events:none;cursor:default;max-width:min(88vw,620px);background:color-mix(in srgb,var(--void) 82%,transparent);border-radius:10px;padding:3px 12px}
+.zs-head .rim-k{font-family:var(--mono);letter-spacing:.08em;text-transform:none;font-size:.7rem}
+.zs-head .rim-w{font-family:var(--body);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);margin-right:2px}
+.zs-head .rim-b{color:var(--ink);margin-right:7px}
 
 /* doors and mirror layers */
 .panel{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;padding:16px 14px 14px;gap:12px}
@@ -932,7 +950,7 @@ function need(name) {
   pendingBlocks.add(name);
   ensureBlock(name).then(b => { pendingBlocks.delete(name); if (b) softRender(); }, () => pendingBlocks.delete(name));
 }
-function softRender() { clearTimeout(softTimer); softTimer = setTimeout(() => { if (state.axis === 'eye' && typeof zMoving === 'function' && zMoving()) return softRender(); if (sheet.hidden && current && !current.classList.contains('loading')) render(null); }, 180); } // weft (eye.7): never under a moving eye
+function softRender() { clearTimeout(softTimer); softTimer = setTimeout(() => { if (state.axis === 'eye' && typeof zMoving === 'function' && (zMoving() || FL.on)) return softRender(); if (sheet.hidden && current && !current.classList.contains('loading')) render(null); }, 180); } // weft (eye.7): never under a moving eye
 function familyLines() {
   if (famLineCache) return famLineCache;
   const pb = blockSync('proposals'); if (!pb) { need('proposals'); return new Map(); }
@@ -1828,6 +1846,9 @@ let laneAt = 0;
 const LANE_MAX = 9;                     // nine lanes, as a node holds nine
 const PLACE_KEYS = ['block', 'spindle', 'spindleOf', 'path', 'beneath', 'trail'];
 const zIsHand = () => Z === lanes[laneAt].z;
+// weft (eye.9): the free look's state, one sphere at a time, the lane in hand's (its moves are below, before the input)
+const FL = { on: false, z: null, b: '', layer: null, el: null, world: null, cv: null, head: null, headId: '', cards: [], byId: new Map(), marks: [], yaw: 0, pitch: 0, vy: 0, vp: 0, raf: 0, look: null, press: null, st: null, gl: null, unf: 0, u: 1, wt: 0, at: '', W: 1, H: 1, f: 520, cx: 0, cy: 0, narrow: false, stepLat: .12, acc: '', mono: '' };
+const flHere = () => FL.on && FL.z === Z;
 function laneSave() { const ln = lanes[laneAt]; for (const k of PLACE_KEYS) ln[k] = state[k]; }
 function laneNew(b, step) { return { block: b.name, spindle: [], spindleOf: b.name, path: [], beneath: 0, trail: [], step: !!step, z: zNew() }; }
 // do something as one lane: its place in hand for the moment, then put back as it was
@@ -1991,9 +2012,10 @@ function zChrome(b) {
   const way = a.how && D >= Z.S.length && D < n;
   const set = (bt, label, dis, aria) => { bt.disabled = !!dis; bt.setAttribute('aria-label', aria); bt.title = aria; const lb = bt.querySelector('.lb'); if (lb && label != null) lb.textContent = label; };
   set(Z.btn.out, 'Out', D === 0 && !state.trail.length, D === 0 ? 'Out: back across the star' : 'Out: a step back into the ring around, pscale +1');
-  set(Z.btn.prev, null, si <= 0, 'Turn round the ring to the sibling before');
-  set(Z.btn.next, null, !R || si < 0 || si >= R.n - 1, 'Turn round the ring to the sibling after');
-  set(Z.btn.ring, Z.over ? 'Close' : 'Ring', D === 0, Z.over ? 'Close the whole ring' : 'The whole ring at once, to choose from');
+  const fl = flHere();   // weft (eye.9): while the sphere is open, ‹ › look round it and ~ lets it go
+  set(Z.btn.prev, null, fl ? false : si <= 0, fl ? 'Look round to the card before' : 'Turn round the ring to the sibling before');
+  set(Z.btn.next, null, fl ? false : !R || si < 0 || si >= R.n - 1, fl ? 'Look round to the card after' : 'Turn round the ring to the sibling after');
+  set(Z.btn.ring, Z.over || fl ? 'Close' : 'Ring', D === 0 && !fl, fl ? 'Let the sphere go, and stand in the ring of the card you face' : Z.over ? 'Close the whole ring' : 'The whole ring at once, to choose from');
   set(Z.btn.in, canIn ? 'In · ' + kidsHere.length : 'In', !canIn, 'In: walk through the one you face into its own ring, pscale −1' + (way ? ', along ' + ({ now: 'now', newest: 'the newest', steps: 'the steps' }[a.how] || 'the block\'s way') + ' (provisional)' : ''));
   Z.btn.mode.innerHTML = '<span class="g">' + (Z.mode === 'glide' ? '⇣' : '⋮') + '</span><span class="lb2">' + (Z.mode === 'glide' ? 'glide' : 'step') + '</span>';
   const ma = Z.mode === 'glide' ? 'Glide: a swipe or a flick carries on, across rungs or round the ring, and settles on the nearest. Tap for one step a gesture' : 'Step: each swipe or flick moves one rung, or one sibling round the ring. Tap to glide';
@@ -2221,6 +2243,7 @@ function zTick(now) {
 }
 function zStop() { if (Z.anim) { Z.anim = null; Z.goal = Z.d; } }
 function zIn() {
+  if (flHere()) flClose();   // weft (eye.9)
   const b = cur(); if (!b) return;
   Z.keep = false;
   const D = Math.round(Z.goal), a = zAhead(b), n = a.end.length;
@@ -2233,6 +2256,7 @@ function zIn() {
   bump('Nothing is nested beneath this');
 }
 function zOut() {
+  if (flHere()) flClose();   // weft (eye.9)
   Z.keep = false;
   const D = Math.round(Z.goal);
   if (D <= 0) { if (state.trail.length) return back(); return bump('This is the top of the block'); }
@@ -2240,6 +2264,7 @@ function zOut() {
 }
 // ~ : the whole ring at once, to choose from; again, or Esc, closes it
 function zRing() {
+  if (flHere()) return flClose();   // weft (eye.9): ~ lets the sphere go
   const b = cur(); if (!b) return;
   Z.keep = false;
   if (Z.over) { Z.over = false; return zSettle(true); }
@@ -2247,6 +2272,7 @@ function zRing() {
   Z.over = true; if (!zMoving()) zSettle(true);
 }
 function zSide(dir) {
+  if (flHere()) return flStep(dir, 0);   // weft (eye.9): round the sphere, a card at a time
   const b = cur(); if (!b) return;
   const c = Math.round(Z.goal);
   if (c <= 0) return bump('The top of a block has no siblings');
@@ -2292,6 +2318,7 @@ function zModeToggle() {
 }
 // a point reached some other way (a heading in the page, a link, a tab): out to where the two ways meet, then in
 function zGoPath(path, S, beneath) {
+  if (flHere()) flClose(true);   // weft (eye.9): a place reached another way (a tab, a link) lets the sphere go
   const b = cur(); if (!b) return;
   Z.over = false;
   // weft (eye.5), 16 Nov 2026: a point on the spindle is gone to along it, the spindle kept; any other place is a new call,
@@ -2322,6 +2349,7 @@ function zLetGo() {
 // another lane taken in hand: the one let go keeps its place and rests, the doors and the rail are the new one's
 function laneTake(i) {
   if (i === laneAt || !lanes[i]) return;
+  if (FL.on) flClose(true);   // weft (eye.9)
   zLetGo();
   const was = lanes[laneAt], btn = Z.btn; Z.btn = null;
   laneSave();
@@ -2474,6 +2502,7 @@ function swapLayer(next, tr, flipKey) {
 function render(tr, flipKey) {
   const b = cur();
   if (!b) return;
+  if (FL.on) flClose(true);   // weft (eye.9): a sphere held open is let go when everything is drawn again
   setPlace(b, state.path, state.spindleOf === b.name ? state.spindle : null, state.beneath); // weft (eye.5): the place kept whole
   let L;
   if (state.view === 'stars') L = renderStars();
@@ -2985,6 +3014,8 @@ function openHelp() {
     '<p>Where the eye holds a <b>spindle</b>, the address a link gave or the way you walked, going in follows it, and on along the block\'s own way past it (the way to now, the newest, the steps), drawn dashed; past the end of both you face the first child, or the one you turned to, still dashed until you walk in.</p>' +
     '<p>Two toggles at the top are the Magic Eye\'s own. <b>Siblings</b>: across, turned by swiping or scrolling left and right (the zoom then swipes up and down), or up and down, turned by swiping up and down (the zoom then swipes across). <b>Zoom</b>: which way a swipe goes in, as a screen scrolls one way or the other and people find one natural: ↑ in, a swipe up goes in (the wheel rolled down, or two fingers pushed up a trackpad that scrolls naturally), or ↑ out, the other way round. A pinch spread always goes in. On the rail, <b>glide</b> lets a swipe or a flick carry on, across rungs or round the ring, and settle on the nearest; <b>step</b> moves one rung, or one sibling, a gesture.</p>' +
     '<p>Keys: − PageDown Enter in, + PageUp Backspace out; the arrows along the ring turn it and the other two zoom (↓ in and ↑ out, or with the siblings up and down → in and ← out); ~ the whole ring, Home the top, End the spindle\'s end; in a stack, [ and ] take the lane before or after in hand. A tap on a sibling turns you to it; a tap on the one you face walks you in.</p>' +
+    // weft (eye.9), 17 Nov 2026, at David's word: the free look
+    '<h3>Look round</h3><p>Hold a press still in the Magic Eye, a finger or the mouse, and the ring you stand in becomes a sphere round you: the ring at its equator, each point at its own digit\'s place, and what is inside each point in its own slice, a shell further out and a size smaller, 0 to 4 above it and 5 to 9 below, so its column reads down in order through it. Keep holding and drag to look anywhere, up, down and all the way round; let go and it settles on the card nearest the middle of your sight, which becomes the point, and a flick glides on first. Then drag again, use the wheel, or tap any card to turn to it. Tap the card you stand on, or Esc, or ~, and you stand in its ring again; − and + let the sphere go and walk on from there. L does what the long press does, and the arrows look round a card at a time.</p>' +
     // weft (eye.8), 17 Nov 2026, at David's word: the stack, and the snapshot
     '<h3>The stack</h3><p>With <b>Stack</b> on (at the top, in the Magic Eye), more blocks stand beside the one you look at, a lane each, on the direction the ring and the zoom leave free: one above another as rows when the siblings run across, side by side as columns when they run up and down. Each lane is its own call, its block, its spindle and its point, so a place, a time and who is there can be laid together and each walked along its own spindle. Add a lane with <b>＋ row</b> (or column) among the doors, which opens the blocks; with ✳, beside any block the point reaches; or with ◐, the family\'s other blocks at the same address, which join <b>in step</b>: they go to the address the lane in hand goes to, as far as each block holds it. The chain at a lane\'s top right puts it in step or lets it move on its own, and × lets it go. A touch, the wheel, or [ and ] takes a lane in hand: the rail, the doors and the address bar are its, and a tap on another lane only takes it. In a lane the size you chose is drawn where it fits, else the next smaller; at page size only the lane in hand shows. The link carries the whole stack, nine lanes at most, as a node holds nine.</p>' +
     '<h3>Snapshot</h3><p><b>Snapshot</b>, beside <i>＋ keep</i> in the row of your spindles, fires the lanes as one: what an LLM is handed by those calls, in order. The walk to each point is what stands decided; the rings beneath a point, where its call looks past the spindle\'s end, are what is still open. Copy the calls, for an AI that reads the beach itself, or the words they reach, every rung whole, for any AI: a context window composed by hand. Nothing is sent and nothing is written.</p>' +
@@ -3063,6 +3094,7 @@ window.addEventListener('pointerup', e => endDrag(e, false));
 window.addEventListener('pointercancel', e => endDrag(e, true));
 window.addEventListener('blur', () => { g = null; stage.classList.remove('dragging'); });
 function swipe(d, target) {
+  if (FL.on) return;   // weft (eye.9): the sphere reads its own gestures
   if (state.view !== 'main') { if (d === 'D' || d === 'R') closePanel(); return; }
   if (state.axis === 'eye') { const ax = d === 'L' || d === 'R' ? 'x' : 'y', fwd = d === 'L' || d === 'U'; if (zRole(ax) === 'ring') zSide(fwd ? 1 : -1); else if (fwd === (state.zoomDir !== 'out')) eyeIn(); else eyeOut(); return; } // weft (eye.7): as the Magic Eye reads a swipe
   if (state.shape === 'dir') { if (state.layout === 'dropdown') { if (d === 'L') go('right'); else if (d === 'R') go('left'); } return; }
@@ -3097,6 +3129,7 @@ function wheelMode(target, ax, sg) {
   return curved() ? 'move' : 'none';
 }
 function wheelGo(ax, sg) {
+  if (FL.on) return;   // weft (eye.9)
   if (state.axis === 'eye') { if (zRole(ax) === 'ring') zSide(sg); else if (sg * zZoomSign() > 0) eyeIn(); else eyeOut(); return; } // weft (eye.7): as the Magic Eye reads the wheel
   if (ax === 'x') go(sg > 0 ? 'right' : 'left'); else go(sg > 0 ? 'down' : 'up');
 }
@@ -3158,6 +3191,354 @@ document.addEventListener('keydown', e => {
   const map = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   if (map[k]) { e.preventDefault(); go(map[k]); }
 });
+/* ---------------- the free look (weft, eye.9, 17 Nov 2026, at David's word) ----------------
+ * "Scroll around and move the entire sphere, like glide but moving perspective to look in any direction at a fixed
+ * sphere; on a phone a long tap to grab the sphere and drag it around." A gaze is a spindle and a shell is a disc
+ * (stash:weft 121): the Magic Eye at rest is this sphere with its gaze held to the spindle, and a long press lets go of
+ * that hold. The ring you stand in is the sphere's equator, each point at its own digit's place, 36° apart, the ten
+ * closing the circle; what is inside each point stands in its own slice, the next shell out and a size smaller, 0 to 4
+ * above it and 5 to 9 below, so its column reads down in order through it. A drag turns the sphere any way, a flick
+ * glides (in glide; step lets go where the hand did), and letting go settles on the card nearest the middle of sight,
+ * which becomes the point: the place, the address bar and the lanes in step follow, as any move's do. Tap it again, Esc
+ * or ~ to stand in its ring; − and + close the sphere and walk on from there. The equator runs across whichever way the
+ * ring turns: a column's cards are wider than they are tall, and a head turns more easily than it nods. Nothing here
+ * writes. The zoom between the shells, and the universe beyond them, come next. */
+const FL_PRESS = 430;                 // held still this long, a press grabs the sphere
+const FL_R2 = 1.18;                   // the next shell out, this much further than the ring
+const FL_PMAX = 1.45;                 // looking up or down, nearly to the pole
+const FL_NAT = { title: 200, icon: 210, card: 290 };   // a card's own width, before the sphere scales it to its slice
+const FL_SIZES = ['title', 'icon', 'card'];
+function flGeom() {
+  const r = stage.getBoundingClientRect();
+  FL.W = Math.max(1, r.width); FL.H = Math.max(1, r.height); FL.narrow = FL.W < 640;
+  // a slice of the ring a comfortable width at the middle of sight, so on a phone the neighbours peek in at its edges;
+  // never wider than 110° across a wide screen
+  FL.f = Math.max(FL.narrow ? 330 : 520, (FL.W / 2) / Math.tan(55 * Math.PI / 180));
+  FL.cx = FL.W / 2; FL.cy = (4 + FL.H - 66) / 2 + 18;          // where the ring's faced card stands
+}
+// the sphere's two sizes: the ring's as the size chosen allows (an icon at most on a phone), one smaller beyond it
+function flSizes() {
+  let i = state.size === 'title' ? 0 : state.size === 'icon' ? 1 : 2;
+  if (FL.narrow) i = Math.min(i, 1);
+  return [FL_SIZES[i], FL_SIZES[Math.max(0, i - 1)]];
+}
+// what is inside a point, in bands up and down its column: each digit at its own band (0 to 4 above, 5 to 9 below), so a
+// gap stays a gap; other keys, or more than ten, the first ten in order, half above and half below
+function flBands(kids) {
+  const digits = kids.length <= ZRING_MAX && kids.every(isDigit), out = [];
+  if (digits) for (const k of kids) { const d = +k; out.push({ k, up: d <= 4, j: d <= 4 ? 4 - d : d - 5 }); }
+  else { const ks = kids.slice(0, 10), u = Math.ceil(ks.length / 2); ks.forEach((k, i) => out.push({ k, up: i < u, j: i < u ? u - 1 - i : i - u })); }
+  return { out, more: digits ? 0 : Math.max(0, kids.length - 10) };
+}
+const flWrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a <= -Math.PI) a += 2 * Math.PI; return a; };
+function flDir(lon, lat) { const cb = Math.cos(lat); return [cb * Math.sin(lon), Math.sin(lat), -cb * Math.cos(lon)]; }
+function flLat(c) { return c.shell === 2 ? c.lat * FL.u : c.lat; }    // the next shell unfolds out of its point
+function flGaze() { const cp = Math.cos(FL.pitch); return [cp * Math.sin(FL.yaw), Math.sin(FL.pitch), -cp * Math.cos(FL.yaw)]; }
+function flOff(c) { const d = flDir(c.lon, flLat(c)), g = flGaze(); return Math.acos(Math.max(-1, Math.min(1, d[0] * g[0] + d[1] * g[1] + d[2] * g[2]))); }
+function flCard(b, path, cls, shell, lon) {
+  const id = keyOf(b, path), w = h('div', 'zn zc zs' + shell + ' z-' + cls);
+  const cd = card(b, path, cls, { onClick: () => flTap(id) });
+  if (cls === 'card') w.style.width = FL_NAT.card + 'px'; else w.style.maxWidth = FL_NAT[cls] + 'px';
+  w.style.visibility = 'hidden'; w.append(cd); FL.world.append(w);
+  const c = { id, path, el: w, cd, cls, shell, lon, lat: 0, s: 1, w: 0, h: 0, tf: '' };
+  FL.cards.push(c); FL.byId.set(id, c);
+  return c;
+}
+// grab the sphere: the ring you stand in, and what is inside each of its points
+function flOpen() {
+  if (FL.on || !zActive() || Z.over || zMoving()) return false;
+  const b = cur(); if (!b) return false;
+  const E = zExt(b), D = Math.max(1, Math.round(Z.goal)), owner = E.slice(0, D - 1), R = zRingOf(b, owner);
+  if (!R.n) { bump('Nothing is nested here to look round'); return false; }
+  const faced = R.kids.includes(E[D - 1]) ? E[D - 1] : R.kids[0], i0 = R.kids.indexOf(faced);
+  flGeom();
+  const L = current, el = h('div', 'zsphere');
+  el.setAttribute('role', 'region'); el.setAttribute('aria-label', 'Looking round the sphere you stand in');
+  FL.cv = h('canvas', 'zs-field'); FL.cv.setAttribute('aria-hidden', 'true');
+  FL.world = h('div', 'zs-world'); FL.head = h('div', 'rim zs-head');
+  el.append(FL.cv, FL.world, FL.head); L.append(el);
+  Object.assign(FL, { on: true, z: Z, b: b.name, layer: L, el, cards: [], byId: new Map(), marks: [], focus: null, yaw: 0, pitch: 0, vy: 0, vp: 0, st: null, gl: null, look: null, headId: '' });
+  const cs = getComputedStyle(document.documentElement);
+  FL.acc = cs.getPropertyValue('--iris').trim() || '#4fb3a8'; FL.mono = cs.getPropertyValue('--mono') || 'monospace';
+  el.style.setProperty('--zsmaxh', Math.round(Math.max(120, FL.H * .42)) + 'px');
+  const [c1, c2] = flSizes();
+  // the ring's places round you, the one you face straight ahead; a ring of more than ten, the nine about that one
+  const many = R.n > ZRING_MAX, lo = many ? Math.max(0, i0 - 4) : 0, hi = many ? Math.min(R.n - 1, i0 + 4) : R.n - 1;
+  for (let i = lo; i <= hi; i++) {
+    const k = R.kids[i], c = flCard(b, owner.concat([k]), c1, 1, flWrap((R.slot(k) - R.slot(faced)) * ZSLOT));
+    const B = flBands(childKeys(b, c.path)); c.col = [];
+    for (const q of B.out) { const cc = flCard(b, c.path.concat([q.k]), c2, 2, c.lon); cc.up = q.up; cc.j = q.j; cc.parent = c; c.col.push(cc); }
+    if (B.more) c.more = B.more;
+  }
+  if (many && lo > 0) FL.marks.push({ lon: (lo - .5 - i0) * ZSLOT, lat: 0, text: '‹ ' + lo + ' more' });
+  if (many && hi < R.n - 1) FL.marks.push({ lon: (hi + .5 - i0) * ZSLOT, lat: 0, text: (R.n - 1 - hi) + ' more ›' });
+  for (const c of FL.cards) { c.w = c.el.offsetWidth || FL_NAT[c.cls]; c.h = c.el.offsetHeight || 40; }   // each card's own size, read once
+  flLayout();
+  L.classList.add('freelook');
+  FL.at = Math.round(Z.goal) >= 1 ? keyOf(b, owner.concat([faced])) : '';
+  FL.u = RM ? 1 : 0; FL.unf = RM ? 0 : performance.now();
+  flFrame(); flKick();
+  zChrome(b);
+  toast('Drag to look round · tap the middle card to stand there');
+  return true;
+}
+// the scales and the bands, which hang on how far away the sphere is drawn (a screen turned or resized moves it)
+function flLayout() {
+  const f = FL.f, slice = 2 * f * Math.tan(ZSLOT / 2);
+  let h2 = 0;
+  for (const c of FL.cards) {
+    c.s = Math.min(1, .88 * slice / FL_NAT[c.cls]) / (c.shell === 2 ? FL_R2 : 1);
+    if (c.shell === 2) h2 = Math.max(h2, c.h * c.s);
+  }
+  FL.stepLat = Math.atan((h2 + 8) / f);
+  for (const c of FL.cards) if (c.shell === 1) {
+    const lat0 = Math.atan((c.h * c.s / 2 + 10 + h2 / 2) / f);   // the first band just clear of its point
+    for (const q of c.col) q.lat = (q.up ? 1 : -1) * Math.min(FL_PMAX - .05, lat0 + q.j * FL.stepLat);
+    c.moreLat = -Math.min(FL_PMAX - .02, lat0 + 5 * FL.stepLat);
+  }
+}
+function flKick() { if (FL.on && !FL.raf) FL.raf = requestAnimationFrame(flTick); }
+// one frame: the next shell unfolding, a settle under way or a glide running down, then the sphere drawn
+function flTick(now) {
+  FL.raf = 0; if (!FL.on) return;
+  let more = false, arrived = null, rest = false;
+  if (FL.unf) { const t = Math.min(1, (now - FL.unf) / 380); FL.u = zEase(t); if (t < 1) more = true; else FL.unf = 0; }
+  if (FL.st) {
+    const s = FL.st, t = Math.min(1, (now - s.t0) / s.dur), e = zEase(t);
+    FL.yaw = s.y0 + (s.ty - s.y0) * e; FL.pitch = s.p0 + (s.tp - s.p0) * e;
+    if (t < 1) more = true; else { FL.st = null; arrived = s.c; }
+  } else if (FL.gl) {
+    const dt = Math.min(48, Math.max(1, now - FL.gl.t)); FL.gl.t = now;
+    FL.yaw += FL.vy * dt;
+    const p = FL.pitch + FL.vp * dt; FL.pitch = Math.max(-FL_PMAX, Math.min(FL_PMAX, p)); if (FL.pitch !== p) FL.vp = 0;
+    const k = Math.exp(-dt / 330); FL.vy *= k; FL.vp *= k;
+    if (Math.hypot(FL.vy * Math.cos(FL.pitch), FL.vp) < .00008) { FL.gl = null; rest = true; } else more = true;
+  }
+  flFrame();
+  if (arrived) flCommit(arrived);
+  if (rest) flSettle();
+  if (more) flKick();
+}
+// draw the sphere from where you look: every card where its place has it, the nearest the middle of sight lit
+function flFrame() {
+  if (!FL.on || !FL.el) return;
+  const ct = Math.cos(FL.yaw), st = Math.sin(FL.yaw), cp = Math.cos(FL.pitch), sp = Math.sin(FL.pitch);
+  const G = [cp * st, sp, -cp * ct], RX = ct, RZ = st, U = [-sp * st, cp, sp * ct];
+  const f = FL.f, W = FL.W, H = FL.H, cx = FL.cx, cy = FL.cy;
+  const proj = (lon, lat) => {
+    const d = flDir(lon, lat), cz = d[0] * G[0] + d[1] * G[1] + d[2] * G[2];
+    if (cz < .06) return null;
+    return [cx + f * (d[0] * RX + d[2] * RZ) / cz, cy - f * (d[0] * U[0] + d[1] * U[1] + d[2] * U[2]) / cz, cz];
+  };
+  let best = null, bc = -2;
+  for (const c of FL.cards) {
+    const p = proj(c.lon, flLat(c));
+    let vis = false;
+    if (p && p[2] > .12) {
+      const s = c.s * Math.pow(1 / Math.max(.55, p[2]), .45), hw = c.w * s / 2, hh = c.h * s / 2;
+      if (p[0] + hw > -20 && p[0] - hw < W + 20 && p[1] + hh > -20 && p[1] - hh < H + 20) {
+        vis = true;
+        const op = zSmooth((p[2] - .12) / .25) * (c.shell === 2 ? Math.min(1, FL.u * 1.4) : 1);
+        const tf = 'translate(' + p[0].toFixed(1) + 'px,' + p[1].toFixed(1) + 'px) translate(-50%,-50%) scale(' + s.toFixed(4) + ')';
+        if (c.tf !== tf) { c.el.style.transform = tf; c.tf = tf; }
+        c.el.style.opacity = op.toFixed(3);
+        c.el.style.zIndex = String((c.shell === 1 ? 40 : 10) + Math.round(p[2] * 20));   // the ring over the shell beyond it
+        if (c.el.style.visibility) c.el.style.visibility = '';
+        if (op > .3 && p[2] > bc) { bc = p[2]; best = c; }
+      }
+    }
+    if (!vis && c.el.style.visibility !== 'hidden') c.el.style.visibility = 'hidden';
+  }
+  const focus = best && bc > Math.cos(ZSLOT * .55) ? best : null;     // within some 20° of the middle of sight
+  if (FL.focus !== focus) { if (FL.focus) FL.focus.cd.classList.remove('is-focus'); if (focus) focus.cd.classList.add('is-focus'); FL.focus = focus; }
+  flHeadOf(focus);
+  flDraw(proj);
+}
+// the words at the top: the rung the card in sight stands at, and within what
+function flHeadOf(c) {
+  const id = c ? c.id : ''; if (!FL.head || FL.headId === id) return; FL.headId = id;
+  const b = cur(); if (!b || !c) { FL.head.innerHTML = ''; return; }
+  const rg = zRung(b, c.path.length), lab = labelOf(b, c.path.slice(0, -1));
+  FL.head.innerHTML = '<span class="rim-k">' + (stackOn() ? '<span class="rim-b">' + esc(b.name) + '</span>' : '') + 'pscale ' + rg.ps + (rg.name ? ' · ' + rg.name : '') + '</span><span class="rim-t"><span class="rim-w">within</span> ' + titleHTML(lab.title || blockTitle(b)) + '</span>';
+}
+// the field: the ring as the equator, the slices' edges, each point's column strung on its meridian, the middle of sight
+function flDraw(proj) {
+  const c = FL.cv; if (!c) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.round(FL.W), hh = Math.round(FL.H);
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(hh * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(hh * dpr); c.style.width = w + 'px'; c.style.height = hh + 'px'; }
+  const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, w, hh);
+  const acc = FL.acc, k = state.look === 'eye' ? 1 : .6, D = Math.PI / 180;
+  const glow = x.createRadialGradient(FL.cx, FL.cy, 0, FL.cx, FL.cy, Math.min(w, hh) * .5);
+  glow.addColorStop(0, 'rgba(230,165,74,' + (.06 * k) + ')'); glow.addColorStop(1, 'rgba(230,165,74,0)'); x.fillStyle = glow; x.fillRect(0, 0, w, hh);
+  const curve = pts => { x.beginPath(); let on = false; for (const q of pts) { const p = proj(q[0], q[1]); if (!p || p[2] < .1) { on = false; continue; } if (on) x.lineTo(p[0], p[1]); else { x.moveTo(p[0], p[1]); on = true; } } x.stroke(); };
+  const eq = []; for (let a = -180; a <= 180; a += 3) eq.push([a * D, 0]);
+  x.strokeStyle = rgba(acc, .26 * k); x.lineWidth = 1.1; curve(eq);
+  const edges = new Set();
+  for (const cc of FL.cards) if (cc.shell === 1) for (const e of [-.5, .5]) edges.add(Math.round(flWrap(cc.lon + e * ZSLOT) * 1e4) / 1e4);
+  x.strokeStyle = rgba(acc, .06 * k); x.lineWidth = .8;
+  for (const lon of edges) { const m = []; for (let a = -75; a <= 75; a += 3) m.push([lon, a * D]); curve(m); }
+  x.strokeStyle = rgba(acc, .16 * k); x.lineWidth = 1;
+  for (const cc of FL.cards) if (cc.shell === 1 && cc.col.length) {
+    let top = 0, bot = 0; for (const q of cc.col) { const l = flLat(q); if (l > top) top = l; if (l < bot) bot = l; }
+    const m = []; for (let a = bot; a < top; a += .03) m.push([cc.lon, a]); m.push([cc.lon, top]); curve(m);
+  }
+  x.font = '500 10px ' + FL.mono; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = rgba(acc, .5 * k + .15);
+  const marks = FL.marks.slice(); for (const cc of FL.cards) if (cc.more) marks.push({ lon: cc.lon, lat: cc.moreLat * FL.u, text: '+' + cc.more + ' more' });
+  for (const m of marks) { const p = proj(m.lon, m.lat); if (p && p[2] > .2) x.fillText(m.text, p[0], p[1]); }
+  x.textBaseline = 'alphabetic';
+  x.strokeStyle = 'rgba(230,165,74,' + (.45 * k + .15) + ')'; x.lineWidth = 1.2; x.beginPath(); x.arc(FL.cx, FL.cy, 7, 0, Math.PI * 2); x.stroke();
+}
+// settle on the card nearest the middle of sight
+function flSettle() {
+  if (!FL.on) return;
+  const g = flGaze(); let best = null, bc = -2;
+  for (const c of FL.cards) { if (c.shell === 2 && FL.u < .5) continue; const d = flDir(c.lon, flLat(c)), cz = d[0] * g[0] + d[1] * g[1] + d[2] * g[2]; if (cz > bc) { bc = cz; best = c; } }
+  if (best) flSettleTo(best);
+}
+// turn to face a card, the shortest way round, then stand on it
+function flSettleTo(c) {
+  if (!FL.on) return;
+  FL.gl = null; FL.vy = FL.vp = 0;
+  let ty = c.lon; while (ty - FL.yaw > Math.PI) ty -= 2 * Math.PI; while (ty - FL.yaw < -Math.PI) ty += 2 * Math.PI;
+  const tp = Math.max(-FL_PMAX, Math.min(FL_PMAX, flLat(c)));
+  const dist = Math.hypot((ty - FL.yaw) * Math.cos((tp + FL.pitch) / 2), tp - FL.pitch);
+  if (RM || dist < 1e-3) { FL.st = null; FL.yaw = ty; FL.pitch = tp; flFrame(); return flCommit(c); }
+  FL.st = { c, y0: FL.yaw, p0: FL.pitch, ty, tp, t0: performance.now(), dur: Math.min(560, 240 + 300 * dist) };
+  flKick();
+}
+// the card settled on becomes the point, as any move's rest makes it: the place, the link, the lanes in step
+function flCommit(c) {
+  const b = cur(); if (!b || !flHere() || b.name !== FL.b || FL.at === c.id) return;
+  FL.at = c.id;
+  zRemember(b, Z.S);
+  setPlace(b, c.path, null, 0);
+  Z.anim = Z.tw = Z.tg = null; Z.over = false;
+  Z.d = Z.goal = zRestOf(); Z.keep = true;
+  zSettle();
+  FL.acc = getComputedStyle(document.documentElement).getPropertyValue('--iris').trim() || FL.acc;   // Snazzy's accent follows the point
+}
+// let the sphere go: the ring stands round the point it settled on
+function flClose(quiet) {
+  if (!FL.on) return;
+  if (FL.raf) cancelAnimationFrame(FL.raf);
+  clearTimeout(FL.wt);
+  const el = FL.el, L = FL.layer, z = FL.z;
+  Object.assign(FL, { on: false, raf: 0, look: null, st: null, gl: null, unf: 0, el: null, world: null, cv: null, head: null, cards: [], byId: new Map(), marks: [], focus: null, layer: null, z: null });
+  flPressCancel(); stage.classList.remove('zpress');
+  if (L) L.classList.remove('freelook');
+  if (el) {
+    if (RM || quiet || !el.animate) el.remove();
+    else { el.style.pointerEvents = 'none'; el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out', fill: 'forwards' }).onfinish = () => el.remove(); setTimeout(() => { if (el.isConnected) el.remove(); }, 700); }
+  }
+  if (quiet || z !== Z) return;
+  const b = cur(); if (b && Z.layer && Z.layer.isConnected) { zFrame(); zSettle(true); }
+}
+// a tap on a card turns you to it; on the one you stand on, it lets the sphere go
+function flTap(id) {
+  if (!FL.on || performance.now() < swallowClick) return;
+  const c = FL.byId.get(id); if (!c) return;
+  if (FL.at === c.id && flOff(c) < .05) return flClose();
+  flSettleTo(c);
+}
+// the arrows, and ‹ › on the rail: the next card that way, round the ring or up and down a column
+function flStep(dx, dy) {
+  if (!FL.on) return;
+  const y = FL.st ? FL.st.ty : FL.yaw, p = FL.st ? FL.st.tp : FL.pitch, here = FL.st ? FL.st.c : FL.focus;
+  const want = flDir(y + dx * ZSLOT / Math.max(.3, Math.cos(p)), p + dy * FL.stepLat * 1.2);
+  let best = null, bd = -2;
+  for (const c of FL.cards) {
+    if (c === here) continue;
+    const dl = flWrap(c.lon - y), dp = flLat(c) - p;
+    if (dx && (Math.sign(dl) !== dx || Math.abs(dl) < .05)) continue;
+    if (dy && (Math.sign(dp) !== dy || Math.abs(dp) < .03 || Math.abs(dl) > ZSLOT * .5)) continue;   // up and down stay in the column
+    const d = flDir(c.lon, flLat(c)), dot = d[0] * want[0] + d[1] * want[1] + d[2] * want[2];
+    if (dot > bd) { bd = dot; best = c; }
+  }
+  if (!best) return toast(dy > 0 ? 'Nothing above this' : dy < 0 ? 'Nothing below this' : dx < 0 ? 'Nothing before this' : 'Nothing after this');
+  flSettleTo(best);
+}
+// the long press: held still, a press grabs the sphere; a move, a second finger or letting go first leaves it be
+function flPressStart(e) {
+  flPressCancel();
+  FL.press = { id: e.pointerId, t: setTimeout(flPressFire, FL_PRESS), until: performance.now() + 2400 };
+  if (e.pointerType !== 'mouse') stage.classList.add('zpress');    // no words chosen, no callout, while a finger holds
+}
+function flPressCancel() { if (!FL.press) return; clearTimeout(FL.press.t); FL.press = null; if (!FL.look) stage.classList.remove('zpress'); }
+function flPressFire() {
+  const P = FL.press; if (!P) return;
+  const p = ZP.get(P.id);
+  if (!p || p.axis || ZP.size !== 1 || !zActive() || FL.on || Z.over) return flPressCancel();
+  // a move still under way (a glide, a turn) finishes first, while the press holds
+  if (zMoving()) { if (performance.now() < P.until) { P.t = setTimeout(flPressFire, 90); return; } return flPressCancel(); }
+  FL.press = null; ZP.clear();
+  if (!flOpen()) { stage.classList.remove('zpress'); return; }
+  FL.look = { id: P.id, x: p.x, y: p.y, x0: p.x, y0: p.y, t: performance.now(), moved: false, caught: false, pressed: true };
+  if (navigator.vibrate) { try { navigator.vibrate(12); } catch (er) { /* no buzz here */ } }
+}
+// while it is open: one finger, or the mouse, turns the sphere the way it drags
+function flDown(e) {
+  if (FL.look) return;                              // one hand looks; a second finger is let be
+  const caught = !!(FL.gl || FL.st);
+  FL.gl = null; FL.st = null; FL.vy = FL.vp = 0;     // a press catches the glide, or the settling
+  FL.look = { id: e.pointerId, x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t: performance.now(), moved: false, caught, pressed: false };
+}
+function flMove(e) {
+  const G = FL.look; if (!G || G.id !== e.pointerId) return;
+  if (!G.moved) {
+    if (Math.hypot(e.clientX - G.x0, e.clientY - G.y0) < 5) return;
+    G.moved = true; if (FL.el) FL.el.classList.add('grabbing');
+    try { stage.setPointerCapture(e.pointerId); } catch (er) { /* the pointer is gone */ }
+    try { const sel = getSelection(); if (sel && !sel.isCollapsed) sel.removeAllRanges(); } catch (er) { /* nothing selected */ }
+  }
+  e.preventDefault();
+  const now = performance.now(), dx = e.clientX - G.x, dy = e.clientY - G.y; G.x = e.clientX; G.y = e.clientY;
+  // the sphere follows the hand: the point under it stays under it, near the middle of sight
+  const dyaw = -dx / (FL.f * Math.max(.3, Math.cos(FL.pitch))), dpit = dy / FL.f;
+  FL.yaw += dyaw; FL.pitch = Math.max(-FL_PMAX, Math.min(FL_PMAX, FL.pitch + dpit));
+  const dt = Math.max(8, now - G.t); G.t = now;
+  FL.vy = FL.vy * .5 + .5 * dyaw / dt; FL.vp = FL.vp * .5 + .5 * dpit / dt;
+  flKick();
+}
+function flUp(e) {
+  const G = FL.look; if (!G || G.id !== e.pointerId) return;
+  FL.look = null; stage.classList.remove('zpress');
+  if (FL.el) FL.el.classList.remove('grabbing');
+  if (G.moved || G.pressed) swallowClick = performance.now() + 350;
+  if (!G.moved) { if (G.caught) flSettle(); return; }   // a tap: the card under it says what it wants (flTap)
+  if (performance.now() - G.t > 90) FL.vy = FL.vp = 0;  // held still before letting go: nothing to carry on
+  if (Z.mode === 'glide' && !RM && Math.hypot(FL.vy * Math.cos(FL.pitch), FL.vp) > .0005) { FL.gl = { t: performance.now() }; flKick(); }
+  else flSettle();
+}
+function flCancel(e) { const G = FL.look; if (!G || G.id !== e.pointerId) return; FL.look = null; stage.classList.remove('zpress'); if (FL.el) FL.el.classList.remove('grabbing'); flSettle(); }
+// the wheel looks round: up and down, and sideways where it can; it settles once it falls quiet
+function flWheel(e) {
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.ctrlKey) return;                                 // a pinch: the sphere does not zoom yet
+  const mul = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1;
+  FL.gl = null; FL.st = null;
+  FL.yaw += e.deltaX * mul / (FL.f * Math.max(.3, Math.cos(FL.pitch)));
+  FL.pitch = Math.max(-FL_PMAX, Math.min(FL_PMAX, FL.pitch - e.deltaY * mul / FL.f));
+  flKick();
+  clearTimeout(FL.wt); FL.wt = setTimeout(flSettle, 170);
+}
+// keys while it is open: the arrows look, Esc, Enter, ~ or L let it go, − and + let it go and walk on
+function flKey(e) {
+  const k = e.key, a = document.activeElement, onBtn = a && a !== document.body && a.closest && a.closest('button, a, [role="button"]');
+  let f = null;
+  if (k === 'Escape' || k === '~' || k === '`' || k === 'l' || k === 'L' || (k === 'Enter' && !onBtn)) f = () => flClose();
+  else if (k === 'ArrowLeft' || k === 'ArrowRight') f = () => flStep(k === 'ArrowLeft' ? -1 : 1, 0);
+  else if (k === 'ArrowUp' || k === 'ArrowDown') f = () => flStep(0, k === 'ArrowUp' ? 1 : -1);
+  else if (k === 'PageDown' || k === '-' || k === '_') f = () => { flClose(); zIn(); };
+  else if (k === 'PageUp' || k === '+' || k === '=' || k === 'Backspace') f = () => { flClose(); zOut(); };
+  else if (k === 'Home' || k === 'End' || k === '[' || k === ']') { flClose(); return false; }   // let go; the key goes on as ever
+  if (!f) return false;
+  e.preventDefault(); e.stopImmediatePropagation(); f();
+  return true;
+}
+stage.addEventListener('contextmenu', e => { if (FL.press || FL.look) e.preventDefault(); });
+stage.addEventListener('selectstart', e => { if (FL.press || FL.look) e.preventDefault(); });
+window.addEventListener('blur', () => { flPressCancel(); if (FL.look) { FL.look = null; stage.classList.remove('zpress'); flSettle(); } });
+
 /* ---------------- Magic Eye input (weft, eye.3, 16 Nov 2026; inside the ring, eye.7) ----------------
  * Every gesture means one of the moves: in (−), out (+), or round the ring. Read here in the capture phase, and only
  * while the Magic Eye is looking, so the handlers above stay as they are for the Iris. The ring turns on its own axis
@@ -3232,6 +3613,7 @@ function zTurnEnd(T, lead) {
 }
 function zWheel(e) {
   if (!zActive()) return;
+  if (FL.on) return flWheel(e);   // weft (eye.9): the wheel looks round the sphere
   // weft (eye.8): the wheel over another lane takes it in hand
   const band = e.target.closest && e.target.closest('.zlane');
   if (band && band._lane && band._lane !== lanes[laneAt]) laneTake(lanes.indexOf(band._lane));
@@ -3274,6 +3656,8 @@ function zPinchDist() { const v = Array.from(ZP.values()); return v.length < 2 ?
 function zDown(e) {
   if (!zActive()) return;
   if (e.pointerType === 'mouse' && e.button !== 0) return;
+  // weft (eye.9): while the sphere is open every press is its own, but a control's
+  if (FL.on) { if (e.target.closest && e.target.closest('button, a, input, textarea, select, .rail, .ref')) return; return flDown(e); }
   // weft (eye.8): a touch on another lane takes it in hand; a tap there only takes it, a drag goes on to move it
   const band = e.target.closest && e.target.closest('.zlane');
   if (band && band._lane && band._lane !== lanes[laneAt] && !e.target.closest('.zlane-tools')) { laneTake(lanes.indexOf(band._lane)); swallowClick = performance.now() + 420; }
@@ -3281,14 +3665,17 @@ function zDown(e) {
   // link, a field or something that scrolls keeps its own pointer, and a double or triple click still selects words
   if (e.target.closest && e.target.closest('button, a, input, textarea, select, .doors, .rail, .doc, .s-big .b, .choices, .ref')) return;
   ZP.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), axis: '', mouse: e.pointerType === 'mouse' });
+  if (ZP.size === 1 && !Z.over) flPressStart(e); else flPressCancel();   // weft (eye.9): a press held still grabs the sphere
   if (ZP.size === 2) {
     for (const q of ZP.values()) if (q.T) { zTurnEnd(q.T, 0); q.T = null; }
     zGrab(); const dd = zPinchDist(); if (dd > 10) { Z.pg = { dist0: dd, d0: Z.d, base: Z.d, acc: 0 }; ZP.forEach(p => { p.axis = 'pinch'; }); }
   }
 }
 function zMove(e) {
+  if (FL.on) return flMove(e);   // weft (eye.9)
   const p = ZP.get(e.pointerId); if (!p || !zActive()) return;
   p.x = e.clientX; p.y = e.clientY;
+  if (FL.press && FL.press.id === e.pointerId && Math.hypot(p.x - p.x0, p.y - p.y0) > 8) flPressCancel();   // it moved: a gesture, not a hold
   if (Z.pg) { e.preventDefault(); const dd = zPinchDist(); if (dd > 10) { Z.pg.acc = Math.log(dd / Z.pg.dist0) / Math.log(ZK); if (!RM) zDrive(Z.pg, Z.pg.base + Z.pg.acc); } return; }
   if (ZP.size !== 1) return;
   const dx = p.x - p.x0, dy = p.y - p.y0;
@@ -3308,6 +3695,9 @@ function zMove(e) {
   p.v = (p.v || 0) * .6 + .4 * (-along - (p.la || 0)) / Math.max(1, now - (p.lt || p.t0)); p.la = -along; p.lt = now;
 }
 function zUp(e) {
+  if (FL.press && FL.press.id === e.pointerId) flPressCancel();   // weft (eye.9): let go before the sphere was grabbed
+  // weft (eye.9): the sphere's own gesture ends here, and nothing else reads it
+  if (FL.on || (FL.look && FL.look.id === e.pointerId)) { e.stopImmediatePropagation(); g = null; stage.classList.remove('dragging'); ZP.delete(e.pointerId); return flUp(e); }
   if (!zActive()) { ZP.delete(e.pointerId); return; }
   const p = ZP.get(e.pointerId);
   e.stopImmediatePropagation();                       // the Iris's swipe never reads an eye gesture
@@ -3329,6 +3719,8 @@ function zUp(e) {
   zSnap(p.G.d0, Z.d, Math.sign(fling) === Math.sign(Z.d - p.G.d0) ? Math.abs(fling) : 0);
 }
 function zCancel(e) {
+  if (FL.press && FL.press.id === e.pointerId) flPressCancel();   // weft (eye.9)
+  if (FL.look && FL.look.id === e.pointerId) { g = null; stage.classList.remove('dragging'); ZP.delete(e.pointerId); return flCancel(e); }
   const p = ZP.get(e.pointerId);
   if (zActive()) { g = null; stage.classList.remove('dragging'); Z.layer.classList.remove('zdrag'); }
   ZP.delete(e.pointerId);
@@ -3339,6 +3731,7 @@ function zCancel(e) {
 function zKey(e) {
   if (!zActive() || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.target.closest && e.target.closest('input, textarea, select')) return;
+  if (FL.on && flKey(e)) return;   // weft (eye.9): the sphere's own keys
   const k = e.key, a = document.activeElement, onBtn = a && a !== document.body && a.closest && a.closest('button, a, [role="button"]');
   const across = state.ringAxis !== 'y';
   let f = null;
@@ -3352,6 +3745,7 @@ function zKey(e) {
   else if (k === 'End') f = () => { Z.keep = false; zTo(Z.S.length); };
   else if (k === 'Escape' && Z.over) f = zRing;
   else if ((k === '[' || k === ']') && stackOn()) f = () => laneStep(k === ']' ? 1 : -1);   // weft (eye.8): the lane before or after in hand
+  else if (k === 'l' || k === 'L') f = flOpen;   // weft (eye.9): look round, as a long press does
   if (!f) return;
   e.preventDefault(); e.stopImmediatePropagation(); f();
 }
@@ -3363,6 +3757,7 @@ stage.addEventListener('pointercancel', zCancel, true);
 document.addEventListener('keydown', zKey, true);
 window.addEventListener('resize', () => {
   if (!(state.axis === 'eye' && Z.layer && Z.layer.isConnected)) return;
+  if (FL.on) { flGeom(); flLayout(); flKick(); }   // weft (eye.9): the sphere drawn again at the screen's new size
   // weft (eye.8): every lane shown, each in its band; a screen turned narrow or wide enough for columns draws them again
   if (stackOn() && current && current.classList.contains('stacked') && current.classList.contains('rows') !== laneRows()) return render(null);
   if (current) laneLayout(current);
