@@ -8,6 +8,9 @@
  * the key hidden where this device already knows a name); a first message to paste, written for this
  * page, its family, its kind and the place the reader has reached in it; and /connect for the rest.
  * The message names ways:reader, the one reader's way every page hands over (keel's CHANGE at 1.18).
+ * Above the three, one button hands the page on in person: 'Someone beside you? Show this page as a
+ * code' draws the page's own address as a QR code a phone beside you can scan, dark on white in either
+ * theme, its library (/vendor/qrcode.js) fetched on the first press (David, 17 November 2026, thread 49).
  *
  * It reads one block, the family's law, to learn the kind (its 1 the mode, its 7 the phase), and
  * writes nothing anywhere. The door wears a look of its own in every page's light and dark, so a
@@ -205,6 +208,10 @@
     '.aid-msg{display:block;width:100%;min-height:118px;margin-top:6px;border-radius:10px;border:1px solid var(--aid-rule);background:var(--aid-bg);color:var(--aid-ink);' +
       'padding:10px;font:12.5px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}' +
     '.aid-row{margin:8px 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}' +
+    '.aid-hand{margin:0 0 14px}' +
+    '.aid-qr{margin-top:10px;display:grid;justify-items:center;gap:4px;text-align:center}' +
+    '.aid-qr-img{width:min(232px,62vw);background:#fff;border-radius:12px;padding:6px;box-shadow:0 0 0 1px var(--aid-rule)}' +
+    '.aid-qr-img svg{display:block;width:100%;height:auto}' +
     'html.aid-open{overflow:hidden}';
 
   var HTML =
@@ -213,6 +220,9 @@
     '<p class="aid-k">this page’s door</p>' +
     '<h2 class="aid-h" id="aid-h">' + DOOR_SVG + 'With your AI</h2>' +
     '<p class="aid-lede">Bring your own AI to this page: add the beach to it once, then paste a first message written for where you are. It opens over the page, so you keep your place.</p>' +
+    '<div class="aid-hand"><button type="button" class="aid-mini" data-hand aria-expanded="false" aria-controls="aid-qr">Someone beside you? Show this page as a code</button>' +
+      '<div class="aid-qr" id="aid-qr" hidden><div class="aid-qr-img" role="img" aria-label="A code that opens this page on another phone"></div>' +
+      '<p class="aid-small">Point a phone\u2019s camera at it. It opens <b class="aid-qr-url"></b> there, with this same door for their AI.</p></div></div>' +
     '<div class="aid-where"><p>You are at <b class="aid-at">the start</b>.</p><span class="aid-chips" role="group" aria-label="Start from another step"></span></div>' +
     '<ol class="aid-steps">' +
     '<li><h3><span class="aid-n">1</span>Add the beach to your AI</h3>' +
@@ -261,6 +271,7 @@
       if (c) return showConn(c.getAttribute('data-conn'));
       var cp = e.target.closest('[data-copy]');
       if (cp) return copy(cp.getAttribute('data-copy'), cp);
+      if (e.target.closest('[data-hand]')) return hand();
       if (e.target.closest('[data-copy-msg]')) return copy($('.aid-msg').value, null, $('.aid-copied'));
       var ch = e.target.closest('[data-at]');
       if (ch && ch.parentNode && ch.parentNode.classList.contains('aid-chips')) {
@@ -301,6 +312,37 @@
       ta.remove(); done(ok);
     }
   }
+  /* hand the page on in person: a code of the page's own address, for a phone beside you (David, 17 Nov 2026,
+     thread 49: 'a simple qr code I can flash them'). The library loads on the first press, never before. */
+  var qrLib = null;
+  function loadQr() {
+    if (typeof window.qrcode === 'function') return Promise.resolve();
+    if (!qrLib) qrLib = new Promise(function (ok, no) {
+      var sc = document.createElement('script');
+      sc.src = '/vendor/qrcode.js'; sc.async = true;
+      sc.onload = function () { typeof window.qrcode === 'function' ? ok() : no(); };
+      sc.onerror = no;
+      document.head.appendChild(sc);
+    });
+    return qrLib;
+  }
+  function hand(show) {
+    var btn = $('[data-hand]'), box = $('.aid-qr');
+    show = typeof show === 'boolean' ? show : box.hidden;
+    box.hidden = !show; btn.setAttribute('aria-expanded', String(show));
+    if (!show) return;
+    var url = 'https://' + pageUrl();
+    $('.aid-qr-url').textContent = url.replace(/^https:\/\//, '');
+    var img = $('.aid-qr-img');
+    if (img.getAttribute('data-for') === url && img.firstChild) return;
+    loadQr().then(function () {
+      var q = window.qrcode(0, 'M'); q.addData(url); q.make();
+      var svg = q.createSvgTag(4, 16), m = /width="(\d+)px"/.exec(svg) || /width="(\d+)"/.exec(svg);
+      if (m && svg.indexOf('viewBox') < 0) svg = svg.replace('<svg ', '<svg viewBox="0 0 ' + m[1] + ' ' + m[1] + '" ');
+      img.innerHTML = svg.replace(/ width="[^"]*"/, '').replace(/ height="[^"]*"/, '');
+      img.setAttribute('data-for', url);
+    }, function () { img.textContent = url; });
+  }
   function paint() {
     var w = $('.aid-where'), chips = $('.aid-chips'), steps = (state.marks && state.marks.steps) || [];
     w.hidden = !state.place;
@@ -326,6 +368,7 @@
     state.place = placeOf(state.marks, opts.at);
     state.kind = state.fam ? (kinds[state.fam.name] || state.fam.kind || '') : '';
     showConn(state.me ? 'hidden' : 'open');
+    hand(false);
     $('.aid-copied').textContent = '';
     back.hidden = false;
     back.classList.add('in');
