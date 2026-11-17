@@ -517,7 +517,7 @@
     return out;
   }
   function lawOf(law, name) {
-    var all = [], L = { room: '', page: '', accent: '', look: '', phase: '', provenance: '' };
+    var all = [], L = { room: '', page: '', accent: '', look: '', phase: '', phaseSay: '', provenance: '' };
     if (law && typeof law === 'object') for (var d = 1; d <= 9; d++) { var t = textOf(law[String(d)]); if (t) all.push([d, t]); }
     all.forEach(function (p) {
       var m;
@@ -525,12 +525,21 @@
       if (!L.page && (m = /\bpage:\s*(https?:\/\/\S+)/i.exec(p[1]))) L.page = m[1].replace(/[.,;)]+$/, '');
       if (!L.accent && (m = /\blook:\s*accent\s*(#[0-9a-f]{6})\b/i.exec(p[1]))) L.accent = m[1];
       if (!L.look && (m = /\blook:\s*([a-z][\w-]*)\s*$/i.exec(p[1])) && !/^(accent|page)$/i.test(m[1])) L.look = m[1];
-      if (!L.phase && (m = /^phase:\s*(proposal|project|complete|set aside|inquiry)\b/i.exec(p[1]))) L.phase = m[1].toLowerCase();
+      /* any word after 'phase:' is the family's kind: the form's own (proposal, project, complete, set aside, inquiry), or
+         another kind laid out on the form, a walk, a recipe, an explainer, the rest of its line the family's own account
+         of it (function:proposal 6, 17 Nov 2026) */
+      if (!L.phase && (m = /^phase:\s*(set aside|[a-z]+)\b\s*[—–:,-]?\s*([\s\S]*)$/i.exec(p[1]))) { L.phase = m[1].toLowerCase(); L.phaseSay = m[2].trim(); }
       if (p[0] === 9) L.provenance = p[1];
     });
     if (!L.room) L.room = name;
     return L;
   }
+  /* the form's own phases (function:proposal 6); any other word names another kind of family laid out on the form,
+     which the list draws among the others and its page names by that word (David, 16 Nov 2026: "can you have a
+     category for 'others' for now and show them together") */
+  var FORM_PHASES = { proposal: 1, project: 1, complete: 1, 'set aside': 1, inquiry: 1 };
+  function phaseKind(phase) { return phase && !FORM_PHASES[phase] ? phase : ''; }
+  function aKind(k) { return (/^[aeiou]/i.test(k) ? 'an ' : 'a ') + k; }
   /* ── THE PROPOSAL'S OWN PAGE, its snazzy view: where its law names it at 6 (function:proposal 4), else at its spine's root
      side-room 2 ('THE PAGE — …', as game-arcade and character-sheets keep theirs), else on its line in the list (as
      tronic-glass's stands): read from its blocks, so a new proposal with a page needs no deploy. Two addresses, each always
@@ -766,7 +775,7 @@
          name goes on to their arrangement, and the rest is said plainly (David, 27 Oct 2026: "the
          proposal/happyseaurchin is an abomination") */
       var listed = shelfOf(four[2]).filter(function (s) { return s.name === FAM; })[0];
-      if (!L.phase && !listed) return notOne();
+      if (!listed && (!L.phase || phaseKind(L.phase))) return notOne();   /* another kind is drawn here once it is listed */
       /* its snazzy page, named in the band and the foot: a reader goes there by choosing it, never sent */
       PAGE = snazzyAt(pageOf(L, SPINE, listed), !!listed);
       learnCase(JSON.stringify(SPINE).replace(/\\n/g, ' '));
@@ -776,7 +785,7 @@
       PHASE = L.phase || (STEPS.some(function (s) { return s.state; }) ? 'project' : 'proposal');
       /* an inquiry proposes nothing to build: its decisions are open questions (function:proposal 6), so the page
          says questions wherever it counts them (water-geometry, 15 Nov 2026) */
-      ASKED = PHASE === 'inquiry' ? 'question' : 'decision';
+      ASKED = PHASE === 'inquiry' ? 'question' : phaseKind(PHASE) ? 'point' : 'decision';   /* another kind's points decide nothing */
       paint();
       readMirrors(FAM).then(function (m) { MIRRORS = m.mirrors || {}; FOLD = m.fold; TOUCHED = m.touched || {}; paintAnswers(); landOnHash(); }, function () {
         document.querySelectorAll('.decide .answers').forEach(function (u) { u.innerHTML = '<li><span></span><span class="empty">The beach couldn’t be read just now.</span></li>'; });
@@ -817,7 +826,7 @@
       document.title = TITLE;
       var lede = sentences(cap(root.rest), 320), page = PAGE;
       var when = (/(\d{1,2} (?:January|February|March|April|May|June|July|August|September|October|November|December) 20\d\d)/.exec(L.provenance || textOf(SPINE['9'])) || [])[1] || '';
-      var label = PHASE === 'project' ? 'A project' : PHASE === 'complete' ? 'Complete' : PHASE === 'set aside' ? 'Set aside' : PHASE === 'inquiry' ? 'An inquiry' : 'A proposal';
+      var label = PHASE === 'project' ? 'A project' : PHASE === 'complete' ? 'Complete' : PHASE === 'set aside' ? 'Set aside' : PHASE === 'inquiry' ? 'An inquiry' : phaseKind(PHASE) ? cap(aKind(PHASE)) : 'A proposal';
       var asks = DECS.length ? (DECS.length === 1 ? 'the ' + asked(1) : 'the ' + count(DECS.length) + ' ' + asked(2)) : '';
       $('bandText').innerHTML = '<div class="eyebrow">' + label + (when ? ' · ' + esc(when) : '') + '</div>' +
         '<h1><a href="/proposal/' + esc(FAM) + '">' + esc(TITLE) + '</a></h1>' +
@@ -826,7 +835,8 @@
         '<div class="actions">' + (DECS.length ? '<a class="btn primary" href="#stands">See where it stands</a>' : '') +
           '<a class="btn line" href="https://mirror.onen.ai/?pool=' + encodeURIComponent(L.room) + '">Talk in the room</a>' +
           (page ? '<a class="btn line" href="' + esc(page) + '">Snazzy</a>' : '') + '</div>' +
-        (PHASE === 'inquiry' ? '<p class="phase"><b>An inquiry, not a proposal.</b> Nothing here is to be built: each step ends in an open question, and the answers say what is known, what is still open and what would settle it.</p>' :
+        (phaseKind(PHASE) ? '<p class="phase"><b>' + esc(cap(aKind(PHASE))) + (L.phaseSay ? '.</b> ' + rich(cap(L.phaseSay)) : ', not a proposal.</b>') + '</p>' :
+          PHASE === 'inquiry' ? '<p class="phase"><b>An inquiry, not a proposal.</b> Nothing here is to be built: each step ends in an open question, and the answers say what is known, what is still open and what would settle it.</p>' :
           PHASE === 'set aside' ? '<p class="phase"><b>Set aside.</b> The work now lives in its own blocks; this is the proposal as it last stood.</p>' :
           PHASE === 'complete' ? '<p class="phase"><b>Complete.</b> The work it proposed is done; this page keeps the record of how it was decided and built.</p>' : '');
       /* a project leads with its trail and its threads, and so does one complete (function:proposal 6) */
@@ -931,11 +941,11 @@
           return '<details class="fold"><summary>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</summary><div class="in">' +
             (r.rest && r.title ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + pointsHTML(r.points) + '</div></details>';
         }).join('') + '</div>' : '') +
-        (s.decision ? cardHTML(s.decision, PHASE === 'inquiry' ? 'The question' : '') : '') +
+        (s.decision ? cardHTML(s.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') : '') +
         open.map(function (r) {
           return '<div class="sideopen" data-at="' + esc(r.at) + '" id="' + esc(r.at) + '"><div class="addr">beside it, at <b>' + esc(r.at) + '</b></div><h3>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</h3>' +
             (r.rest ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + (r.points.length ? '<div class="more"><details class="fold"><summary>What to know</summary><div class="in">' + pointsHTML(r.points) + '</div></details></div>' : '') +
-            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : '') + '</div>';
+            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') + '</div>';
         }).join('') +
         '<div class="th-under" data-step="' + esc(s.addr) + '"></div>' +
       '</section>';
@@ -1037,8 +1047,8 @@
       });
       document.querySelectorAll('.decide .notme').forEach(function (b) { b.onclick = function () { ME = ''; store.del('render:who'); forgetOwn(); paintAnswers(); }; });
       var ats = DECS.map(function (d) { return d.at; }).join(', ');
-      var kind = PHASE === 'inquiry' ? 'inquiry' : 'proposal';
-      if ($('askLine')) $('askLine').value = 'Read the ' + kind + ' spine:' + FAM + ' on https://beach.happyseaurchin.com (its law is function:' + FAM + ') and help me answer its ' + (PHASE === 'inquiry' ? 'questions' : 'decision points') + ' (' + ats + ') under my own handle' +
+      var kind = PHASE === 'inquiry' ? 'inquiry' : phaseKind(PHASE) || 'proposal';
+      if ($('askLine')) $('askLine').value = 'Read the ' + kind + ' spine:' + FAM + ' on https://beach.happyseaurchin.com (its law is function:' + FAM + ') and help me answer its ' + (PHASE === 'inquiry' ? 'questions' : phaseKind(PHASE) ? 'points' : 'decision points') + ' (' + ats + ') under my own handle' +
         (ME ? ', ' + ME : '') + '. Each answer goes in my own mirror, ' + FAM + ':' + (ME || '<my handle>') + ', at the ' + ASKED + '’s address, opening with one of the words that ' + ASKED + ' ends with (GO, NOT YET or CHANGE unless it names its own), then a line in my own words.';
       if ($('foldLine')) $('foldLine').value = 'Sum up the answers to the ' + kind + ' spine:' + FAM + ' on https://beach.happyseaurchin.com. For each ' + ASKED + ', at ' + ats + ', call pscale_stream_engage with field ' + FAM + ', handle ' +
         (ME || '<my handle>') + ' and that address, and fold the answers it returns under the law that comes with them: who answered what, where they agree, where they differ, and what is still open. Keep each fold for everyone with keep=collective, then keep one fold of the whole ' + kind + ' the same way at address 1.';
@@ -1134,7 +1144,7 @@
   }
   /* a card's counts, each number keeping its word on a narrow card: '0 threads' never breaks between them */
   function countsOf(x, withDecisions) {
-    var asked = x.phase === 'inquiry' ? ' question' : ' decision';   /* an inquiry's decisions are open questions */
+    var asked = x.phase === 'inquiry' ? ' question' : phaseKind(x.phase) ? ' point' : ' decision';   /* an inquiry's decisions are open questions, another kind's points */
     return [x.steps + ' steps'].concat(withDecisions ? [x.decs + asked + (x.decs === 1 ? '' : 's')] : [],
       [x.answers + (x.answers === 1 ? ' answer' : ' answers') + (x.people ? ' from ' + x.people + (x.people === 1 ? ' person' : ' people') : ''),
        x.threads + (x.threads === 1 ? ' thread' : ' threads')]);
@@ -1223,11 +1233,12 @@
         '<p class="sub">Every one is drawn live from its own blocks. Any AI with the beach connected can set one up from the form alone.</p>' +
         '<div class="actions"><a class="btn primary" href="#shelf">See them</a>' + mine + '<a class="btn line" href="#make">Make one with your AI</a><a class="btn line" href="/explain?block=function:proposal">Read the form</a></div>';
       var sections = [];
-      /* the shelf in sections by where each proposal stands (David, 4 Nov 2026: "untouched (new) in a top section, and
-         live, and then completed below"): new while nobody has answered, being decided while its decisions are open, being
-         built once it is a project, complete once its keeper says so or it is set aside (function:proposal 6). 'Live' is
-         the two middle sections, split by the phase its law already gives. A card lands in its section once its blocks are
-         read, in the list's own order, and a section counts what it shows. */
+      /* the shelf in four sections (function:proposal 6; David, 16 Nov 2026: "if we split them up as not touched (the
+         first lot), with some responses and ready to be build (the second lot), and then the third is completed", and "a
+         category for 'others' for now"): not touched while nobody has answered; answered once anyone has, or once it is a
+         project, ready to build or being built; complete once its keeper says so or it is set aside; and others, every
+         family on the list whose phase names another kind, an inquiry, a walk, a recipe or an explainer. A card lands in
+         its section once its blocks are read, in the list's own order, and a section counts what it shows. */
       sections.push('<section id="shelf"><div class="addr">live from the beach · the list, at <b>proposals</b></div><h2>The proposals</h2>' +
         (shelf.length ? '<div id="shelfIn"></div>' : '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>') +
         '<p class="note">A crafted page wears a look of its own taken from what it proposes: its own palette and type, a drawing that moves at the top, an instrument for each step, and plain words for someone new to the beach. <a href="/explain?block=ways:proposal">The craft of making one</a>. The page drawn from its blocks needs no code at all, and exists the moment a spine and its law stand.</p></section>');
@@ -1247,19 +1258,23 @@
       $('main').innerHTML = sections.join('');
       $('makeLine').value = 'Read function:proposal on https://beach.happyseaurchin.com, then function:document and function:thread, and help me set up a proposal on the beach, following its MAKING ONE at 7. The topic: <what you want to propose>. Who decides: <names>. Tell me what you are about to make before you write anything, and write it under my own key.';
       $('copyMake').addEventListener('click', copier('makeLine', 'copiedMake'));
-      $('foot').innerHTML = '<p>The list is its own block on the beach, <a href="/explain?block=proposals">proposals</a>: a line for each proposal, added by its keeper when it is shared, and it grows as they come. Every card and every cord above is read live from that proposal’s own blocks. The form: <a href="/explain?block=function:proposal">function:proposal</a>, on <a href="/explain?block=function:document">the document form</a> and <a href="/explain?block=function:thread">the thread</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
+      $('foot').innerHTML = '<p>The list is its own block on the beach, <a href="/explain?block=proposals">proposals</a>: a line for each proposal, and for each inquiry, walk, recipe or explainer laid out on the same form, added by its keeper when it is shared, and it grows as they come. Every card and every cord above is read live from that proposal’s own blocks. The form: <a href="/explain?block=function:proposal">function:proposal</a>, on <a href="/explain?block=function:document">the document form</a> and <a href="/explain?block=function:thread">the thread</a>.</p><p id="create-your-own"><a href="/">happyseaurchin.com</a></p>';
       if (shelf.length) shelfInto($('shelfIn'), shelf, {
         groups: [
-          { g: 'new', h: 'New', say: 'Nobody has answered yet.' },
-          { g: 'deciding', h: 'Being decided', say: 'Its decisions are open, and answers are coming in.' },
-          { g: 'building', h: 'Being built', say: 'Its decisions stand and the work is under way; lit bars on a cord are its step’s state.' },
+          { g: 'new', h: 'Not touched', say: 'Nobody has answered yet.' },
+          { g: 'answered', h: 'Answered', say: 'Answers are in: ready to build, or being built; lit bars on a cord are its step’s state.' },
           { g: 'done', h: 'Complete', say: 'Done, or set aside once its work moved into blocks of its own.',
-            none: 'None yet. A keeper marks theirs complete with one line in its law: <code>phase: complete</code>.' }
+            none: 'None yet. A keeper marks theirs complete with one line in its law: <code>phase: complete</code>.' },
+          { g: 'others', h: 'Others', say: 'Laid out on the same form, with nothing to build: inquiries, walks, recipes and explainers, each card saying which.' }
         ],
-        groupOf: function (x) { return x.phase === 'complete' || x.phase === 'set aside' ? 'done' : x.phase === 'project' ? 'building' : x.answers ? 'deciding' : 'new'; },
-        /* the section says the phase, so a card says it only where its section holds two: complete, or set aside; and an
-           inquiry says it is one wherever it stands, since it proposes nothing to build */
-        statOf: function (x, g) { return (g === 'done' ? [x.phase] : x.phase === 'inquiry' ? ['an inquiry'] : []).concat(countsOf(x, true)).join(' · ') + latestOf(x); }
+        groupOf: function (x) {
+          return x.phase === 'complete' || x.phase === 'set aside' ? 'done' : x.phase === 'inquiry' || phaseKind(x.phase) ? 'others' : x.answers || x.phase === 'project' ? 'answered' : 'new';
+        },
+        /* the section says the phase, so a card says it only where its section holds more than one: a project among the
+           answered, complete or set aside, and the kind of each of the others */
+        statOf: function (x, g) {
+          return (g === 'done' ? [x.phase] : g === 'others' ? [aKind(x.phase)] : x.phase === 'project' ? ['a project'] : []).concat(countsOf(x, true)).join(' · ') + latestOf(x);
+        }
       });
     }, function () {
       $('bandText').innerHTML = '<div class="eyebrow">Proposals</div><h1>Proposals</h1><p class="lede">The beach couldn’t be read just now. Try again in a moment.</p>';
@@ -1321,7 +1336,7 @@
           ],
           groupOf: function (x) { return x.phase === 'complete' || x.phase === 'set aside' || !x.decs || x.mine >= x.decs ? 'done' : x.mine ? 'partly' : 'todo'; },
           statOf: function (x) {
-            return (x.phase === 'complete' || x.phase === 'set aside' ? [x.phase] : x.phase === 'inquiry' ? ['an inquiry'] : [])
+            return (x.phase === 'complete' || x.phase === 'set aside' ? [x.phase] : x.phase === 'inquiry' || phaseKind(x.phase) ? [aKind(x.phase)] : [])
               .concat([x.decs ? x.mine + ' of ' + x.decs + ' answered' : 'no decisions'], countsOf(x, false)).join(' · ') + latestOf(x);
           }
         });
