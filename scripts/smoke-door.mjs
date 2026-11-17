@@ -8,7 +8,8 @@
  *   - the corner button stands, or stands aside where the page has a door of its own;
  *   - nothing covers it;
  *   - a tap opens the sheet over the page, its first message naming the family, ways:reader
- *     and, where the page marks its parts, the place reached;
+ *     and, where the page marks its parts, the place reached (or, where the page writes its own
+ *     first message through window.siteDoorMessage, that message as it is);
  *   - its 'Someone beside you?' button opens theme.js's code card (siteHand) over it, the code
  *     naming the page's own address; Escape closes the card back to the button, then the door;
  *   - Escape closes it and gives focus back to the button;
@@ -205,10 +206,16 @@ for (const view of VIEWS) {
         const back = document.querySelector('.aid-back'), msg = back.querySelector('.aid-msg').value;
         const where = back.querySelector('.aid-where');
         const r = back.querySelector('.aid-sheet').getBoundingClientRect();
-        return { msg, at: where.hidden ? '' : back.querySelector('.aid-at').textContent, inView: r.top >= -1 && r.bottom <= window.innerHeight + 1, family: (window.siteDoorFamily() || {}).name };
+        const own = typeof window.siteDoorMessage === 'function' ? String(window.siteDoorMessage({}) || '') : '';
+        return { msg, own, at: where.hidden ? '' : back.querySelector('.aid-at').textContent, inView: r.top >= -1 && r.bottom <= window.innerHeight + 1, family: (window.siteDoorFamily() || {}).name };
       });
-      if (!sheet.family || !sheet.msg.includes(sheet.family)) probs.push('the message does not name the family');
-      if (!/ways:(reader|recipe)/.test(sheet.msg)) probs.push('the message names no way');
+      if (sheet.own) {
+        /* a page that writes its own first message (window.siteDoorMessage, /mind-meld's one line) is handed it as it is */
+        if (sheet.msg !== sheet.own) probs.push('the message is not the page\'s own');
+      } else {
+        if (!sheet.family || !sheet.msg.includes(sheet.family)) probs.push('the message does not name the family');
+        if (!/ways:(reader|recipe)/.test(sheet.msg)) probs.push('the message names no way');
+      }
       if (!sheet.inView) probs.push('the sheet runs off the screen');
       if (SHOTS) await page.screenshot({ path: join(SHOTS, (path.replace(/\//g, '_') || 'root') + '-' + view.name + '.png') });
       /* the code that hands the page on: a card over the door, naming the page's own address */

@@ -145,6 +145,10 @@
     return host + location.pathname.replace(/\.html$/, '').replace(/\/+$/, '');
   }
   function message(fam, kind, place, me) {
+    /* a page whose first message is a line of its own hands it over here (/mind-meld: the one line its walk is) */
+    if (typeof window.siteDoorMessage === 'function') {
+      try { var own = window.siteDoorMessage({ family: fam ? fam.name : '', kind: kind, place: place, me: me }); if (own) return String(own); } catch (e) {}
+    }
     var url = pageUrl();
     if (!fam) {
       return "I'm on " + url + ', a page of the beach at ' + BEACH.replace(/^https?:\/\//, '') +
@@ -314,6 +318,10 @@
     state.me = who();
     state.marks = marked();
     state.place = placeOf(state.marks, opts.at);
+    /* a page that shows one step at a time says where the reader is itself (window.siteDoorPlace) */
+    if (typeof window.siteDoorPlace === 'function') {
+      try { var said = window.siteDoorPlace(); state.place = said ? { addr: '', step: '', said: String(said) } : null; } catch (e) {}
+    }
     state.kind = state.fam ? (kinds[state.fam.name] || state.fam.kind || '') : '';
     showConn('open');   /* the open one first, always: it is easier (David, 17 Nov 2026) */
     $('.aid-copied').textContent = '';
