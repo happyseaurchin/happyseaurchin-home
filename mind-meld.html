@@ -725,6 +725,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
 <script src="/threads.js"></script>
 <script>
 (function () {
+  var WITH = window.MELD_WITH || 'happyseaurchin', WHO = window.MELD_WHO || 'David';   /* who the reader melds with (the walk's script) */
   'use strict';
   /* ── the beach behind the page: each step's point takes an answer into its answerer's own block of answers,
      mind-meld:<handle>, at the point's address on spine:mind-meld, and reads everyone's back. A whole system, a
@@ -741,7 +742,15 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
   }
   var FAM = 'mind-meld';
   var ROOM = 'pool:mind-meld';
-  var DAVID = 'systemic-kernel:happyseaurchin';
+  /* who the reader melds with: David, unless the page was handed on with ?with=<handle>, as the door's code is for
+     whoever shows it (David, 17 November 2026, thread 49: 'if someone meets Matthew … their code is unique to him') */
+  var WITH = (function () { var m = /[?&]with=([A-Za-z0-9_-]{1,32})(?:[&#]|$)/.exec(location.search); return m ? m[1] : 'happyseaurchin'; })();
+  var WHO = WITH === 'happyseaurchin' ? 'David' : WITH;
+  window.MELD_WITH = WITH; window.MELD_WHO = WHO;
+  var DAVID = 'systemic-kernel:' + WITH;
+  /* the code the door shows carries the handle of whoever shows it (theme.js siteHand) */
+  window.siteHandUrl = function (h) { h = String(h || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32); return 'https://happyseaurchin.com/mind-meld' + (h && h !== 'happyseaurchin' ? '?with=' + h : ''); };
+  window.siteHandAsk = { label: 'They meld with', empty: 'With no name here, it invites them to meld with David.' };
   var BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
   var DECISIONS = ['1.8', '1.18', '1.118', '1.1118', '1.11118', '1.111118'];
   /* each word an answer may open with, and how it is counted: one of its own words goes ahead with the choice it
@@ -764,7 +773,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
   var HAND_WHOLE = 'Read https://beach.happyseaurchin.com/.well-known/pscale-beach?block=function:systemic-kernel and follow its 4.1 with me: find or write my whole system as text, asking me what you need to know.';
   var HAND_MIRROR = 'Read https://beach.happyseaurchin.com/.well-known/pscale-beach?block=function:systemic-kernel and follow its 4.2 with me: walk the kernel\'s nine regions and write my mirror as text, asking me at each what I don\'t know, never writing it for me.';
   var HAND_READING = 'Read https://beach.happyseaurchin.com/.well-known/pscale-beach?block=meld and follow its 2 to 5 for me (<your name>) and <their name>.';
-  var SAY = 'Walk the block meld at https://beach.happyseaurchin.com with me (<your name>) and happyseaurchin.';
+  var SAY = 'Walk the block meld at https://beach.happyseaurchin.com with me (<your name>) and ' + WITH + '.';
   var WORDS = {};
   document.querySelectorAll('.decide').forEach(function (c) { WORDS[c.getAttribute('data-at')] = c.getAttribute('data-words').split(','); });
   var MIRRORS = {}, FOLD = null, READ = false;
@@ -773,6 +782,30 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('span'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  /* handed on by someone else (?with=): say whose meld this is, and draw their side where the walk draws David's */
+  if (WITH !== 'happyseaurchin') {
+    var main0 = document.querySelector('main.wrap');
+    if (main0) {
+      var wn = document.createElement('p');
+      wn.className = 'note withnote';
+      wn.style.cssText = 'margin:18px 0 0;padding:12px 14px;border-radius:12px;border:1px solid currentColor';
+      wn.innerHTML = '<b>' + esc(WITH) + '</b> handed you this walk, so your meld is with them. Where it speaks of David, read ' + esc(WITH) + ': the line to give your AI already names them.';
+      main0.insertBefore(wn, main0.firstChild);
+    }
+    [].forEach.call(document.querySelectorAll('[data-sp="1.11113"]'), function (el) {
+      var part = el.getAttribute('data-part');
+      el.removeAttribute('data-sp');   /* the walk's own words here are David's side; this reader's other side is WITH */
+      if (part === 'title') el.textContent = WITH + '’s side';
+      else if (part === 'body') el.textContent = WITH + '’s whole system lives wherever they keep it, and their mirror of the kernel, systemic-kernel:' + WITH + ', points into it. Until their mirror stands, your AI writes your whole system and your mirror, and the meld with them runs once theirs is there.';
+    });
+    [].forEach.call(document.querySelectorAll('.words li span, figcaption'), function (el) {
+      var tw = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), n;   /* text nodes only, so a live caption inside keeps its place */
+      while ((n = tw.nextNode())) {
+        if (n.nodeValue.indexOf('David’s') < 0) continue;
+        n.nodeValue = n.nodeValue.split('David’s side').join(WITH + '’s side').split('Theirs is David’s once his mirror stands').join('Theirs is ' + WITH + '’s once their mirror stands').split('it is written with him in a session still to come').join('it is not written yet');
+      }
+    });
+  }
   var store = {
     get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
     set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
@@ -908,7 +941,12 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
     return m ? text.slice(i, m.index + 1) : '';
   }
   /* the reader's name, where the page knows it, in place of '<your name>' */
-  function fillMe(t) { return ME ? String(t || '').split('<your name>').join(ME) : String(t || ''); }
+  function fillMe(t) {
+    var x = String(t || '');
+    if (WITH !== 'happyseaurchin') x = x.split(' and happyseaurchin.').join(' and ' + WITH + '.');
+    x = x.split('<their name>').join(WITH);
+    return ME ? x.split('<your name>').join(ME) : x;
+  }
   function paintSpine(sp) {
     if (!sp || typeof sp !== 'object') return;
     walkTexts(sp);
@@ -1128,7 +1166,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
         if (!r || !r.ok) { say(r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
         ME = clean(r.name || me); if (ME) store.set('render:who', ME); meChanged();
         clear(); card.setAttribute('data-filled', line);
-        say('ok', 'Answered. It stands under your name on the beach, where David’s side finds it.');
+        say('ok', 'Answered. It stands under your name on the beach, where ' + WHO + '’s side finds it.');
         return readMirrors().then(paintAnswers);
       }, function (e) { say('err', 'Couldn’t reach the beach: ' + e.message); }).then(function () { send.disabled = false; });
     });
@@ -1229,8 +1267,8 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
     var m = slotsOf(b);
     MELD.his = m.n ? m.slots : null; MELD.hisN = m.n;
     if (m.n) {
-      if ($('legendN')) $('legendN').textContent = 'David’s mirror, read from the beach';
-      if ($('capN')) $('capN').textContent = 'Theirs is David’s mirror, read from the beach: ' + m.n + ' of its 36 slots hold a line.';
+      if ($('legendN')) $('legendN').textContent = WHO + '’s mirror, read from the beach';
+      if ($('capN')) $('capN').textContent = 'Theirs is ' + WHO + '’s mirror, read from the beach: ' + m.n + ' of its 36 slots hold a line.';
     }
     redraw();
   }, function () {});
@@ -1421,7 +1459,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
   function yoursSlots() { return yoursLive() ? M().yours : SKETCH_YOURS; }
   function theirsSlots() { return theirsLive() ? M().his : SKETCH_THEIRS; }
   function yoursLabel() { return yoursLive() ? 'yours · ' + filled(yoursSlots()) + ' of 36' : 'yours · a sketch'; }
-  function theirsLabel() { return theirsLive() ? 'David’s · ' + filled(theirsSlots()) + ' of 36' : 'theirs · a sketch'; }
+  function theirsLabel() { return theirsLive() ? WHO + '’s · ' + filled(theirsSlots()) + ' of 36' : 'theirs · a sketch'; }
   /* the turn of your sheet's rays that lays the pattern where SEE meets DO in each region, and the region where both
      see nearest the angle wanted: a petal sits where m(phi − a) ≡ n·phi (mod 2π), so a = ((m − n)·phi − 2πk) / m, with
      k keeping a small; the petals are a region apart, so one sits in every region */
@@ -1587,7 +1625,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
     x.restore();
     if (front > 0) { x.save(); x.translate(hx, cy); x.scale(front, 1); regionFrame(x, 0, 0, r, 0, 0.4); x.restore(); }
     if (ink > 0) regionFrame(x, yx, cy, r, yrot, 0.4 * Math.min(1, ink * 4));
-    sheetBack(x, hx, cy, s, backSc, theirsLive() ? 'David’s' : 'Theirs');
+    sheetBack(x, hx, cy, s, backSc, theirsLive() ? WHO + '’s' : 'Theirs');
     if (slide < 0.99) {
       var la = 1 - slide;
       text(x, yoursLabel(), yx, cy + s / 2 + 14, { align: 'center', size: L.narrow ? 10 : 11, alpha: la, color: INK, weight: 600 });
@@ -1647,7 +1685,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
     if (agenda > 0) stamp(x, L.stamp.x, L.stamp.y, ['AGENDA', 'NEITHER KNOWS, FIRST', 'LISTEN · OFFER', 'DIFFERENCES', 'EMERGENCES'], agenda, -0.07, L.narrow ? 7.5 : 10);
     if (t >= 14.5 || thread > 0) {
       var D = L.door, from = { x: L.narrow ? L.cx + s * 0.3 : L.cx + s / 2 + 6, y: L.narrow ? cy - s / 2 - 4 : cy + 4 }, to = { x: D.x - D.w / 2 - 6, y: L.narrow ? D.y + 8 : D.y + 4 };
-      var who = theirsLive() ? ['David’s', 'parlour'] : ['their', 'room'];
+      var who = theirsLive() ? (WITH === 'happyseaurchin' ? ['David’s', 'parlour'] : [WHO + '’s', 'room']) : ['their', 'room'];
       door(x, D.x, D.y, D.w, D.h, back > 0 ? 1 - back * 0.4 : thread);
       text(x, L.narrow ? who.join(' ') : who[0], D.x, D.y + D.h / 2 + 12, { align: L.narrow ? 'right' : 'center', size: L.narrow ? 9 : 10.5, weight: 600 });
       if (!L.narrow) text(x, who[1], D.x, D.y + D.h / 2 + 25, { align: 'center', size: 10.5, weight: 600 });
@@ -1765,7 +1803,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
       var A = yoursSlots(), Bs = theirsSlots();
       function tell(sl) { return filled(sl) + ' of its 36 slots hold a line, ' + said(sl, 2) + ' of them saying what its person doesn’t know'; }
       if (mode === 'yours') return (yoursLive() ? 'Your own mirror, from the beach: ' : 'Yours alone, a sketch: ') + tell(A) + '. One sheet alone has nothing to beat against.';
-      if (mode === 'his') return (theirsLive() ? 'David’s mirror alone, from the beach: ' : 'Theirs alone, a sketch standing in for David’s, whose mirror is written with him in a session still to come: ') + tell(Bs) + '.';
+      if (mode === 'his') return (theirsLive() ? WHO + '’s mirror alone, from the beach: ' : 'Theirs alone, a sketch standing in for ' + WHO + '’s, whose mirror ' + (WITH === 'happyseaurchin' ? 'is written with him in a session still to come' : 'is not written yet') + ': ') + tell(Bs) + '.';
       var nb = kindsOf(A, Bs).filter(function (k) { return k.both; }).length;
       return nb ? 'Laid together: a pattern appears in the ' + inWords(nb) + ' regions where both see, in neither sheet. Turn one sheet a hair and it swings round: it belongs to the pair.' :
         'Laid together: there is no region where both see, so nothing appears between them yet. What one sees, the other may listen to.';
@@ -1945,7 +1983,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
       mirrorSheet(x, yx, cy, r, A, n, myRot, C.cyan, ink, { phase: myPh, guess: guess });
       x.restore();
       if (ink > 0) regionFrame(x, yx, cy, r, myRot, 0.35);
-      sheetBack(x, hx, cy, s, backSc, theirsLive() ? 'David’s' : 'Theirs');
+      sheetBack(x, hx, cy, s, backSc, theirsLive() ? WHO + '’s' : 'Theirs');
       if (first && slide < 1 && ink > 0 && ink < 1) {
         x.save(); x.globalAlpha = 0.5 * (1 - slide); x.strokeStyle = INK; x.setLineDash([3, 4]); x.lineWidth = 1;
         x.beginPath(); x.moveTo(hx - s * 0.4, cy - s * 0.28); x.lineTo(yx + s * 0.4, cy - s * 0.28); x.stroke(); x.restore();
@@ -1954,7 +1992,7 @@ footer details.fold > summary { font-weight: 600; color: var(--ink); padding: 6p
       if (drafted && guess > 0 && slide < 1) text(x, 'drafted by an AI', yx, cy - s / 2 - 10, { align: 'center', size: 10, weight: 600, color: '#5d6676', alpha: guess * (1 - slide) });
       if (slide < 0.99) {
         text(x, first ? 'yours, after reading theirs' : 'yours, first', yx, cy + s / 2 + 13, { align: 'center', size: 10, weight: 600, alpha: 1 - slide });
-        text(x, theirsLive() ? 'David’s' : 'theirs', hx, cy + s / 2 + 13, { align: 'center', size: 10, weight: 600, alpha: 1 - slide });
+        text(x, theirsLive() ? WHO + '’s' : 'theirs', hx, cy + s / 2 + 13, { align: 'center', size: 10, weight: 600, alpha: 1 - slide });
       }
       var end = seg(t, 4.8, 5.4), nb = kindsOf(A, Bs).filter(function (k) { return k.both; }).length;
       if (end > 0) {
