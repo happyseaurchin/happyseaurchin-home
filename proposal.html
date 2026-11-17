@@ -656,13 +656,13 @@
     (function rec(x) { if (!x) return; if (x.hands && x.hands.length) n++; (x.kids || []).forEach(rec); })(t.tree);
     return n;
   }
-  function quipuGroup(name, steps, mirrors, threads, built) {
+  function quipuGroup(name, steps, mirrors, threads) {
     var byStep = {}, addrs = {};
     (threads || []).forEach(function (t) { (byStep[t.step] = byStep[t.step] || []).push({ name: t.name, rungs: tiedOf(t) }); });
     steps.forEach(function (s) { addrs[s.addr] = 1; });
     return {
       steps: steps.map(function (s) {
-        var st = built ? stepStateFrom(threads, s.addr, s.state) : legacyState(s.state);
+        var st = stepStateFrom(threads, s.addr, s.state);   /* in any phase: the threads say where a step stands */
         return { id: s.id, title: s.title ? sentenceCase(s.title) : '', word: st ? (st.legacy ? st.word : st.say) : '', level: st ? st.level : -1,
           main: s.decision ? sortedAnswers(mirrors, s.decision) : null,
           rooms: s.sides.map(function (r) { return { dec: r.decision ? sortedAnswers(mirrors, r.decision) : null }; }),
@@ -862,13 +862,19 @@
       if (t) setTimeout(function () { if (!moved) t.scrollIntoView(); }, 60);
     }
 
+    /* a step's state is read from its threads in any phase (David, 17 Nov 2026: "Let the standard page show state in
+       any phase"), so the trail is drawn wherever a step stands somewhere: always in a project or one complete, and in
+       any other phase once a thread gives a step its state; until the threads are read it waits hidden */
+    function trailLit() { return PHASE === 'project' || PHASE === 'complete' || STEPS.some(function (s) { return shownOf(s); }); }
     function standsHTML() {
-      var trail = PHASE === 'project' || PHASE === 'complete' ? '<h3>The trail</h3><ol class="trail" id="trail" aria-label="The steps, each lit by its state">' + trailRows() + '</ol>' : '';
+      var lit = trailLit();
+      var trail = STEPS.length ? '<div id="trailBox"' + (lit ? '' : ' hidden') + '><h3>The trail</h3><ol class="trail" id="trail" aria-label="The steps, each lit by its state">' + trailRows() + '</ol>' +
+        (DECS.length ? '<h3>The decisions</h3>' : '') + '</div>' : '';
       if (!DECS.length && !trail) return '';
-      return '<section id="stands"><div class="addr">live from the beach</div><h2>Where it stands</h2>' +
+      return '<section id="stands"' + (DECS.length || lit ? '' : ' hidden') + '><div class="addr">live from the beach</div><h2>Where it stands</h2>' +
         (DECS.length ? '<p class="note" id="standsNote">' + (DECS.length === 1 ? 'One ' + asked(1) : cap(count(DECS.length)) + ' ' + asked(2)) + ' and everyone’s answers so far, with the latest shared reading of them. Tap one to read it and answer.</p>' : '') +
         '<div class="reading" id="wholeReading" hidden></div>' + trail +
-        (DECS.length ? (trail ? '<h3>The decisions</h3>' : '') + '<ol class="stands">' + DECS.map(function (d) {
+        (DECS.length ? '<ol class="stands">' + DECS.map(function (d) {
           return '<li><a href="#d-' + d.at.replace('.', '') + '"><span class="at">' + esc(d.at) + '</span><span class="what">' + esc(sentenceCase(d.title || d.q.slice(0, 60))) + '</span><span class="tally" data-at="' + d.at + '"></span></a></li>';
         }).join('') + '</ol>' +
         '<div class="more"><details class="fold"><summary>Sum up the answers again</summary><div class="in copyline">' +
@@ -898,10 +904,13 @@
       var st = shownOf(s);
       return st && st.legacy && st.rest ? '<p class="statenote" data-note-at="' + esc(s.addr) + '"><b>' + esc(st.word) + '</b> · ' + rich(cap(st.rest)) + '</p>' : '';
     }
-    /* once the threads are read: in a project, each step's state from the threads that serve it */
+    /* once the threads are read: in any phase, each step's state from the threads that serve it, and the trail shown
+       wherever a step has one */
     function paintStates() {
-      if (PHASE !== 'project' && PHASE !== 'complete') return;
       STEPS.forEach(function (s) { s.shown = stepStateFrom(THREADS, s.addr, s.state); });
+      var lit = trailLit(), box = $('trailBox'), sec = $('stands');
+      if (box) box.hidden = !lit;
+      if (sec && lit) sec.hidden = false;
       var ol = $('trail'); if (ol) ol.innerHTML = trailRows();
       STEPS.forEach(function (s) {
         var chip = document.querySelector('.state[data-state-at="' + s.addr + '"]');
@@ -964,7 +973,7 @@
 
     function drawQuipu() {
       if (!STEPS.length) return;
-      var g = quipuGroup(FAM, STEPS, MIRRORS, THREADS, PHASE === 'project' || PHASE === 'complete'), n = Object.keys(MIRRORS).length;
+      var g = quipuGroup(FAM, STEPS, MIRRORS, THREADS), n = Object.keys(MIRRORS).length;
       var w = figW($('quipu')), h = 200;
       $('quipu').innerHTML = quipuSVG(g, { w: w, h: h, label: TITLE + ': ' + STEPS.length + ' steps, ' + DECS.length + ' ' + asked(DECS.length) + ', answered by ' + n + (n === 1 ? ' person' : ' people') + ', ' + THREADS.length + (THREADS.length === 1 ? ' thread' : ' threads') + '. Each step links to its section.' }) +
         '<figcaption class="qcap">' + legendOf(STEPS, ASKED) + '</figcaption>';
@@ -1184,7 +1193,7 @@
         /* the snazzy page as the standard view finds it (its law's 6, its spine's root 2, then its line), so a card whose
            line names none, as leros-on-the-commons's, still offers it */
         place(i, g, shelfCard(s, i, stat, snazzyAt(pageOf(L2, spine, s), true), true));
-        SHELF[s.name] = { g: quipuGroup(s.name, steps, mirrors, th, phase === 'project' || phase === 'complete'), label: s.name + ': ' + phase + ' · ' + stat + '. Each step links to its section on the proposal’s page.' };
+        SHELF[s.name] = { g: quipuGroup(s.name, steps, mirrors, th), label: s.name + ': ' + phase + ' · ' + stat + '. Each step links to its section on the proposal’s page.' };
         drawShelfQuipu(s.name);
       }).catch(function () {
         if (root._run === run && !root.querySelector('#c-' + s.name)) place(i, 'unread', shelfCard(s, i, 'couldn’t be read just now', snazzyAt(s.page, true), false));

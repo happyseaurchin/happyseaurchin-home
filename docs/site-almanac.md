@@ -121,7 +121,7 @@ testing now (latest version), no public URL yet.** Reserve the lead slot for it.
 | the address of meaning | xstream.machus.ai/the-address-of-meaning | explainer | — | OK |
 | pscale slides | claude.ai artifact `808d6cc4…` | explainer | — | OK — title verified |
 | starstone JSON | `/assets/pscale-starstone.json` | format | supabase/beach · _ | OK |
-| systemic kernel JSON | `/assets/systemic-kernel.json` | format | _ | OK |
+| systems lens JSON (the April copy of the old lens) | `/assets/systems-lens.json` | format | _ | OK |
 | pscale repo | github.com/pscale-commons/pscale | format/repo | — | OK |
 | bsp-mcp-server | github.com/pscale-commons/bsp-mcp-server | repo | beach | OK (not linked from any page today) |
 | federated beach | beach.happyseaurchin.com/.well-known/pscale-beach | endpoint | beach · _ 1-9 | OK (JSON) |
