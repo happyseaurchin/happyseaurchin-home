@@ -426,11 +426,11 @@ button{font:inherit;color:inherit}
   .zrail .zmode{margin-left:2px;padding:8px 11px}
 }
 /* weft (eye.8), 17 Nov 2026, at David's word: the stack. Lanes as rows when the siblings run across, as columns when they
-   run up and down; the one in hand ringed in amber; the doors of the lane in hand in one strip above the rail */
-.stacked>.zlane{inset:auto}
-.stacked.rows>.zlane+.zlane{border-top:1px solid var(--line)}
-.stacked.cols>.zlane+.zlane{border-left:1px solid var(--line)}
-.stacked>.zlane.on::after{content:"";position:absolute;inset:2px;border:1px solid color-mix(in srgb,var(--ember) 42%,transparent);border-radius:12px;pointer-events:none;z-index:69}
+   run up and down; the doors of the lane in hand in one strip above the rail. eye.14, 18 Nov 2026, at David's word ('Rows
+   around one centre … two rows with the same centre viewer'): every lane is drawn over the whole stage round the one centre,
+   and moved and shrunk as a whole to its storey (axleLayout); the band takes no touch, its cards and its labels do */
+.stacked>.zlane{pointer-events:none;will-change:transform}
+.stacked>.zlane .zrim,.stacked>.zlane .zlane-tools{pointer-events:auto}
 .stacked>.zlane:not(.on) .zworld{filter:saturate(.8) brightness(.92)}
 .stacked .zrim{top:2px;flex-direction:row;align-items:baseline;gap:8px;padding:2px 8px;max-width:calc(100% - 78px);white-space:nowrap}
 .stacked .zrim .rim-t{font-size:.86rem;max-width:none;min-width:0}
@@ -599,6 +599,15 @@ button{font:inherit;color:inherit}
 @media (max-width:420px){
   .seg button{padding:6px 10px;font-size:.82rem}
   .sizes button{padding:5px 7px}
+}
+/* weft (eye.14): the toggles laid flat by default; on a phone a toggle drawn as icons shows its icons alone (each names its
+   state when pressed or held), so the toggles take two rows, not three */
+@media (max-width:480px){
+  .lensbar{gap:4px}
+  .lensbar .seg{padding:2px}
+  .lensbar .seg.sizes button{padding:5px 6px}
+  .lensbar .seg.sizes .sl{display:none}
+  .lensbar .seg button{padding:0 7px;font-size:.78rem;height:30px;line-height:1}   /* one height, whatever the letters, so the stage beneath never shifts as they load */
 }
 @media (max-width:374px){
   #tg-size .cyc .sl{display:none}
@@ -1228,7 +1237,7 @@ function sigil(path, o) {
 
 /* ---------------- state ---------------- */
 function loadPrefs() { try { return JSON.parse(localStorage.getItem('iris-magic-eye.prefs') || '{}') || {}; } catch (e) { return {}; } }
-function savePrefs() { try { localStorage.setItem('iris-magic-eye.prefs', JSON.stringify({ axis: state.axis, shape: state.shape, surface: state.surface, layout: state.layout, curve: state.curve, toggles: state.toggles, look: state.look, size: state.size, addr: state.addr, depth: state.depth, ringAxis: state.ringAxis, zoomDir: state.zoomDir, links: state.links, stack: state.stack, dirView: state.dirView })); } catch (e) { /* storage unavailable */ } }
+function savePrefs() { try { localStorage.setItem('iris-magic-eye.prefs', JSON.stringify({ axis: state.axis, shape: state.shape, surface: state.surface, layout: state.layout, curve: state.curve, toggles: state.toggles, tgSet: state.tgSet ? 1 : 0, look: state.look, size: state.size, uSize: state.uSize, addr: state.addr, depth: state.depth, ringAxis: state.ringAxis, zoomDir: state.zoomDir, links: state.links, stack: state.stack, dirView: state.dirView })); } catch (e) { /* storage unavailable */ } }
 const P0 = loadPrefs();
 /* weft, 16 Nov 2026 (eye.2): Iris reads two shapes of one block (whetstone 2). The WALK (shape 'walk'): the spindle
  * from the root to the point, the point's ring across it and its ring beneath, the choice the walk ends in; drawn
@@ -1244,9 +1253,13 @@ const state = {
   surface: ['curved', 'flat'].includes(P0.surface) ? P0.surface : P0.lens === 'slit' ? 'flat' : 'curved',
   layout: ['dropdown', 'columns'].includes(P0.layout) ? P0.layout : 'dropdown',
   curve: P0.curve === 'concave' ? 'concave' : 'convex',
-  toggles: ['cycle', 'menu', 'flat'].includes(P0.toggles) ? P0.toggles : 'cycle',
+  // weft (eye.14), 18 Nov 2026, at David's word ('cycle-dropdown-flat toggle setting to flat by default please'): flat, unless
+  // the reader has chosen under ⚙ since (tgSet); a cycle saved before only because it was the default becomes flat
+  toggles: P0.tgSet && ['cycle', 'menu', 'flat'].includes(P0.toggles) ? P0.toggles : 'flat', tgSet: !!P0.tgSet,
   look: ['eye', 'standard', 'snazzy'].includes(P0.look) ? P0.look : 'eye',
   size: ['title', 'icon', 'card', 'big', 'page'].includes(P0.size) ? P0.size : 'card',
+  // weft (eye.14), 18 Nov 2026, at David's word ('just a set size for it all'): the universe's one size of card, its own
+  uSize: ['title', 'icon', 'card', 'big'].includes(P0.uSize) ? P0.uSize : 'title',
   addr: !!P0.addr, depth: [1, 2, 3, 4].includes(P0.depth) ? P0.depth : 2,
   // weft (eye.7), 16 Nov 2026, at David's word: in the Magic Eye, the ring's axis (siblings across, or up and down) and
   // which way a swipe goes in (up goes in, or up comes out); and every card's hyperlink, shown or hidden (⚙)
@@ -1924,7 +1937,9 @@ const laneOffer = () => state.stack === 'on' && state.axis === 'eye';
 const lanesShown = () => stackOn() ? lanes.slice() : [lanes[laneAt]];
 // side by side where the screen is wide enough (some 180px a column, as David put it: "if their screen is wide enough"),
 // else one above another
-function laneRows(n) { if (state.ringAxis !== 'y') return true; const W = stage.getBoundingClientRect().width || innerWidth; return (n || lanesShown().length) > Math.max(1, Math.floor(W / 180)); }
+// weft (eye.14): round one axle the lanes are rows when the siblings run across and columns when they run up and down,
+// however narrow the screen, the outer ones pressed small against its edges
+function laneRows() { return state.ringAxis !== 'y'; }
 const laneWord = () => laneRows(lanes.length + 1) ? 'row' : 'column';
 const sameKeys = (a, b) => a.length === b.length && a.every((k, i) => k === b[i]);
 const CHAIN_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 15l6-6M10.5 6.5l1.8-1.8a4 4 0 015.7 5.7l-1.8 1.8M13.5 17.5l-1.8 1.8a4 4 0 01-5.7-5.7l1.8-1.8"/></svg>';
@@ -1973,25 +1988,20 @@ function zNat(cls, W) {
 }
 function zFocusCls() { return state.size === 'page' ? 'big' : state.size; }
 function zGeom() {
-  // weft (eye.8): a lane in a stack is drawn in its own band, its words at the top and nothing kept for the rail below
-  const st = !!Z.stacked, r = (st && Z.box ? Z.box : stage).getBoundingClientRect();
-  const W = Math.max(1, r.width), H = Math.max(1, r.height), narrow = W < 640, top = st ? (Z.rows ? 24 : 62) : 4, bot = st ? H - 4 : H - 66;
+  // weft (eye.8): a lane in a stack was drawn in its own band. eye.14: every lane is drawn round the one centre, as the whole
+  // stage draws one lane, and its storey moves and shrinks it whole (axleLayout); so the geometry is the stage's
+  const st = false, r = stage.getBoundingClientRect();
+  const W = Math.max(1, r.width), H = Math.max(1, r.height), narrow = W < 640, top = 4, bot = H - 66;
   const itemW = narrow ? Math.min(124, W * .32) : 224, itemH = narrow ? 34 : 62;
   const rx = Math.max(st ? 30 : 60, Math.min(W / 2 - 8 - itemW / 2, 440));
   const ry = Math.max(st ? 22 : 70, Math.min((bot - top) / 2 - (st ? 6 : 40) - itemH / 2, narrow ? rx * 2.4 : 320));
-  const across = state.ringAxis !== 'y', cls = st ? zFitCls(W, bot - top) : zFocusCls(), hh = ZH[cls] || 60;
+  const across = state.ringAxis !== 'y', cls = Z.stacked && stackOn() ? axleCls(W, bot - top, across) : zFocusCls(), hh = ZH[cls] || 60;
   // weft (eye.8): in a column, its siblings above and below, a card takes the column's width
   const w = st && !across ? Math.min(W - 44, { title: 210, icon: 250, card: 470, big: 620 }[cls] || 210) : zNat(cls, W);   // the ring's marks just in
   // the neighbour a place round stands this far from the middle: clear of the one you face where the screen has the
   // room, and at least a sliver of it in sight where it has not
   const sp = across ? Math.min(w * 1.1 + 18, W / 2 + w * .3) : Math.min(hh * 1.12 + 16, (bot - top) / 2 + hh * .25);
   return { W, H, narrow, top, bot, cx: W / 2, cy: (top + bot) / 2 + (st ? 0 : 18), rx, ry, itemW, itemH, cls, w, hh, across, sp, persp: across ? Math.max(700, w * 2.6) : Math.max(560, hh * 7) };
-}
-// weft (eye.8): in a band the size chosen is drawn where it fits, else the next smaller that does
-function zFitCls(W, room) {
-  const order = ['big', 'card', 'icon', 'title'], minW = { big: 300, card: 220, icon: 120, title: 0 };
-  for (let i = Math.max(0, order.indexOf(zFocusCls())); i < order.length; i++) { const c = order[i]; if (ZH[c] + 14 <= room && W >= minW[c]) return c; }
-  return 'title';
 }
 // a place θ round from the one you face, seen from the ring's middle: further round is further out, a little nearer,
 // and turned to face you, as the inside of a carousel is
@@ -2011,6 +2021,7 @@ function renderEye() {
   for (const ln of lanesShown()) withLane(ln, () => laneBand(ln, L, st));
   L._top = h('div', 'zdecor ztop'); L.append(L._top);
   L.append(zRail());
+  if (!AX.raf) AX.Y = laneAt;                                      // weft (eye.14): the lane in hand at eye level
   L._after = () => {
     fieldClear(); laneLayout(L);
     for (const ln of lanesShown()) withLane(ln, () => { const b = cur(); if (!b || !Z.layer || !Z.layer.isConnected) return; zFrame(); if (!zMoving()) zSettle(true); else zChrome(b); });
@@ -2034,19 +2045,66 @@ function laneBand(ln, L, st) {
   if (st) band.append(laneTools(ln));
   L.append(band);
 }
-// the bands: rows down the stage, or columns across it, above the doors and the rail
+/* the stack round one axle (weft, eye.14, 18 Nov 2026, at David's word: 'Rows around one centre for the magic-eye, block,
+ * stack arrangement? … two rows … with the same centre viewer'; after torus.1's note for this seat, pool:iris 12, 8). Every
+ * lane is drawn round the one centre, as one lane is; the lanes are storeys of one drum, rows one above another when the
+ * siblings run across and columns side by side when they run up and down. AX.Y runs along them, continuous: the lane in
+ * hand stands at eye level, whole, and lane i stands (i − Y) storeys off, through a lens, R·tanh(d/R) from the centre, and
+ * shrunk whole by its slope there, sech²(d/R), so however many there are every storey stays on the screen, the outer ones
+ * pressed small against the edges. A tap, the wheel or [ and ] takes a lane in hand, and Y glides there; a swipe never
+ * moves between lanes: it is the lane's own. Nothing here writes. */
+const AX = { Y: 0, from: 0, to: 0, t0: 0, raf: 0 };
+// a storey's height (rows) or width (columns): its cards and the label above them
+// in a stack the size chosen, else the next smaller, so that the storeys either side of the lane in hand have room to be read
+function axleCls(W, room, across) {
+  const order = ['big', 'card', 'icon', 'title'];
+  for (let i = Math.max(0, order.indexOf(zFocusCls())); i < order.length; i++) { const c = order[i]; if (across ? ZH[c] + 46 <= room * .42 : zNat(c, W) + 22 <= W * .46) return c; }
+  return 'title';
+}
+function axleStep(g, rows) { return rows ? (ZH[g.cls] || 60) + 46 : g.w + 22; }
+function axleRimTop(g) { return laneRows() ? Math.max(4, Math.round(g.cy - (ZH[g.cls] || 60) / 2 - 34)) : g.top + 2; }   // a row's above its card; a column's at its top
+// where storey i stands from the centre, and how large, with Y where it is now
+function axleAt(i, g, rows) {
+  const R = .46 * (rows ? g.bot - g.top : g.W), u = (i - AX.Y) * axleStep(g, rows) / R, t = Math.tanh(u);
+  return { off: R * t, s: Math.max(.05, 1 - t * t) };
+}
 function laneLayout(L) {
   const bands = Array.from(L.children).filter(el => el.classList.contains('zlane'));
-  if (bands.length < 2) { bands.forEach(el => el.removeAttribute('style')); return; }
-  const r = stage.getBoundingClientRect(), W = r.width, avail = Math.max(80, r.height - 112), n = bands.length, rows = laneRows(n);
-  bands.forEach((el, i) => {
-    const a = Math.round(i * (rows ? avail : W) / n), e = Math.round((i + 1) * (rows ? avail : W) / n);
-    if (rows) Object.assign(el.style, { left: '0px', width: W + 'px', top: a + 'px', height: (e - a) + 'px' });
-    else Object.assign(el.style, { top: '0px', height: avail + 'px', left: a + 'px', width: (e - a) + 'px' });
+  if (bands.length < 2) { bands.forEach(el => { el.style.transform = ''; el.style.opacity = ''; el.style.zIndex = ''; }); return; }
+  const rows = laneRows(bands.length), g = zGeom();
+  bands.forEach(el => {
+    const i = lanes.indexOf(el._lane); if (i < 0) return;
+    const a = axleAt(i, g, rows);
+    el.style.transformOrigin = g.cx + 'px ' + g.cy + 'px';
+    el.style.transform = (rows ? 'translateY(' : 'translateX(') + a.off.toFixed(1) + 'px) scale(' + a.s.toFixed(4) + ')';
+    el.style.opacity = (.4 + .6 * a.s).toFixed(3);
+    el.style.zIndex = String(Math.round(40 - 4 * Math.abs(i - AX.Y)));
+    el._ax = { off: a.off, s: a.s };
   });
 }
+// the lane taken in hand comes to eye level: Y glides there
+function axleGo(i) {
+  cancelAnimationFrame(AX.raf); AX.raf = 0;
+  if (RM || !stackOn() || !current) { AX.Y = i; if (current) laneLayout(current); return; }
+  AX.from = AX.Y; AX.to = i; AX.t0 = performance.now();
+  const dur = Math.min(700, 300 + 160 * Math.abs(AX.to - AX.from));
+  const step = now => {
+    const u = Math.min(1, (now - AX.t0) / dur); AX.Y = AX.from + (AX.to - AX.from) * zEase(u);
+    if (current) laneLayout(current);
+    AX.raf = u < 1 ? requestAnimationFrame(step) : 0;
+  };
+  AX.raf = requestAnimationFrame(step);
+}
+// the storey a point on the stage stands in: the lane in hand where it is, else the nearest storey to it
+function axleHit(cx, cy) {
+  if (!stackOn() || !current) return laneAt;
+  const sr = stage.getBoundingClientRect(), g = zGeom(), rows = laneRows(lanes.length), v = rows ? cy - sr.top - g.cy : cx - sr.left - g.cx;
+  let best = laneAt, bd = Infinity;
+  lanes.forEach((ln, i) => { const a = axleAt(i, g, rows), half = axleStep(g, rows) * a.s / 2, d = Math.abs(v - a.off) - (i === laneAt ? half : 0); if (d < bd) { bd = d; best = i; } });
+  return best;
+}
 function laneTools(ln) {
-  const t = h('div', 'zlane-tools');
+  const t = h('div', 'zlane-tools'); ln.z.tools = t;
   const st = h('button', 'zl-step', CHAIN_SVG); st.type = 'button';
   const say = () => { const m = ln.step ? 'In step: this lane goes to the address the lane in hand goes to. Tap to let it move on its own' : 'On its own. Tap to put it in step, going to the address the lane in hand goes to'; st.setAttribute('aria-pressed', String(!!ln.step)); st.title = m; st.setAttribute('aria-label', m); };
   say();
@@ -2059,7 +2117,9 @@ function laneTools(ln) {
 function fieldClear() { const c = field.c; if (!c || !c.width) return; const x = c.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, c.width, c.height); field.key = ''; }
 function zRail() {
   const r = h('div', 'rail zrail'), across = state.ringAxis !== 'y', mk = (cls, g, label, fn) => { const bt = h('button', 'rb ' + cls, '<span class="g">' + g + '</span>' + (label ? '<span class="lb">' + esc(label) + '</span>' : '')); bt.type = 'button'; bt.addEventListener('click', fn); r.append(bt); return bt; };
-  Z.btn = { out: mk('out', '+', 'Out', zOut), prev: mk('side', across ? '‹' : '˄', '', () => zSide(-1)), ring: mk('ring', '~', 'Ring', zRing), next: mk('side', across ? '›' : '˅', '', () => zSide(1)), in: mk('in', '−', 'In', zIn) };
+  // weft (eye.14), 18 Nov 2026, at David's word ('I'm not convinced by the ring/close button … Just replace them with
+  // centre'): the middle button is Centre, out to the block's top and back; the whole ring at once is still ~
+  Z.btn = { out: mk('out', '+', 'Out', zOut), prev: mk('side', across ? '‹' : '˄', '', () => zSide(-1)), ring: mk('ring', '◎', 'Centre', zCentre), next: mk('side', across ? '›' : '˅', '', () => zSide(1)), in: mk('in', '−', 'In', zIn) };
   Z.btn.mode = h('button', 'rb zmode'); Z.btn.mode.type = 'button'; Z.btn.mode.addEventListener('click', zModeToggle); r.append(Z.btn.mode);
   return r;
 }
@@ -2073,7 +2133,9 @@ function zChrome(b) {
   set(Z.btn.out, 'Out', D === 0 && !state.trail.length, D === 0 ? 'Out: back across the star' : 'Out: a step back into the ring around, pscale +1');
   set(Z.btn.prev, null, si <= 0, 'Turn round the ring to the sibling before');
   set(Z.btn.next, null, !R || si < 0 || si >= R.n - 1, 'Turn round the ring to the sibling after');
-  set(Z.btn.ring, Z.over ? 'Close' : 'Ring', D === 0, Z.over ? 'Close the whole ring' : 'The whole ring at once, to choose from');
+  { const bk = D === 0 && Z.back && Z.back.block === b.name ? Z.back : null, bl = bk ? labelOf(b, bk.S.slice(0, bk.d)) : null;   // weft (eye.14)
+    set(Z.btn.ring, 'Centre', D === 0 && !bk, bk ? 'Centre again: back in to ' + ((bl && bl.title) || bk.S.slice(0, bk.d).join('.')) : D === 0 ? 'This is the top of the block' : 'Centre: out to the top of the block');
+    Z.btn.ring.setAttribute('aria-pressed', String(!!bk)); }
   set(Z.btn.in, canIn ? 'In · ' + kidsHere.length : 'In', !canIn, 'In: walk through the one you face into its own ring, pscale −1' + (way ? ', along ' + ({ now: 'now', newest: 'the newest', steps: 'the steps' }[a.how] || 'the block\'s way') + ' (provisional)' : ''));
   Z.btn.mode.innerHTML = '<span class="g">' + (Z.mode === 'glide' ? '⇣' : '⋮') + '</span><span class="lb2">' + (Z.mode === 'glide' ? 'glide' : 'step') + '</span>';
   const ma = Z.mode === 'glide' ? 'Glide: a swipe or a flick carries on, across rungs or round the ring, and settles on the nearest. Tap for one step a gesture' : 'Step: each swipe or flick moves one rung, or one sibling round the ring. Tap to glide';
@@ -2109,7 +2171,7 @@ function zFrame() {
   L.classList.toggle('moving', moving);
   Z.world.style.visibility = Z.over ? 'hidden' : '';
   // a card's height at most: room above it for the words at the top, and below it for the doors (in a lane, its band)
-  const mh = Z.stacked ? Math.max(30, Math.round(g.bot - g.top - 4)) : Math.max(160, Math.round(g.bot - g.top - 118)); if (Z.mh !== mh) { Z.mh = mh; L.style.setProperty('--zmaxh', mh + 'px'); }
+  const mh = Math.max(160, Math.round(g.bot - g.top - 118)); if (Z.mh !== mh) { Z.mh = mh; L.style.setProperty('--zmaxh', mh + 'px'); }
   const keep = new Set(), rings = [];
   const lo = Math.max(0, Math.floor(d) - 1), hi = Math.min(E.length, Math.ceil(d) + 1);
   const turning = Z.tg ? Z.tg.e : Z.tw ? Z.tw.e : -1, here = Math.max(0, Math.min(E.length, Math.round(d)));
@@ -2151,7 +2213,8 @@ function zFrame() {
     if (rim._html !== html) { rim.innerHTML = html; rim._html = html; rim.setAttribute('aria-label', lab ? 'Out to ' + (lab.title || blockTitle(b)) : blockTitle(b) + ', the top of ' + b.name); }
     rim._owner = here >= 1 ? here - 1 : null; rim._rung = here; rim.hidden = false;
     rim.style.opacity = Z.stacked ? '1' : (1 - Math.min(.65, Math.abs(d - here) * 1.3)).toFixed(3);
-    rim.style.top = (Z.stacked ? (Z.rows ? 2 : 27) : g.top) + 'px';
+    rim.style.top = (Z.stacked ? axleRimTop(g) : g.top) + 'px';            // weft (eye.14): in a stack, above its own row
+    if (Z.stacked && Z.tools) Z.tools.style.top = (axleRimTop(g) + 1) + 'px';
   } else { rim.hidden = true; rim._owner = rim._rung = null; }
   zDraw(g, E, d, rings);
 }
@@ -2167,11 +2230,14 @@ function zDraw(g, E, d, rings) {
   const mono = getComputedStyle(document.documentElement).getPropertyValue('--mono');
   const k = state.look === 'eye' ? 1 : .6, far = Math.hypot(w, hh), cx = g.cx, cy = g.cy;
   const ell = r => { x.beginPath(); x.ellipse(cx, cy, Math.max(.1, g.rx * r), Math.max(.1, g.ry * r), 0, 0, Math.PI * 2); };
-  const glow = x.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, hh) * .5);
-  glow.addColorStop(0, 'rgba(230,165,74,' + (.07 * k) + ')'); glow.addColorStop(1, 'rgba(230,165,74,0)'); x.fillStyle = glow; x.fillRect(0, 0, w, hh);
+  // weft (eye.14): in a stack the glow and the tunnel are the lane in hand's, at the one centre; every other lane keeps its
+  // ring's floor and ceiling, a storey of the same drum
+  const own = !Z.stacked || zIsHand();
+  if (own) { const glow = x.createRadialGradient(cx, cy, 0, cx, cy, Math.min(w, hh) * .5);
+    glow.addColorStop(0, 'rgba(230,165,74,' + (.07 * k) + ')'); glow.addColorStop(1, 'rgba(230,165,74,0)'); x.fillStyle = glow; x.fillRect(0, 0, w, hh); }
   // the tunnel: the rungs ahead and behind as rings round the line of sight, a ring every third of a rung, each rung named
   const e0 = Math.floor(d) - 3, e1 = Math.ceil(d) + 4;
-  for (let m = e0 * 3; m <= e1 * 3; m++) {
+  for (let m = e0 * 3; m <= (own ? e1 * 3 : e0 * 3 - 1); m++) {
     const e = m / 3, r = 1.18 * Math.pow(ZK, d - e), big = Math.max(g.rx, g.ry) * r;
     if (big < 5 || Math.min(g.rx, g.ry) * r > far) continue;
     const rung = m % 3 === 0, t = Math.min(1, big / (far * .7));
@@ -2225,6 +2291,7 @@ function zSettle(quiet) {
   Z.tw = Z.tg = null;
   Z.d = Z.goal = Math.max(0, Math.min(Math.round(Z.d), zMax(b)));
   const D = Z.d;
+  if (D !== 0) Z.back = null;                                    // weft (eye.14): Centre's way back, while the eye rests at the top
   // weft (eye.5, eye.7), 16 Nov 2026: resting decides the line as far as the eye went; facing the candidate past the
   // line's end, the call looks beneath that end (beneath 1). An arrival, or a place flown to, keeps the place it was given.
   if (!quiet && !Z.keep) {
@@ -2317,6 +2384,22 @@ function zOut() {
   const D = Math.round(Z.goal);
   if (D <= 0) { if (state.trail.length) return back(); return bump('This is the top of the block'); }
   zTo(D - 1);
+}
+/* Centre (weft, eye.14, 18 Nov 2026, at David's word: 'it backs the person back to top level (kinda like universe)'): out
+ * to the block's top along the spindle, which is kept; Centre again goes back in to where you were, until you rest
+ * somewhere else */
+function zCentre() {
+  const b = cur(); if (!b) return;
+  Z.keep = false;
+  if (Z.over) { Z.over = false; zClear(); }
+  const D = Math.round(Z.goal);
+  if (D <= 0) {
+    const bk = Z.back; Z.back = null;
+    if (bk && bk.block === b.name && bk.d > 0) { if (!sameKeys(bk.S, Z.S)) { zRemember(b, Z.S); Z.S = bk.S.slice(); } return zTo(Math.min(bk.d, zMax(b))); }
+    return bump('This is the top of the block');
+  }
+  Z.back = { block: b.name, d: D, S: Z.S.slice() };
+  zTo(0);
 }
 // ~ : the whole ring at once, to choose from; again, or Esc, closes it
 function zRing() {
@@ -2414,6 +2497,7 @@ function laneTake(i) {
   const b = cur();
   if (b && Z.layer && Z.layer.isConnected) { if (!zMoving()) zSettle(true); else zChrome(b); }
   syncLink(); updateChrome();
+  axleGo(i);                                                        // weft (eye.14): the lane taken comes to eye level
 }
 function laneStep(dir) { if (stackOn()) laneTake((laneAt + dir + lanes.length) % lanes.length); }
 // a lane let go: another taken in hand first if it was this one
@@ -2667,6 +2751,9 @@ const STACK_SVG = {
   on: '<svg viewBox="0 0 22 18" aria-hidden="true"><rect x="3" y="1.5" width="16" height="4" rx="1.5"/><rect x="3" y="7" width="16" height="4" rx="1.5"/><rect x="3" y="12.5" width="16" height="4" rx="1.5"/></svg>'
 };
 const STACK_SVG_COLS = { off: STACK_SVG.off, on: '<svg viewBox="0 0 22 18" aria-hidden="true"><rect x="2" y="2" width="5" height="14" rx="1.5"/><rect x="8.5" y="2" width="5" height="14" rx="1.5"/><rect x="15" y="2" width="5" height="14" rx="1.5"/></svg>' };
+const SIZE_OPTS = [['title', 'title'], ['icon', 'icon'], ['card', 'card'], ['big', 'large'], ['page', 'page']];
+// weft (eye.14): the universe, the beach seen from inside (a function, so the toggles read it before its section has run)
+function uniOn() { return state.axis === 'eye' && state.shape === 'dir' && state.dirView === 'room'; }
 const TOGGLES = [
   { id: 'axis', name: 'Iris or Magic Eye', opts: [['iris', 'Iris'], ['eye', 'Magic Eye']], get: () => state.axis,
     set: v => { state.axis = v; state.eye = 'focus'; state.choiceOf = null; state.view = 'main'; }, tr: 'fade' },
@@ -2676,27 +2763,33 @@ const TOGGLES = [
     set: v => { state.shape = 'dir'; state.layout = v; state.view = 'main'; }, show: () => state.axis === 'iris', tr: 'fade' },
   // weft (eye.11), 17 Nov 2026, at David's word ('Directory method first'): the Magic Eye stands inside a ring, or looks
   // down on the directory laid flat; the shape is the Iris's own (the walk or the directory), so switching keeps it.
-  // weft (eye.12), the same day ('In the room'): or stands inside the directory, rolled round you
-  { id: 'eshape', name: 'Ring, flat or room', opts: [['walk', 'ring'], ['dir', 'flat'], ['room', 'room']], get: () => state.shape === 'dir' ? (state.dirView === 'room' ? 'room' : 'dir') : 'walk',
+  // weft (eye.12), the same day ('In the room'): or stands inside the directory, rolled round you. eye.13, 18 Nov 2026, at
+  // David's word ('Block, beach, universe?'): the three named for what each holds, the ring one block, laid flat the
+  // beach, the room all round you (one beach today; others with the far vantage)
+  { id: 'eshape', name: 'Block, beach or universe', opts: [['walk', 'block'], ['dir', 'beach'], ['room', 'universe']], get: () => state.shape === 'dir' ? (state.dirView === 'room' ? 'room' : 'dir') : 'walk',
     set: v => { if (v === 'walk') state.shape = 'walk'; else { state.shape = 'dir'; state.dirView = v === 'room' ? 'room' : 'flat'; } state.view = 'main'; }, show: () => state.axis === 'eye', tr: 'fade',
-    say: v => v === 'room' ? 'the directory from inside: where you stand rolled round you, its places on the wall; drag to look round, pinch or scroll to go a shell deeper, where more stands round you and smaller, or back out'
-      : v === 'dir' ? 'the directory laid flat: every place a square with its places inside it, the whole beach above a block\'s top; drag, pinch or scroll to move, tap to go' : 'the ring: you stand inside it, facing one point, its siblings round you' },
+    say: v => v === 'room' ? 'the beach from inside, round you: every card one size, drag or swipe to move round and up and down, pinch to zoom, tap a card to face it and again to go in, double-tap to come out, ◎ Centre for the middle of the beach'
+      : v === 'dir' ? 'the beach laid flat: every place a square with its places inside it, every block above a block\'s top; drag to move, pinch or scroll to zoom, tap to go' : 'one block, as a ring: you stand inside it, facing one point, its siblings round you' },
   // weft (eye.7), 16 Nov 2026, at David's word: which way the siblings lie, so which swipe turns the ring (the zoom takes
   // the other); and which way a swipe goes in, as a screen scrolls one way or the other and people find one natural
   { id: 'ring', name: 'Siblings', opts: [['x', 'across'], ['y', 'up/down']], svg: RING_SVG, get: () => state.ringAxis,
     set: v => { state.ringAxis = v; }, show: () => state.axis === 'eye' && state.shape !== 'dir', tr: 'fade',
     say: v => v === 'y' ? 'up and down round you, turned by swiping up and down; the zoom swipes across' : 'across, round you, turned by swiping left and right; the zoom swipes up and down' },
   { id: 'zoom', name: 'Zoom', opts: [['in', 'in'], ['out', 'out']], get: () => state.zoomDir, sig: () => state.ringAxis + '|' + state.shape + '|' + state.dirView,
-    word: v => (state.ringAxis === 'y' ? '← ' : '↑ ') + v, set: v => { state.zoomDir = v; }, show: () => state.axis === 'eye', tr: null,
-    say: v => state.shape === 'dir' && state.dirView === 'room' ? (v === 'in' ? 'the wheel rolled down, or two fingers pushed up a trackpad, goes a shell deeper' : 'the wheel rolled down comes a shell out, the other way round') + '; a pinch spread always goes deeper, and a drag looks round' // weft (eye.12): in the room the zoom is the shell
-      : state.shape === 'dir' ? (v === 'in' ? 'the wheel rolled down, or two fingers pushed up a trackpad, goes in' : 'the wheel rolled down comes out, the other way round') + '; a pinch spread always goes in, and a drag moves across' // weft (eye.11): in the directory a drag pans
+    word: v => (state.ringAxis === 'y' ? '← ' : '↑ ') + v, set: v => { state.zoomDir = v; }, show: () => state.axis === 'eye' && !(state.shape === 'dir' && state.dirView === 'room'), tr: null,   // weft (eye.13): in the room a swipe moves, and a pinch zooms
+    say: v => state.shape === 'dir' ? (v === 'in' ? 'the wheel rolled down, or two fingers pushed up a trackpad, goes in' : 'the wheel rolled down comes out, the other way round') + '; a pinch spread always goes in, and a drag moves across' // weft (eye.11): in the directory a drag pans
       : 'a swipe ' + zoomWay() + (v === 'in' ? ' goes in, as a page scrolls on' : ' comes out, the other way round') + ', the wheel and the trackpad likewise' },
   // weft (eye.8), 17 Nov 2026, at David's word: the stack, more lanes on the direction the ring and the zoom leave free
   { id: 'stack', name: 'Stack', opts: [['off', 'off'], ['on', 'on']], get svg() { return state.ringAxis === 'y' ? STACK_SVG_COLS : STACK_SVG; }, get: () => state.stack, sig: () => lanes.length + '|' + state.ringAxis,
     word: v => v === 'on' ? (lanes.length > 1 ? 'stack · ' + lanes.length : 'stack') : 'one', set: v => { state.stack = v; }, show: () => state.axis === 'eye' && state.shape !== 'dir', tr: 'fade',
     say: v => v === 'on' ? (lanes.length > 1 ? lanes.length + ' lanes' : 'more lanes, added from ✳, ◐ or ＋') + ', ' + (laneRows() ? 'one above another as rows' : 'side by side as columns') + ', each its own block and spindle' : 'one lane, the one in hand' + (lanes.length > 1 ? '; the other ' + (lanes.length - 1) + ' kept' : '') },
-  { id: 'size', name: 'Size', opts: [['title', 'title'], ['icon', 'icon'], ['card', 'card'], ['big', 'large'], ['page', 'page']], svg: SIZE_SVG,
-    get: () => state.size, set: v => { state.size = v; }, show: () => !(state.axis === 'eye' && state.shape === 'dir'), tr: 'soft' },   // weft (eye.11): in the directory a card's size is how far inside it stands
+  // weft (eye.11): laid flat a card's size is how far inside it stands, so there is no toggle. eye.14, 18 Nov 2026, at David's
+  // word ('do we need to have the five gradations … just a set size for it all'): in the universe every card is one size,
+  // the reader's own there (title until one is chosen, so more stand round you), and never a page
+  { id: 'size', name: 'Size', get opts() { return uniOn() ? SIZE_OPTS.slice(0, 4) : SIZE_OPTS; }, svg: SIZE_SVG, sig: () => uniOn() ? 'u' : '',
+    get: () => uniOn() ? state.uSize : state.size, set: v => { if (uniOn()) state.uSize = v; else state.size = v; },
+    show: () => !(state.axis === 'eye' && state.shape === 'dir' && state.dirView !== 'room'), tr: 'soft',
+    say: v => uniOn() ? 'every card round you a ' + ({ title: 'title', icon: 'title and its icon', card: 'card', big: 'large card' }[v] || v) + ', ' + (v === 'title' ? 'the most round you' : v === 'big' ? 'the fewest round you' : 'fewer round you than titles') : ({ title: 'title', icon: 'icon', card: 'card', big: 'large', page: 'page' }[v] || v) },
   { id: 'look', name: 'Look', opts: [['eye', 'Eye'], ['standard', 'Standard'], ['snazzy', 'Snazzy']], get: () => state.look, set: v => { state.look = v; }, tr: 'soft' }
 ];
 let popFor = '';
@@ -2750,8 +2843,8 @@ function openSettings() {
   const body = h('div', 'settings');
   const seg = (name, key, opts) => '<div class="seg" role="group" aria-label="' + esc(name) + '" data-set="' + key + '">' + opts.map(([v, w]) => '<button type="button" data-v="' + v + '" aria-pressed="' + (state[key] === v) + '">' + esc(w) + '</button>').join('') + '</div>';
   body.innerHTML =
-    '<h3>The toggles</h3>' + seg('How the toggles show themselves', 'toggles', [['cycle', 'cycle'], ['menu', 'drop-down'], ['flat', 'flat']]) +
-    '<p class="src">Each toggle at the top names its state. Cycle: a tap steps to the next. Drop-down: a tap opens the list. Flat: every state laid out at once.</p>' +
+    '<h3>The toggles</h3>' + seg('How the toggles show themselves', 'toggles', [['flat', 'flat'], ['cycle', 'cycle'], ['menu', 'drop-down']]) +
+    '<p class="src">Each toggle at the top names its state. Flat, until you choose: every state laid out at once. Cycle: a tap steps to the next. Drop-down: a tap opens the list.</p>' +
     '<h3>Curved</h3>' + seg('The curve of the walk', 'curve', [['convex', 'convex'], ['concave', 'concave']]) +
     '<p class="src">Convex is the eye seen from outside: the walk above, the siblings either side and the ring beneath curve away from you. Concave is the eye seen from inside, a screen within a sphere: they curve toward you.</p>' +
     // weft (eye.7), 16 Nov 2026, at David's word: 'show hyperlink', the old index cards' links
@@ -2761,7 +2854,7 @@ function openSettings() {
   openSheet('Settings', body);
   body.addEventListener('click', e => {
     const bt = e.target.closest('[data-set] [data-v]'); if (!bt) return;
-    const key = bt.closest('[data-set]').dataset.set; state[key] = bt.dataset.v; savePrefs();
+    const key = bt.closest('[data-set]').dataset.set; state[key] = bt.dataset.v; if (key === 'toggles') state.tgSet = true; savePrefs();
     body.querySelectorAll('[data-set="' + key + '"] [data-v]').forEach(x => x.setAttribute('aria-pressed', String(x === bt)));
     popFor = ''; render(null);
   });
@@ -3074,24 +3167,24 @@ function openHelp() {
     '<p>The directory is a <b>dropdown</b>, everything beneath nested downward, or <b>columns</b>, one column a rung: the walk\'s rings to the left, then what lies beneath, rung by rung, to the right.</p>' +
     '<h3>Which way is which</h3><dl class="moves"><dt>Wheel</dt><dd>In the curved walk: roll down, or push two fingers up a trackpad that scrolls naturally, to go in (−); up to come out (+); sideways for the siblings (~). One click of the wheel, or one flick of a trackpad with its glide, is one move; flick back and it comes back at once. Over words or a strip that scrolls, the wheel scrolls it first. The Magic Eye reads it as its own two toggles say (below).</dd><dt>Drag</dt><dd>With a finger or the mouse, the surface moves the way you drag it: drag up to go in, down to come out, left for the next sibling, right for the one before. A drag on a strip or a column that scrolls scrolls it.</dd><dt>Tap</dt><dd>Any card you can see takes you to it: a neighbour, a rung of the walk, a row, a column.</dd><dt>Keys</dt><dd>↓ in, ↑ out, → the next sibling, ← the one before, in every view (in the Magic Eye with its siblings up and down, ↓ and ↑ turn the ring, → goes in and ← comes out). * or S for the star, M for the mirror, Esc to come back.</dd></dl>' +
     '<p>Flat and columns scroll and move by tap, the keys still moving; the dropdown scrolls, and takes sideways moves as siblings. To copy words, double- or triple-click them.</p>' +
-    '<h3>The toggles</h3><p>Every toggle at the top names its state. ⚙ chooses how they show themselves: cycle, a tap stepping to the next state; drop-down, a tap opening the list; or flat, every state laid out.</p>' +
+    '<h3>The toggles</h3><p>Every toggle at the top names its state. ⚙ chooses how they show themselves: flat, every state laid out (until you choose otherwise); cycle, a tap stepping to the next state; or drop-down, a tap opening the list.</p>' +
     // weft (eye.3, eye.7), 16 Nov 2026: the Magic Eye, standing inside the ring
     '<h3>Magic Eye</h3><p>You stand inside the block. Where you stand is the underscore of a point\'s parent, in the middle of the ring of its siblings, and you face the point: it stands straight ahead, and its siblings stand round you, each at its own digit\'s place, as the sigil draws an address, so a gap stays a gap (a ring of other keys, or of more than ten, stands one by one in order). The marks on the floor are the ring\'s places: filled where a point stands, open where a digit\'s place stands empty, the one you face lit. Pscale is the line you look along, and the words at the top say which rung you stand in and within what.</p>' +
-    '<p><b>‹ ›</b>, or a swipe or a scroll along the ring, turns the ring round you: the next sibling comes round to the front and the one you faced goes round to the side, and nothing zooms. <b>−</b> walks forward through the point you face into its own ring: it grows until it is gone, and you stand at its underscore facing the child the block\'s way gives. <b>+</b> steps back: the ring you stood in recedes into its point, and the ring around gathers round you again, facing the one you came from. Every rung is one rest, so nothing glides past the siblings. <b>~</b> lays the whole ring out at once, to choose from; ~ again, or Esc, closes it.</p>' +
+    '<p><b>‹ ›</b>, or a swipe or a scroll along the ring, turns the ring round you: the next sibling comes round to the front and the one you faced goes round to the side, and nothing zooms. <b>−</b> walks forward through the point you face into its own ring: it grows until it is gone, and you stand at its underscore facing the child the block\'s way gives. <b>+</b> steps back: the ring you stood in recedes into its point, and the ring around gathers round you again, facing the one you came from. Every rung is one rest, so nothing glides past the siblings. <b>~</b> lays the whole ring out at once, to choose from; ~ again, or Esc, closes it. <b>◎ Centre</b> on the rail (or C) goes out to the block\'s top along the spindle, which is kept; Centre again goes back in to where you were.</p>' +
     '<p>Where the eye holds a <b>spindle</b>, the address a link gave or the way you walked, going in follows it, and on along the block\'s own way past it (the way to now, the newest, the steps), drawn dashed; past the end of both you face the first child, or the one you turned to, still dashed until you walk in.</p>' +
     '<p>Two toggles at the top are the Magic Eye\'s own. <b>Siblings</b>: across, turned by swiping or scrolling left and right (the zoom then swipes up and down), or up and down, turned by swiping up and down (the zoom then swipes across). <b>Zoom</b>: which way a swipe goes in, as a screen scrolls one way or the other and people find one natural: ↑ in, a swipe up goes in (the wheel rolled down, or two fingers pushed up a trackpad that scrolls naturally), or ↑ out, the other way round. A pinch spread always goes in. On the rail, <b>glide</b> lets a swipe or a flick carry on, across rungs or round the ring, and settle on the nearest; <b>step</b> moves one rung, or one sibling, a gesture.</p>' +
-    '<p>Keys: − PageDown Enter in, + PageUp Backspace out; the arrows along the ring turn it and the other two zoom (↓ in and ↑ out, or with the siblings up and down → in and ← out); ~ the whole ring, Home the top, End the spindle\'s end; in a stack, [ and ] take the lane before or after in hand. A tap on a sibling turns you to it; a tap on the one you face walks you in.</p>' +
+    '<p>Keys: − PageDown Enter in, + PageUp Backspace out; the arrows along the ring turn it and the other two zoom (↓ in and ↑ out, or with the siblings up and down → in and ← out); ~ the whole ring, C Centre, Home the top, End the spindle\'s end; in a stack, [ and ] take the lane before or after in hand. A tap on a sibling turns you to it; a tap on the one you face walks you in.</p>' +
     // weft (eye.11), 17 Nov 2026, at David's word: the directory laid flat
-    '<h3>The directory</h3><p>The Magic Eye\'s other shape (at the top, <b>ring</b>, <b>flat</b> or <b>room</b>). Here you look down on the block laid flat: every point is a square, its own words at its head and the places inside it beneath, the ten digits standing as a phone\'s keypad (1 to 9 in rows of three, 0 under the 8), so where a card stands is its address and a gap stays a gap. The deeper inside a place something stands, the smaller it is drawn: a large card, a card, an icon, a title, a mark. <b>Drag</b> to move across; <b>pinch</b>, or scroll the wheel, to zoom; let go and the view settles on the nearest whole place, which becomes the point, as the address bar says. A tap on any card flies there. On the rail, <b>+</b> and <b>−</b> go out and in a rung, <b>‹ ›</b> to the place before or after, ◎ back to the ring; with glide a drag let go carries on, with step it settles where it is.</p>' +
-    '<p><b>Zoom out past a block\'s top</b> and the plane goes on into the beach: the block among its family (its spine, its law, its room and everyone\'s mirrors), the proposals as their list orders them, the other families, the shells (the blocks of a person or an agent, known by their passport), and the rest gathered by the first word of their names. <b>Find</b>, at the top right, takes a block\'s name, words in the blocks read so far, or an address in this block, and flies there along the one shortest path: out until both places stand in sight, across, then in. Keys: − PageDown Enter in, + PageUp Backspace out, the arrows to the neighbour that way, Home the block\'s top, U every block on the beach, / to find, ~ the ring. A place above a block\'s top has a link of its own, as <a href="/eye?uni=B">/eye?uni=B</a> (every block) does, and any link with <b>?fly</b> opens on every block on the beach and flies to its place, as <a href="/eye/spine:the-sea/1.18?fly">/eye/spine:the-sea/1.18?fly</a> does: a link your own AI hands you plays as a flight.</p>' +
+    '<h3>The directory</h3><p>The Magic Eye\'s other shapes (at the top, <b>block</b> is the ring, <b>beach</b> the directory laid flat, <b>universe</b> the room). Laid flat you look down on the block: every point is a square, its own words at its head and the places inside it beneath, the ten digits standing as a phone\'s keypad (1 to 9 in rows of three, 0 under the 8), so where a card stands is its address and a gap stays a gap. The deeper inside a place something stands, the smaller it is drawn: a large card, a card, an icon, a title, a mark. <b>Drag</b> to move across; <b>pinch</b>, or scroll the wheel, to zoom; let go and the view settles on the nearest whole place, which becomes the point, as the address bar says. A tap on any card flies there. On the rail, <b>+</b> and <b>−</b> go out and in a rung, <b>‹ ›</b> to the place before or after, ◎ <b>Centre</b> to every block on the beach, and again back to where you were; with glide a drag let go carries on, with step it settles where it is.</p>' +
+    '<p><b>Zoom out past a block\'s top</b> and the plane goes on into the beach: the block among its family (its spine, its law, its room and everyone\'s mirrors), the proposals as their list orders them, the other families, the shells (the blocks of a person or an agent, known by their passport), and the rest gathered by the first word of their names. <b>Find</b>, at the top right, takes a block\'s name, words in the blocks read so far, or an address in this block, and flies there along the one shortest path: out until both places stand in sight, across, then in. Keys: − PageDown Enter in, + PageUp Backspace out, the arrows to the neighbour that way, Home the block\'s top, U every block on the beach, C Centre, / to find, ~ the ring. A place above a block\'s top has a link of its own, as <a href="/eye?uni=B">/eye?uni=B</a> (every block) does, and any link with <b>?fly</b> opens on every block on the beach and flies to its place, as <a href="/eye/spine:the-sea/1.18?fly">/eye/spine:the-sea/1.18?fly</a> does: a link your own AI hands you plays as a flight.</p>' +
     // weft (eye.12), 17 Nov 2026, at David's word ('In the room'): the same directory seen from inside
-    '<h3>The room</h3><p>The directory seen from inside (at the top, <b>room</b>). The place you stand in is rolled round you, like the inside of a drum: across its square is once round you, so turning round brings you back, and down its square is down the wall, so where a place stands on the wall is still its address. One shell stands round you at a time. The first is the places of where you stand, one at a time and the size of a page; a shell deeper holds the places inside those, more of them and smaller, because each is about a third of its parent while the view narrows only a little: going in shows more. <b>Drag</b> to look round, and up and down the wall; <b>pinch</b>, or scroll the wheel, to go a shell deeper or back out. Past the third shell you step into the place you face, and out past the first the room you stand in shrinks onto its place on the wall as the room around it comes round you. The middle of the screen is where you look: the place there, on the shell you are on, is the point, and the words at the top give its address and the room you stand in. A tap on a place turns you to it, and a tap on the one you face goes a shell in. [ and ] go a shell in or out where you look; the rail, the arrows, Find and links move as they do laid flat, a far move walking out to where the two places part, round, then in. A link with <b>?room</b> opens in the room.</p>' +
+    '<h3>The universe</h3><p>The beach seen from inside (at the top, <b>universe</b>), as the middle of the beach is seen: every place a card, all of them one size, the one you choose with <b>Size</b> (title until you choose; the smaller, the more stand round you), only scaled as they near and never swapped for another. At rest the place you face is that card, straight ahead; round it stand its neighbours, the room it stands in, open with its name at its head, and the rooms beside that, on a wall that bends round you through a lens centred where you look, as far as nearly half a turn either way. Up and down the wall bends too, so the rows above and below stay in sight, smaller. The lens never changes, so nothing jumps. <b>Drag</b>, or swipe two fingers on a trackpad, to move round you and up and down; <b>pinch</b> (a trackpad\'s pinch, or the wheel with ctrl, alt or cmd) to zoom; let go and you settle on the nearest card. A <b>tap</b> on a card faces it, a tap on the card you face goes in, and a <b>double tap</b> comes out. <b>◎ Centre</b> on the rail (or C) goes to the middle of the beach, its sets round you; Centre again (or Esc) takes you back to where you were. The rail, the arrows, Find and links move as they do laid flat. A link with <b>?room</b> opens in the universe.</p>' +
     // weft (eye.8), 17 Nov 2026, at David's word: the stack, and the snapshot
-    '<h3>The stack</h3><p>With <b>Stack</b> on (at the top, in the Magic Eye), more blocks stand beside the one you look at, a lane each, on the direction the ring and the zoom leave free: one above another as rows when the siblings run across, side by side as columns when they run up and down. Each lane is its own call, its block, its spindle and its point, so a place, a time and who is there can be laid together and each walked along its own spindle. Add a lane with <b>＋ row</b> (or column) among the doors, which opens the blocks; with ✳, beside any block the point reaches; or with ◐, the family\'s other blocks at the same address, which join <b>in step</b>: they go to the address the lane in hand goes to, as far as each block holds it. The chain at a lane\'s top right puts it in step or lets it move on its own, and × lets it go. A touch, the wheel, or [ and ] takes a lane in hand: the rail, the doors and the address bar are its, and a tap on another lane only takes it. In a lane the size you chose is drawn where it fits, else the next smaller; at page size only the lane in hand shows. The link carries the whole stack, nine lanes at most, as a node holds nine.</p>' +
+    '<h3>The stack</h3><p>With <b>Stack</b> on (at the top, in the Magic Eye), more blocks stand beside the one you look at, a lane each, round the one centre you stand at: the lane in hand at eye level, whole, and the others as storeys of the same drum, above and below as rows when the siblings run across, either side as columns when they run up and down, smaller the further off, so every lane stays in sight. Each lane is its own call, its block, its spindle and its point, so a place, a time and who is there can be laid together and each walked along its own spindle. Add a lane with <b>＋ row</b> (or column) among the doors, which opens the blocks; with ✳, beside any block the point reaches; or with ◐, the family\'s other blocks at the same address, which join <b>in step</b>: they go to the address the lane in hand goes to, as far as each block holds it. The chain at a lane\'s top right puts it in step or lets it move on its own, and × lets it go. A touch on another lane (on its cards, or on the ground beside them), the wheel over it, or [ and ] takes it in hand, and it glides to eye level: the rail, the doors and the address bar are its, and a tap on another lane only takes it; a swipe is the lane\'s own, and never moves between lanes. In a stack the size you chose is drawn where the lanes beside it have room to be read, else the next smaller; at page size only the lane in hand shows. The link carries the whole stack, nine lanes at most, as a node holds nine.</p>' +
     '<h3>Snapshot</h3><p><b>Snapshot</b>, beside <i>＋ keep</i> in the row of your spindles, fires the lanes as one: what an LLM is handed by those calls, in order. The walk to each point is what stands decided; the rings beneath a point, where its call looks past the spindle\'s end, are what is still open. Copy the calls, for an AI that reads the beach itself, or the words they reach, every rung whole, for any AI: a context window composed by hand. Nothing is sent and nothing is written.</p>' +
     // weft (eye.7), 16 Nov 2026, at David's word: the hyperlinks
     '<h3>Hyperlinks</h3><p>A card that is a page carries a link in its top right corner, in Iris and Magic Eye, at every size, as the first hypertext\'s index cards did: the chain goes to its page on this site, in this tab (the back button brings you back to this place), and ↗ jumps to a website elsewhere, in a new tab. ⚙ shows or hides them.</p>' +
-    '<h3>Size</h3><p>Each point has five sizes, pscale versions of itself: the whole page at pscale 0, then a large card, a card, an icon with its title, and the title alone, each a rung further out. A larger size shows more of the point\'s own words, never more structure. The page is the point and everything beneath it read as one page, or, where this navigator can frame it, the point\'s own web page, which you can then use as a browser. The icon is the address drawn as a walk from the rim toward the centre, or in Snazzy the page\'s own picture. # shows each address and pscale.</p>' +
+    '<h3>Size</h3><p>Each point has five sizes, pscale versions of itself: the whole page at pscale 0, then a large card, a card, an icon with its title, and the title alone, each a rung further out. A larger size shows more of the point\'s own words, never more structure. The page is the point and everything beneath it read as one page, or, where this navigator can frame it, the point\'s own web page, which you can then use as a browser. The icon is the address drawn as a walk from the rim toward the centre, or in Snazzy the page\'s own picture. # shows each address and pscale. Laid flat a card\'s size is how far inside it stands; in the universe every card is the one size you choose there, title, icon, card or large.</p>' +
     '<h3>Look</h3><p><b>Eye</b> is this navigator\'s own look: every point drawn from its own words. <b>Standard</b> and <b>Snazzy</b> show the thing itself where a point has one. A point with a page of its own on this site (a proposal, a document, a page its words name) shows that page on the card you look at, live and in miniature once you rest on it; tap the miniature, or choose page size, to use it here. Standard shows the plain page drawn from its blocks; Snazzy the page its law names, in its own colours and letters, with its picture. A share on the String shows the thing shared in Snazzy, and the share\'s own page in Standard. A link anywhere else stays a link, opened beside the eye.</p>' +
     '<h3>Links</h3><p>Every place here is a link you can share or put in a page, and the link is the call: the address bar reads happyseaurchin.com/eye/, then the block\'s name, then the spindle, then, where the point is not the spindle\'s end, the point\'s pscale, as in <a href="/eye/spine:the-sea/1.118/0">/eye/spine:the-sea/1.118/0</a> (the first step, on the spindle that runs to 1.118). The beach\'s own wire writes the same three as <a href="/eye?block=spine:the-sea&amp;spindle=1.118&amp;pscale=0">?block=&amp;spindle=&amp;pscale=</a>, which works here too. A pscale below the spindle\'s end opens the sub-directory beneath it; a pscale with no spindle puts the point on the block\'s own way, as <a href="/eye/now:happyseaurchin?pscale=2">/eye/now:happyseaurchin?pscale=2</a> does (today); a link with the address alone, as <a href="/eye/spine:the-sea/1.18">/eye/spine:the-sea/1.18</a>, stands at the spindle\'s end. A link can also ask for a look or a size, as <a href="/eye/proposals?look=snazzy&amp;size=page">?look=snazzy&amp;size=page</a> does.</p>' +
     '<p class="src">' + (store.snap.size ? 'Snapshot taken ' + esc(fmtStamp(META.stamp)) + '. ' : '') + (store.live ? 'This copy is reading the beach live.' : store.snap.size ? 'This copy reads the snapshot; hosted on happyseaurchin.com it reads the beach live.' : 'The beach could not be read just now.') + ' Iris and Magic Eye is keel\'s, one of the pages at <a href="/">happyseaurchin.com</a>.</p>';
@@ -3336,9 +3429,10 @@ function zTurnEnd(T, lead) {
 function zWheel(e) {
   if (dirOn()) return dirWheel(e);   // weft (eye.11)
   if (!zActive()) return;
-  // weft (eye.8): the wheel over another lane takes it in hand
+  // weft (eye.8): the wheel over another lane takes it in hand (eye.14: on the ground between the cards, the storey under it)
   const band = e.target.closest && e.target.closest('.zlane');
   if (band && band._lane && band._lane !== lanes[laneAt]) laneTake(lanes.indexOf(band._lane));
+  else if (!band && stackOn()) { const i = axleHit(e.clientX, e.clientY); if (i !== laneAt) laneTake(i); }
   const sc = e.target.closest && e.target.closest('.doc, .choices, .s-big .b, .panel-list');
   if (sc) { const v = Math.abs(e.deltaY) >= Math.abs(e.deltaX); if (v ? sc.scrollHeight > sc.clientHeight + 2 : sc.scrollWidth > sc.clientWidth + 2) return; }
   e.preventDefault(); e.stopImmediatePropagation();
@@ -3382,6 +3476,7 @@ function zDown(e) {
   // weft (eye.8): a touch on another lane takes it in hand; a tap there only takes it, a drag goes on to move it
   const band = e.target.closest && e.target.closest('.zlane');
   if (band && band._lane && band._lane !== lanes[laneAt] && !e.target.closest('.zlane-tools')) { laneTake(lanes.indexOf(band._lane)); swallowClick = performance.now() + 420; }
+  else if (!band && stackOn() && !(e.target.closest && e.target.closest('button, a, input, textarea, select, .doors, .rail, .ref'))) { const i = axleHit(e.clientX, e.clientY); if (i !== laneAt) { laneTake(i); swallowClick = performance.now() + 420; } }   // weft (eye.14)
   // weft (eye.3), 16 Nov 2026: a mouse drags as a finger does, as the Iris's drag moves its surface (eye.2); a control, a
   // link, a field or something that scrolls keeps its own pointer, and a double or triple click still selects words
   if (e.target.closest && e.target.closest('button, a, input, textarea, select, .doors, .rail, .doc, .s-big .b, .choices, .ref')) return;
@@ -3460,6 +3555,7 @@ function zKey(e) {
   else if (k === 'Home') f = () => { Z.keep = false; zTo(0); };
   else if (k === 'End') f = () => { Z.keep = false; zTo(Z.S.length); };
   else if (k === 'Escape' && Z.over) f = zRing;
+  else if (k === 'c' || k === 'C') f = zCentre;                    // weft (eye.14): Centre, and back
   else if ((k === '[' || k === ']') && stackOn()) f = () => laneStep(k === ']' ? 1 : -1);   // weft (eye.8): the lane before or after in hand
   if (!f) return;
   e.preventDefault(); e.stopImmediatePropagation(); f();
@@ -3489,7 +3585,7 @@ const DIR_MARK = 30;                  // narrower than this, a square is a mark 
 const DIR_TOP = 62, DIR_FOOT = 74;    // the words and the search above, the rail below
 const DR = { layer: null, world: null, cv: null, words: null, find: null, list: null, rail: null, btn: null, cam: null, W: 1, H: 1, vb: 0,
   els: new Map(), raf: 0, fly: null, gl: null, ptr: new Map(), pinch: null, wt: 0, ft: 0, at: '', above: null, placeKey: '', sig: '', from: null,
-  uni: null, loading: new Set(), hits: [], mode: 'flat', rc: null, ra: null, rs: null, rgl: null };   // weft (eye.12): the room's camera and moves
+  uni: null, loading: new Set(), hits: [], mode: 'flat', tap1: null, back: null, was: '' };   // weft (eye.12 to eye.14): the universe's taps, and where Centre came from
 // the directory is on the stage, and the eye is reading it (nothing over it, no panel)
 function dirShown() { return !!DR.layer && DR.layer.isConnected && current === DR.layer; }
 function dirOn() { return state.axis === 'eye' && state.shape === 'dir' && state.view === 'main' && sheet.hidden && dirShown(); }
@@ -3599,16 +3695,20 @@ const dirHere = () => DR.above ? dirTrailKey(DR.above) : dirTrail(state.block, s
 /* the camera: (x, y) the plane's point at the middle of the view, k pixels to a unit of the plane */
 const dirSX = x => (x - DR.cam.x) * DR.cam.k + DR.W / 2;
 const dirSY = y => (y - DR.cam.y) * DR.cam.k + DR.vb;
-function dirFitCam(R) { return { x: R.x + R.s / 2, y: R.y + R.s / 2, k: dirFitK(R) }; }
+// weft (eye.14): a rest laid flat fills the view with the place; in the universe the place is a card at the one size, round it
+// what stands round it (uRestK, below)
+function restK(R) { return DR.mode === 'room' ? uRestK(R) : dirFitK(R); }
+function restCam(R) { return { x: R.x + R.s / 2, y: R.y + R.s / 2, k: restK(R) }; }
 function dirZoomAt(f, px, py) {
   const cam = DR.cam, wx = cam.x + (px - DR.W / 2) / cam.k, wy = cam.y + (py - DR.vb) / cam.k;
-  cam.k = Math.max(dirFitK(ROOT_R) * .6, Math.min(1e13, cam.k * f));
+  cam.k = Math.max(restK(ROOT_R) * .6, Math.min(1e13, cam.k * f));
   cam.x = wx - (px - DR.W / 2) / cam.k; cam.y = wy - (py - DR.vb) / cam.k;
 }
 // fly to a square along the one shortest path: out until both stand in sight, across, then in (van Wijk and Nuij, 2003)
-function dirFlyTo(R, done, quick) {
+function dirFlyTo(R, done, quick) { dirFlyCam(restCam(R), done, quick); }
+function dirFlyCam(t, done, quick) {                               // weft (eye.13): or to a camera, as the room's Centre flies
   dirStop();
-  const cam = DR.cam, t = dirFitCam(R), w0 = DR.W / cam.k, w1 = DR.W / t.k, ux = t.x - cam.x, uy = t.y - cam.y, u1 = Math.hypot(ux, uy), rho = 1.42;
+  const cam = DR.cam, w0 = DR.W / cam.k, w1 = DR.W / t.k, ux = t.x - cam.x, uy = t.y - cam.y, u1 = Math.hypot(ux, uy), rho = 1.42;
   let S, uF, wF;
   if (u1 < 1e-9 * Math.max(w0, w1)) { const sg = w1 < w0 ? -1 : 1; S = Math.abs(Math.log(w1 / w0)) / rho; uF = () => 0; wF = s => w0 * Math.exp(sg * rho * s); }
   else {
@@ -3627,9 +3727,8 @@ function dirFlyTo(R, done, quick) {
 function dirStop() { DR.fly = null; DR.gl = null; clearTimeout(DR.wt); DR.wt = 0; }
 function dirKick() { if (!DR.raf) DR.raf = requestAnimationFrame(dirTick); }
 function dirTick(now) {
-  DR.raf = 0; if (!dirShown()) return;
-  if (DR.mode === 'room') return roomTick(now);                 // weft (eye.12)
-  if (!DR.cam) return;
+  DR.raf = 0; if (!dirShown() || !DR.cam) return;
+  const frame = DR.mode === 'room' ? roomFrame : dirFrame;       // weft (eye.13): the room is the same camera, seen from inside
   let more = false;
   if (DR.fly) {
     const f = DR.fly, u = Math.min(1, (now - f.t0) / f.dur), s = f.S * zEase(u), d = f.uF(s);
@@ -3640,10 +3739,10 @@ function dirTick(now) {
     const g = DR.gl, dt = Math.min(48, Math.max(1, now - g.t)); g.t = now;
     DR.cam.x -= g.vx * dt / DR.cam.k; DR.cam.y -= g.vy * dt / DR.cam.k;
     const kk = Math.exp(-dt / 325); g.vx *= kk; g.vy *= kk;
-    if (Math.hypot(g.vx, g.vy) < .03) { DR.gl = null; dirFrame(); return dirSettle(); }
+    if (Math.hypot(g.vx, g.vy) < .03) { DR.gl = null; frame(now); return dirSettle(); }
     more = true;
   }
-  dirFrame();
+  frame(now);
   if (more) dirKick();
 }
 
@@ -3684,11 +3783,17 @@ function dirFrame() {
 }
 // a node's card in its room: the size whose own layout is nearest that room, scaled to fill it, its layout never changed
 function dirCard(n, R, r, mode, seen) {
-  const k = DR.cam.k, ws = r.w * k, hs = r.h * k, room = mode === 'head' ? hs : ws;
+  const k = DR.cam.k;
+  return dirCardAt(n, R, dirSX(r.x), dirSY(r.y), r.w * k, r.h * k, mode, seen, mode === 'head' ? Math.round(r.w / r.h * 4) : 1);
+}
+// weft (eye.13): the same, given its box on the screen (the room's lens gives its own)
+function dirCardAt(n, R, X, Y, ws, hs, mode, seen, asp, fix) {
+  const room = mode === 'head' ? hs : ws;
   let best = DIR_SIZES[mode][0], bd = Infinity;
-  for (const s of DIR_SIZES[mode]) { const d = Math.abs(Math.log(room / s[1])); if (d < bd) { bd = d; best = s; } }
+  if (fix) best = DIR_SIZES[mode].find(s => s[0] === fix) || best;   // weft (eye.14): the universe's one class, only scaled
+  else for (const s of DIR_SIZES[mode]) { const d = Math.abs(Math.log(room / s[1])); if (d < bd) { bd = d; best = s; } }
   const cls = best[0], sc = room / best[1], read = n.t === 'blk' ? (blockSync(n.name) ? 1 : 0) : 2;
-  const key = n.k + '|' + cls + best[1] + '|' + mode + '|' + read + '|' + (mode === 'head' ? Math.round(r.w / r.h * 4) : 1);
+  const key = n.k + '|' + cls + best[1] + '|' + mode + '|' + read + '|' + asp;
   let el = DR.els.get(key);
   if (!el) {
     if (DR.made >= 14) { DR.more = true; return false; }
@@ -3698,7 +3803,7 @@ function dirCard(n, R, r, mode, seen) {
     el.append(dirCardEl(n, cls)); DR.world.append(el); DR.els.set(key, el);
   }
   el._n = n; el._R = R;
-  el.style.transform = 'translate(' + dirSX(r.x).toFixed(1) + 'px,' + dirSY(r.y).toFixed(1) + 'px) scale(' + sc.toFixed(4) + ')';
+  el.style.transform = 'translate(' + X.toFixed(1) + 'px,' + Y.toFixed(1) + 'px) scale(' + sc.toFixed(4) + ')';
   const f = n.k === DR.at; if (el._f !== f) { el._f = f; el.firstChild.classList.toggle('is-focus', f); }
   seen.add(key);
   return true;
@@ -3727,9 +3832,9 @@ function dirPlaceAt() {
   const cam = DR.cam;
   let n = dirBase(), R = ROOT_R, best = { n, R }, bd = Infinity;
   for (let i = 0; i < 90; i++) {
-    const d = Math.abs(Math.log(dirFitK(R) / cam.k));
+    const d = Math.abs(Math.log(restK(R) / cam.k));      // weft (eye.14): the size it rests at, laid flat or in the universe
     if (d < bd) { bd = d; best = { n, R }; }
-    if (dirFitK(R) > cam.k * 3) break;                      // smaller than the view already; deeper is smaller still
+    if (restK(R) > cam.k * 3) break;                       // smaller than its rest already; deeper is smaller still
     const kids = dirKids(n); if (!kids.length) break;
     const L = dirLayout(n, R, kids);
     let hit = dirIn_(L, cam.x, cam.y);
@@ -3742,7 +3847,6 @@ function dirPlaceAt() {
   return best;
 }
 function dirSettle() {
-  if (DR.mode === 'room') return roomSettle();                  // weft (eye.12)
   if (!dirShown() || DR.ptr.size || !DR.cam) return;
   const b = dirPlaceAt(); dirFlyTo(b.R, () => dirCommit(b.n), true);
 }
@@ -3750,6 +3854,7 @@ function dirSettle() {
 function dirCommit(n) {
   if (!n) return;
   DR.at = n.k;
+  if (DR.back && n.k !== dirCentreOf().n.k) DR.back = null;     // weft (eye.14): Centre's way back, while you rest there
   if (n.t === 'pt' || n.t === 'blk') {
     const b = blockSync(n.name);
     if (b) {
@@ -3779,7 +3884,7 @@ function dirRefresh() {
 }
 
 /* the moves: + out a rung, − in a rung, ‹ › the place before or after, the arrows the neighbour that way */
-function dirGo(c, far) { if (!c) return; if (DR.mode === 'room') return roomGo(c, false, far); dirFlyTo(c.R, () => dirCommit(c.n)); }   // weft (eye.12): in the room, walked
+function dirGo(c) { if (!c) return; dirFlyTo(c.R, () => dirCommit(c.n)); }
 const dirTopSays = t => t[0].n.t === 'beach' ? 'This is every block on the beach' : 'This block is not on this beach\'s index: its top is the whole plane';
 function dirOut() {
   const t = dirHere(); if (t.length < 2) return bump(dirTopSays(t));
@@ -3791,7 +3896,7 @@ function dirIn() {
   dirGo(dirInPick(here.n, dirLayout(here.n, here.R, kids)));
 }
 // the place the eye goes into from a node: back down toward the block you came from, else the spindle's next, the last
-// one you were in, or 1 (weft, eye.12: shared with the room, whose gaze in an empty place goes this way in)
+// one you were in, or 1
 function dirInPick(n, L) {
   let want = null;
   if (n.t === 'beach' || n.t === 'set' || n.t === 'pkg') {
@@ -3826,17 +3931,17 @@ async function dirGoTo(name, path) {
     state.block = b.name; setPlace(b, deepestExisting(b, path || []), null, 0); DR.above = null; return render(null);
   }
   const t = dirTrail(name, b ? deepestExisting(b, path || []) : []), last = t[t.length - 1];
-  dirGo(last, true);
+  dirGo(last);
 }
 
 /* the words at the top, and the rail */
 function dirChrome() {
   if (!DR.words) return;
   const t = dirHere(), here = t[t.length - 1], n = here.n, up = t.length > 1 ? t[t.length - 2].n : null;
-  if (DR.mode === 'room') rmWords();                            // weft (eye.12): in the room the words follow the gaze
-  else {
+  {
     let k = '', w = '';
-    if (n.t === 'beach') { k = 'every block · ' + n.total; w = titleHTML(hostPath(BEACH)); }
+    if (DR.mode === 'room' && n.t === 'set' && up) { const c = dirKids(up).length; k = 'the beach · ' + c + (c === 1 ? ' set' : ' sets') + ' round you'; w = titleHTML(n.title); }   // weft (eye.14): its sets round you
+    else if (n.t === 'beach') { k = 'every block · ' + n.total; w = titleHTML(hostPath(BEACH)); }
     else if (n.t === 'set') { k = 'a set · ' + n.kids.length; w = titleHTML(n.title); }
     else if (n.t === 'pkg') { k = (n.kind === 'shell' ? 'a shell' : 'a family') + ' · ' + n.kids.length; w = titleHTML(n.title); }
     else {
@@ -3857,15 +3962,27 @@ function dirChrome() {
   DR.btn.mode.innerHTML = '<span class="g">' + (Z.mode === 'glide' ? '⇣' : '⋮') + '</span><span class="lb2">' + (Z.mode === 'glide' ? 'glide' : 'step') + '</span>';
   DR.btn.mode.setAttribute('aria-pressed', String(Z.mode === 'step'));
   DR.btn.mode.title = Z.mode === 'glide' ? 'Glide: a drag let go carries on, and settles on the nearest place. Tap for step' : 'Step: a drag let go settles where it is. Tap for glide';
+  // weft (eye.14): Centre, the top, every block laid flat or the middle of the beach in the universe; again, back
+  { const room = DR.mode === 'room', atC = n.k === dirCentreOf().n.k, bk = atC && DR.back ? DR.back.n : null;
+    set(DR.btn.ring, atC && !bk, bk ? 'Centre again: back to ' + dirNodeName(bk) : atC ? (room ? 'This is the middle of the beach' : dirTopSays(t)) : room ? 'Centre: the middle of the beach, its sets round you' : 'Centre: every block on the beach');
+    DR.btn.ring.setAttribute('aria-pressed', String(!!bk)); }
 }
 function dirRail() {
   const r = h('div', 'rail zrail drail'), mk = (cls, g, label, fn) => { const bt = h('button', 'rb ' + cls, '<span class="g">' + g + '</span>' + (label ? '<span class="lb">' + esc(label) + '</span>' : '')); bt.type = 'button'; bt.addEventListener('click', fn); r.append(bt); return bt; };
-  DR.btn = { out: mk('out', '+', 'Out', dirOut), prev: mk('side', '‹', '', () => dirSide(-1)), ring: mk('ring', '◎', 'Ring', dirToRing), next: mk('side', '›', '', () => dirSide(1)), in: mk('in', '−', 'In', dirIn) };
-  DR.btn.ring.title = 'The ring: stand inside this place\'s ring instead'; DR.btn.ring.setAttribute('aria-label', DR.btn.ring.title);
+  // weft (eye.14), 18 Nov 2026, at David's word ('I'm not convinced by the ring/close button … Just replace them with
+  // centre'): the middle button is Centre laid flat and in the universe, as it is round the ring (dirChrome names it)
+  DR.btn = { out: mk('out', '+', 'Out', dirOut), prev: mk('side', '‹', '', () => dirSide(-1)), ring: mk('ring', '◎', 'Centre', dirCentre), next: mk('side', '›', '', () => dirSide(1)), in: mk('in', '−', 'In', dirIn) };
   DR.btn.mode = h('button', 'rb zmode'); DR.btn.mode.type = 'button'; DR.btn.mode.addEventListener('click', () => { zModeToggle(); dirChrome(); }); r.append(DR.btn.mode);
   return r;
 }
 function dirToRing() { state.shape = 'walk'; savePrefs(); render('fade'); }
+// a place's name, as the words at the top name it
+function dirNodeName(n) {
+  if (n.t === 'beach') return hostPath(BEACH);
+  if (n.t === 'set' || n.t === 'pkg') return n.title;
+  const b = blockSync(n.name); if (!b) return n.name;
+  return n.t === 'pt' ? (labelOf(b, n.path).title || n.path.join('.')) : blockTitle(b);
+}
 
 /* search: a block by its name, a place by its words in the blocks read so far, or an address in this block */
 function dirFind(q) {
@@ -3908,9 +4025,9 @@ function dirPick(r) { if (!r) return; DR.list.hidden = true; DR.find.value = '';
 function renderDirEye() {
   const L = layer('dir-eye');
   DR.layer = L; DR.els = new Map(); DR.sig = state.look + '|' + state.addr + '|' + state.links;
-  // weft (eye.12): a layer is laid flat or a room; the room stands afresh round the place each time it is drawn
+  // weft (eye.12): a layer is laid flat or a room; eye.13: both are one camera, the room seen through its lens
   DR.mode = state.dirView === 'room' ? 'room' : 'flat'; L.classList.toggle('in-room', DR.mode === 'room');
-  dirStop(); DR.rc = null; DR.ra = DR.rs = DR.rgl = null; DR.ptr.clear(); DR.pinch = null;
+  dirStop(); DR.tap1 = null; DR.ptr.clear(); DR.pinch = null;
   DR.cv = h('canvas', 'dfield'); DR.cv.setAttribute('aria-hidden', 'true');
   DR.world = h('div', 'dworld');
   const top = h('div', 'dtop');
@@ -3923,9 +4040,9 @@ function renderDirEye() {
   find.append(DR.find, DR.list); top.append(DR.words, find);
   L.append(DR.cv, DR.world, top, dirRail());
   DR.ret = null; if (DR.mode === 'room') { DR.ret = h('div', 'drt'); DR.ret.setAttribute('aria-hidden', 'true'); L.insertBefore(DR.ret, top); }   // weft (eye.12): where you look
-  let seen = ''; try { seen = localStorage.getItem(DR.mode === 'room' ? 'iris-magic-eye.roomhint' : 'iris-magic-eye.dirhint') || ''; } catch (e) { /* storage unavailable */ }
+  let seen = ''; try { seen = localStorage.getItem(DR.mode === 'room' ? 'iris-magic-eye.roomhint3' : 'iris-magic-eye.dirhint') || ''; } catch (e) { /* storage unavailable */ }
   if (!seen) {
-    const hint = h('div', 'dhint', DR.mode === 'room' ? '<span>Drag to look round. Pinch or scroll to go a shell deeper, where more stands round you and smaller, or back out. Tap a place to turn to it.</span>'
+    const hint = h('div', 'dhint', DR.mode === 'room' ? '<span>Drag or swipe to move round you, and up and down; pinch to zoom. Tap a card to face it, tap it again to go in, double-tap to come out. ◎ Centre: the middle of the beach.</span>'
       : '<span>Pinch or scroll to zoom, drag to move, tap a card to go there. Zoom out past a block\'s top for every block on the beach.</span>');
     const x = h('button', 'dhint-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Hide this line'); x.addEventListener('click', dirHintDone);
     hint.append(x); L.append(hint);
@@ -3934,33 +4051,29 @@ function renderDirEye() {
     dirGeom();
     if (DR.above && DR.placeKey !== placeKey()) DR.above = null;        // the place moved some other way: it is the place now
     const t = dirHere(), last = t[t.length - 1], key = DR.above || last.n.k;
-    if (DR.mode === 'room') {                                       // weft (eye.12): stand in the room around the place, facing it
-      if (!DR.rc) {
-        const f = DR.from && !RM ? dirTrailKey(DR.from) : null; DR.from = null;
-        if (f && rmInit(f[f.length - 1].n)) roomGo({ n: last.n, R: last.R }, false, true); else rmInit();
-        DR.placeKey = placeKey();
-      } else if (DR.at !== key) roomGo({ n: last.n, R: last.R }, false, true);
-      else if (!DR.ra && !DR.rs && !DR.rgl && !DR.ptr.size) rmInit(null, true);
-      dirChrome(); roomFrame(); return;
-    }
     // a place reached another way (a star, a tab, a link) is flown to from where the view was; otherwise the view is kept.
     // A link that asks to fly (?fly) opens on every block on the beach and flies to its place, to be watched
     if (!DR.cam) {
-      if (DR.from && !RM) { const f = dirTrailKey(DR.from); DR.cam = dirFitCam(f[f.length - 1].R); DR.at = DR.from; }
-      else { DR.cam = dirFitCam(last.R); DR.at = key; DR.placeKey = placeKey(); }
-      DR.from = null;
+      if (DR.from && !RM) { const f = dirTrailKey(DR.from); DR.cam = restCam(f[f.length - 1].R); DR.at = DR.from; }
+      else { DR.cam = restCam(last.R); DR.at = key; DR.placeKey = placeKey(); }
+      DR.from = null; DR.was = DR.mode;
     }
-    if (DR.at !== key) dirFlyTo(last.R, () => dirCommit(last.n));
-    else if (!DR.fly && !DR.gl && !DR.ptr.size) DR.cam = dirFitCam(last.R);   // at rest the place fills the view, as the stage now is
-    dirChrome(); dirFrame();
+    if (DR.at !== key) dirGo({ n: last.n, R: last.R });
+    else if (!DR.fly && !DR.gl && !DR.ptr.size) {
+      // at rest the place fills the view laid flat, or stands a card among what stands round it in the universe; switched
+      // from one to the other, or the card's size chosen, the view goes there rather than jumping (weft, eye.14)
+      const rc = restCam(last.R), far = Math.abs(Math.log(rc.k / DR.cam.k)) > .02 || Math.hypot(rc.x - DR.cam.x, rc.y - DR.cam.y) * DR.cam.k > 2;
+      if (far && DR.was && !RM) dirFlyCam(rc, null, true); else DR.cam = rc;
+    }
+    DR.was = DR.mode;
+    dirChrome(); if (DR.mode === 'room') roomFrame(); else dirFrame();   // weft (eye.13): the room is the same camera, seen from inside
   };
   return L;
 }
 // the line saying what the gestures do goes once one has been used, and stays gone on this device
-function dirHintDone() { const el = DR.layer && DR.layer.querySelector('.dhint'); if (el) el.remove(); try { localStorage.setItem(DR.mode === 'room' ? 'iris-magic-eye.roomhint' : 'iris-magic-eye.dirhint', '1'); } catch (e) { /* storage unavailable */ } }
+function dirHintDone() { const el = DR.layer && DR.layer.querySelector('.dhint'); if (el) el.remove(); try { localStorage.setItem(DR.mode === 'room' ? 'iris-magic-eye.roomhint3' : 'iris-magic-eye.dirhint', '1'); } catch (e) { /* storage unavailable */ } }
 // the input, read only while the directory looks (the Magic Eye's handlers and the Iris's stand aside for it)
 function dirDown(e) {
-  if (DR.mode === 'room') return rmDown(e);                     // weft (eye.12)
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   if (e.target.closest && e.target.closest('button, a, input, textarea, select, .ref, .dtop, .rail, .dlist, .dhint')) return;
   dirStop();
@@ -3968,7 +4081,6 @@ function dirDown(e) {
   if (DR.ptr.size === 2) { const [a, b] = Array.from(DR.ptr.values()); DR.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; a.moved = b.moved = true; }
 }
 function dirMove(e) {
-  if (DR.mode === 'room') return rmMove(e);
   const p = DR.ptr.get(e.pointerId); if (!p) return;
   const dx = e.clientX - p.x, dy = e.clientY - p.y, now = performance.now();
   p.x = e.clientX; p.y = e.clientY;
@@ -3980,36 +4092,38 @@ function dirMove(e) {
     DR.cam.x -= (mx - DR.pinch.mx) / DR.cam.k; DR.cam.y -= (my - DR.pinch.my) / DR.cam.k;
     DR.pinch = { d, mx, my }; return dirKick();
   }
-  DR.cam.x -= dx / DR.cam.k; DR.cam.y -= dy / DR.cam.k;
+  DR.cam.x -= dx / DR.cam.k; DR.cam.y -= dy / DR.cam.k;           // weft (eye.13): in the universe, round you and up and down
   const dt = Math.max(8, now - p.t); p.t = now; p.vx = p.vx * .5 + .5 * dx / dt; p.vy = p.vy * .5 + .5 * dy / dt;
   dirKick();
 }
 function dirUp(e) {
-  if (DR.mode === 'room') return rmUp(e);
   const p = DR.ptr.get(e.pointerId); DR.ptr.delete(e.pointerId);
   if (DR.ptr.size < 2) DR.pinch = null;
   if (!p) return;
   if (!DR.ptr.size) DR.layer.classList.remove('grabbing');
-  if (!p.moved) { if (!DR.ptr.size && p.el && p.el._n && !(e.target.closest && e.target.closest('a'))) { swallowClick = performance.now() + 350; dirGo({ n: p.el._n, R: p.el._R }); } else if (!DR.ptr.size) dirSettle(); return; }   // weft (eye.12): a tap on the floor that stopped a flight rests
+  if (!p.moved) {
+    if (DR.ptr.size) return;
+    const onLink = !!(e.target.closest && e.target.closest('a'));
+    if (DR.mode === 'room') return rmTap(p, e, onLink);           // weft (eye.13): a tap faces a card, a double tap out
+    if (p.el && p.el._n && !onLink) { swallowClick = performance.now() + 350; dirGo({ n: p.el._n, R: p.el._R }); } else dirSettle();   // weft (eye.12): a tap on the floor that stopped a flight rests
+    return;
+  }
   swallowClick = performance.now() + 350; dirHintDone();
   if (DR.ptr.size) return;                                       // a finger still down carries on
   if (performance.now() - p.t > 90) p.vx = p.vy = 0;              // held still before letting go: nothing to carry on
   if (Z.mode === 'glide' && !RM && Math.hypot(p.vx, p.vy) > .25) { DR.gl = { vx: p.vx, vy: p.vy, t: performance.now() }; dirKick(); }
   else dirSettle();
 }
-function dirCancel(e) { if (DR.mode === 'room') return rmCancel(e); DR.ptr.delete(e.pointerId); if (DR.ptr.size < 2) DR.pinch = null; if (!DR.ptr.size) { DR.layer.classList.remove('grabbing'); dirSettle(); } }
+function dirCancel(e) { DR.ptr.delete(e.pointerId); if (DR.ptr.size < 2) DR.pinch = null; if (!DR.ptr.size) { DR.layer.classList.remove('grabbing'); dirSettle(); } }
 function dirWheel(e) {
-  if (DR.mode === 'room') return rmWheel(e);                    // weft (eye.12)
+  if (DR.mode === 'room') return rmWheel(e);                    // weft (eye.13): in the room the wheel moves you along the wall
   if (e.target.closest && e.target.closest('.dlist')) return;      // the search's list scrolls itself
   e.preventDefault(); e.stopImmediatePropagation();
   DR.fly = null; DR.gl = null;
   const r = stage.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, mul = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1;
   if (e.ctrlKey) dirZoomAt(Math.exp(-e.deltaY * mul / 120), px, py);          // a trackpad's pinch
-  else {
-    dirZoomAt(Math.exp(zZoomSign() * e.deltaY * mul / 260), px, py);           // the wheel zooms, as it does round the ring
-    DR.cam.x += e.deltaX * mul / DR.cam.k;                                       // and sideways moves across
-  }
-  dirKick(); clearTimeout(DR.wt); DR.wt = setTimeout(() => { dirSettle(); dirHintDone(); }, 260);
+  else dirZoomAt(Math.exp(zZoomSign() * e.deltaY * mul / 260), px, py);      // the wheel zooms, as it does round the ring; sideways nothing (weft, eye.13, at David's word: 'Get rid of swipe left/right')
+  dirKick(); clearTimeout(DR.wt); DR.wt = setTimeout(() => { DR.wt = 0; dirSettle(); dirHintDone(); }, 260);
 }
 function dirKey(e) {
   const k = e.key, a = document.activeElement, onBtn = a && a !== document.body && a.closest && a.closest('button, a, [role="button"]');
@@ -4021,7 +4135,7 @@ function dirKey(e) {
   else if (k === 'Home') f = () => { const t = dirTrail(state.block, []); dirGo(t[t.length - 1]); };
   else if (k === 'u' || k === 'U') f = () => dirGo({ n: dirUniverse().root, R: ROOT_R });
   else if (k === '~' || k === '`') f = dirToRing;
-  else if ((k === '[' || k === ']') && DR.mode === 'room') f = () => rmShellStep(k === ']' ? 1 : -1);   // weft (eye.12): a shell in or out where you look
+  else if (k === 'c' || k === 'C' || (k === 'Escape' && DR.back)) f = dirCentre;   // weft (eye.13, eye.14): Centre, and back
   if (!f) return false;
   e.preventDefault(); e.stopImmediatePropagation(); f();
   return true;
@@ -4029,425 +4143,192 @@ function dirKey(e) {
 // the stage's size: a window turned or resized, or the bars above the stage filling in after the first frame; the place
 // keeps filling the view
 function dirResized() {
-  if (!dirShown() || (!DR.cam && DR.mode !== 'room')) return;
+  if (!dirShown() || !DR.cam) return;
   const w = DR.W, hh = DR.H; dirGeom(); if (w === DR.W && hh === DR.H) return;
-  if (DR.mode === 'room') { dirChrome(); return roomFrame(); }  // weft (eye.12): the room is drawn for the stage as it now is
-  if (!DR.fly && !DR.gl && !DR.ptr.size) { const t = dirHere(); DR.cam = dirFitCam(t[t.length - 1].R); }
-  dirChrome(); dirFrame();
+  if (!DR.fly && !DR.gl && !DR.ptr.size) { const t = dirHere(); DR.cam = restCam(t[t.length - 1].R); }
+  dirChrome(); if (DR.mode === 'room') roomFrame(); else dirFrame();
 }
 if (window.ResizeObserver) new ResizeObserver(dirResized).observe(stage); else window.addEventListener('resize', dirResized);
 
-/* ---------------- the room: the directory seen from inside (weft, eye.12, 17 Nov 2026, at David's word: 'In the room — go ahead … I need to see it') ----------------
- * keel (pool:iris 7): the directory is the zoom's aperture opened, 'the same view in the room or laid flat'. stash:weft 121:
- * stand at the centre, each shell one depth; a direction you look in is the spindle, and the shell you focus on is the point.
- * David (pool:iris 5, stash:happyseaurchin 21): 'zooming in to deeper pscale is inverted because more content is shown on
- * the screen like the inside of a sphere … zooming out … the shell is zoomed away and replaced with an inner shell … combine
- * this … with a change in the size of cards from title to page'.
- *   THE DRUM. The room is the place you stand in, its square rolled round you: across the square is once round (it wraps,
- *   so turning round brings you back) and down the square is down the wall. The places stand where the flat view puts them,
- *   so a place's direction is its address. A drum and not a sphere, because a sphere pinches its places at the poles and a
- *   rolled square keeps every place its shape.
- *   THE SHELLS. One depth at a time stands round you: the first, the places of where you stand, one at a time and the size
- *   of a page; deeper, more of them and smaller, because each is about a third of its parent's side while the view narrows
- *   only a little, so going in shows more. Past the third shell you step into the place you face, and out past the first
- *   the room you stand in shrinks onto its place on the wall while the room around it comes round you.
- *   THE GAZE IS THE SPINDLE. The middle of the screen is where you look; the place under it on the shell in focus is the
- *   point, and the words at the top read its address as you look round. A drag turns you, a pinch or the wheel moves
- *   between shells, a tap turns you to a place (a tap on the one you face goes a shell in), and letting go settles on the
- *   nearest whole place, which becomes the point as any rest of the eye does. A far move is walked as keel's path: out to
- *   where the two places part, round, then in. Nothing here writes. */
-const RM_SHELLS = 3;         // shells round you before you step into the place you face
-const RM_LG = Math.log(3.3); // a place is about a third of its parent's side: shells are counted by size with this
-const TAU = Math.PI * 2;
-const wrapPI = a => ((a + Math.PI) % TAU + TAU) % TAU - Math.PI;
-const rmCen = R => ({ x: R.x + R.s / 2, y: R.y + R.s / 2 });
-// a square between two squares: its middle moves straight, its side by the same ratio each moment
-const rmLerp = (A, B, e) => { const a = rmCen(A), b = rmCen(B), s = A.s * Math.pow(B.s / A.s, e), x = a.x + (b.x - a.x) * e, y = a.y + (b.y - a.y) * e; return { x: x - s / 2, y: y - s / 2, s }; };
-function rmTrailOf(n) { return n.t === 'pt' ? dirTrail(n.name, n.path) : n.t === 'blk' ? dirTrail(n.name, []) : dirTrailKey(n.k); }
-const rmIdx = (trail, n) => trail.findIndex(x => x.n.k === n.k);
-// where you look, on the room's own square: the drum wraps, so the gaze is kept once round
-function rmGaze() { const c = DR.rc, R = c.Rr; return { x: R.x + ((c.G.x - R.x) % R.s + R.s) % R.s, y: c.G.y }; }
-function rmWrapG() { const c = DR.rc; c.G = rmGaze(); }
+/* ---------------- the universe: the beach seen from inside (weft, eye.12, eye.13 and eye.14) ----------------
+ * eye.12, 17 Nov 2026, at David's word ('In the room — go ahead … I need to see it'). keel (pool:iris 7): the directory is
+ * the zoom's aperture opened, 'the same view in the room or laid flat'.
+ * eye.13, 18 Nov 2026, at David's word after he walked it: a swipe moves, a tap goes to a place, a double tap comes out, and
+ * Centre stands you in the middle of the beach.
+ * eye.14, the same evening, at David's word after Centre ('LOVE IT. Can we operate this view throughout? … just a set size
+ * for it all … there may be more items on the screen if the items are small'): every rest is that view. The universe keeps
+ * the flat's one camera, its flights and its settling, and draws the plane through one lens round you.
+ *   ONE SIZE OF CARD. Every place drawn as a card is drawn in one class, the reader's (title, icon, card or large, under
+ *   the Size toggle, title until one is chosen), only scaled as it nears, never swapped for another. At rest the place you
+ *   face is that card at its size, straight ahead, and round it its neighbours, the room it stands in open with its name at
+ *   its head, and the rooms beside that, as far round as you can see.
+ *   ONE DRUM. The wall is drawn through an equidistant lens centred where you look, its focal length set by the card's size
+ *   alone (some two and a third cards), so the drum round you never changes: about thirteen cards round, the beach's sets
+ *   once round at its middle. The plane is laid on it to nearly half a turn either way, and what is further round is
+ *   behind you. Up and down, the wall bends toward the top and foot, so the rows above and below stay in sight, pressed
+ *   smaller. The lens is the same at every rest and on every flight, so nothing jumps.
+ *   THE MOVES. A drag or a swipe moves you along the wall; a pinch, or a trackpad's pinch, zooms; letting go settles on the
+ *   nearest card, at its size. A tap on a card faces it, a tap on the card you face goes in, a double tap comes out. CENTRE
+ *   goes to the middle of the beach, its sets round you; Centre again takes you back. Nothing here writes. */
+const U_NAT = { title: 112, icon: 160, card: 230, big: 330 };       // a card's own layout, as laid flat (DIR_SIZES.sq)
+const U_HEAD = { title: 46, icon: 74, card: 132, big: 220 };       // its head's, when it stands open (DIR_SIZES.head)
+const uCls = () => U_NAT[state.uSize] ? state.uSize : 'title';
+const uRest = () => U_NAT[uCls()] * (DR.W >= 900 ? .85 : DR.W >= 600 ? .8 : .72);   // a card's side at rest, on the screen
+const uF = () => uRest() * 2.35;                                   // the lens's focal length: the drum round you
+const uRestK = R => uRest() / R.s;
+// how high up the wall a height stands, as an angle: as laid flat near where you look, bending toward the top and foot so
+// what stands far above and below stays within sight; and its slope, how far a height there is pressed
+const rmLat = v => v / Math.pow(1 + Math.pow(Math.abs(v) / 1.5, 4), .25);
+const rmLatD = v => Math.pow(1 + Math.pow(Math.abs(v) / 1.5, 4), -1.25);
 
-/* the place under the gaze at a depth, down from where the plane starts: the place holding the gaze, or the nearest */
-function rmAlong(dT, G) {
-  G = G || rmGaze();
-  let n = DR.rc.base, R = ROOT_R, d = 0, way = false;
-  while (d < dT) {
-    const kids = dirKids(n); if (!kids.length) break;
-    const L = dirLayout(n, R, kids);
-    let hit = dirIn_(L, G.x, G.y);
-    if (!hit && way) hit = dirInPick(n, L);                       // past a way in, the way goes on down, a shell at a time
-    if (!hit) {
-      // in a seam beside a place, that place; on an empty key of the place you rest on (the middle of a page whose keypad
-      // has no 5, as you go in), the way in; anywhere else (a margin, a head, an empty key you turned to), the nearest
-      const g2 = L.geo, slot = (x, y) => [Math.floor((x - g2.x0) / g2.cell), Math.floor((y - g2.y0) / g2.cell)];
-      const [col, row] = slot(G.x, G.y), cols = Math.round((R.s - 2 * (g2.x0 - R.x)) / g2.cell);
-      let rows = 0; for (const c of L) rows = Math.max(rows, slot(c.R.x + c.R.s / 2, c.R.y + c.R.s / 2)[1] + 1);
-      hit = L.find(c => { const q = slot(c.R.x + c.R.s / 2, c.R.y + c.R.s / 2); return q[0] === col && q[1] === row; });
-      if (!hit && n.k === DR.at && col >= 0 && col < cols && row >= 0 && row < rows) { hit = dirInPick(n, L); way = true; }
-      if (!hit) { let bd = Infinity; for (const c of L) { const dd = Math.hypot(c.R.x + c.R.s / 2 - G.x, c.R.y + c.R.s / 2 - G.y); if (dd < bd) { bd = dd; hit = c; } } }
-    }
-    n = hit.n; R = hit.R; d++;
-  }
-  return { n, R, d };
-}
-
-/* the camera: the room (a square of the plane, rolled round you), the gaze (a point of the plane) and the shell in focus
- * (a depth, continuous between shells). The view is centred on the gaze both ways: across, the drum turns; up and down,
- * the wall comes to meet your eye, so the place you look at is never far up a tall wall and foreshortened, wherever on
- * the wall it stands (a square rolled round you is as tall as it is round, more than any sky). */
-function rmCam() {
-  const c = DR.rc, R = c.Rr;
-  if (c.base.t === 'beach') c.base = dirUniverse().root;            // the beach's index may have grown since
-  c.k = TAU / R.s;
-  // the size of the place in focus, along the gaze, between the shells either side of it
-  const g = rmGaze(), d0 = Math.max(0, Math.floor(c.D)), t = Math.max(0, Math.min(1, c.D - d0));
-  const a = rmAlong(d0, g), b = rmAlong(d0 + 1, g);
-  const sF = b.d > a.d ? a.R.s * Math.pow(b.R.s / a.R.s, t) : a.R.s;
-  // it is drawn a page across on the first shell and smaller deeper in, but by less than it shrinks on the wall, so the
-  // view widens as you go in and more of the shell stands in sight: half as wide each shell, about four times as many
-  const aF = sF * c.k, cap = 0.9 * Math.min(DR.W, DR.H - DIR_TOP - DIR_FOOT);
-  c.aF = aF; c.f = cap * Math.pow(Math.min(1, aF / 1.47), 0.57) / (4 * Math.tan(Math.min(aF / 4, 1.2)));
-}
-// the lens is stereographic, which keeps shapes: a place off to the side is drawn nearly as large as the one you face
-// (a flat camera's lens would stretch it to twice the size), and the drum's rims bend as a room's do
-function rmProj(x, y) {
-  const c = DR.rc, th = wrapPI((x - c.G.x) * c.k), ph = (y - c.G.y) * c.k;
-  if (ph > 1.45 || ph < -1.45) return null;
-  const cp = Math.cos(ph), Z = cp * Math.cos(th);
-  if (Z < -0.2) return null;
-  const q = 2 * c.f / (1 + Z);
-  return { x: DR.W / 2 + q * cp * Math.sin(th), y: DR.vb + q * Math.sin(ph), th, ph };
-}
-// a place's square on the screen: its middle and the side of the card that stands for it, or null where it is out of
-// sight, or { out } where some of it is
-function rmBox(R) {
-  const c = DR.rc, cx = R.x + R.s / 2, cy = R.y + R.s / 2, half = R.s * c.k / 2;
-  const th = wrapPI((cx - c.G.x) * c.k), ph = (cy - c.G.y) * c.k;
-  if (half < Math.PI && (Math.abs(th) - half > 2 * Math.atan(DR.W / (4 * c.f)) + 0.25 || Math.abs(ph) - half > 2 * Math.atan(DR.H / (4 * c.f)) + 0.25)) return null;
-  const m = rmProj(cx, cy); if (!m) return { out: true };
-  const pts = [[R.x, R.y], [R.x + R.s, R.y], [R.x, R.y + R.s], [R.x + R.s, R.y + R.s]].map(p => rmProj(p[0], p[1]));
-  if (pts.some(p => !p)) {
-    // a place wider than the eye takes in at once (one place alone in its room spans most of the way round you): where
-    // its middle is in front, drawn the size the lens gives its middle, and never larger than a page
-    const Zc = Math.cos(m.ph) * Math.cos(m.th);
-    if (half > 1.1 && Zc > 0.3) return { x: m.x, y: m.y, side: 4 * c.f * Math.tan(Math.min(half / 2, 1.2)) * 2 / (1 + Zc) };
-    return { out: true, x: m.x, y: m.y };
-  }
-  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-  if (Math.max(...xs) < -40 || Math.min(...xs) > DR.W + 40 || Math.max(...ys) < -40 || Math.min(...ys) > DR.H + 40) return { out: true, x: m.x, y: m.y };
-  return { x: m.x, y: m.y, side: Math.min(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) };
-}
-
-/* one frame: down from where the plane starts, the shell in focus drawn round you and the one beyond it coming in */
+/* one frame: the plane round you through the lens, every place in sight a card of the one size, or open where it is larger */
 function roomFrame() {
-  if (!dirShown()) return;
+  if (!dirShown() || !DR.cam) return;
   const W = DR.W, H = DR.H, cv = DR.cv, dpr = Math.min(2, window.devicePixelRatio || 1);
   if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); cv.style.width = W + 'px'; cv.style.height = H + 'px'; }
   const x = cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
-  const cap = 0.9 * Math.min(W, H - DIR_TOP - DIR_FOOT), seen = new Set();
+  const cam = DR.cam, k = cam.k, f = uF(), r = f / k, cls = uCls(), rest = uRest();
+  const X0 = W / 2, Y0 = DR.vb, SIDE = 2.9, win = SIDE * r;             // nearly half a turn either way: the seam stays behind you
+  // a card never stands larger than a little over the one size, wherever its square is larger (a leaf beside rooms, a zoom
+  // that has not opened it yet); a little larger again it opens; a room past LIM is far off, its walls and its name unseen
+  const CAP = rest * 1.12, OPEN = rest * 1.5, LIM = Math.max(W, H) * 5, HEAD = U_HEAD[cls] * rest / U_NAT[cls] * 1.12;
+  const acc = getComputedStyle(document.documentElement).getPropertyValue('--iris').trim() || '#4fb3a8', kk = state.look === 'eye' ? 1 : .7;
+  const seen = new Set(); let budget = 220;
   DR.made = 0; DR.more = false;
-  if (!DR.rc && !rmInit()) {                                          // nothing nested to stand in: the place alone, as a page
-    const t = dirHere(), last = t[t.length - 1];
-    rmCard(last.n, last.R, W / 2, DR.vb, cap, 1, seen);
-    for (const [key, el] of DR.els) if (!seen.has(key)) { el.remove(); DR.els.delete(key); }
-    if (DR.words) { const html = '<span class="rim-k">' + esc(last.n.name || last.n.title || '') + '</span><span class="rim-t">Nothing is nested here to stand in</span>'; if (DR.words._h !== html) { DR.words.innerHTML = html; DR.words._h = html; DR.words._rk = ''; } }
-    if (DR.more) dirKick();
-    return;
-  }
-  const U = dirUniverse();
-  if (DR.rc.sig !== U.sig && !DR.ra && !DR.rs && !DR.ptr.size) { DR.rc.sig = U.sig; rmInit(null, true); }   // the beach grew under you: stand where you stood
-  const c = DR.rc;
-  rmCam();
-  const acc = getComputedStyle(document.documentElement).getPropertyValue('--iris').trim() || '#4fb3a8', kk = state.look === 'eye' ? 1 : .75;
-  const R0 = c.Rr, dA = Math.floor(c.D), t = c.D - dA, Pd = c.P.d;
-  let budget = 140;
-  // the drum: its rims above and below, so the wall reads as a wall
-  const line = (pts, a, dash) => { x.strokeStyle = rgba(acc, a * kk); x.setLineDash(dash || []); x.beginPath(); let on = false; for (const p of pts) { if (!p) { on = false; continue; } if (!on) { x.moveTo(p.x, p.y); on = true; } else x.lineTo(p.x, p.y); } x.stroke(); x.setLineDash([]); };
-  const arc = (yy, a) => { const pts = []; for (let i = -40; i <= 40; i++) pts.push(rmProj(c.G.x + (i / 40) * R0.s * 0.49, yy)); line(pts, a); };
-  arc(R0.y + R0.s * 0.2, .22); arc(R0.y + R0.s * 0.985, .22);
-  const quad = (R, a, dash) => { const e = [], N = 10; for (let i = 0; i <= N; i++) e.push(rmProj(R.x + R.s * i / N, R.y)); for (let i = 0; i <= N; i++) e.push(rmProj(R.x + R.s, R.y + R.s * i / N)); for (let i = N; i >= 0; i--) e.push(rmProj(R.x + R.s * i / N, R.y + R.s)); for (let i = N; i >= 0; i--) e.push(rmProj(R.x, R.y + R.s * i / N)); line(e, a, dash); };
-  const mark = (n, b, a) => { const s = Math.max(2, b.side); x.fillStyle = rgba(acc, (n.t === 'pt' || n.t === 'blk' ? .32 : .22) * kk * a); x.beginPath(); if (x.roundRect) x.roundRect(b.x - s * .42, b.y - s * .42, s * .84, s * .84, Math.min(6, s * .2)); else x.rect(b.x - s * .42, b.y - s * .42, s * .84, s * .84); x.fill(); };
-  // a square counts as in the room where its middle is: the room's own places always are, and on the way between rooms
-  // nothing from beyond its edge comes round the drum to stand in front of you
-  const overlaps = R => R.x + R.s > R0.x && R.x < R0.x + R0.s && R.y + R.s > R0.y && R.y < R0.y + R0.s;
-  const centred = R => { const m = rmCen(R); return m.x >= R0.x && m.x <= R0.x + R0.s && m.y >= R0.y && m.y <= R0.y + R0.s; };
-  const walk = (n, R, d) => {
-    if (d > 0 && !overlaps(R)) return;
-    const b = d > 0 ? rmBox(R) : null;
-    if (d > 0 && !b) return;                                           // round behind you
-    const mine = d > 0 && centred(R);
-    if (d === dA || d === dA + 1) {
-      // the shell in focus fades and grows past you as you go deeper; the next comes in from beyond it
-      const a = d === dA ? (1 - t) * (1 - t) : Math.min(1, t * 1.6);
-      if (mine && a >= 0.02 && !b.out && b.side) {
-        const grow = d === dA ? 1 + 0.35 * t : 0.85 + 0.15 * t, side = Math.min(cap, b.side * 0.96 * grow);
-        if (side < DIR_MARK || budget <= 0 || !rmCard(n, R, b.x, b.y, side, a, seen)) mark(n, b, a);
-        budget--;
-      } else if (mine && a >= 0.02 && b.out && R.s * c.k < 2.4) quad(R, .2 * a);   // a place round the side, half in sight: its outline on the wall
-      if (d === dA + 1 || t < 0.02) return;
-    }
-    if (d === dA - 1 && d > Pd && mine && !b.out) quad(R, .14 * (1 - t));   // the places the shell in focus stands in, faint
-    if (n.t === 'blk' && !blockSync(n.name)) { if (d < dA || (d === dA && (t > .2 || (b && !b.out && b.side > 150)))) dirLoad(n.name); return; }
-    const kids = dirKids(n); if (!kids.length) return;
-    const L = dirLayout(n, R, kids);
-    if (d === dA - 1 && L.geo && L.geo.pad && (d === Pd || mine)) {    // the empty places on the keypad: a gap stays a gap
-      const G2 = L.geo, gs = G2.cell - 2 * G2.g;
-      for (let dg = 1; dg <= 9; dg++) if (!L.some(cc => cc.d === dg)) { const i = dg - 1; quad({ x: G2.x0 + (i % 3) * G2.cell + G2.g, y: G2.y0 + ((i / 3) | 0) * G2.cell + G2.g, s: gs }, .1 * (1 - t), [3, 4]); }
-    }
-    for (const ch of L) walk(ch.n, ch.R, d + 1);
+  const SMALL = Math.max(DIR_MARK, rest * .42);                         // a card drawn smaller than this is a mark: far round, or far up or down
+  // the rooms the place you face stands in stand open round it, however few their places
+  const trail = new Set(); for (const t of dirHere()) trail.add(t.n.k);
+  // a point of the wall, by how far across and down it stands from where you look: its angle round the drum and how high
+  // up the wall it stands, through an equidistant lens (as far out on the screen as it is round from where you look, so a
+  // place to the side keeps its size). Past the side of sight a point is held at that edge
+  const pj = (dx, dy, hold) => {
+    let th = dx / r; if (Math.abs(th) > SIDE) { if (!hold) return null; th = Math.sign(th) * SIDE; }
+    const ph = rmLat(dy / r), cp = Math.cos(ph), sx = cp * Math.sin(th), sy = Math.sin(ph), s = Math.hypot(sx, sy), q = s > 1e-9 ? f * Math.atan2(s, cp * Math.cos(th)) / s : f;
+    return { x: X0 + q * sx, y: Y0 + q * sy };
   };
-  walk(c.base, ROOT_R, 0);
+  // a rectangle on the screen, from where its middle stands and its half sides: its middle, and its width and height
+  // measured along its own middle lines (the wall tilts a place to the side, and its outline's box would overstate it);
+  // null where it is out of sight
+  const box = (dx, dy, hw, hh) => {
+    if (Math.abs(dx / r) > SIDE) return null;
+    const c = pj(dx, dy), le = pj(dx - hw, dy, true), ri = pj(dx + hw, dy, true), up = pj(dx, dy - hh, true), dn = pj(dx, dy + hh, true);
+    const w = Math.hypot(ri.x - le.x, ri.y - le.y), h = Math.hypot(dn.x - up.x, dn.y - up.y), e = Math.max(w, h) / 2;
+    if (c.x + e < -40 || c.x - e > W + 40 || c.y + e < -40 || c.y - e > H + 40) return null;
+    return { cx: c.x, cy: c.y, w, h };
+  };
+  const rr = (X, Y, w, hh, rad) => { x.beginPath(); if (x.roundRect) x.roundRect(X, Y, w, hh, rad); else x.rect(X, Y, w, hh); };
+  const line = (pts, a, dash) => { x.strokeStyle = rgba(acc, a * kk); x.lineWidth = 1; x.setLineDash(dash || []); x.beginPath(); let on = false; for (const p of pts) { if (!p) { on = false; continue; } if (on) x.lineTo(p.x, p.y); else { x.moveTo(p.x, p.y); on = true; } } x.stroke(); x.setLineDash([]); };
+  // a square's walls on the drum, as far round as sight goes: they bend as the wall does
+  const quad = (R, a, dash, nx, ny) => {
+    const xa = Math.max(R.x - cam.x, -win), xb = Math.min(R.x + R.s - cam.x, win); if (xa >= xb) return;
+    const ya = R.y - cam.y, yb = R.y + R.s - cam.y, NX = nx || 40, NY = ny || 16;
+    const hz = yy => { const pts = []; for (let i = 0; i <= NX; i++) pts.push(pj(xa + (xb - xa) * i / NX, yy)); return pts; };
+    const vt = xx => { const pts = []; for (let i = 0; i <= NY; i++) pts.push(pj(xx, ya + (yb - ya) * i / NY)); return pts; };
+    line(hz(ya), a, dash); line(hz(yb), a, dash);
+    if (R.x - cam.x >= -win) line(vt(R.x - cam.x), a, dash);
+    if (R.x + R.s - cam.x <= win) line(vt(R.x + R.s - cam.x), a, dash);
+  };
+  // the empty places of a keypad: a gap stays a gap
+  const gaps = L => {
+    const G = L.geo; if (!G || !G.pad) return;
+    const gs = G.cell - 2 * G.g;
+    for (let dg = 1; dg <= 9; dg++) if (!L.some(c => c.d === dg)) { const i = dg - 1; quad({ x: G.x0 + (i % 3) * G.cell + G.g, y: G.y0 + ((i / 3) | 0) * G.cell + G.g, s: gs }, .1, [3, 4], 6, 6); }
+  };
+  // a mark fades as it stands further round, so the far side of the drum is a faint texture, not a crowd
+  const mark = (n, b, S) => { const s = Math.max(2, Math.min(S, CAP * .5)) * .84, far = Math.max(.3, 1 - Math.max(0, Math.hypot(b.cx - X0, b.cy - Y0) / f - 1) * .45); x.fillStyle = rgba(acc, (n.t === 'pt' || n.t === 'blk' ? .3 : .2) * kk * far); rr(b.cx - s / 2, b.cy - s / 2, s, s, Math.min(6, s * .24)); x.fill(); };
+  const walk = (n, R) => {
+    const x0 = R.x - cam.x; if (x0 + R.s < -win || x0 > win) return;                     // round behind you
+    const qy = Math.max(R.y, Math.min(R.y + R.s, cam.y)) - cam.y, Sa = R.s * k * rmLatD(qy / r);   // its size where it is nearest where you look
+    if (Sa < 2.5) return;
+    if (n.t === 'blk' && !blockSync(n.name) && Sa > OPEN * .55) dirLoad(n.name);
+    const kids = dirKids(n), open = kids.length > 0 && (Sa >= OPEN || (trail.has(n.k) && n.k !== DR.at && Sa >= rest * 1.1));
+    if (open) {
+      const near = R.s * k < LIM;
+      if (near) quad(R, .16);                                                        // its walls, but a room this large is far off round you
+      const L = dirLayout(n, R, kids);
+      gaps(L);
+      // its name at its head, the one size too: never taller than a card's name is, set in the middle of the head
+      const hr = dirHeadRect(R), hb = near && budget > 0 ? box(hr.x + hr.w / 2 - cam.x, hr.y + hr.h / 2 - cam.y, hr.w / 2, hr.h / 2) : null;
+      if (hb) { const a = hr.w / hr.h, hs = Math.min(hb.h, hb.w / a, HEAD), ws = hs * a; if (hs >= 9) { dirCardAt(n, R, hb.cx - ws / 2, hb.cy - hs / 2, ws, hs, 'head', seen, Math.round(a * 4), cls); budget--; } }
+      for (const ch of L) walk(ch.n, ch.R);
+      return;
+    }
+    const b = box(x0 + R.s / 2, R.y + R.s / 2 - cam.y, R.s / 2, R.s / 2); if (!b) return;
+    // never larger than it would be straight ahead (far round, the lens stretches a place), and far round you a place is
+    // drawn smaller, as further off, so the far side of the room does not crowd in on itself
+    const psi = Math.hypot(b.cx - X0, b.cy - Y0) / f, S = Math.min(R.s * k, b.w, b.h, CAP) / (psi > 1.1 ? 1 + (psi - 1.1) * .6 : 1);
+    if (S < 2.5) return;
+    if (S < SMALL || budget <= 0) return mark(n, b, S);                                   // a mark on the wall: something stands here
+    const sd = S * .96; if (!dirCardAt(n, R, b.cx - sd / 2, b.cy - sd / 2, sd, sd, 'sq', seen, 1, cls)) mark(n, b, S); budget--;
+  };
+  walk(dirBase(), ROOT_R);
   for (const [key, el] of DR.els) if (!seen.has(key)) { el.remove(); DR.els.delete(key); }
-  // the gaze: where you look is the spindle, and the place under it the point; shown while you move, over the cards
-  if (DR.ret) { DR.ret.style.transform = 'translate(' + (W / 2).toFixed(1) + 'px,' + DR.vb.toFixed(1) + 'px)'; DR.ret.classList.toggle('on', !!(DR.ptr.size || DR.ra || DR.rs || DR.rgl || DR.wt)); }
-  rmWords();
+  // where you look, shown while you move
+  if (DR.ret) { DR.ret.style.transform = 'translate(' + X0.toFixed(1) + 'px,' + Y0.toFixed(1) + 'px)'; DR.ret.classList.toggle('on', !!(DR.ptr.size || DR.fly || DR.gl || DR.wt)); }
   if (DR.more) dirKick();
 }
-// a place's card on the wall: the size whose own layout is nearest its room on the screen, scaled to fill it
-function rmCard(n, R, cx, cy, side, alpha, seen) {
-  let best = DIR_SIZES.sq[0], bd = Infinity;
-  for (const s of DIR_SIZES.sq) { const d = Math.abs(Math.log(side / s[1])); if (d < bd) { bd = d; best = s; } }
-  const cls = best[0], sc = side / best[1], read = n.t === 'blk' ? (blockSync(n.name) ? 1 : 0) : 2;
-  const key = n.k + '|' + cls + best[1] + '|room|' + read;
-  let el = DR.els.get(key);
-  if (!el) {
-    if (DR.made >= 14) { DR.more = true; return false; }
-    DR.made++;
-    el = h('div', 'dn dsq droom'); el.style.width = el.style.height = best[1] + 'px';
-    el.append(dirCardEl(n, cls)); DR.world.append(el); DR.els.set(key, el);
-  }
-  el._n = n; el._R = R;
-  el.style.transform = 'translate(' + (cx - side / 2).toFixed(1) + 'px,' + (cy - side / 2).toFixed(1) + 'px) scale(' + sc.toFixed(4) + ')';
-  el.style.opacity = alpha >= .99 ? '' : alpha.toFixed(3);
-  const f = n.k === DR.at; if (el._f !== f) { el._f = f; el.firstChild.classList.toggle('is-focus', f); }
-  seen.add(key);
-  return true;
-}
-// the words at the top follow the gaze: the address you look along, and the room you stand in
-function rmWords() {
-  if (!DR.words || !DR.rc) return;
-  const c = DR.rc, g = rmAlong(Math.max(0, Math.round(c.D))), n = g.n, P = c.P.n;
-  const key = n.k + '|' + P.k; if (DR.words._rk === key) return; DR.words._rk = key;
-  let k = '', w = '';
-  if (n.t === 'pt' || n.t === 'blk') {
-    const b = blockSync(n.name), path = n.t === 'pt' ? n.path : [];
-    if (b) { const rg = zRung(b, path.length); k = '<span class="rim-b">' + esc(b.name) + '</span>' + (path.length && path.every(isDigit) ? ' ' + esc(addrOf(b, path)) : '') + ' · pscale ' + rg.ps + (rg.name ? ' · ' + rg.name : ''); w = titleHTML(path.length ? labelOf(b, path).title : blockTitle(b)); }
-    else { k = esc(n.name); w = titleHTML(n.name); }
-  } else { k = n.t === 'set' ? 'a set · ' + n.kids.length : n.t === 'pkg' ? (n.kind === 'shell' ? 'a shell · ' : 'a family · ') + n.kids.length : 'every block · ' + n.total; w = titleHTML(n.title || hostPath(BEACH)); }
-  const pb = P.t === 'blk' || P.t === 'pt' ? blockSync(P.name) : null;
-  const pw = P.t === 'beach' ? 'every block on the beach' : P.t === 'set' || P.t === 'pkg' ? P.title : P.t === 'blk' ? (pb ? blockTitle(pb) : P.name) : (pb ? labelOf(pb, P.path).title || P.path.join('.') : P.name);
-  const html = '<span class="rim-k">' + k + '</span><span class="rim-t">' + w + '</span><span class="rim-in"><span class="rim-w">standing in</span> ' + esc(clip(pw || '', 70)) + '</span>';
-  DR.words.innerHTML = html; DR.words._h = html;
-}
 
-/* where you stand, for a place: in the room you stand in where it lies one to three shells inside it; a shell deeper than
- * that, the room steps in just enough; anywhere else (or a far move), in the room around it, facing it as a page */
-function rmPlan(n, far) {
-  const tr = rmTrailOf(n);
-  let i = tr.length - 1;
-  if (i === 0) {                                                // the plane's start is where you stand, never what you face
-    const kids = dirKids(tr[0].n); if (!kids.length) return null;
-    const L = dirLayout(tr[0].n, tr[0].R, kids), t2 = dirTrail(state.block, state.path), want = t2[1] && t2[1].n.k;
-    const c0 = (want && L.find(cc => cc.n.k === want)) || L[0]; tr.push({ n: c0.n, R: c0.R }); i = 1;
+/* Centre (David, eye.13: 'pulls the perspective back to the centre of the room … the room is a server/beach'; eye.14: 'Just
+ * replace them with centre -- it backs the person back to top level (kinda like universe)'): laid flat, every block on the
+ * beach; in the universe, the middle of the beach, the set nearest its middle straight ahead and the others round you.
+ * Centre again takes you back to the place you were at, until you rest somewhere else */
+function dirCentreOf() {
+  const B = { n: dirBase(), R: ROOT_R };
+  if (DR.mode !== 'room') return B;
+  const kids = dirKids(B.n); if (!kids.length) return B;
+  const L = dirLayout(B.n, B.R, kids); let y0 = Infinity, y1 = -Infinity;
+  for (const c of L) { y0 = Math.min(y0, c.R.y); y1 = Math.max(y1, c.R.y + c.R.s); }
+  const mx = B.R.x + B.R.s / 2, my = (y0 + y1) / 2; let best = L[0], bd = Infinity;
+  for (const c of L) { const d = Math.hypot(c.R.x + c.R.s / 2 - mx, c.R.y + c.R.s / 2 - my); if (d < bd) { bd = d; best = c; } }
+  return { n: best.n, R: best.R };
+}
+function dirCentre() {
+  if (!DR.cam) return;
+  dirHintDone();
+  const t = dirHere(), last = t[t.length - 1], c = dirCentreOf();
+  if (last.n.k === c.n.k) {
+    if (DR.back) { const b = DR.back; DR.back = null; return dirGo(b); }
+    return bump(DR.mode === 'room' ? 'This is the middle of the beach' : dirTopSays(t));
   }
-  const cur = DR.rc && DR.rc.P, j = cur ? rmIdx(tr, cur.n) : -1;
-  const pi = j >= 0 && i - j >= 1 && i - j <= RM_SHELLS ? j : !far && j >= 0 && i - j > RM_SHELLS ? i - RM_SHELLS : i - 1;
-  return { tr, i, P: { n: tr[pi].n, R: tr[pi].R, d: pi }, G: rmCen(tr[i].R), D: i, n: tr[i].n };
+  DR.back = { n: last.n, R: last.R };
+  dirGo(c);
 }
-// stand somewhere: where the eye's place is (or, for a flight's start, the place given), facing it; keep says to stay in
-// the room you stand in where you can
-function rmInit(from, keep) {
-  if (!keep) DR.rc = null;
-  const t = dirHere(), last = t[t.length - 1], plan = rmPlan(from || last.n, true); if (!plan) return false;
-  DR.rc = { base: plan.tr[0].n, P: plan.P, Rr: Object.assign({}, plan.P.R), G: plan.G, D: plan.D, sig: dirUniverse().sig };
-  DR.ra = DR.rs = DR.rgl = null;
-  if (from) DR.at = plan.n.k;                                   // a flight's start is shown, never made the point
-  else if (plan.n.k !== (DR.above || last.n.k)) dirCommit(plan.n);
-  else DR.at = plan.n.k;
-  return true;
-}
-// go to a place: turn to it, move to its shell, and where it stands in another room walk there, out, round and in
-function roomGo(cc, quick, far) {
-  if (!DR.rc) return;
-  rmHalt();
-  const plan = rmPlan(cc.n, far); if (!plan) return bump('Nothing is nested here');
-  const c = DR.rc, from = { Rr: Object.assign({}, c.Rr), G: Object.assign({}, c.G), D: c.D, Pd: c.P.d };
-  const to = { Rr: Object.assign({}, plan.P.R), G: plan.G, D: plan.D, Pd: plan.P.d };
-  const sameRoom = plan.P.n.k === c.P.n.k;
-  if (sameRoom) { const k = TAU / c.Rr.s, dth = wrapPI((to.G.x - c.G.x) * k); to.G = { x: c.G.x + dth / k, y: to.G.y }; }   // the short way round
-  DR.rs = null;
-  const end = () => { DR.ra = null; c.Rr = to.Rr; c.P = plan.P; c.base = plan.tr[0].n; c.G = { x: c.Rr.x + ((to.G.x - c.Rr.x) % c.Rr.s + c.Rr.s) % c.Rr.s, y: to.G.y }; c.D = to.D; dirCommit(plan.n); dirKick(); };
-  if (RM || c.base.k !== plan.tr[0].n.k) return end();          // a block that stands alone is reached at once, not flown to
-  // the room's own path, as the flat view flies: out until both rooms stand in sight, across, then in (van Wijk and Nuij)
-  let path = null, S = 0;
-  if (!sameRoom) {
-    const c0 = rmCen(from.Rr), c1 = rmCen(to.Rr), w0 = from.Rr.s, w1 = to.Rr.s, ux = c1.x - c0.x, uy = c1.y - c0.y, u1 = Math.hypot(ux, uy), rho = 1.42;
-    let uF, wF;
-    if (u1 < 1e-9 * Math.max(w0, w1)) { const sg = w1 < w0 ? -1 : 1; S = Math.abs(Math.log(w1 / w0)) / rho; uF = () => 0; wF = s => w0 * Math.exp(sg * rho * s); }
-    else {
-      const r2 = rho * rho, b0 = (w1 * w1 - w0 * w0 + r2 * r2 * u1 * u1) / (2 * w0 * r2 * u1), b1 = (w1 * w1 - w0 * w0 - r2 * r2 * u1 * u1) / (2 * w1 * r2 * u1);
-      const r0 = -Math.asinh(b0), r1 = -Math.asinh(b1); S = (r1 - r0) / rho;
-      uF = s => w0 / r2 * (Math.cosh(r0) * Math.tanh(rho * s + r0) - Math.sinh(r0)); wF = s => w0 * Math.cosh(r0) / Math.cosh(rho * s + r0);
-    }
-    if (!isFinite(S)) return end();
-    path = s => { const d = u1 ? uF(s) / u1 : 0, w = wF(s), cx = c0.x + ux * d, cy = c0.y + uy * d; return { x: cx - w / 2, y: cy - w / 2, s: w }; };
+// a tap: on a card, face it, and on the one you face, in; a second tap close after the first, out, from where you were
+function rmTap(p, e, onLink) {
+  const now = performance.now(), T = DR.tap1;
+  if (T && now - T.t < 330 && Math.hypot(e.clientX - T.x, e.clientY - T.y) < 34) {
+    DR.tap1 = null; swallowClick = now + 350; dirHintDone(); clearTimeout(T.bt);
+    dirStop();                                                          // the first tap's move is let go where it stood
+    return dirOut();
   }
-  const span = Math.abs(to.D - from.D) + (path ? S : 0) + Math.abs(wrapPI((to.G.x - from.G.x) * TAU / from.Rr.s)) / 2;
-  const dur = quick ? Math.min(460, 200 + span * 160) : Math.min(3200, Math.max(420, 320 + span * 420));
-  // the gaze keeps its place within the room as the room moves, blending from where it was to where it goes
-  const off0 = { x: from.G.x - rmCen(from.Rr).x, y: from.G.y - rmCen(from.Rr).y }, off1 = { x: to.G.x - rmCen(to.Rr).x, y: to.G.y - rmCen(to.Rr).y };
-  // and the shell in focus keeps its place inside the moving room: how deep the room is, and how far inside it you look
-  const corr = (to.Pd - from.Pd) - Math.log(from.Rr.s / to.Rr.s) / RM_LG;
-  DR.ra = { t0: performance.now(), dur, from, to, path, S, off0, off1, corr, end };
-  dirKick();
-}
-// a move under way meets a finger, the wheel or another move: a walk between rooms is finished at once (the rooms on
-// its way are no place to stop), a turn inside the room stops where it is
-function rmHalt() { const a = DR.ra; DR.ra = null; DR.rgl = null; if (a && a.path) a.end(); }
-function rmStep(now) {
-  const c = DR.rc, a = DR.ra, u = Math.min(1, (now - a.t0) / a.dur), e = zEase(u);
-  if (a.path) {
-    c.Rr = a.path(a.S * e);
-    const m = rmCen(c.Rr), sc = c.Rr.s;
-    c.G = { x: m.x + (a.off0.x / a.from.Rr.s * (1 - e) + a.off1.x / a.to.Rr.s * e) * sc, y: m.y + (a.off0.y / a.from.Rr.s * (1 - e) + a.off1.y / a.to.Rr.s * e) * sc };
-    c.D = a.from.Pd + Math.log(a.from.Rr.s / c.Rr.s) / RM_LG + a.corr * e + (a.from.D - a.from.Pd) * (1 - e) + (a.to.D - a.to.Pd) * e;
-  } else {
-    c.Rr = rmLerp(a.from.Rr, a.to.Rr, e);                       // a room left half way eases back to its own square
-    c.G = { x: a.from.G.x + (a.to.G.x - a.from.G.x) * e, y: a.from.G.y + (a.to.G.y - a.from.G.y) * e };
-    c.D = a.from.D + (a.to.D - a.from.D) * e;
+  DR.tap1 = { t: now, x: e.clientX, y: e.clientY, bt: 0 };
+  if (!p.el || !p.el._n || onLink) return dirSettle();
+  swallowClick = now + 350;
+  const n = p.el._n;
+  if (n.k === DR.at) {
+    if (dirKids(n).length) return dirIn();
+    DR.tap1.bt = setTimeout(dirIn, 330);                                // a place with nothing inside says so once no second tap came
+    return;
   }
-  if (u >= 1) { a.end(); return false; }
-  return true;
+  dirGo({ n, R: p.el._R });
 }
-function roomTick(now) {
-  if (!DR.rc) return roomFrame();
-  let more = false;
-  if (DR.ra) more = rmStep(now);
-  else if (DR.rs) {                                              // the room re-forming round you mid-gesture, a step in or out
-    const s = DR.rs, u = Math.min(1, (now - s.t0) / s.dur);
-    DR.rc.Rr = rmLerp(s.from, s.to, zEase(u));
-    if (u >= 1) { DR.rc.Rr = Object.assign({}, s.to); DR.rs = null; rmWrapG(); } else more = true;
-  }
-  if (!DR.ra && DR.rgl) {                                        // a turn let go carries on, and slows
-    const g = DR.rgl, dt = Math.min(48, Math.max(1, now - g.t)); g.t = now;
-    rmTurn(g.vx * dt, g.vy * dt);
-    const kk = Math.exp(-dt / 325); g.vx *= kk; g.vy *= kk;
-    if (Math.hypot(g.vx, g.vy) < .03) { DR.rgl = null; roomFrame(); return roomSettle(); }
-    more = true;
-  }
-  roomFrame();
-  if (more) dirKick();
-}
-// turn the gaze by a drag of dx, dy on the screen: across goes round the drum, down and up go along its wall (the wall
-// moves with the finger)
-function rmTurn(dx, dy) {
-  const c = DR.rc, R = c.Rr;
-  rmCam();
-  c.G.x -= dx / (c.f * c.k);
-  c.G.y = Math.max(R.y + 0.12 * R.s, Math.min(R.y + 0.98 * R.s, c.G.y - dy / (c.f * c.k)));   // never past the top of the room or its floor
-  if (!DR.rs) rmWrapG();
-}
-// the shell in focus: a pinch, the wheel or a key moves it; past the third you step into the place you face, out past the
-// first the room you stand in gives way to the room around it
-function rmShell(dD) {
-  const c = DR.rc, P = c.P;
-  const deepest = Math.max(P.d + 1, rmAlong(P.d + RM_SHELLS + 1).d);
-  c.D = Math.max(P.d + (P.d > 0 ? 0.25 : 0.45), Math.min(deepest + 0.35, c.D + dD));
-  // at the end of the spindle, or the top of the plane, say so once a gesture
-  if (dD > 0 && c.D >= deepest + 0.34 && !DR.rbump) { DR.rbump = true; bump('Nothing is nested deeper here'); }
-  else if (dD < 0 && P.d === 0 && c.D <= 0.46 && !DR.rbump) { DR.rbump = true; bump(dirTopSays([{ n: c.base }])); }
-  if (DR.rs) return;
-  if (c.D - P.d > RM_SHELLS + 0.5) { const g = rmAlong(P.d + 1); if (g.d === P.d + 1 && dirKids(g.n).length) rmReroom({ n: g.n, R: g.R, d: g.d }); }
-  else if (c.D - P.d < 0.6 && P.d > 0) { const tr = rmTrailOf(P.n), q = tr[tr.length - 2]; if (q) rmReroom({ n: q.n, R: q.R, d: P.d - 1 }); }
-}
-function rmReroom(P2) {
-  const c = DR.rc, g = rmGaze();
-  DR.rs = { from: Object.assign({}, c.Rr), to: Object.assign({}, P2.R), t0: performance.now(), dur: RM ? 1 : 380 };
-  c.P = P2;
-  // the gaze stays where it looks, kept inside the place you step into (it lies there unless it was in a gap)
-  c.G = { x: Math.max(P2.R.x, Math.min(P2.R.x + P2.R.s, g.x)), y: Math.max(P2.R.y, Math.min(P2.R.y + P2.R.s, g.y)) };
-  dirKick();
-}
-// at rest: the nearest whole shell, the place under the gaze on it, turned to face it square
-function roomSettle() {
-  if (!DR.rc || DR.ptr.size || DR.ra) return;
-  const c = DR.rc, deepest = Math.max(c.P.d + 1, rmAlong(c.P.d + RM_SHELLS + 1).d);
-  const d = Math.max(c.P.d + 1, Math.min(deepest, Math.round(c.D)));
-  const g = rmAlong(d); roomGo({ n: g.n, R: g.R }, true);
-}
-// a shell in or out where you look ([ and ])
-function rmShellStep(dir) {
-  const c = DR.rc; if (!c) return;
-  rmHalt();
-  const deepest = rmAlong(c.P.d + RM_SHELLS + 1).d, d = Math.round(c.D) + dir;
-  if (dir > 0 && d > deepest) return bump('Nothing is nested deeper here');
-  if (dir < 0 && d < 1) return bump(dirTopSays(dirHere()));
-  const g = rmAlong(d); roomGo({ n: g.n, R: g.R });
-}
-// a tap: on the place you face, a shell in; on any other, turn to it
-function rmTap(el) {
-  const n = el._n, c = DR.rc; if (!n || !c) return;
-  const g = rmAlong(Math.max(0, Math.round(c.D)));
-  if (g.n.k === n.k && !DR.ra) { if (DR.at !== n.k) dirCommit(n); return dirIn(); }
-  roomGo({ n, R: el._R });
-}
-
-/* the input, while the room looks */
-function rmDown(e) {
-  if (e.pointerType === 'mouse' && e.button !== 0) return;
-  if (e.target.closest && e.target.closest('button, a, input, textarea, select, .ref, .dtop, .rail, .dlist, .dhint')) return;
-  if (!DR.rc) return;
-  rmHalt(); clearTimeout(DR.wt); DR.wt = 0; DR.rbump = false;
-  DR.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t: performance.now(), moved: false, vx: 0, vy: 0, el: e.target.closest ? e.target.closest('.dn') : null });
-  if (DR.ptr.size === 2) { const [a, b] = Array.from(DR.ptr.values()); DR.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; a.moved = b.moved = true; }
-}
-function rmMove(e) {
-  const p = DR.ptr.get(e.pointerId); if (!p || !DR.rc) return;
-  const dx = e.clientX - p.x, dy = e.clientY - p.y, now = performance.now();
-  p.x = e.clientX; p.y = e.clientY;
-  if (!p.moved) { if (Math.hypot(p.x - p.x0, p.y - p.y0) < 6) return; p.moved = true; DR.layer.classList.add('grabbing'); try { stage.setPointerCapture(e.pointerId); } catch (er) { /* the pointer is gone */ } }
-  e.preventDefault();
-  if (DR.ptr.size >= 2 && DR.pinch) {
-    const [a, b] = Array.from(DR.ptr.values()), d = Math.hypot(a.x - b.x, a.y - b.y) || 1, mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-    rmShell(Math.log(d / DR.pinch.d) / Math.log(2.2));          // spread to go deeper, where more stands round you
-    rmTurn(mx - DR.pinch.mx, my - DR.pinch.my);
-    DR.pinch = { d, mx, my }; return dirKick();
-  }
-  rmTurn(dx, dy);
-  const dt = Math.max(8, now - p.t); p.t = now; p.vx = p.vx * .5 + .5 * dx / dt; p.vy = p.vy * .5 + .5 * dy / dt;
-  dirKick();
-}
-function rmUp(e) {
-  const p = DR.ptr.get(e.pointerId); DR.ptr.delete(e.pointerId);
-  if (DR.ptr.size < 2) DR.pinch = null;
-  if (!p) return;
-  if (!DR.ptr.size) DR.layer.classList.remove('grabbing');
-  if (!p.moved) {
-    if (DR.ptr.size) return;
-    if (p.el && p.el._n && !(e.target.closest && e.target.closest('a'))) { swallowClick = performance.now() + 350; return rmTap(p.el); }
-    return roomSettle();                                          // a tap on the wall: rest where you look
-  }
-  swallowClick = performance.now() + 350; dirHintDone();
-  if (DR.ptr.size) return;                                       // a finger still down carries on
-  if (performance.now() - p.t > 90) p.vx = p.vy = 0;              // held still before letting go: nothing to carry on
-  if (Z.mode === 'glide' && !RM && Math.hypot(p.vx, p.vy) > .25) { DR.rgl = { vx: p.vx, vy: p.vy, t: performance.now() }; dirKick(); }
-  else roomSettle();
-}
-function rmCancel(e) { DR.ptr.delete(e.pointerId); if (DR.ptr.size < 2) DR.pinch = null; if (!DR.ptr.size) { DR.layer.classList.remove('grabbing'); roomSettle(); } }
+// the wheel, or two fingers on a trackpad, move you along the wall; a trackpad's pinch (the wheel with ctrl) zooms, and the
+// wheel held with alt or cmd
 function rmWheel(e) {
-  if (e.target.closest && e.target.closest('.dlist')) return;      // the search's list scrolls itself
+  if (e.target.closest && e.target.closest('.dlist')) return;          // the search's list scrolls itself
   e.preventDefault(); e.stopImmediatePropagation();
-  if (!DR.rc) return;
-  rmHalt(); if (!DR.wt) DR.rbump = false;
-  const mul = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1;
-  if (e.ctrlKey) rmShell(-e.deltaY * mul / 110);                 // a trackpad's pinch
-  else { rmShell(zZoomSign() * e.deltaY * mul / 320); rmTurn(-e.deltaX * mul, 0); }   // the wheel moves between shells; sideways turns you
-  dirKick(); clearTimeout(DR.wt); DR.wt = setTimeout(() => { DR.wt = 0; roomSettle(); dirHintDone(); }, 260);
+  DR.fly = null; DR.gl = null;
+  const r = stage.getBoundingClientRect(), px = e.clientX - r.left, py = e.clientY - r.top, mul = e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1;
+  if (e.ctrlKey) dirZoomAt(Math.exp(-e.deltaY * mul / 120), px, py);          // a trackpad's pinch
+  else if (e.altKey || e.metaKey) dirZoomAt(Math.exp(-e.deltaY * mul / 260), px, py);   // a mouse's wheel held with alt or cmd, as /iris
+  else { DR.cam.x += e.deltaX * mul / DR.cam.k; DR.cam.y += e.deltaY * mul / DR.cam.k; }
+  dirKick(); clearTimeout(DR.wt); DR.wt = setTimeout(() => { DR.wt = 0; dirSettle(); dirHintDone(); }, 260);
 }
 
 stage.addEventListener('wheel', zWheel, { capture: true, passive: false });
+// weft (eye.13), from torus.1's note for this seat (pool:iris 12, 7): an iPhone's Safari zoomed the page itself on a pinch,
+// so the pinch never reached the eye; on the stage the page's own zoom is held, and the pinch comes as two pointers
+['gesturestart', 'gesturechange'].forEach(t => document.addEventListener(t, e => { if (e.target && e.target.closest && e.target.closest('.stage')) e.preventDefault(); }, { passive: false }));
 stage.addEventListener('pointerdown', zDown, true);
 stage.addEventListener('pointermove', zMove, true);
 stage.addEventListener('pointerup', zUp, true);
