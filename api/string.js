@@ -6,9 +6,10 @@
  *       { url, site, title, text, author, when, image, x: { id, media } }, each only where the thing gives it
  *   GET /api/string?page=<address or handle>     (the rewrite from /string/<address>, /string/<handle>)
  *       the page itself, its title and preview saying this share or this person
- *   GET /api/string?page=<slug or nothing>&door=<name>     (the rewrite from /salt, /salt/<slug>)
- *       the same page at a members' door, with that beach's own voice in it and a preview saying only whose
- *       string it is: a members' string is never read here, so nothing of it reaches a preview or a crowd's cache
+ *   GET /api/string?page=<slug or nothing>&door=<name>     (the rewrite from www.bringingtheflavour.com/string and
+ *       /string/<slug>, SALT's one home since 19 Nov 2026; happyseaurchin.com/salt sends readers there)
+ *       the same page at a members' door, with that beach's own voice in it, its own header, and a preview saying only
+ *       whose string it is: a members' string is never read here, so nothing of it reaches a preview or a crowd's cache
  *
  * WhatsApp shows the title and picture a page gives without running it, so a share's link needs its preview
  * in the page as served (the-string 1.1115). And a browser cannot read another site's card, so the sites
@@ -34,8 +35,16 @@ const SITE = 'https://happyseaurchin.com';
    voice, so the page's writes land there, and its manifest, so a phone installs it as that string. A door's HOME is where its
    string lives on the community's own site (SALT's at www.bringingtheflavour.com/string, a rewrite there to this function),
    so a share's preview and a card passed on name that address; the page is told its door as served (data-door on <html>),
-   since served there its path says nothing of it. */
-const DOORS = { salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT', home: 'https://www.bringingtheflavour.com/string' } };
+   since served there its path says nothing of it.
+   A DOOR'S OWN HEADER (19 Nov 2026, lane salt.app.2; spine:salt-app 1.1, OWN three for three on 4 Nov, David's 'Start the
+   header' on 19 Nov): served at a door, the page says whose it is before any script runs: the door's mark in place of the
+   String's dot, its name in the bar, its front page at the foot, its own icons, and its top marked as the page's own wall
+   (data-pass-wall), so theme.js never lays a second key-in box over the String's own. The mark is SALT's crystal, the cube
+   seen corner-on with its zing (www.bringingtheflavour.com's own sprite). */
+const SALT_MARK = '<svg class="door-mark" viewBox="0 0 32 32" aria-hidden="true"><path class="door-mark__x" d="M16,4L26.83,10.25L26.83,22.75L16,29L5.17,22.75L5.17,10.25ZM16,16.5L5.17,10.25M16,16.5L26.83,10.25M16,16.5L16,29"/><path class="door-mark__z" d="M16,7.13L21.41,10.25L16,13.38L10.59,10.25Z"/></svg>';
+const DOORS = { salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT', home: 'https://www.bringingtheflavour.com/string',
+  front: 'https://www.bringingtheflavour.com/', mark: SALT_MARK,
+  icon: 'https://www.bringingtheflavour.com/favicon.svg', touch: 'https://www.bringingtheflavour.com/apple-touch-icon.png' } };
 const OPEN_VOICE = 'https://beach.happyseaurchin.com/button/voice.js';
 const AGENT = 'happyseaurchin-string/1.0 (+https://happyseaurchin.com/string)';
 const ADDRESS = /^\d{10}(\.\d{1,9})?$/, HANDLE = /^[A-Za-z0-9_][A-Za-z0-9_ -]{0,31}$/;
@@ -212,8 +221,17 @@ export function withPreview(html, p, door) {
   set('property', 'og:description', p.text);
   set('property', 'og:image', p.image);
   set('property', 'og:url', p.url);
-  if (door) html = html.replace(OPEN_VOICE, DOORS[door].beach + '/button/voice.js').replace('/string.webmanifest', '/' + door + '.webmanifest')
-    .replace('<html lang="en" class="no-js">', '<html lang="en" class="no-js" data-door="' + door + '">');
+  if (door) {
+    const d = DOORS[door];
+    html = html.replace(OPEN_VOICE, d.beach + '/button/voice.js').replace('/string.webmanifest', '/' + door + '.webmanifest')
+      .replace('<html lang="en" class="no-js">', '<html lang="en" class="no-js" data-door="' + door + '">')
+      .replace('<link rel="icon" href="/assets/torus.png" type="image/png">', () => '<link rel="icon" href="' + q(d.icon) + '" type="image/svg+xml">')
+      .replace('<link rel="apple-touch-icon" href="/assets/string/icon-192.png">', () => '<link rel="apple-touch-icon" href="' + q(d.touch) + '">')
+      .replace('<span class="dot"></span>', () => d.mark)
+      .replace(/<span class="title" id="bar-title">[\s\S]*?<\/span><\/span>/, () => '<span class="title" id="bar-title"><b>' + q(d.name) + '</b><span class="sub"> · the string</span></span>')
+      .replace('<div id="top"></div>', () => '<div id="top" data-pass-wall="' + q(d.beach) + '"></div>')
+      .replace('<p id="create-your-own"><a href="/">happyseaurchin.com</a></p>', () => '<p id="create-your-own"><a href="' + q(d.front) + '">' + q(d.name) + '</a></p>');
+  }
   return html;
 }
 /* a members' door says whose string it is, and no more: a share there is its members' to read */

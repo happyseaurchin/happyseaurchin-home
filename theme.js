@@ -1966,6 +1966,9 @@
   var shareCard = null;
   function shareAct(mount){
     if (document.getElementById('btn-share-forward')) return;
+    /* not at a members' door (data-door on <html>): the invite is the open commons' own, and a door shows only what acts
+     * on its own beach (spine:salt-app 1.1, OWN; lane salt.app.2, 19 Nov 2026) */
+    if (document.documentElement.hasAttribute('data-door')) return;
     var b = document.createElement('button');
     b.type = 'button'; b.id = 'btn-share-forward';
     b.textContent = 'share forward';
@@ -2011,6 +2014,10 @@
   function mintAct(){
     var mount = document.querySelector('.bar');
     if (!mount || document.getElementById('btn-mint')) return;
+    /* not at a members' door (data-door on <html>): a card goes into a hand on the open beach (hand.js), so ＋card would
+     * carry a member's words past their door's edge, and on the door's own site its scripts are not there to load
+     * (spine:salt-app 1.1.4; lane salt.app.2, 19 Nov 2026) */
+    if (document.documentElement.hasAttribute('data-door')) return;
     /* ON A PHONE THE BAR HAS NO ROOM TO SPARE: the longest title cannot wrap
      * below its longest word (a handle), so the bar's gaps and side padding
      * tighten a little there and the word stacks under its ＋ — else the bar
@@ -2961,6 +2968,63 @@
 
     var menu = document.createElement('div');
     menu.className = 'dd__menu';
+
+    /* A MEMBERS' DOOR (19 Nov 2026, lane salt.app.2; spine:salt-app 1.1, OWN three for three on 4 Nov, and David's 'Start
+     * the header' that day): a page served at a door of a members' beach goes only to that beach's own pages, never the
+     * site's or a hand's, which stand on the open beach and answer nothing on the door's own site. The page names its door
+     * (cfg.door: its name, its beach, its own site, and its own list as [address, name, what it is] each). Its go reads the
+     * beach's own lighthouse at 8 ('<address> — <what it is>', block-conventions 4.4), kept by the beach's keeper and marked
+     * beyond so a stranger's go reads it too, the menu showing what each is up to its first colon: a page joins the door
+     * with one line there and no code. Until that stands, or where it cannot be read whole, the page's own list. A place on
+     * another site is marked ↗, so a link that leads out says so before the tap. Read when the menu first opens, as the
+     * site's list is. */
+    if (cfg.door){
+      var DOOR_LIST = (cfg.door.pages || []).slice(), doorAsked = false;
+      s.title = (cfg.door.name ? cfg.door.name + '’s' : 'this door’s') + ' own pages';
+      var doorSite = function(addr){ try { return new URL(addr, location.href).hostname.replace(/^www\./, ''); } catch(e){ return ''; } };
+      var doorHere = function(addr){
+        try {
+          var u = new URL(addr, location.href), seg = u.pathname.replace(/^\/+|\/+$/g, '').split('/')[0];
+          return cfg.here ? seg === cfg.here : (u.host === location.host && u.pathname === location.pathname);
+        } catch(e){ return false; }
+      };
+      var paintDoor = function(){
+        menu.textContent = '';
+        DOOR_LIST.forEach(function(p){
+          var out = !!cfg.door.site && doorSite(p[0]) !== cfg.door.site;
+          door(p[1] + (out ? ' ↗' : ''), p[0], !out && doorHere(p[0]));
+          if (menu.lastChild && (p[2] || out)) menu.lastChild.title = (p[2] || '') + (out ? (p[2] ? ' — ' : '') + 'on ' + doorSite(p[0]) : '');
+        });
+      };
+      var fromLighthouse = function(b){
+        var eight = b && typeof b === 'object' ? b['8'] : null, out = [];
+        if (!eight || typeof eight !== 'object') return null;
+        for (var k = 1; k <= 9; k++){
+          var e = eight[String(k)], t = typeof e === 'string' ? e : (e && typeof e._ === 'string' ? e._ : '');
+          if (!t) continue;
+          var m = /^(https?:\/\/\S+)\s+—\s+(\S[\s\S]*)$/.exec(t.trim());
+          if (!m) return null;
+          out.push([m[1], m[2].split(/:\s/)[0].trim(), m[2].trim()]);
+        }
+        return out.length ? out : null;
+      };
+      var fitDoor = function(){ menu.style.maxHeight = Math.max(180, window.innerHeight - menu.getBoundingClientRect().top - 12) + 'px'; };
+      paintDoor();
+      d.appendChild(menu);
+      window.addEventListener('resize', function(){ if (d.open) fitDoor(); });
+      d.addEventListener('toggle', function(){
+        if (!d.open) return;
+        fitDoor();
+        if (doorAsked || !cfg.door.beach) return;
+        doorAsked = true;
+        fetch(String(cfg.door.beach).replace(/\/+$/, '') + '/.well-known/pscale-beach?block=lighthouse', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(b){ var got = fromLighthouse(b); if (got){ DOOR_LIST = got; paintDoor(); fitDoor(); } })
+          .catch(function(){});
+      });
+      mount.appendChild(d);
+      return d;
+    }
 
     /* THE LISTS AS TABS (tidying.22; David, 2026-10-12: "I need to work on it so that
      * it is more obvious"). The go menus are kinds of list — a hand's places, the site's
