@@ -81,10 +81,18 @@
    * a step's address label stands before its heading) */
   var TITLES = ['[data-part="title"]', 'h2', 'h3', '.head .t', '.head', 'h4', 'summary', 'strong', 'b'];
   function clean(s) { return String(s || '').replace(/\s+/g, ' ').trim().replace(/^\d+(\.\d+)?\s+/, '').replace(/\s+\d+(\.\d+)?$/, ''); }
+  /* a heading's own words: the label of where a step stands, which pages that read their threads set inside the
+   * heading (a chip, class state: 'Built', 'Waits on …'), is not its title */
+  function words(el) {
+    if (!el.querySelector || !el.querySelector('.state')) return el.textContent;
+    var c = el.cloneNode(true);
+    [].forEach.call(c.querySelectorAll('.state'), function (s) { s.remove(); });
+    return c.textContent;
+  }
   function titleOf(el) {
-    if (el.matches && el.matches('[data-part="title"]')) return clean(el.textContent).slice(0, 80);
+    if (el.matches && el.matches('[data-part="title"]')) return clean(words(el)).slice(0, 80);
     for (var i = 0; i < TITLES.length; i++) {
-      var t = el.querySelector(TITLES[i]), s = t ? clean(t.textContent) : '';
+      var t = el.querySelector(TITLES[i]), s = t ? clean(words(t)) : '';
       if (s && !ADDR.test(s)) return s.slice(0, 80);
     }
     return '';
@@ -105,7 +113,9 @@
   function placeOf(m, addr) {
     var pick = addr ? markAt(m, addr) : null, line = window.innerHeight * 0.4;
     if (!pick) { for (var j = 0; j < m.all.length; j++) if (m.all[j].top <= line) pick = m.all[j]; }
-    if (!pick) pick = m.all[0] || null;
+    /* nothing reached yet, the reader at the opening: its first step, where it has steps (a fold in the opening,
+     * such as 'where it came from', is not where a reader starts), else the first marked part */
+    if (!pick) pick = (m.steps.length ? markAt(m, m.steps[0]) : null) || m.all[0] || null;
     if (!pick) return null;
     var title = titleOf(pick.el), step = m.steps.length > 1 ? stepOf(m, pick.addr) : '';
     var n = m.steps.indexOf(step), stepped = step ? markAt(m, step) : null, stepTitle = stepped ? titleOf(stepped.el) : '';

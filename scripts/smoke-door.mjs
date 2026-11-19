@@ -14,10 +14,11 @@
  *     naming the page's own address; Escape closes the card back to the button, then the door;
  *   - Escape closes it and gives focus back to the button;
  *   - no script error and no sideways scroll.
- * A page with a door of its own keeps it, and its sheet carries the same code button.
- * A page whose own buttons open the shared door (data-ai-door, as ai-churn's do since 19 Nov 2026) has
- * no corner button: the door is opened from the first of those buttons that shows, and every check
- * above is run on it, Escape giving focus back to that button.
+ * A page whose own buttons open the shared door (data-ai-door, as the eight pages that kept doors of their
+ * own do since 19 Nov 2026) has no corner button: the door is opened from the first of those buttons that
+ * shows, and every check above is run on it, Escape giving focus back to that button.
+ * A page that builds a door of its own (window.openDoor) fails: one door, kept in one place (David,
+ * 19 Nov 2026: 'use the shared door'), since a copy drifts from it.
  * A page with no family (the list at /proposal) carries no corner button.
  *
  *   NODE_PATH=$(npm root -g) node scripts/smoke-door.mjs [page …] [--shots <dir>]
@@ -160,25 +161,10 @@ for (const view of VIEWS) {
         await page.close(); continue;
       }
       if (own.has(path)) {
-        const probs = [];
-        const ownDoor = await page.evaluate(() => typeof window.openDoor === 'function');
-        if (has) probs.push('two doors: the corner button stood beside the page\'s own');
-        if (!ownDoor) probs.push('its own door is gone');
-        else {
-          /* its own door, opened as its buttons open it, carries the same code */
-          await page.evaluate(() => window.openDoor());
-          await page.waitForSelector('#door:not([hidden])', { timeout: 8000 });
-          await page.waitForTimeout(500);
-          probs.push(...await codeCard(page, '#door', path, true));
-          if (SHOTS) await page.screenshot({ path: join(SHOTS, (path.replace(/\//g, '_') || 'root') + '-' + view.name + '-own.png') });
-          await page.keyboard.press('Escape');
-          await page.waitForTimeout(300);
-          if (await page.evaluate(() => !document.querySelector('#door').hidden)) probs.push('Escape did not close its own door');
-        }
-        const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-        if (wide > 1) probs.push('sideways scroll ' + wide + 'px');
-        if (errors.length) probs.push('errors: ' + errors.slice(0, 2).join(' | '));
-        line(!probs.length, path, view.name, probs.length ? probs.join('; ') : 'its own door kept, with the code; the corner stands aside');
+        /* one door, kept in one place (David, 19 Nov 2026: 'use the shared door'): a door a page builds for itself
+           drifts from it, as ai-churn's did, so a page that keeps one fails here; its buttons open the shared one
+           when marked data-ai-door */
+        line(false, path, view.name, 'keeps a door of its own (window.openDoor): mark its buttons data-ai-door to open the shared door instead');
         await page.close(); continue;
       }
       /* a page whose own buttons open the shared door (data-ai-door): the corner stands aside, and the door is
@@ -186,7 +172,8 @@ for (const view of VIEWS) {
       const button = has ? '' : await page.evaluate(() => {
         const b = [...document.querySelectorAll('[data-ai-door]:not([data-ai-door="off"])')].find((x) => {
           const r = x.getBoundingClientRect(), cs = getComputedStyle(x);
-          return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden';
+          /* checkVisibility, since a button in a closed <details> keeps a box but is not shown */
+          return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && (!x.checkVisibility || x.checkVisibility({ visibilityProperty: true }));
         });
         if (!b) return '';
         b.setAttribute('data-smoke-opener', '');

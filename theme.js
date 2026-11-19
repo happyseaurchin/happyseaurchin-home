@@ -3612,10 +3612,12 @@
  * The page says which family it is, as it already does: data-proposal, data-meeting
  * or data-schematic on its <html> (data-family for any other), or its address
  * (/proposal/<name>, /schematic/<name>, /met/<name>). A page with its own door
- * (window.openDoor: o-page-unit, first-meeting, waterline) keeps it and this stands
- * aside, so no page shows two; never in a frame; never where the html or the body
- * says data-ai-door="off". Any element marked data-ai-door opens the same door, so a
- * page can set it in its own header, and the corner button then stands aside.
+ * (window.openDoor) keeps it and this stands aside, so no page shows two, though since
+ * 19 November 2026 no page keeps one (David: 'use the shared door') and smoke-door fails
+ * a page that does; never in a frame; never where the html or the body says
+ * data-ai-door="off". Any element marked data-ai-door opens the same door, so a page can
+ * set it in its own header, and the corner button then stands aside, as the eight pages
+ * that kept doors of their own now do.
  * (Not data-door: five pages already use that word for doors of their own.)
  * ───────────────────────────────────────────────────────────────────────────── */
 (function(){
