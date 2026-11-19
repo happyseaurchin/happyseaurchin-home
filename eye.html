@@ -213,6 +213,11 @@ button{font:inherit;color:inherit}
 .doc section.decide{border:1px solid var(--c-accent,var(--ember));border-radius:12px;padding:10px 13px;margin-left:0}
 .doc-date{font-size:.74rem;color:var(--c-muted,var(--mist));margin:-2px 0 4px}
 .pv-open{margin-top:24px;font-size:.9rem;color:var(--c-muted,var(--mist))}
+/* weft (eye.17): a website that won't be shown inside another page, and the way to open it beside */
+.pv-away{margin-top:24px;padding:14px 16px;border:1px solid var(--c-line,var(--line));border-radius:12px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 16px;font-size:.92rem;line-height:1.5}
+.pv-away p{margin:0;flex:1 1 240px;color:var(--c-text,var(--text))}
+.pv-away p b{color:var(--c-ink,var(--ink))}
+.pv-away .btn{flex:none;text-decoration:none}
 .loading{display:flex;align-items:center;justify-content:center;color:var(--mist);font-size:.95rem}
 /* doors */
 .doors{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:100%}
@@ -741,12 +746,31 @@ function invalidate() { knownCache = null; mirrorCache.clear(); famPageCache.cle
 const HOME = BEACH.replace(/\/$/, '');
 const baseOf = u => String(u || '').trim().replace(/\/$/, '');
 function bKey(name, beach) { const b = baseOf(beach); return !b || b === HOME || b === baseOf(WHERE[name]) ? name : b + '~' + name; }
-function bParts(key) { const m = /^(https:\/\/[^~\s]+)~(.+)$/.exec(String(key || '')); return m ? { beach: m[1], name: m[2] } : { beach: '', name: String(key || '') }; }
+function bParts(key) { const m = /^(https:\/\/[^~\s]+|web)~(.+)$/.exec(String(key || '')); return m ? { beach: m[1], name: m[2] } : { beach: '', name: String(key || '') }; }
+// weft (eye.17), 19 Nov 2026, at David's 'go ahead with step 4' ("a browser to the internet where site-maps get translated
+// into pscale blocks"): a website stands here as one block, its own sitemap read through this site's guarded function
+// (api/sitemap.js), keyed web~<host>: a form no beach's block can take, a beach's being https://…~<name> and the home beach's
+// names holding no ~. Made simple the same day at David's word ('effectively it becomes a browser'): at page size a site's
+// page opens full size inside the eye where its site lets another page show it, and beside where it doesn't (pageView)
+const WEB = 'web';
+const isWebKey = k => /^web~[a-z0-9][a-z0-9.-]*\.[a-z0-9-]+$/.test(String(k || ''));
+// a site is named by its address, as the function names it (api/sitemap.js siteOf): example.com, or any address on it
+function webHost(v) {
+  let s = String(v || '').trim(); if (!s || s.length > 300 || /\s/.test(s)) return '';
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = 'https://' + s;
+  let u; try { u = new URL(s); } catch (e) { return ''; }
+  if (!/^https?:$/.test(u.protocol) || u.username || u.password || (u.port && u.port !== '80' && u.port !== '443')) return '';
+  const host = u.hostname.toLowerCase().replace(/\.$/, '');
+  if (host.length > 253 || !host.includes('.') || /^\d+(\.\d+){3}$/.test(host) || host.startsWith('[') || !host.split('.').every(l => /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/.test(l))) return '';
+  return /\.(local|localhost|internal|intranet|lan|home|test|invalid|onion)$/.test(host) ? '' : host;
+}
+const WEB_SITES = new Map();   // the sites the web holds: host → { host, at, state: idle, reading, read, none or down, pages }
 const bareOf = b => (b && (b.bare || b.name)) || '';
 function known() { if (knownCache) return knownCache; const s = new Set(store.snap); for (const n of store.blocks.keys()) if (!bParts(n).beach) s.add(n); if (store.live) for (const n of store.liveNames) s.add(n); return (knownCache = s); }
 // weft, 16 Nov 2026: a block a page keeps at another beach (META.where, the Brackenfoot map at /w/brackenfoot) is loadable too
 function loadable(name) {
-  const p = bParts(name); if (p.beach) { const B = BEACHES.get(p.beach); return store.blocks.has(name) || !!(B && B.names && B.names.has(p.name)); }   // weft (eye.15): another beach's, by its own index
+  const p = bParts(name); if (p.beach === WEB) return store.blocks.has(name) || WEB_SITES.has(p.name);   // weft (eye.17): a site the web holds
+  if (p.beach) { const B = BEACHES.get(p.beach); return store.blocks.has(name) || !!(B && B.names && B.names.has(p.name)); }   // weft (eye.15): another beach's, by its own index
   return store.blocks.has(name) || store.snap.has(name) || (store.live && (store.liveNames.has(name) || has(WHERE, name)));
 }
 function onBeach(name) { return store.apex.has(name) || store.liveNames.has(name); }
@@ -780,6 +804,7 @@ async function fetchJSON(url, ms) {
 }
 async function ensureBlock(name, beach) {
   const p = bParts(name); if (p.beach) { name = p.name; beach = beach || p.beach; }   // weft (eye.15): a key names its beach
+  if (beach === WEB) return webBlock(name);                                         // weft (eye.17): a website, by its sitemap
   const key = bKey(name, beach), b0 = store.blocks.get(key);
   if (b0 && !(store.live && b0.source === 'snapshot')) return b0;
   if (store.live || beach) {
@@ -890,7 +915,7 @@ function splitVoice(v) {
   if (m && !/https?:\/\/\S*$/.test(m[1])) {
     let t = m[1].trim(); const body = m[2].trim();
     // a lone generic word ('Consequence') says little among its siblings: carry the first clause with it
-    if (/^[A-Z][a-z]+$/.test(t)) { const c = body.match(/^([^.;:,!?\n]{3,60})[.;:,!?]/); if (c) t = t + ' — ' + c[1].trim(); }
+    if (/^[A-Z][a-z]+$/.test(t) && !/^https?:\/\//i.test(body)) { const c = body.match(/^([^.;:,!?\n]{3,60})[.;:,!?]/); if (c) t = t + ' — ' + c[1].trim(); }   // weft (eye.17): an address is no clause
     return { title: t, body };
   }
   m = v.match(/^([^\n]{2,84}?[.?!:;])\s+([\s\S]+)$/);
@@ -932,7 +957,7 @@ function labelOf(b, path) {
   // weft, 16 Nov 2026 (eye.2): a String share reads as the thing shared, its sharer's words beneath (function:string)
   const sh = /^string:/.test(b.name) ? /^SHARE\s+(https?:\/\/\S+?)[.,;)]*(?:\s+for\s+(\S+))?\s*(?:[—–]\s*([\s\S]*))?$/.exec(v.trim()) : null;
   if (sh) { const got = linkCards.get(sh[1]); return { title: (got && got.title) || hostPath(sh[1]), body: (sh[2] ? 'for ' + sh[2] + (sh[3] ? ' — ' : '') : '') + (sh[3] || ''), raw: v }; }
-  const rf = refFamily(v);
+  const rf = b.beach === WEB ? null : refFamily(v);   // weft (eye.17): a website's pages belong to no family here
   if (rf) { const ln = rf.own ? splitTail(rf.own) : lineOf(rf.family); return { title: rf.family, body: ln.text, raw: v, family: rf.family }; }
   return Object.assign(splitVoice(v), { raw: v });
 }
@@ -1028,7 +1053,7 @@ function starTargets(b, path) {
   const n = nodeAt(b, path);
   if (hiddenAt(b, path, n)) add({ block: hiddenName(b, path), addr: '', how: 'hidden beneath', hidden: true });
   const raw = labelOf(b, path).raw || '';
-  const rf = refFamily(raw);
+  const rf = b.beach === WEB ? null : refFamily(raw);
   if (rf) for (const pre of ['spine:', 'proposal:']) { if (loadable(pre + rf.family) || onBeach(pre + rf.family)) { add({ block: pre + rf.family, addr: '', how: 'its own block' }); break; } }
   const rb = bParts(b.name).beach;
   if (rb) remoteRefs(raw, rb).forEach(add); else refsIn(raw).forEach(add);   // weft (eye.15): another beach's words name its own blocks
@@ -1112,7 +1137,7 @@ function lineOf(f) {
 }
 // the family an o-page point belongs to: one it names, or the family whose spine, mirror or fold it stands in
 function pointFamily(b, path) {
-  const rf = refFamily(voiceOf(nodeAt(b, path)));
+  const rf = b.beach === WEB ? null : refFamily(voiceOf(nodeAt(b, path)));
   if (rf) return rf.family;
   const f = b.family;
   if (f && (b.name === 'spine:' + f || b.name === 'proposal:' + f || b.name === f || (b.name.startsWith(f + ':') && !/^(function|pool):/.test(b.name)))) return f;
@@ -1205,6 +1230,7 @@ function shareOf(b, path, raw) {
   return m ? { link: m[1], page: SITE.replace(/\/$/, '') + '/string/' + addrOf(b, path) } : null;
 }
 function objectOf(b, path, lab) {
+  if (mapOfPlace(b, path)) return null;   // weft (eye.17): a site's map is read by going into it, never a page
   const sh = shareOf(b, path, lab.raw);
   if (sh) return state.look === 'snazzy' ? { kind: 'share', link: sh.link, page: sh.page } : { kind: 'page', url: sh.page };
   const fam = lab.family || pointFamily(b, path);
@@ -1254,6 +1280,7 @@ function doorOfPoint(b, path) {
   return doorUrl(String(voiceOf(nodeAt(b, path)) || '').trim(), m[1], fam);
 }
 function linkOfPoint(b, path, lab) {
+  if (mapOfPlace(b, path)) return null;   // weft (eye.17): a site's map is read by going into it, never a page
   let url = '';
   const sh = shareOf(b, path, lab.raw);
   if (sh) url = state.look === 'snazzy' ? sh.link : sh.page;
@@ -1506,6 +1533,9 @@ function readLink() {
   const m = /^\/(?:eye|i)\/([^/]+)(?:\/([^/]+))?(?:\/([^/]+))?\/?$/.exec(location.pathname);
   if (m) { try { block = block || decodeURIComponent(m[1]); at = at || decodeURIComponent(m[2] || ''); ps = ps || decodeURIComponent(m[3] || ''); } catch (e) { /* a broken link reads as none */ } }
   const beach = (Q0.get('beach') || '').trim();
+  const web = webHost(Q0.get('web') || '');   // weft (eye.17): ?web=<site> opens that site's own map, as /eye/web~<site> does
+  if (web && !block) block = WEB + '~' + web;
+  if (/^web~/i.test(block)) { const hn = webHost(block.slice(4)); if (hn) block = WEB + '~' + hn; }   // a site's link as typed, Example.com or www.example.com/
   ps = String(ps).trim().replace(/^[\u2212\u2013]/, '-');
   return { block: block.trim(), at: /^\d+(?:\.\d+)?$/.test(at.trim()) ? at.trim() : '', pscale: /^[+-]?\d{1,3}$/.test(ps) ? parseInt(ps, 10) : null, beach: /^https:\/\/[^\s/?#]+(?:\/[^\s?#]*)?$/.test(beach) ? beach.replace(/\/$/, '') : '' };
 }
@@ -1538,7 +1568,7 @@ function linkOf() {
   const b = cur(); if (!b || b.source === 'yours') return '/eye';
   let nb = b, p = state.path, S = state.spindle, beneath = state.beneath;
   if (b.source === 'hidden') { nb = blockSync(b.host) || b; p = (b.hostPath || []).slice(); S = p; beneath = 0; }
-  let u = '/eye/' + pathPart(bareOf(nb));
+  let u = '/eye/' + pathPart(nb.beach === WEB ? nb.name : bareOf(nb));   // weft (eye.17): a website's block by its key, web~<host>
   // weft (eye.5), 16 Nov 2026: the spindle, then the point's pscale where the point is not the spindle's end
   let n = 0; while (n < S.length && isDigit(S[n])) n++;
   if (n < p.length) { S = p; n = p.length; beneath = 0; }             // a point off the digits (a JSON key) has no address
@@ -1548,7 +1578,7 @@ function linkOf() {
     u += '/' + addrOf(nb, Sd);
     if (P !== nb.floor - Sd.length) u += '/' + P;
   } else if (!n && !p.length && beneath > 0) q.push('pscale=' + (nb.floor - beneath));   // the top's own ring, before any spindle
-  if (nb.beach) q.push('beach=' + encodeURIComponent(nb.beach));
+  if (nb.beach && nb.beach !== WEB) q.push('beach=' + encodeURIComponent(nb.beach));
   // weft (eye.8), 17 Nov 2026: the stack rides the link, a lane each in order, * the one in hand, ! a lane in step
   if (lanes.length > 1) lanes.forEach((ln, i) => {
     if (i === laneAt) return q.push('lane=' + (ln.step ? '!' : '') + '*');
@@ -1580,6 +1610,7 @@ async function lanesFromLink(specs) {
     if (m) parsed.push({ step, beach: m[1] || '', block: m[2], at: /^\d+(?:\.\d+)?$/.test(m[3] || '') ? m[3] : '', pscale: m[4] != null ? parseInt(m[4], 10) : null });
   }
   const got = await Promise.all(parsed.map(x => x.hand ? null : ensureBlock(x.block, x.beach || undefined).catch(() => null)));
+  await Promise.all(parsed.map((x, i) => got[i] && got[i].beach === WEB && x.at ? mapsAlong(got[i], addrToPath(got[i], x.at)).catch(() => null) : null));   // weft (eye.17)
   const out = [];
   parsed.forEach((x, i) => {
     if (x.hand) { if (!out.includes(hand)) { hand.step = x.step; out.push(hand); } return; }
@@ -1656,7 +1687,7 @@ function card(b, path, size, opts) {
 function metaHTML(b, path, n, size) {
   const parts = [];
   const st = stampOf(n); if (st) parts.push('<span class="chip">' + fmtDate(st) + '</span>');
-  if (size === 'card') { const kc = childKeys(b, path, n).length; if (kc) parts.push('<span class="chip">' + kc + ' beneath</span>'); }
+  if (size === 'card') { const kc = childKeys(b, path, n).length; if (kc) parts.push('<span class="chip">' + kc + ' beneath</span>'); else if (mapOfPlace(b, path)) parts.push('<span class="chip">a map, read when you go in</span>'); }
   if (state.addr) { parts.push('<span class="chip mono">' + esc(addrOf(b, path)) + '</span>'); if (path.every(isDigit)) parts.push('<span class="chip mono">pscale ' + fmtPs(b.floor - path.length) + '</span>'); }
   return parts.length ? '<div class="meta">' + parts.join('') + '</div>' : '';
 }
@@ -1681,13 +1712,24 @@ function pageView(b, path) {
   const sh = shareOf(b, path, lab.raw);
   if (sh && state.look !== 'eye') url = sh.page;
   const word = sh ? 'the share' : which ? 'the ' + which + ' page' : 'the page';
+  // weft (eye.17, made simple at David's word: 'The content can be displayed as a page, like a full page option --
+  // effectively it becomes a browser'): a website's page, at page size and in every look, is the page itself, full size
+  // inside the eye, where its site lets another page show it (its front page's headers, as the function read them); a page
+  // elsewhere in a frame that has no reach into this site (another origin, no referrer, and no way to move this page)
+  const map = mapOfPlace(b, path), page = b.beach === WEB && !map ? webLinkIn(lab.raw) : '';
+  if (page && webFrames(b)) {
+    const own = onSite(page);
+    el.classList.add('framed', 'web-framed');
+    el.innerHTML = '<div class="pv-bar"><b>' + titleHTML(lab.title || blockTitle(b)) + '</b><a href="' + esc(page) + '" target="_blank" rel="noopener' + (own ? '' : ' noreferrer') + '">Open it ↗</a></div><iframe src="' + esc(own ? frameSrc(page) : page.replace(/^http:\/\//i, 'https://')) + '" title="' + esc(lab.title || hostPath(page)) + '"' + (own ? '' : ' referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"') + '></iframe>';
+    return el;
+  }
   if (url && canFrame()) {
     el.classList.add('framed');
     el.innerHTML = '<div class="pv-bar"><b>' + titleHTML(lab.title || blockTitle(b)) + '</b><a href="' + esc(url) + '" target="_blank" rel="noopener">' + word + ' ↗</a></div><iframe src="' + esc(frameSrc(url)) + '" title="' + esc(lab.title || fam || 'page') + '"></iframe>';
     return el;
   }
   // a point that names a proposal is that proposal's page: its spine, read whole
-  const rf = refFamily(voiceOf(nodeAt(b, path)));
+  const rf = b.beach === WEB ? null : refFamily(voiceOf(nodeAt(b, path)));
   let db = b, dpath = path;
   if (rf) { const sb = blockSync('spine:' + rf.family) || blockSync('proposal:' + rf.family); if (sb) { db = sb; dpath = []; } else need('spine:' + rf.family); }
   const paths = [];
@@ -1696,6 +1738,15 @@ function pageView(b, path) {
   if (state.links !== 'off') { const ln = linkOfPoint(b, path, lab); if (ln) el.insertAdjacentHTML('afterbegin', hlinkHTML(ln)); }
   const doc = el.querySelector('.doc');
   const other = url || (sh && sh.page) || urls.snazzy || urls.standard || linked || door;
+  // weft (eye.17): a site that won't be shown inside another page says so, and opens beside; a map is read when gone into
+  if (page && doc) {
+    const host = hostPath(page).split('/')[0], f = b.web ? b.web.frame : null;
+    (doc.querySelector('.doc-lead') || doc.querySelector('h1')).insertAdjacentHTML('afterend', '<div class="pv-away"><p><b>' + esc(host) + (f === false ? ' won\'t be shown inside another page' : ' could not be asked whether it may be shown inside another page') + '</b>' + (f === false ? ': its own headers ask to be opened only on their own.' : '.') + ' It opens beside, in a new tab.</p><a class="btn" href="' + esc(page) + '" target="_blank" rel="noopener noreferrer">Open it ↗</a></div>');
+  }
+  if (map && doc && !childKeys(b, path).length) {
+    const p = h('p', 'pv-open', 'One of the site\'s maps: its pages are read when you go into it. '), bt = h('button', 'linkish', 'Read this map'); bt.type = 'button';
+    bt.addEventListener('click', () => mapGoIn(b, path, () => render(null))); p.append(bt); doc.append(p);
+  }
   if (other && doc) doc.insertAdjacentHTML('beforeend', '<p class="pv-open"><a href="' + esc(other) + '" target="_blank" rel="noopener">Open ' + (url || sh ? word : urls.snazzy ? 'the snazzy page' : urls.standard ? 'the standard page' : 'the page') + ' ↗</a>' + (state.look !== 'eye' ? ' It opens here, in a frame, when this navigator is hosted on happyseaurchin.com.' : '') + '</p>');
   el.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (!g || e.target.closest('.ref, a, button')) return; const cp = paths[+g.dataset.go]; if (!cp) return; if (db === b) moveTo(cp, 'down'); else jump({ block: db.name, path: cp, how: 'its own block' }); });
   el.querySelectorAll('img').forEach(i => i.addEventListener('error', () => { const w = i.parentNode; if (w) w.remove(); }));
@@ -1840,6 +1891,8 @@ function renderIris() {
     L._after = () => { fitAnc(anc, p); const w = row.querySelector('.was'); if (w) row.scrollLeft = w.offsetLeft - row.clientWidth / 2 + w.offsetWidth / 2; };
   } else if (kids.length) {
     const e = h('button', 'edge e-down', '<span class="g">−</span><span>' + kids.length + ' beneath</span>'); e.type = 'button'; e.addEventListener('click', () => go('down')); L.append(e);
+  } else if (mapOfPlace(b, p)) {   // weft (eye.17): a site's map, its pages read as you go in
+    const e = h('button', 'edge e-down', '<span class="g">−</span><span>read this map</span>'); e.type = 'button'; e.addEventListener('click', () => go('down')); L.append(e);
   }
   return L;
 }
@@ -1893,6 +1946,8 @@ function renderFlat() {
     for (let j = lo; j < hi; j++) { const cp = S.concat([kids[j]]); ring.append(card(b, cp, small, { cls: kids[j] === next ? 'was ahead' : '', onClick: () => S.length === p.length ? descendTo(cp) : moveTo(cp, 'soft') })); }
     if (hi < kids.length) ring.append(h('span', 'fmore', (kids.length - hi) + ' more ›'));
     row.append(ring); col.append(row);
+  } else if (mapOfPlace(b, S)) {   // weft (eye.17): a site's map, its pages read as you go in
+    const row = h('section', 'frow beneath'); row.append(h('div', 'frow-lab', 'beneath'), emptyBeneath(b, S)); col.append(row);
   }
   L.append(col);
   L._after = () => {
@@ -1943,7 +1998,7 @@ function renderColumns() {
     if (!next.length) break;
     sc.append(c); level = next;
   }
-  if (!childKeys(b, p).length) { const c = h('section', 'colm beneath'); c.append(h('div', 'colm-h', 'beneath'), h('p', 'empty', 'Nothing is nested beneath this point.')); sc.append(c); }
+  if (!childKeys(b, p).length) { const c = h('section', 'colm beneath'); c.append(h('div', 'colm-h', 'beneath'), emptyBeneath(b, p)); sc.append(c); }
   L.append(sc);
   L._after = () => { if (pointCol) { sc.scrollLeft = Math.max(0, pointCol.offsetLeft - Math.max(14, Math.min(sc.clientWidth * 0.25, sc.clientWidth - pointCol.offsetWidth - 40))); const on = pointCol.querySelector('.is-focus'); if (on) sc.scrollTop = Math.max(0, on.offsetTop - sc.clientHeight * 0.25); } };
   return L;
@@ -1974,7 +2029,7 @@ function renderDir() {
       if (level < state.depth && childKeys(b, cp).length) { const sub = h('div', 'sub'); it.append(sub); build(cp, level + 1, sub); }
     }
   })(p, 1, tree);
-  if (!tree.childElementCount) tree.innerHTML = '<p class="empty">Nothing is nested beneath this point.</p>';
+  if (!tree.childElementCount) tree.append(emptyBeneath(b, p));
   col.append(tree); L.append(col);
   return L;
 }
@@ -2477,11 +2532,11 @@ function zIn() {
   const D = Math.round(Z.goal), a = zAhead(b), n = a.end.length;
   if (D > n) {                                   // facing the candidate past the line's end: walking in chooses it
     const c = a.end.concat([a.cand]);
-    if (!childKeys(b, c).length) return bump('Nothing is nested beneath this');
+    if (!childKeys(b, c).length) return mapGoIn(b, c, zIn) || bump('Nothing is nested beneath this');
     Z.S = zChain(b, c); return zTo(D + 1);
   }
   if (D < zMax(b)) return zTo(D + 1);
-  bump('Nothing is nested beneath this');
+  mapGoIn(b, a.end.slice(0, D), zIn) || bump('Nothing is nested beneath this');   // weft (eye.17): a site's map, read as it is gone into
 }
 function zOut() {
   Z.keep = false;
@@ -2781,7 +2836,7 @@ function descendTo(cp) { if (state.axis === 'eye') { state.choiceOf = cp.slice(0
 function go(dir) {
   const b = cur(), p = state.path;
   if (dir === 'up') { if (p.length) return moveTo(p.slice(0, -1), 'up'); if (state.trail.length) return back(); return bump('This is the top of the block'); }
-  if (dir === 'down') { const kids = childKeys(b, p); if (!kids.length) return bump('Nothing is nested beneath this'); const next = placeLine(b)[p.length]; return moveTo(p.concat([kids.includes(next) ? next : kids[0]]), 'down'); }
+  if (dir === 'down') { const kids = childKeys(b, p); if (!kids.length) return mapGoIn(b, p, () => go('down')) || bump('Nothing is nested beneath this'); const next = placeLine(b)[p.length]; return moveTo(p.concat([kids.includes(next) ? next : kids[0]]), 'down'); }
   const s = siblingsOf(b, p);
   if (s.index < 0) return bump('The top of a block has no siblings');
   const j = s.index + (dir === 'left' ? -1 : 1);
@@ -2823,7 +2878,7 @@ function back() {
 // weft, 16 Nov 2026: the hosted copy carries no snapshot, so a block not yet read is read first, not passed over
 async function openBlock(name, path) {
   let b = blockSync(name);
-  if (!b && (store.live || has(WHERE, name))) { toast('Reading ' + name + '…'); b = await ensureBlock(name); }
+  if (!b && (store.live || has(WHERE, name) || isWebKey(name))) { toast(isWebKey(name) ? 'Reading ' + bParts(name).name + '…' : 'Reading ' + name + '…'); b = await ensureBlock(name); }
   if (!b) return toast(notHere(name));
   state.trail = []; state.block = b.name; setPlace(b, path || [], null, 0); state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
   closeSheet(); render('star');
@@ -2831,6 +2886,7 @@ async function openBlock(name, path) {
 function notHere(name) {
   // weft (eye.16): a block another beach keeps for its members, refused this device, says whose and where the way in is
   const p = bParts(name), P = window.sitePass;
+  if (p.beach === WEB) { const W = WEB_SITES.get(p.name); return W && W.state === 'refused' ? p.name + ' is not a site on the public internet' : W && W.state === 'down' ? p.name + ' did not answer just now' : p.name + ' could not be read just now'; }   // weft (eye.17)
   if (p.beach && P && typeof P.walled === 'function' && P.walled(p.beach)) return p.name + ' is kept for the members of ' + hostPath(p.beach) + ': prove your key at its beach, among every beach';
   return store.live ? 'Could not read ' + name + ' from the beach' : name + ' is on the beach but not in this snapshot';
 }
@@ -3169,8 +3225,8 @@ function openBlocks() {
   const body = h('div', 'blocks');
   body.innerHTML =
     '<p class="src">' + (store.live ? 'Reading the beach live.' : !store.snap.size ? 'The beach could not be read just now; open this page again in a moment.' : 'Reading a snapshot of the beach taken ' + esc(fmtStamp(META.stamp)) + ': the proposals list, every proposal\'s own blocks, the laws they point to, two kernels, and the Brackenfoot map. Inside claude.ai a page cannot reach another site; opened from a file, or hosted on happyseaurchin.com, this same page reads the beach live.') + '</p>' +
-    '<div class="dtabs" role="tablist" aria-label="Lists"><button type="button" role="tab" id="tabMineB" aria-controls="tabMine" data-tab="mine">Mine</button><button type="button" role="tab" id="tabSiteB" aria-controls="tabSite" data-tab="site">This site</button></div>' +
-    '<div class="dtab" role="tabpanel" id="tabMine" aria-labelledby="tabMineB"></div><div class="dtab" role="tabpanel" id="tabSite" aria-labelledby="tabSiteB" hidden></div>' +
+    '<div class="dtabs" role="tablist" aria-label="Lists"><button type="button" role="tab" id="tabMineB" aria-controls="tabMine" data-tab="mine">Mine</button><button type="button" role="tab" id="tabSiteB" aria-controls="tabSite" data-tab="site">This site</button><button type="button" role="tab" id="tabWebB" aria-controls="tabWeb" data-tab="web">The web</button></div>' +
+    '<div class="dtab" role="tabpanel" id="tabMine" aria-labelledby="tabMineB"></div><div class="dtab" role="tabpanel" id="tabSite" aria-labelledby="tabSiteB" hidden></div><div class="dtab" role="tabpanel" id="tabWeb" aria-labelledby="tabWebB" hidden></div>' +
     '<h3>Your own JSON</h3><label class="lbl" for="pasteArea">Paste a block, such as your axiom dimension JSON. Any JSON works; a pscale block reads best.</label>' +
     '<textarea id="pasteArea" rows="5" spellcheck="false" placeholder="{&quot;_&quot;: &quot;…&quot;, &quot;1&quot;: &quot;…&quot;}"></textarea>' +
     '<div class="row"><button id="pasteGo" class="btn" type="button">Look at this JSON</button><label class="btn ghost" for="fileIn">Choose a file</label><input id="fileIn" type="file" accept=".json,application/json,text/plain" hidden></div>' +
@@ -3199,8 +3255,9 @@ function openBlocks() {
   };
   q.addEventListener('input', draw); draw();
 }
-/* the drawer's two tabs (weft, eye.15): MINE, the reader's own lists on the beach, and THIS SITE, the site's own pages from
- * the block every page's go menu reads. The tab chosen is kept on the device */
+/* the drawer's tabs (weft, eye.15): MINE, the reader's own lists on the beach, and THIS SITE, the site's own pages from
+ * the block every page's go menu reads; and since eye.17, THE WEB, any website read from its own sitemap. The tab chosen
+ * is kept on the device */
 const SITE_LIST = 'site:' + (() => { try { return new URL(SITE).hostname.replace(/^www\./, ''); } catch (e) { return 'happyseaurchin.com'; } })();
 // whose lists: the name given here, else the name this device signs with (render:who); '~' once 'not you?' let it go
 function cleanWho(v) { return String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim(); }
@@ -3209,14 +3266,14 @@ function drawerTabs() {
   const tabs = Array.from(document.querySelectorAll('.dtabs [data-tab]'));
   const show = which => {
     tabs.forEach(b => { const on = b.dataset.tab === which; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; });
-    $('#tabMine').hidden = which !== 'mine'; $('#tabSite').hidden = which !== 'site';
+    $('#tabMine').hidden = which !== 'mine'; $('#tabSite').hidden = which !== 'site'; $('#tabWeb').hidden = which !== 'web';
     try { localStorage.setItem('iris-magic-eye.tab', which); } catch (e) { /* storage unavailable */ }
-    (which === 'mine' ? drawMine : drawSite)();
+    (which === 'mine' ? drawMine : which === 'web' ? drawWeb : drawSite)();
   };
   tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
-  $('.dtabs').addEventListener('keydown', e => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; e.preventDefault(); const i = tabs.findIndex(b => b.getAttribute('aria-selected') === 'true'), n = tabs[(i + 1) % tabs.length]; show(n.dataset.tab); n.focus(); });
+  $('.dtabs').addEventListener('keydown', e => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; e.preventDefault(); const i = tabs.findIndex(b => b.getAttribute('aria-selected') === 'true'), n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length]; show(n.dataset.tab); n.focus(); });
   let t0 = ''; try { t0 = localStorage.getItem('iris-magic-eye.tab') || ''; } catch (e) { /* storage unavailable */ }
-  show(t0 === 'site' ? 'site' : 'mine');
+  show(t0 === 'site' || t0 === 'web' ? t0 : 'mine');
 }
 // a row in a tab: its words, what it opens, and what a tap does
 function drawerRow(box, words, small, go, add) {
@@ -3272,6 +3329,43 @@ async function drawSite() {
   const items = b ? listChain(b, '1') : [];
   if (!items.length) { g.append(h('p', 'empty', b ? 'No pages listed there yet.' : SITE_LIST + ' could not be read from the beach just now.')); return; }
   items.forEach(it => { const m = it.voice.match(/^(\S+)\s+—\s+([\s\S]+)$/), words = m ? m[2] : it.voice, where = m ? m[1].replace(/^https?:\/\//, '') : ''; drawerRow(g, words, where, () => openListPage(b.name, it.path)); });
+}
+/* THE WEB (weft, eye.17, at David's 'go ahead with step 4', made simple at his word): any website as one block of links to
+ * its pages, read through this site's guarded function from its own sitemap or the links on its front page, and walked
+ * here as any block is. This site's own map first, then the sites opened on this device (kept on the device only, newest
+ * first), each opening as a block; at page size a page opens inside the eye where its site allows it, else beside */
+async function openWeb(host, err) {
+  const key = WEB + '~' + host, b = await ensureBlock(key);
+  if (!b) { if (err) { err.hidden = false; err.textContent = notHere(key) + '.'; } else toast(notHere(key)); return; }
+  webRemember(host); openBlock(b.name, []);
+}
+function webSaid(host) {
+  const W = WEB_SITES.get(host), b = store.blocks.get(WEB + '~' + host), d = b && b.web;
+  if (d) return d.found ? (d.kind === 'maps' ? d.maps + (d.maps === 1 ? ' map' : ' maps') : d.pages + (d.pages === 1 ? ' page' : ' pages') + (d.kind === 'links' ? ' from its front page' : '')) + (d.more ? ', the first of more' : '') : 'nothing to walk';
+  return W && W.state === 'down' ? 'did not answer just now' : W && W.state === 'refused' ? 'not a site on the public internet' : '';
+}
+function drawWeb() {
+  const box = $('#tabWeb'); if (!box) return;
+  const lane = laneOffer(), add = hn => lane ? () => laneAdd({ block: WEB + '~' + hn }) : null;
+  box.innerHTML = '<p class="src">Any website as one block of links to its pages, read from its own sitemap, or from the links on its front page where it keeps none: the parts of their addresses its rungs, walked here as any block is. At page size a page opens here, inside the eye, where its site lets another page show it, and beside, in a new tab, where it doesn\'t.</p>' +
+    '<div class="row"><input id="webIn" type="text" inputmode="url" placeholder="example.com" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="A website\'s address"><button id="webGo" class="btn" type="button">Open</button>' + (lane ? '<button id="webLane" class="btn ghost" type="button">＋ as a ' + laneWord() + '</button>' : '') + '</div><p id="webErr" class="err" hidden></p>' +
+    '<h3>This site</h3><div class="start" id="webThis"></div><h3>Opened on this device</h3><div class="start" id="webList"></div>';
+  const go = asLane => {
+    const host = webHost($('#webIn').value), err = $('#webErr');
+    if (!host) { err.hidden = false; err.textContent = 'A website is named by its address, such as example.com.'; return; }
+    err.hidden = true;
+    if (asLane) { webRemember(host); return laneAdd({ block: WEB + '~' + host }); }
+    openWeb(host, err);
+  };
+  $('#webGo').addEventListener('click', () => go(false));
+  if ($('#webLane')) $('#webLane').addEventListener('click', () => go(true));
+  $('#webIn').addEventListener('keydown', e => { if (e.key === 'Enter') go(false); });
+  drawerRow($('#webThis'), SITE_HOST, 'this site, as its own sitemap lists it' + (webSaid(SITE_HOST) ? ' · ' + webSaid(SITE_HOST) : ''), () => openWeb(SITE_HOST), add(SITE_HOST));
+  const g = $('#webList'), rec = webRecent();
+  if (!rec.length) { g.append(h('p', 'empty', 'None yet. A site you open here is kept on this device, and only here.')); return; }
+  rec.forEach(hn => drawerRow(g, hn, webSaid(hn) || 'a website', () => openWeb(hn), add(hn)));
+  const p = h('p', 'src', 'Kept on this device only. '), f = h('button', 'linkish', 'Forget them'); f.type = 'button';
+  f.addEventListener('click', () => { webForget(); drawWeb(); }); p.append(f); g.append(p);
 }
 function readYours(text, fname) {
   const err = $('#pasteErr');
@@ -3329,7 +3423,7 @@ function snapLane(ln, i) {
     out.push(line([], '  '));
     for (const c of childKeys(b, [])) if (/^[1-9]$/.test(c)) out.push(line([c], '  '));
   }
-  const call = !onBeach ? '(' + (b.source === 'hidden' ? 'what lies hidden beneath a point of ' + (b.host || 'a block') : b.name + ': your own JSON, on no beach') + '; the words only)' : !digits ? '(a place named by its keys, not an address; the words only)' : 'bsp(' + args.join(', ') + ')';
+  const call = b.beach === WEB ? '(' + bareOf(b) + ' as one block of links to its pages, from its own sitemap or its front page, read through ' + SITE.replace(/\/$/, '') + '/api/sitemap?site=' + bareOf(b) + '; the words only)' : !onBeach ? '(' + (b.source === 'hidden' ? 'what lies hidden beneath a point of ' + (b.host || 'a block') : b.name + ': your own JSON, on no beach') + '; the words only)' : !digits ? '(a place named by its keys, not an address; the words only)' : 'bsp(' + args.join(', ') + ')';
   return { i, block: b.name, call, shape, body: out.join('\n') };
 }
 function openSnapshot() {
@@ -3836,6 +3930,122 @@ function beachAdd(base, why, title) {
   return B;
 }
 beachAdd(HOME, 'home');
+/* THE WEB (weft, eye.17, 19 Nov 2026, at David's 'go ahead with step 4'; made simple the same day at his word, 'we just want
+ * one pscale block with links to discrete pages'): the sites the web holds stand together as one more node among the
+ * beaches, beside this one, never a sphere of its own. Each is read as it nears or is opened, through /api/sitemap, which
+ * reads the site's robots.txt and one map, else the links on its front page, and hands back one block (api/sitemap.js):
+ * its pages, the segments of their paths its rungs, a crowd past nine nested nine to a node, or its maps, each read when
+ * gone into (mapGoIn). This site's own map stands first; then the sites opened on this device, newest first
+ * (iris-magic-eye.web, the device's only); then any a link opened. Nothing of a site is kept but its block, for the visit,
+ * and nothing is written anywhere */
+const WEB_KEEP = 'iris-magic-eye.web', WEB_MOST = 24;
+const SITE_HOST = (() => { try { return new URL(SITE).hostname.replace(/^www\./, ''); } catch (e) { return 'happyseaurchin.com'; } })();
+const WEB_B = { base: WEB, why: 'web', title: 'The web', state: 'web', names: null, total: 0 };
+function webAdd(host, why) {
+  host = webHost(host); if (!host) return null;
+  let W = WEB_SITES.get(host);
+  if (!W) { W = { host, why: why || '', at: WEB_SITES.size, state: 'idle', pages: 0 }; WEB_SITES.set(host, W); DR.uni = null; }
+  return W;
+}
+function webRecent() { try { const a = JSON.parse(localStorage.getItem(WEB_KEEP) || '[]'); return Array.isArray(a) ? a.map(webHost).filter(Boolean).slice(0, WEB_MOST) : []; } catch (e) { return []; } }
+function webRemember(host) { if (!host || host === SITE_HOST) return; const a = webRecent().filter(x => x !== host); a.unshift(host); try { localStorage.setItem(WEB_KEEP, JSON.stringify(a.slice(0, WEB_MOST))); } catch (e) { /* storage unavailable */ } }
+function webForget() {
+  try { localStorage.removeItem(WEB_KEEP); } catch (e) { /* storage unavailable */ }
+  for (const [h, W] of Array.from(WEB_SITES)) if (h !== SITE_HOST && W.why === 'recent' && !store.blocks.has(WEB + '~' + h)) WEB_SITES.delete(h);
+  Array.from(WEB_SITES.values()).sort((a, b) => a.at - b.at).forEach((W, i) => { W.at = i; }); DR.uni = null;
+}
+const webReading = new Map();
+function webBlock(host) {
+  host = webHost(host); if (!host) return Promise.resolve(null);
+  const b0 = store.blocks.get(WEB + '~' + host); if (b0) return Promise.resolve(b0);
+  if (webReading.has(host)) return webReading.get(host);
+  const W = webAdd(host, 'opened'); W.state = 'reading';
+  const pr = fetchJSON('/api/sitemap?site=' + encodeURIComponent(host), 25000).then(d => {
+    if (!d || d.block === undefined) throw new Error('no block');
+    W.state = d.state || (d.found ? 'read' : 'none'); W.pages = d.pages || 0;
+    return makeBlock(host, d.block, 'web', { beach: WEB, web: { origin: d.origin || '', found: !!d.found, kind: d.kind || '', pages: d.pages || 0, maps: d.maps || 0, more: !!d.more, frame: d.frame === true ? true : d.frame === false ? false : null, frameWhy: d.frameWhy || '', from: d.from || '', read: d.read || '' } });
+  }).catch(e => { W.state = /HTTP 400/.test(String(e && e.message)) ? 'refused' : 'down'; return null; })
+    .finally(() => { webReading.delete(host); DR.uni = null; if (dirShown()) dirKick(); });
+  webReading.set(host, pr); return pr;
+}
+webAdd(SITE_HOST, 'site'); webRecent().forEach(h => webAdd(h, 'recent'));
+// may this site's pages be shown inside the eye: what its front page's headers said (api/sitemap.js frame)
+function webFrames(b) { return !!(b && b.beach === WEB && b.web && b.web.frame === true); }
+/* A MAP, READ WHEN GONE INTO (weft, eye.17, made simple at David's word): where a site's map is an index, or its robots.txt
+ * names several maps, those maps are its block's places, each '<its name> — sitemap: <its address>'. Going into one reads
+ * that one map through the same function (?map=, one map a read, never a chain) and lays its places beneath it, in the
+ * site's one block, its words still ending with its address. A map that lists nothing here, or does not answer, says so */
+const MAP_AT = /\bsitemap: (https:\/\/\S+)$/;
+function mapOfPlace(b, path) {
+  if (!b || b.beach !== WEB || !path || !path.length) return '';
+  const m = MAP_AT.exec(String(voiceOf(nodeAt(b, path)) || '').trim());
+  return m ? m[1] : '';
+}
+const mapReads = new Map();   // keyOf(b, path) → { state: reading, read, none or down, why, pr }
+const mapName = (b, path) => String(labelOf(b, path).title || '').split(' — ')[0] || 'This map';
+// one map read into its place, through the function (?map=): true once its places stand beneath it
+function mapRead(b, path) {
+  const href = mapOfPlace(b, path);
+  if (!href) return Promise.resolve(false);
+  if (childKeys(b, path).length) return Promise.resolve(true);
+  const key = keyOf(b, path), M = mapReads.get(key);
+  if (M && M.state === 'reading') return M.pr;
+  if (M && M.state === 'none') return Promise.resolve(false);
+  const title = mapName(b, path), rec = { state: 'reading', why: '' };
+  let site = bareOf(b); try { if (b.web && b.web.origin) site = new URL(b.web.origin).hostname; } catch (e) { /* its own name */ }
+  rec.pr = fetchJSON('/api/sitemap?site=' + encodeURIComponent(site) + '&map=' + encodeURIComponent(href), 20000).then(d => {
+    if (!d || d.block === undefined) throw new Error('no block');
+    if (!d.found || !isObj(d.block)) { rec.state = d.state === 'down' ? 'down' : 'none'; rec.why = title + (rec.state === 'down' ? ' did not answer just now' : ' lists nothing on this site'); return false; }
+    const parent = nodeAt(b, path.slice(0, -1)); if (!isObj(parent) || mapOfPlace(b, path) !== href) throw new Error('moved');
+    parent[path[path.length - 1]] = d.block;                     // its places, beneath its own place in the site's one block
+    rec.state = 'read'; invalidate();
+    if (DR.els) for (const [k, el] of Array.from(DR.els)) if (el._n && el._n.name === b.name) { el.remove(); DR.els.delete(k); }
+    return true;
+  }).catch(() => { rec.state = 'down'; rec.why = title + ' could not be read just now'; return false; });
+  mapReads.set(key, rec);
+  return rec.pr;
+}
+// going into a map not yet read: read it, then go on in, if the reader is still there; true where it was a map
+function mapGoIn(b, path, again) {
+  if (!mapOfPlace(b, path) || childKeys(b, path).length) return false;   // not a map, or read already: in, as anywhere else
+  const M = mapReads.get(keyOf(b, path));
+  if (M && M.state === 'reading') { toast('Still reading this map…'); return true; }
+  if (M && M.state === 'none') { bump(M.why); return true; }
+  const here = () => placeKey() + '|' + (DR.at || ''), was = here();
+  toast('Reading ' + clip(mapName(b, path), 48) + '…');
+  mapRead(b, path).then(ok => {
+    const R = mapReads.get(keyOf(b, path)) || {};
+    if (here() !== was) { if (ok) { if (dirShown()) dirKick(); else render(null); } return; }
+    if (!ok) return bump(R.why || 'This map could not be read just now');
+    if (typeof again === 'function') again(); else if (dirShown()) dirKick(); else render(null);
+  });
+  return true;
+}
+// a link to a place inside a site's maps: each map on its way read first, so the place stands
+async function mapsAlong(b, path) {
+  if (!b || b.beach !== WEB) return;
+  for (let i = 1; i < path.length; i++) {
+    if (nodeAt(b, path.slice(0, i + 1)) !== undefined) continue;
+    const pre = path.slice(0, i);
+    if (nodeAt(b, pre) === undefined || !mapOfPlace(b, pre) || !(await mapRead(b, pre))) return;
+  }
+}
+// beneath a map not yet read, the way to read it, rather than nothing
+function emptyBeneath(b, p) {
+  if (!mapOfPlace(b, p)) return h('p', 'empty', 'Nothing is nested beneath this point.');
+  const el = h('p', 'empty', 'One of the site\'s maps: its pages are read when you go into it. '), bt = h('button', 'linkish', 'Read this map'); bt.type = 'button';
+  bt.addEventListener('click', () => mapGoIn(b, p, () => render(null))); el.append(bt); return el;
+}
+// the web among the beaches: one set of the sites it holds, in the order they joined, so none moves as more come
+function webNode(byBlock) {
+  const sites = Array.from(WEB_SITES.values()).sort((a, b) => a.at - b.at);
+  const wn = { k: 'B:' + WEB, t: 'beach', base: WEB, B: WEB_B, title: 'The web' };
+  const st = { k: 'S:' + WEB + '~sites', t: 'set', id: WEB + '~sites', title: 'Websites', note: 'each read from its own sitemap, or the links on its front page: this site first, then the ones opened here', up: wn };
+  st.kids = sites.map(W => { const name = WEB + '~' + W.host; byBlock.set(name, { beach: wn, set: st, pkg: null }); return { k: 'K:' + name, t: 'blk', name, up: st }; });
+  wn.kids = [st]; wn.total = WEB_B.total = sites.length;
+  return wn;
+}
+const webSig = () => Array.from(WEB_SITES.keys()).join(',');
 // a beach read: its index, once, three at a time; a bare domain that serves none is tried at beach.<host>, as bsp-mcp does
 const beachReading = new Set();
 function beachLoad(base) {
@@ -3966,7 +4176,7 @@ function beachSets(base, all, on, lines, byBlock, bn) {
 }
 function dirUniverse() {
   const all = Array.from(known()).filter(n => n && !n.includes('*'));
-  const lines = familyLines(), sig = all.length + '|' + lines.size + '|' + beachesSig();
+  const lines = familyLines(), sig = all.length + '|' + lines.size + '|' + beachesSig() + '|' + webSig();
   if (DR.uni && DR.uni.sig === sig) return DR.uni;
   const byBlock = new Map(), beaches = [];
   const Bs = Array.from(BEACHES.values()).sort((a, b) => (a.base === HOME ? -1 : b.base === HOME ? 1 : 0) || a.at - b.at);   // in the order they joined, so none moves as more answer
@@ -3975,6 +4185,7 @@ function dirUniverse() {
     bn.kids = own ? beachSets(HOME, all, n => onBeach(n) || loadable(n), lines, byBlock, bn) : B.names ? beachSets(B.base, Array.from(B.names), n => B.names.has(n), null, byBlock, bn) : [];
     bn.total = own ? all.length : B.total;
     beaches.push(bn);
+    if (own) beaches.push(webNode(byBlock));   // weft (eye.17): the web beside this beach, before any other, so no beach moves
   }
   const home = beaches[0];
   const root = { k: 'U', t: 'uni', title: 'The beaches', kids: beaches, total: beaches.length };
@@ -4174,7 +4385,10 @@ function dirCardEl(n, cls) {
   // the beach, a set, a package, a block not read yet: their names, and how many stand inside
   const el = h('article', 'card s-' + cls + ' dcard du-' + n.t);
   let kick = '', title = '', body = '';
-  if (n.t === 'uni') { kick = 'every beach'; title = 'The beaches'; body = n.total + (n.total === 1 ? ' beach' : ' beaches') + ': this one, the ones watched, the worlds it names'; }
+  if (n.t === 'uni') { const nb = n.kids.filter(k => k.base !== WEB).length; kick = 'every beach'; title = 'The beaches'; body = nb + (nb === 1 ? ' beach' : ' beaches') + ': this one, the ones watched, the worlds it names; and the web'; }
+  else if (n.t === 'beach' && n.base === WEB) {   // weft (eye.17): the web, the sites it holds
+    el.classList.add('du-open', 'du-web'); kick = 'the web · websites'; title = 'The web'; body = n.total + (n.total === 1 ? ' site' : ' sites') + ', each read from its own sitemap or its front page';
+  }
   else if (n.t === 'beach') {   // weft (eye.15): a beach as it answered
     const B = n.B, st = B.state, own = n.base === HOME;
     el.classList.add('du-' + (st === 'home' ? 'open' : st));
@@ -4185,13 +4399,15 @@ function dirCardEl(n, cls) {
   }
   else if (n.t === 'set') { kick = 'a set of ' + n.kids.length; title = n.title; body = n.note; }
   else if (n.t === 'pkg') { kick = (n.kind === 'shell' ? 'a shell' : 'a family') + ' of ' + n.kids.length; title = n.title; body = n.line; }
+  else if (isWebKey(n.name)) { const W = WEB_SITES.get(bParts(n.name).name) || {}; kick = 'a website'; title = bParts(n.name).name; body = DR.loading.has(n.name) || W.state === 'reading' ? 'reading it…' : W.state === 'down' ? 'did not answer just now' : W.state === 'refused' ? 'not a site on the public internet' : 'zoom in to read it'; }   // weft (eye.17)
   else { kick = 'a block'; title = bParts(n.name).name; body = DR.loading.has(n.name) ? 'reading…' : store.live ? 'zoom in to read it' : 'not in this copy'; }
   el.innerHTML = '<div class="kicker">' + esc(kick) + '</div><div class="head"><h2 class="t">' + esc(title) + '</h2></div>' + (body && cls !== 'title' ? '<div class="b">' + esc(clip(body, 220)) + '</div>' : '');
   return el;
 }
 function dirLoad(name) {
   const rb = bParts(name).beach;   // weft (eye.15): another beach's block is read from it once its index has answered
-  if ((rb ? !(BEACHES.get(rb) || {}).names : !store.live) || DR.loading.has(name) || DR.loading.size >= 4 || store.blocks.has(name)) return;
+  if (rb === WEB) { const W = WEB_SITES.get(bParts(name).name); if (!W || W.state === 'down' || W.state === 'refused') return; }   // weft (eye.17): a site is read as it nears, once
+  if ((rb === WEB ? false : rb ? !(BEACHES.get(rb) || {}).names : !store.live) || DR.loading.has(name) || DR.loading.size >= 4 || store.blocks.has(name)) return;
   DR.loading.add(name);
   ensureBlock(name).then(() => { DR.loading.delete(name); dirKick(); }, () => { DR.loading.delete(name); });
 }
@@ -4261,6 +4477,7 @@ function dirOut() {
 }
 function dirIn() {
   const t = dirHere(), here = t[t.length - 1], kids = dirKids(here.n);
+  if (!kids.length && here.n.t === 'pt' && mapGoIn(blockSync(here.n.name), here.n.path, dirIn)) return;   // weft (eye.17): a site's map
   if (!kids.length) return bump(here.n.t === 'blk' && !blockSync(here.n.name) ? 'Reading it…' : 'Nothing is nested beneath this');
   dirGo(dirInPick(here.n, dirLayout(here.n, here.R, kids)));
 }
@@ -4309,9 +4526,10 @@ function dirChrome() {
   const t = dirHere(), here = t[t.length - 1], n = here.n, up = t.length > 1 ? t[t.length - 2].n : null;
   {
     let k = '', w = '';
-    if (DR.mode === 'room' && n.t === 'set' && up) { const c = dirKids(up).length; k = 'the beach · ' + c + (c === 1 ? ' set' : ' sets') + ' round you'; w = titleHTML(n.title); }   // weft (eye.14): its sets round you
+    if (DR.mode === 'room' && n.t === 'set' && up) { const c = dirKids(up).length; k = (up.base === WEB ? 'the web · ' : 'the beach · ') + c + (c === 1 ? ' set' : ' sets') + ' round you'; w = titleHTML(n.title); }   // weft (eye.14): its sets round you; (eye.17) the web's
     else if (DR.mode === 'room' && n.t === 'beach' && up) { const c = dirKids(up).length; k = 'every beach · ' + c + ' round you'; w = titleHTML(n.title); }   // weft (eye.15)
     else if (n.t === 'uni') { k = 'every beach · ' + n.total; w = titleHTML('The beaches'); }
+    else if (n.t === 'beach' && n.base === WEB) { k = 'the web · ' + n.total + (n.total === 1 ? ' site' : ' sites'); w = titleHTML('The web'); }   // weft (eye.17)
     else if (n.t === 'beach') { const st = n.B.state; k = (n.base === HOME ? 'every block · ' + n.total : st === 'members' ? '🔒 a members\' beach · ' + n.total + ' marked beyond' : st === 'inside' ? '🔓 in as ' + esc(n.B.passName) + ' · ' + n.total + ' blocks' : st === 'down' ? 'a beach · no answer' : st === 'open' ? 'a beach · ' + n.total + ' blocks' : 'a beach · reading…'); w = titleHTML(n.base === HOME ? hostPath(BEACH) : n.title); }
     else if (n.t === 'set') { k = 'a set · ' + n.kids.length; w = titleHTML(n.title); }
     else if (n.t === 'pkg') { k = (n.kind === 'shell' ? 'a shell' : 'a family') + ' · ' + n.kids.length; w = titleHTML(n.title); }
@@ -4327,7 +4545,7 @@ function dirChrome() {
   }
   const s = dirSibs(), kids = dirKids(n);
   const set = (bt, dis, aria) => { bt.disabled = !!dis; bt.setAttribute('aria-label', aria); bt.title = aria; };
-  set(DR.btn.out, !up, up ? 'Out: what this stands within, a rung up' + (up.t === 'uni' ? ': every beach' : up.t === 'beach' ? ': every block on ' + (up.base === HOME ? 'the beach' : up.title) : '') : dirTopSays(t));
+  set(DR.btn.out, !up, up ? 'Out: what this stands within, a rung up' + (up.t === 'uni' ? ': every beach' : up.t === 'beach' ? (up.base === WEB ? ': every site the web holds here' : ': every block on ' + (up.base === HOME ? 'the beach' : up.title)) : '') : dirTopSays(t));
   set(DR.btn.prev, !s || s.i <= 0, 'The place before this one');
   set(DR.btn.next, !s || s.i < 0 || s.i >= s.L.length - 1, 'The place after this one');
   set(DR.btn.in, !kids.length, 'In: what stands inside this, a rung deeper');
@@ -4685,7 +4903,7 @@ function dirBeachHere() {
   const U = dirUniverse(), c = dirLayout(U.root, ROOT_R, U.root.kids).find(x => x.n === U.home);
   return c ? { n: c.n, R: c.R } : t[0];
 }
-const dirBeachName = n => n.t === 'beach' ? (n.base === HOME ? 'the beach' : n.title) : 'this block';
+const dirBeachName = n => n.t === 'beach' ? (n.base === HOME ? 'the beach' : n.base === WEB ? 'the web' : n.title) : 'this block';
 function dirCentreOf() {
   const B = dirBeachHere();
   if (DR.mode !== 'room') return B;
@@ -4778,9 +4996,11 @@ window.addEventListener('resize', () => { cancelAnimationFrame(rsz); rsz = reque
   // first, so the plane holds it from the start)
   const linkB = link.beach && baseOf(link.beach) !== HOME && baseOf(link.beach) !== baseOf(WHERE[link.block]) ? beachAdd(link.beach, 'linked') : null;
   if (link.block) { state.block = bKey(link.block, link.beach); state.path = []; }
-  if (store.live || link.beach) await Promise.all([ensureBlock(link.block || state.block, link.beach || undefined), store.live && state.block !== 'proposals' ? ensureBlock('proposals') : null, linkB ? new Promise(r => { beachLoad(linkB.base); const t0 = Date.now(), w = () => linkB.state !== 'reading' || Date.now() - t0 > 12000 ? r() : setTimeout(w, 120); w(); }) : null].map(p => p && p.catch(() => null)));
+  if (store.live || link.beach || isWebKey(state.block)) await Promise.all([ensureBlock(link.block || state.block, link.beach || undefined), store.live && state.block !== 'proposals' ? ensureBlock('proposals') : null, linkB ? new Promise(r => { beachLoad(linkB.base); const t0 = Date.now(), w = () => linkB.state !== 'reading' || Date.now() - t0 > 12000 ? r() : setTimeout(w, 120); w(); }) : null].map(p => p && p.catch(() => null)));
   beachList().catch(() => null);   // the beaches this reader watches, and the worlds this beach names, in the background
+  if (isWebKey(state.block) && cur() && link.at) await mapsAlong(cur(), addrToPath(cur(), link.at)).catch(() => null);   // weft (eye.17): a place inside a site's maps
   let asked = ''; if (link.block && cur()) asked = placeFromLink(cur(), link); // weft (eye.5): the link is the call
+  if (isWebKey(state.block) && cur()) webRemember(bParts(state.block).name);    // weft (eye.17): a site a link opened joins this device's
   const missed = link.block && !cur() ? link.block : '';
   // weft (eye.16): a link to a block a members' beach keeps for its members, read by a device it does not know, opens at that
   // beach among every beach, where its wall stands; proved there, the eye goes on to the block (eyeProve)
@@ -4793,7 +5013,7 @@ window.addEventListener('resize', () => { cancelAnimationFrame(rsz); rsz = reque
   // a link that carries a stack opens where a stack is drawn, the Magic Eye, unless it names an axis (weft's finding)
   if (lanes.length > 1 && !Q0.get('axis')) state.axis = 'eye';
   // weft (eye.11): a link to a place above every block's top (the beach, a set, a family) opens the directory there
-  const uni = Q0.get('uni'); if (uni && /^(U$|B$|B:https:|S:|P:)/.test(uni)) { DR.above = uni; DR.placeKey = placeKey(); if (uni.startsWith('B:')) beachAdd(uni.slice(2), 'linked'); else { const m = /^[SP]:(https:\/\/[^~]+)~/.exec(uni); if (m) beachAdd(m[1], 'linked'); } }
+  const uni = Q0.get('uni'); if (uni && /^(U$|B$|B:https:|B:web$|S:|P:)/.test(uni)) { DR.above = uni; DR.placeKey = placeKey(); if (uni.startsWith('B:')) beachAdd(uni.slice(2), 'linked'); else { const m = /^[SP]:(https:\/\/[^~]+)~/.exec(uni); if (m) beachAdd(m[1], 'linked'); } }
   const fly = Q0.get('fly'); if (fly !== null) DR.from = /^(U$|B$|S:|P:)/.test(fly) ? fly : 'B';   // ?fly: from every block on the beach to the place
   if (walledAt && !uni) { DR.wallAsk = { base: walledAt, link }; state.axis = 'eye'; state.shape = 'dir'; if (state.dirView !== 'room') state.dirView = 'flat'; DR.above = 'B:' + walledAt; DR.placeKey = placeKey(); }
   render(null);

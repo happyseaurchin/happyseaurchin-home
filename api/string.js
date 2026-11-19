@@ -79,7 +79,8 @@ export function isPublicAddress(ip) {
   }
   return !(v === '::' || v === '::1' || /^f[cd]/.test(v) || /^fe[89ab]/.test(v) || /^ff/.test(v));
 }
-async function mayRead(u) {
+// exported for api/sitemap.js (eye.17), so the two functions that read another site keep one guard
+export async function mayRead(u) {
   if (!/^https?:$/.test(u.protocol) || (u.port && u.port !== '80' && u.port !== '443') || u.username || u.password) return false;
   const host = u.hostname.toLowerCase().replace(/\.$/, '');
   if (host.startsWith('[') || /^\d+\.\d+\.\d+\.\d+$/.test(host) || !host.includes('.') ||
