@@ -63,6 +63,19 @@
    * addresses the page already marks (a step's section, a part's data-at, a title drawn from the
    * spine). A step down 1 (1, 1.1, 1.11 …) is told as 'step n of N'. */
   var ADDR = /^\d+(\.\d+)?$/;
+  /* a mark the reader cannot be at (19 November 2026): one inside a box that stays put as the page scrolls (a rail of
+   * the steps, a pinned bar: fixed or sticky), since a rail stuck at the top has passed the line at every step and
+   * placed a reader at its last while they read its first; and one folded away, inside a closed fold, which still
+   * gives it a box. Such a mark still counts the steps (a phase folded beneath keeps 'step 7 of 10' true to the
+   * spine), and is never where the reader is */
+  function pinned(el) {
+    for (var b = el; b && b !== document.documentElement; b = b.parentElement) {
+      var p = getComputedStyle(b).position;
+      if (p === 'fixed' || p === 'sticky') return true;
+    }
+    return false;
+  }
+  function shown(el) { return !(el.checkVisibility && !el.checkVisibility({ visibilityProperty: true })); }
   function marked() {
     var out = [], seen = {};
     var els = document.querySelectorAll('section[data-step],section[data-at],.item[data-at],[data-sp][data-part="title"]');
@@ -71,7 +84,8 @@
       if (!ADDR.test(a)) continue;
       var r = el.getBoundingClientRect();
       if (!r.width && !r.height) continue;
-      out.push({ addr: a, el: el, top: r.top });
+      var vis = shown(el);
+      out.push({ addr: a, el: el, top: r.top, shown: vis, at: vis && !pinned(el) });
       if (/^1(\.1+)?$/.test(a)) seen[a] = 1;
     }
     var steps = Object.keys(seen).sort(function (x, y) { return x.length - y.length; });
@@ -97,8 +111,8 @@
     }
     return '';
   }
-  function markAt(m, addr) {
-    for (var i = 0; i < m.all.length; i++) if (m.all[i].addr === addr) return m.all[i];
+  function markAt(m, addr, onlyShown) {
+    for (var i = 0; i < m.all.length; i++) if (m.all[i].addr === addr && (!onlyShown || m.all[i].shown)) return m.all[i];
     return null;
   }
   /* the step a part stands in: the longest step down 1 whose digits begin the part's own */
@@ -112,9 +126,19 @@
   }
   function placeOf(m, addr) {
     var pick = addr ? markAt(m, addr) : null, line = window.innerHeight * 0.4;
-    if (!pick) { for (var j = 0; j < m.all.length; j++) if (m.all[j].top <= line) pick = m.all[j]; }
-    /* nothing reached yet, the reader at the opening: its first step, where it has steps (a fold in the opening,
-     * such as 'where it came from', is not where a reader starts), else the first marked part */
+    if (!pick) {
+      for (var j = 0; j < m.all.length; j++) if (m.all[j].at && m.all[j].top <= line) pick = m.all[j];
+      /* parts side by side (a grid's row: the kernel's nine regions, three doors, two side-rooms) pass the line
+       * together: the reader is at the row's first, where its reading begins, never its last (19 November 2026) */
+      for (var k = 0; pick && k < m.all.length; k++) {
+        var o = m.all[k];
+        if (o.at && o !== pick && Math.abs(o.top - pick.top) < 2 && !o.el.contains(pick.el) && !pick.el.contains(o.el)) { pick = o; break; }
+      }
+    }
+    /* nothing reached yet, the reader at the opening: its first step they can see, where it has steps (a fold in the
+     * opening, such as 'where it came from', is not where a reader starts, nor a phase folded beneath the one the page
+     * leads with), else the first marked part */
+    for (var s = 0; !pick && s < m.steps.length; s++) pick = markAt(m, m.steps[s], true);
     if (!pick) pick = (m.steps.length ? markAt(m, m.steps[0]) : null) || m.all[0] || null;
     if (!pick) return null;
     var title = titleOf(pick.el), step = m.steps.length > 1 ? stepOf(m, pick.addr) : '';
@@ -132,6 +156,7 @@
   /* THE FIRST MESSAGE, written by the page from what it knows (spine:o-page-unit 1.12) */
   var NOUN = {
     proposal: 'the proposal', inquiry: 'the inquiry', explainer: 'the explainer', recipe: 'the recipe', project: 'the project',
+    reference: 'the reference',
     complete: 'the finished proposal', 'set aside': 'the set-aside proposal', meeting: 'the meeting',
     schematic: 'the schematic', document: 'the document', premiere: 'the premiere', game: 'the game'
   };
@@ -141,6 +166,7 @@
     complete: 'Tell me what it did and where it ended',
     inquiry: 'Take me through it from there, then help me answer its questions',
     explainer: 'Take me through it from there, then help me say where it holds and where it falls short',
+    reference: 'Tell me what it covers from there, then help me use it as its law says',
     recipe: 'Ask me where I am, then take me through the next step',
     meeting: 'Tell me what was said and what comes next, then help me answer it',
     schematic: 'Explain this part and how it fits the whole, then help me comment where it does not fit',
@@ -171,8 +197,13 @@
       ', and ' + way + ' says how to help me with it. Without a connector, read it at ' + BEACH +
       '/.well-known/pscale-beach?block=spine:' + fam.name + '. ';
     if (place) out += "I've reached " + place.said + '. ';
+    /* a reference ('phase: reference', the systemic kernel) takes no answers on its page: its law says what a reader
+     * writes and where (a whole system, a redraw), so the reader is named, never sent to draft answers for the page
+     * or to write in a mirror the law may not want (19 November 2026) */
+    var onPage = kind !== 'reference';
     out += (ASK[kind] || 'Take me through it from there, then help me answer it') +
-      (me ? ', in my own reading, ' + fam.name + ':' + me + '.' : "; help me draft my answers and I'll give them on the page.");
+      (!onPage ? (me ? ". I'm " + me + ' on the beach.' : '.')
+        : me ? ', in my own reading, ' + fam.name + ':' + me + '.' : "; help me draft my answers and I'll give them on the page.");
     return out;
   }
 
