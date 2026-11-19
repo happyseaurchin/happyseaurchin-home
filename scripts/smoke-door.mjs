@@ -15,6 +15,9 @@
  *   - Escape closes it and gives focus back to the button;
  *   - no script error and no sideways scroll.
  * A page with a door of its own keeps it, and its sheet carries the same code button.
+ * A page whose own buttons open the shared door (data-ai-door, as ai-churn's do since 19 Nov 2026) has
+ * no corner button: the door is opened from the first of those buttons that shows, and every check
+ * above is run on it, Escape giving focus back to that button.
  * A page with no family (the list at /proposal) carries no corner button.
  *
  *   NODE_PATH=$(npm root -g) node scripts/smoke-door.mjs [page …] [--shots <dir>]
@@ -178,28 +181,45 @@ for (const view of VIEWS) {
         line(!probs.length, path, view.name, probs.length ? probs.join('; ') : 'its own door kept, with the code; the corner stands aside');
         await page.close(); continue;
       }
-      if (!has) { line(false, path, view.name, 'no corner button'); await page.close(); continue; }
-      const probs = [];
-      /* nothing covers it */
-      const covered = await page.evaluate(() => {
-        const b = document.querySelector('.aid-pill'), r = b.getBoundingClientRect();
-        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
-        return top && !b.contains(top) ? (top.tagName.toLowerCase() + (top.className && typeof top.className === 'string' ? '.' + top.className.split(' ')[0] : '')) : '';
+      /* a page whose own buttons open the shared door (data-ai-door): the corner stands aside, and the door is
+         opened from the first of those buttons that shows */
+      const button = has ? '' : await page.evaluate(() => {
+        const b = [...document.querySelectorAll('[data-ai-door]:not([data-ai-door="off"])')].find((x) => {
+          const r = x.getBoundingClientRect(), cs = getComputedStyle(x);
+          return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden';
+        });
+        if (!b) return '';
+        b.setAttribute('data-smoke-opener', '');
+        return '‘' + b.textContent.replace(/\s+/g, ' ').trim().slice(0, 40) + '’';
       });
-      if (covered) probs.push('covered by ' + covered);
-      /* and it covers none of the page's own fixed or stuck controls, at the top and after a scroll */
-      let sits = await page.evaluate(SITS);
-      if (sits.length) probs.push('sits over ' + sits.join(', ') + ' at the top');
+      if (!has && !button) { line(false, path, view.name, 'no corner button'); await page.close(); continue; }
+      const opener = has ? pill : page.locator('[data-smoke-opener]');
+      const probs = [];
+      let sits = [];
+      if (has) {
+        /* nothing covers it */
+        const covered = await page.evaluate(() => {
+          const b = document.querySelector('.aid-pill'), r = b.getBoundingClientRect();
+          const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+          return top && !b.contains(top) ? (top.tagName.toLowerCase() + (top.className && typeof top.className === 'string' ? '.' + top.className.split(' ')[0] : '')) : '';
+        });
+        if (covered) probs.push('covered by ' + covered);
+        /* and it covers none of the page's own fixed or stuck controls, at the top and after a scroll */
+        sits = await page.evaluate(SITS);
+        if (sits.length) probs.push('sits over ' + sits.join(', ') + ' at the top');
+      }
       /* no sideways scroll */
       const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
       if (wide > 1) probs.push('sideways scroll ' + wide + 'px');
       /* scroll a third of the way, then open it */
       await page.evaluate(() => window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 3)));
       await page.waitForTimeout(400);
-      sits = await page.evaluate(SITS);
-      if (sits.length) probs.push('sits over ' + sits.join(', ') + ' after a scroll');
+      if (has) {
+        sits = await page.evaluate(SITS);
+        if (sits.length) probs.push('sits over ' + sits.join(', ') + ' after a scroll');
+      }
       if (SHOTS) await page.screenshot({ path: join(SHOTS, (path.replace(/\//g, '_') || 'root') + '-' + view.name + '-closed.png') });
-      await pill.click();
+      await opener.click();
       await page.waitForSelector('.aid-back:not([hidden])', { timeout: 8000 });
       await page.waitForTimeout(900);
       const sheet = await page.evaluate(() => {
@@ -222,10 +242,13 @@ for (const view of VIEWS) {
       probs.push(...await codeCard(page, '.aid-back', path, true));
       await page.keyboard.press('Escape');
       await page.waitForTimeout(250);
-      const closed = await page.evaluate(() => document.querySelector('.aid-back').hidden && document.activeElement && document.activeElement.classList.contains('aid-pill'));
-      if (!closed) probs.push('Escape did not close it back to the button');
+      const closed = await page.evaluate((viaPill) => {
+        const a = document.activeElement;
+        return document.querySelector('.aid-back').hidden && a && (viaPill ? a.classList.contains('aid-pill') : a.hasAttribute('data-smoke-opener'));
+      }, !!has);
+      if (!closed) probs.push('Escape did not close it back to the button that opened it');
       if (errors.length) probs.push('errors: ' + errors.slice(0, 2).join(' | '));
-      line(!probs.length, path, view.name, probs.length ? probs.join('; ') : (sheet.at ? 'at ' + sheet.at : 'no marked parts'));
+      line(!probs.length, path, view.name, probs.length ? probs.join('; ') : (button ? 'opened by its own ' + button + ', ' : '') + (sheet.at ? 'at ' + sheet.at : 'no marked parts'));
     } catch (e) {
       line(false, path, view.name, 'threw: ' + String(e && e.message || e).split('\n')[0]);
     }
