@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- weft (eye.16), 19 Nov 2026, at David's 'go ahead with step 3': the site's pass at a members' beach (theme.js
+     sitePass), loaded before anything reads a beach, so every read the eye makes of a beach's wire carries the pass this
+     device holds for it, and a members' refusal is proved once more, asking nothing, with a key the device keeps wrapped
+     (siteKeys). The eye keeps its own night: theme.js's ◐, its footer, the beach button and the corner door stand aside
+     (the hidden #btn-theme and #create-your-own, and the body's data-beach-button and data-ai-door), and it draws its own
+     wall where a members' beach stands (dirWall), so theme.js lays none over the stage (the [data-pass-wall] below). -->
+<script src="/theme.js"></script>
 <title>Iris and Magic Eye</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -508,6 +515,23 @@ button{font:inherit;color:inherit}
 .du-beach.du-members .kicker{color:var(--ember)}
 .du-beach.du-down{opacity:.58;filter:grayscale(1)}
 .du-beach.du-down .kicker{color:var(--mist)}
+/* weft (eye.16): a members' beach seen from inside, with a pass this device holds: the lock open, the amber kept */
+.du-beach.du-inside{border-color:rgba(230,165,74,.3)}
+.du-beach.du-inside .kicker{color:var(--ember)}
+/* the wall at a members' beach seen from outside: the site's own words (theme.js sitePass.wall), worn in the eye's night,
+   under the words at the top; folded to one line, which opens it again */
+.dwall{position:absolute;left:12px;top:62px;z-index:72;box-sizing:border-box;width:min(360px,calc(100% - 24px));max-height:calc(100% - 158px);overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;border-radius:14px;border:1px solid rgba(230,165,74,.45);background:rgba(8,13,18,.95);box-shadow:0 18px 50px -18px rgba(0,0,0,.9);--card:transparent;--foam:var(--ink);--liquid:var(--ember);--vapour:var(--mist);--solid:var(--ember);--line-strong:transparent}
+.dwall[hidden]{display:none}
+.dwall .pass-wall{margin:0;border:0;padding:12px 40px 12px 14px;font-size:.84rem;line-height:1.45}
+.dwall .pass-wall b{color:var(--ember);font-weight:600}
+.dwall .pass-wall a{color:var(--iris)}
+.dwall-x{position:absolute;right:6px;top:6px;width:28px;height:28px;border-radius:50%;border:0;background:none;color:var(--mist);font-size:1.05rem;cursor:pointer}
+.dwall-x:hover{color:var(--ink)}
+.dwall.folded{width:auto;max-width:calc(100% - 24px)}
+.dwall-fold{display:flex;align-items:center;gap:8px;width:100%;padding:8px 14px;border:0;background:none;color:var(--ink);font:inherit;font-size:.8rem;text-align:left;cursor:pointer}
+.dwall-fold b{color:var(--ember);font-weight:600}
+.dwall-fold:hover{color:var(--ember)}
+@media (max-width:560px){.dwall .pass-wall{font-size:.8rem}}
 .du-beach.du-reading .kicker,.du-beach.du-idle .kicker{color:var(--mist)}
 .du-blk{opacity:.82}
 .dn>.card.is-focus{border-color:color-mix(in srgb,var(--iris) 60%,var(--line))}
@@ -632,7 +656,10 @@ button{font:inherit;color:inherit}
 }
 </style>
 </head>
-<body>
+<body data-beach-button="off" data-ai-door="off">
+<button id="btn-theme" type="button" hidden tabindex="-1" aria-hidden="true"></button>
+<p id="create-your-own" hidden></p>
+<div data-pass-wall hidden></div>
 <div id="app">
   <header class="navbar top">
     <button id="blockBtn" class="block-btn" type="button" aria-label="Choose a block to look at">
@@ -2797,7 +2824,12 @@ async function openBlock(name, path) {
   state.trail = []; state.block = b.name; setPlace(b, path || [], null, 0); state.view = 'main'; state.eye = 'focus'; state.choiceOf = null;
   closeSheet(); render('star');
 }
-function notHere(name) { return store.live ? 'Could not read ' + name + ' from the beach' : name + ' is on the beach but not in this snapshot'; }
+function notHere(name) {
+  // weft (eye.16): a block another beach keeps for its members, refused this device, says whose and where the way in is
+  const p = bParts(name), P = window.sitePass;
+  if (p.beach && P && typeof P.walled === 'function' && P.walled(p.beach)) return p.name + ' is kept for the members of ' + hostPath(p.beach) + ': prove your key at its beach, among every beach';
+  return store.live ? 'Could not read ' + name + ' from the beach' : name + ' is on the beach but not in this snapshot';
+}
 
 /* ---------------- the toggles (weft, 16 Nov 2026, eye.2) ----------------
  * Every toggle is at the top and names its state. How it shows itself is the reader's (⚙, state.toggles): CYCLE,
@@ -3217,7 +3249,7 @@ async function drawMine() {
     if (lb && !pj.length) g.append(h('p', 'empty', 'No projects listed there yet.')); }
   { const g = sec('The beaches you watch', sb ? 'shell:' + esc(who) + ' 2; each opens among every beach' : 'shell:' + esc(who) + ' is not on the beach yet');
     const w = sb ? nodeAt(sb, ['2']) : null;
-    if (isObj(w)) Object.keys(w).filter(isDigit).sort().forEach(k => { const u = (String(voiceOf(w[k]) || '').match(/^https:\/\/\S+/) || [''])[0]; if (!u) return; drawerRow(g, hostPath(u), baseOf(u) === HOME || ('https://beach.' + hostPath(u)) === HOME ? 'this beach' : 'a beach you watch', () => openBeach(u)); });
+    if (isObj(w)) Object.keys(w).filter(isDigit).sort().forEach(k => { const u = (String(voiceOf(w[k]) || '').match(/^https:\/\/\S+/) || [''])[0]; if (!u) return; const B = BEACHES.get(baseOf(u)); drawerRow(g, hostPath(u), baseOf(u) === HOME || ('https://beach.' + hostPath(u)) === HOME ? 'this beach' : B && B.state === 'members' ? '🔒 a members\' beach you watch: tap to come in' : B && B.state === 'inside' ? '🔓 a members\' beach you watch · in as ' + B.passName : 'a beach you watch', () => openBeach(u)); });   // weft (eye.16)
     else if (sb) g.append(h('p', 'empty', 'No beaches listed at its 2.')); }
 }
 // a beach from a list opens among every beach, standing at it, in the lens chosen
@@ -3759,7 +3791,8 @@ const DIR_MARK = 30;                  // narrower than this, a square is a mark 
 const DIR_TOP = 62, DIR_FOOT = 74;    // the words and the search above, the rail below
 const DR = { layer: null, world: null, cv: null, words: null, find: null, list: null, rail: null, btn: null, cam: null, W: 1, H: 1, vb: 0,
   els: new Map(), raf: 0, fly: null, gl: null, ptr: new Map(), pinch: null, wt: 0, ft: 0, at: '', above: null, placeKey: '', sig: '', from: null,
-  uni: null, loading: new Set(), hits: [], mode: 'flat', tap1: null, back: null, was: '' };   // weft (eye.12 to eye.14): the universe's taps, and where Centre came from
+  uni: null, loading: new Set(), hits: [], mode: 'flat', tap1: null, back: null, was: '',
+  wall: null, top: null, wallFold: new Set(), wallAsk: null };   // weft (eye.16): the wall at a members' beach, and a link's ask kept for after the proof   // weft (eye.12 to eye.14): the universe's taps, and where Centre came from
 // the directory is on the stage, and the eye is reading it (nothing over it, no panel)
 function dirShown() { return !!DR.layer && DR.layer.isConnected && current === DR.layer; }
 function dirOn() { return state.axis === 'eye' && state.shape === 'dir' && state.view === 'main' && sheet.hidden && dirShown(); }
@@ -3777,7 +3810,16 @@ const placeKey = () => state.block + '|' + state.path.join('.');
  * (federation-protocol 5): they are found by watching, so the universe holds the home beach always, the beaches the
  * reader watches (shell:<handle> 2, the handle this device signs with), the worlds this beach names (`worlds`: the /w/
  * tables and the sub-beaches), and a beach a link opened. An open beach is read at once; a members' beach shows what
- * its keepers mark beyond, under a lock (no pass in this step); a beach that does not answer stands grey and says so. */
+ * its keepers mark beyond, under a lock; a beach that does not answer stands grey and says so.
+ *
+ * weft (eye.16), 19 Nov 2026, at David's 'go ahead with step 3': A MEMBERS' BEACH WITH A PASS. Every read is made through
+ * the site's pass (theme.js sitePass, loaded in the head): a read of a beach's wire carries the pass this device holds for
+ * that beach, and a refusal (members_only, or an index saying it is a members' beach's) is proved once more, asking
+ * nothing, with a key the device keeps wrapped (siteKeys). So a member's device is let in quietly, its index the whole
+ * beach (inside, the lock open, the member's name on it), and a stranger is shown what the keepers mark beyond (members)
+ * with the wall (dirWall): whose beach, 'I'm a member: prove my key', which asks for the name and the key, keeps the key
+ * wrapped and reads the beach again in place (eyeProve, beachAgain), and a newcomer's way in by a member's invitation.
+ * The pass is the device's, twelve hours, as on every page here; the eye keeps nothing of its own. */
 const MEMBERS_SAY = /\bis its members(?:'|’) beach\b/;   // theme.js sitePass.gated: an index that says it is a members' beach's
 function beachAdd(base, why, title) {
   base = baseOf(base); if (!/^https:\/\/[^\s]+$/.test(base)) return null;
@@ -3794,12 +3836,60 @@ function beachLoad(base) {
   if (!B || B.state !== 'idle' || beachReading.has(base) || beachReading.size >= 3) return;
   beachReading.add(base); B.state = 'reading';
   const done = st => { beachReading.delete(base); B.state = st; DR.uni = null; dirKick(); if (dirShown()) { dirChrome(); renderToggles(); } setTimeout(() => { for (const x of BEACHES.values()) if (x.state === 'idle' && dirShown()) { beachLoad(x.base); } }, 0); };
+  // weft (eye.16): the index as the site's pass has it read: a member's whole beach where this device holds a pass (or
+  // proved one again, quietly), else what a stranger is shown
+  const P = window.sitePass;
   fetchJSON(base + '/.well-known/pscale-beach', 12000).then(idx => {
     if (!idx || !Array.isArray(idx.blocks)) return done('down');
+    const pass = P && typeof P.held === 'function' ? P.held(base) : null;
     B.names = new Set(idx.blocks.map(String)); B.total = B.names.size;
-    B.members = typeof idx._ === 'string' && MEMBERS_SAY.test(idx._);
-    done(B.members ? 'members' : 'open');
-  }, () => done('down'));
+    B.members = !!pass || (typeof idx._ === 'string' && MEMBERS_SAY.test(idx._));
+    B.passName = pass ? String(pass.name || '') : '';
+    done(B.members ? (pass ? 'inside' : 'members') : 'open');
+  }, e => {
+    // a pass the door no longer took is given up (theme.js), and the beach is read once more as a stranger is shown it
+    if (!B.retried && P && /HTTP 401/.test(String(e && e.message)) && !P.held(base)) { B.retried = true; beachReading.delete(base); B.state = 'idle'; return beachLoad(base); }
+    done('down');
+  });
+}
+// weft (eye.16): proved at the wall, the beach is read again in place, its sets and the place kept; every beach that is that
+// beach's deploy (its sub-beaches and tables share its pass) with it
+function beachAgain(d) {
+  const P = window.sitePass, dep = u => (P && typeof P.deployOf === 'function' ? P.deployOf(u) : u);
+  for (const B of BEACHES.values()) {
+    if (B.base === HOME || B.state === 'reading' || dep(B.base) !== d) continue;
+    B.state = 'idle'; B.names = null; B.total = 0; B.members = false; B.passName = ''; B.retried = false;
+  }
+  DR.uni = null; dirKick(); if (dirShown()) dirChrome();
+  for (const B of BEACHES.values()) if (B.state === 'idle' && dep(B.base) === d) beachLoad(B.base);
+}
+// the wall's own button: the site's proof (sitePass.prove: the name, else asked, offering the name this device signs with;
+// the key kept for it at that beach, else asked; kept wrapped once it proves), then the beach read again here, never the
+// page reloaded as the site's wall does; a link that asked a block kept for the members goes on to it
+function eyeProve(d, bt) {
+  const P = window.sitePass; if (!P || typeof P.prove !== 'function') return;
+  const box = bt.closest('[data-pass-wall]'), said = box && box.querySelector('.pass-wall__said'), who = (box && box.querySelector('b') || {}).textContent || hostPath(d);
+  const say = (t, err) => { if (said) { said.textContent = t || ''; said.classList.toggle('err', !!err); } };
+  bt.disabled = true; say('proving your key…');
+  P.prove({ beach: d, ask: true }).then(r => {
+    bt.disabled = false;
+    if (!(r && r.ok)) return say(r && r.quiet ? '' : (r && r.error) || 'the beach did not take that key', !(r && r.quiet));
+    toast('In as ' + (r.name || 'you') + ', a pass kept on this device twelve hours: reading ' + who + ' again');
+    beachAgain(d);
+    const A = DR.wallAsk;
+    if (A && P.deployOf(A.base) === d) {
+      // once the beach has been read again, so the block stands among its sets
+      DR.wallAsk = null;
+      const B = BEACHES.get(A.base), t0 = Date.now();
+      new Promise(ok => { const w = () => !B || (B.state !== 'reading' && B.state !== 'idle') || Date.now() - t0 > 12000 ? ok() : setTimeout(w, 120); w(); })
+      .then(() => ensureBlock(A.link.block, A.link.beach)).then(b => {
+        if (!b) return toast(notHere(bKey(A.link.block, A.link.beach)));
+        state.trail = []; state.block = b.name; state.path = []; DR.above = null;
+        const note = placeFromLink(b, A.link); state.view = 'main';
+        render('fade'); if (note) toast(note);
+      }, () => toast(notHere(bKey(A.link.block, A.link.beach))));
+    }
+  }, () => { bt.disabled = false; say('the beach could not be reached just now', true); });
 }
 // the beaches this reader watches and the worlds this beach names, read once the beach is
 const beachSign = () => { try { const v = String(localStorage.getItem('render:who') || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim(); return v || ''; } catch (e) { return ''; } };
@@ -4081,7 +4171,7 @@ function dirCardEl(n, cls) {
   else if (n.t === 'beach') {   // weft (eye.15): a beach as it answered
     const B = n.B, st = B.state, own = n.base === HOME;
     el.classList.add('du-' + (st === 'home' ? 'open' : st));
-    kick = own ? 'this beach · every block' : st === 'members' ? '🔒 a members\' beach' : st === 'down' ? 'a beach · no answer' : B.why === 'world' ? 'a world' : 'a beach';
+    kick = own ? 'this beach · every block' : st === 'members' ? '🔒 a members\' beach' : st === 'inside' ? '🔓 a members\' beach · in as ' + B.passName : st === 'down' ? 'a beach · no answer' : B.why === 'world' ? 'a world' : 'a beach';   // weft (eye.16): inside, with a pass
     title = own ? hostPath(BEACH) : beachTitle(B);
     body = st === 'reading' || st === 'idle' ? 'reading ' + hostPath(B.base) + '…' : st === 'down' ? hostPath(B.base) + ' did not answer: nothing there could be read just now'
       : st === 'members' ? 'its keepers mark ' + n.total + (n.total === 1 ? ' block' : ' blocks') + ' beyond; members come in with a pass' : n.total + ' blocks in ' + n.kids.length + (n.kids.length === 1 ? ' set' : ' sets') + (own || !B.title ? '' : ' · ' + hostPath(B.base));
@@ -4215,7 +4305,7 @@ function dirChrome() {
     if (DR.mode === 'room' && n.t === 'set' && up) { const c = dirKids(up).length; k = 'the beach · ' + c + (c === 1 ? ' set' : ' sets') + ' round you'; w = titleHTML(n.title); }   // weft (eye.14): its sets round you
     else if (DR.mode === 'room' && n.t === 'beach' && up) { const c = dirKids(up).length; k = 'every beach · ' + c + ' round you'; w = titleHTML(n.title); }   // weft (eye.15)
     else if (n.t === 'uni') { k = 'every beach · ' + n.total; w = titleHTML('The beaches'); }
-    else if (n.t === 'beach') { const st = n.B.state; k = (n.base === HOME ? 'every block · ' + n.total : st === 'members' ? '🔒 a members\' beach · ' + n.total + ' marked beyond' : st === 'down' ? 'a beach · no answer' : st === 'open' ? 'a beach · ' + n.total + ' blocks' : 'a beach · reading…'); w = titleHTML(n.base === HOME ? hostPath(BEACH) : n.title); }
+    else if (n.t === 'beach') { const st = n.B.state; k = (n.base === HOME ? 'every block · ' + n.total : st === 'members' ? '🔒 a members\' beach · ' + n.total + ' marked beyond' : st === 'inside' ? '🔓 in as ' + esc(n.B.passName) + ' · ' + n.total + ' blocks' : st === 'down' ? 'a beach · no answer' : st === 'open' ? 'a beach · ' + n.total + ' blocks' : 'a beach · reading…'); w = titleHTML(n.base === HOME ? hostPath(BEACH) : n.title); }
     else if (n.t === 'set') { k = 'a set · ' + n.kids.length; w = titleHTML(n.title); }
     else if (n.t === 'pkg') { k = (n.kind === 'shell' ? 'a shell' : 'a family') + ' · ' + n.kids.length; w = titleHTML(n.title); }
     else {
@@ -4224,7 +4314,9 @@ function dirChrome() {
       else { k = esc(bParts(n.name).name); w = titleHTML(bParts(n.name).name); }
     }
     const html = '<span class="rim-k">' + k + '</span><span class="rim-t">' + w + '</span>';
-    if (DR.words._h !== html) { DR.words.innerHTML = html; DR.words._h = html; }
+    const moved = DR.words._h !== html;
+    if (moved) { DR.words.innerHTML = html; DR.words._h = html; }
+    dirWall(t, moved);   // weft (eye.16)
   }
   const s = dirSibs(), kids = dirKids(n);
   const set = (bt, dis, aria) => { bt.disabled = !!dis; bt.setAttribute('aria-label', aria); bt.title = aria; };
@@ -4314,7 +4406,9 @@ function renderDirEye() {
   DR.find.addEventListener('input', () => { clearTimeout(DR.ft); DR.ft = setTimeout(dirShowFind, 140); });
   DR.find.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); dirShowFind(); dirPick(DR.hits[0]); } else if (e.key === 'Escape') { DR.find.value = ''; DR.list.hidden = true; DR.find.blur(); } e.stopPropagation(); });
   find.append(DR.find, DR.list); top.append(DR.words, find);
-  L.append(DR.cv, DR.world, top, dirRail());
+  // weft (eye.16): the wall at a members' beach seen from outside, drawn by dirWall as the place comes to it
+  DR.top = top; DR.wall = h('div', 'dwall'); DR.wall.hidden = true; DR.wall._k = ''; DR.wall.setAttribute('role', 'region'); DR.wall.setAttribute('aria-label', 'A members\' beach: how to come in'); DR.wall.addEventListener('click', dirWallClick);
+  L.append(DR.cv, DR.world, top, DR.wall, dirRail());
   DR.ret = null; if (DR.mode === 'room') { DR.ret = h('div', 'drt'); DR.ret.setAttribute('aria-hidden', 'true'); L.insertBefore(DR.ret, top); }   // weft (eye.12): where you look
   let seen = ''; try { seen = localStorage.getItem(DR.mode === 'room' ? 'iris-magic-eye.roomhint3' : 'iris-magic-eye.dirhint') || ''; } catch (e) { /* storage unavailable */ }
   if (!seen) {
@@ -4346,12 +4440,39 @@ function renderDirEye() {
   };
   return L;
 }
+// weft (eye.16): THE WALL, where the place stands on a members' beach or inside one and this device holds no pass for it:
+// the site's own words (sitePass.wall: whose beach, a member proves their key once, a newcomer comes in by a member's
+// invitation, at its String where the site knows it), folded to one line for the visit with ×, opened again by that line
+function dirWall(t, measure) {
+  const W = DR.wall; if (!W) return;
+  const P = window.sitePass, bn = (t || dirHere()).map(x => x.n).find(n => n.t === 'beach');
+  const base = bn && bn.base !== HOME && bn.B && bn.B.state === 'members' && P && typeof P.wall === 'function' ? bn.base : '';
+  if (!base) { if (!W.hidden) { W.hidden = true; W._k = ''; } return; }
+  const d = P.deployOf(base), folded = DR.wallFold.has(d), k = d + '|' + folded, was = W.hidden;
+  W.hidden = false;
+  if (W._k !== k) {
+    W._k = k; W._d = d; W.classList.toggle('folded', folded);
+    const words = P.wall(base), who = (h('div', null, words).querySelector('b') || {}).textContent || hostPath(base);
+    W.innerHTML = folded ? '<button type="button" class="dwall-fold" aria-expanded="false"><span aria-hidden="true">🔒</span><span><b>' + esc(who) + '</b> is its members\' beach · come in</span></button>'
+      : words + '<button type="button" class="dwall-x" aria-label="Fold this away" title="Fold this away">×</button>';
+  }
+  // under the words, however many lines they take, and clear of the rail at the foot
+  if ((measure || was || !W.style.top) && DR.top) { const T = Math.max(48, DR.top.offsetHeight - 10); W.style.top = T + 'px'; W.style.maxHeight = 'calc(100% - ' + (T + 96) + 'px)'; }
+}
+function dirWallClick(e) {
+  const W = DR.wall, t = e.target; if (!W || !t.closest) return;
+  const go = t.closest('[data-pass-prove]');
+  // the site's wall reloads the page once proved; here the beach is read again in place, so the site's handler never sees it
+  if (go) { e.preventDefault(); e.stopPropagation(); return eyeProve(go.getAttribute('data-pass-prove'), go); }
+  if (t.closest('.dwall-x')) { DR.wallFold.add(W._d); W._k = ''; return dirWall(null, true); }
+  if (t.closest('.dwall-fold')) { DR.wallFold.delete(W._d); W._k = ''; dirWall(null, true); const g = W.querySelector('[data-pass-prove]'); if (g) g.focus(); }
+}
 // the line saying what the gestures do goes once one has been used, and stays gone on this device
 function dirHintDone() { const el = DR.layer && DR.layer.querySelector('.dhint'); if (el) el.remove(); try { localStorage.setItem(DR.mode === 'room' ? 'iris-magic-eye.roomhint3' : 'iris-magic-eye.dirhint', '1'); } catch (e) { /* storage unavailable */ } }
 // the input, read only while the directory looks (the Magic Eye's handlers and the Iris's stand aside for it)
 function dirDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  if (e.target.closest && e.target.closest('button, a, input, textarea, select, .ref, .dtop, .rail, .dlist, .dhint')) return;
+  if (e.target.closest && e.target.closest('button, a, input, textarea, select, .ref, .dtop, .rail, .dlist, .dhint, .dwall')) return;
   dirStop();
   DR.ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t: performance.now(), moved: false, vx: 0, vy: 0, el: e.target.closest ? e.target.closest('.dn') : null });
   if (DR.ptr.size === 2) { const [a, b] = Array.from(DR.ptr.values()); DR.pinch = { d: Math.hypot(a.x - b.x, a.y - b.y) || 1, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 }; a.moved = b.moved = true; }
@@ -4392,6 +4513,7 @@ function dirUp(e) {
 }
 function dirCancel(e) { DR.ptr.delete(e.pointerId); if (DR.ptr.size < 2) DR.pinch = null; if (!DR.ptr.size) { DR.layer.classList.remove('grabbing'); dirSettle(); } }
 function dirWheel(e) {
+  if (e.target.closest && e.target.closest('.dwall')) return;    // weft (eye.16): the wall scrolls itself
   if (DR.mode === 'room') return rmWheel(e);                    // weft (eye.13): in the room the wheel moves you along the wall
   if (e.target.closest && e.target.closest('.dlist')) return;      // the search's list scrolls itself
   e.preventDefault(); e.stopImmediatePropagation();
@@ -4653,6 +4775,9 @@ window.addEventListener('resize', () => { cancelAnimationFrame(rsz); rsz = reque
   beachList().catch(() => null);   // the beaches this reader watches, and the worlds this beach names, in the background
   let asked = ''; if (link.block && cur()) asked = placeFromLink(cur(), link); // weft (eye.5): the link is the call
   const missed = link.block && !cur() ? link.block : '';
+  // weft (eye.16): a link to a block a members' beach keeps for its members, read by a device it does not know, opens at that
+  // beach among every beach, where its wall stands; proved there, the eye goes on to the block (eyeProve)
+  const walledAt = missed && linkB && window.sitePass && typeof window.sitePass.walled === 'function' && window.sitePass.walled(linkB.base) ? linkB.base : '';
   if (!cur()) { state.block = loadable('proposals') ? 'proposals' : Array.from(store.snap)[0] || ''; state.path = state.block === 'proposals' ? ['4'] : []; if (store.live && !cur()) await ensureBlock(state.block).catch(() => null); }
   if (!cur()) { ld.innerHTML = '<p>The beach could not be read here, and this copy carries no snapshot of it.</p>'; return; }
   // weft (eye.8), 17 Nov 2026: a link may carry a stack, a lane each (?lane=…, * the one in hand)
@@ -4663,8 +4788,9 @@ window.addEventListener('resize', () => { cancelAnimationFrame(rsz); rsz = reque
   // weft (eye.11): a link to a place above every block's top (the beach, a set, a family) opens the directory there
   const uni = Q0.get('uni'); if (uni && /^(U$|B$|B:https:|S:|P:)/.test(uni)) { DR.above = uni; DR.placeKey = placeKey(); if (uni.startsWith('B:')) beachAdd(uni.slice(2), 'linked'); else { const m = /^[SP]:(https:\/\/[^~]+)~/.exec(uni); if (m) beachAdd(m[1], 'linked'); } }
   const fly = Q0.get('fly'); if (fly !== null) DR.from = /^(U$|B$|S:|P:)/.test(fly) ? fly : 'B';   // ?fly: from every block on the beach to the place
+  if (walledAt && !uni) { DR.wallAsk = { base: walledAt, link }; state.axis = 'eye'; state.shape = 'dir'; if (state.dirView !== 'room') state.dirView = 'flat'; DR.above = 'B:' + walledAt; DR.placeKey = placeKey(); }
   render(null);
-  if (missed) toast(notHere(missed)); else if (asked) toast(asked); else if (laneMissed.length) toast(notHere(laneMissed[0]) + (laneMissed.length > 1 ? ', and ' + (laneMissed.length - 1) + ' more' : ''));
+  if (missed) toast(walledAt ? missed + ' is kept for the members of ' + hostPath(walledAt) + ': prove your key here, and the eye goes on to it' : notHere(missed)); else if (asked) toast(asked); else if (laneMissed.length) toast(notHere(laneMissed[0]) + (laneMissed.length > 1 ? ', and ' + (laneMissed.length - 1) + ' more' : ''));
 })();
 })();
 </script>
