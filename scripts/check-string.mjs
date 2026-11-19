@@ -113,8 +113,27 @@ r = await call({ page: '2026421258.111', door: 'salt' });
 ok('a share’s page at a members’ door says no more than the door, at its home', r.body.includes('<title>SALT — the String</title>') && r.body.includes('content="https://www.bringingtheflavour.com/string/2026421258.111"') && !r.body.includes('Some One') && !asked.length, r.body.match(/<title>.*<\/title>/));
 r = await call({ page: 'x', door: 'nowhere' });
 ok('a door that is not one', r.code === 404);
+
+/* a members' door's own header (lane salt.app.2, 19 Nov 2026; spine:salt-app 1.1): the door's mark, name, icons and front
+   page in the page as served, before any script runs, and its top the page's own wall; theme.js lays neither ＋card nor
+   share forward where <html> carries data-door, and its go there keeps to the door's own pages, read from its lighthouse */
+r = await call({ page: '', door: 'salt' });
+ok('a members’ door wears its own header as served: its mark in the dot’s place, its name, its icons, its front page at the foot',
+  r.body.includes('<svg class="door-mark"') && !r.body.includes('<span class="dot"></span>')
+  && r.body.includes('<span class="title" id="bar-title"><b>SALT</b><span class="sub"> · the string</span></span>')
+  && r.body.includes('<link rel="icon" href="https://www.bringingtheflavour.com/favicon.svg" type="image/svg+xml">')
+  && r.body.includes('<link rel="apple-touch-icon" href="https://www.bringingtheflavour.com/apple-touch-icon.png">')
+  && r.body.includes('<p id="create-your-own"><a href="https://www.bringingtheflavour.com/">SALT</a></p>'));
+ok('a members’ door’s top is the page’s own wall, so no second key-in box is laid over it', r.body.includes('<div id="top" data-pass-wall="https://beach.bringingtheflavour.com"></div>'));
+const THEME = (await import('node:fs')).readFileSync(new URL('../theme.js', import.meta.url), 'utf8');
+ok('theme.js lays neither ＋card nor share forward at a members’ door, and its go there reads the door’s own lighthouse',
+  /function shareAct\(mount\)\{[\s\S]{0,400}hasAttribute\('data-door'\)\) return;/.test(THEME)
+  && /function mintAct\(\)\{[\s\S]{0,600}hasAttribute\('data-door'\)\) return;/.test(THEME)
+  && /if \(cfg\.door\)\{[\s\S]{0,6000}\?block=lighthouse/.test(THEME));
+
 r = await call({ page: '' });
-ok('the open String’s own page is unchanged', r.code === 200 && r.body.includes('beach.happyseaurchin.com/button/voice.js') && r.body.includes('href="/string.webmanifest"'));
+ok('the open String’s own page is unchanged', r.code === 200 && r.body.includes('beach.happyseaurchin.com/button/voice.js') && r.body.includes('href="/string.webmanifest"')
+  && r.body.includes('<span class="dot"></span>') && r.body.includes('<p id="create-your-own"><a href="/">happyseaurchin.com</a></p>') && r.body.includes('<div id="top"></div>'));
 
 console.log(bad ? bad + ' failed' : 'all well');
 process.exit(bad ? 1 : 0);

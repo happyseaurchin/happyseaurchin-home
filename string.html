@@ -58,6 +58,11 @@
   .bar{background:rgba(var(--well-rgb),0.72);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px;padding:12px 16px;
     font-family:var(--mono);font-size:12px;letter-spacing:0.08em;color:var(--vapour-dim)}
   .bar .dot{width:6px;height:6px;border-radius:50%;background:var(--liquid);box-shadow:0 0 10px var(--liquid);flex:none}
+  /* a members' door wears its own mark in the dot's place (api/string.js writes it in as it serves the door): SALT's
+     crystal, the cube seen corner-on, with its one warm accent, the zing */
+  .bar .door-mark{width:20px;height:20px;flex:none;fill:none;stroke:var(--foam);stroke-width:1.9;stroke-linejoin:round;stroke-linecap:round}
+  .bar .door-mark__z{fill:#ff9d47;stroke:none}
+  :root[data-theme="light"] .bar .door-mark__z{fill:#d9661f}
   .bar b{color:var(--foam)}
   .bar .spacer{flex:1}
   .bar button{background:none;border:1px solid var(--line);border-radius:4px;color:var(--vapour-dim);font-family:var(--mono);font-size:12px;padding:6px 10px;cursor:pointer}
@@ -359,10 +364,11 @@
    access to the gated private beach"). The door names the beach; /api/string serves a door's page with that beach's own
    voice in it, so its writes land there, and a voice from any other beach is not spoken through. Served from this computer
    the beach is the one the page's voice names (its data-beach), a builder's test, as the voice itself allows. */
-const DOORS = { string: { beach: 'https://beach.happyseaurchin.com', home: 'https://happyseaurchin.com/string' }, salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT', home: 'https://www.bringingtheflavour.com/string' } };
+const DOORS = { string: { beach: 'https://beach.happyseaurchin.com', home: 'https://happyseaurchin.com/string' }, salt: { beach: 'https://beach.bringingtheflavour.com', name: 'SALT', home: 'https://www.bringingtheflavour.com/string', front: 'https://www.bringingtheflavour.com/' } };
 /* THE DOOR IS WHAT THE PAGE AS SERVED SAYS (data-door, set by /api/string), else what the path says; a door's string lives at
    its HOME, the community's own site (SALT's is www.bringingtheflavour.com/string, the same page by a rewrite there to
-   /api/string), and the PATH is wherever this door is served, since the same door stands at happyseaurchin.com/salt too */
+   /api/string), and the PATH is wherever this door is served. SALT has one home since 19 Nov 2026 (David: 'one home'):
+   happyseaurchin.com/salt sends readers there, and its path is still read here for a page served before. */
 const SAID = document.documentElement.getAttribute('data-door') || '';
 const DOOR = DOORS[SAID] ? SAID : (/^\/(salt)(\/|$)/.exec(location.pathname) || [0, 'string'])[1];
 const PATH = '/' + (location.pathname.split('/')[1] || DOOR), MEMBERS = DOOR !== 'string', WHOSE = DOORS[DOOR].name || '', HOME = DOORS[DOOR].home;
@@ -1431,13 +1437,26 @@ async function init(){
   if (MEMBERS){
     /* the beach button is the open commons' own; a members' string takes words through the page's box alone */
     document.body.setAttribute('data-beach-button', 'off');
-    $('bar-title').innerHTML = '<b>' + esc(low(WHOSE)) + '</b><span class="sub"> · the string</span>';
+    /* THE DOOR'S OWN HEADER (19 Nov 2026, lane salt.app.2; spine:salt-app 1.1, David's 'Start the header'): served at a
+       door the bar already says whose it is (api/string.js); said again here for a page served any other way. The top is
+       the page's own wall, so theme.js lays no second key-in box over it; the foot is the door's front page; a link in the
+       folded how-it-works that leads to this site goes there whole and says so (↗), since none of them stands on the door's
+       own site; and go is the door's own pages, never the site's (theme.js siteDoors, a members' door). */
+    $('bar-title').innerHTML = '<b>' + esc(WHOSE) + '</b><span class="sub"> · the string</span>';
+    $('top').setAttribute('data-pass-wall', ROOT);
+    const front = DOORS[DOOR].front || HOME;
+    $('create-your-own').innerHTML = '<a href="' + esc(front) + '">' + esc(WHOSE) + '</a>';
+    document.querySelectorAll('#foot a[href^="/"]').forEach(a => { a.href = 'https://happyseaurchin.com' + a.getAttribute('href'); a.textContent += ' ↗'; a.title = 'on happyseaurchin.com, beyond ' + WHOSE; });
+    document.querySelectorAll('#foot a[href^="https://mirror.onen.ai"]').forEach(a => { if (!/↗$/.test(a.textContent)) a.textContent += ' ↗'; a.title = 'on the open beach, beyond ' + WHOSE; });
     const host = ROOT.replace(/^https?:\/\//, '');
     $('how-members').innerHTML = 'This string stands on ' + esc(WHOSE) + '’s own beach, <code>' + esc(host) + '</code>, behind its members’ gate. A member proves their passport once, through the beach’s own voice, for a pass this device keeps for twelve hours, and every read and write carries it; the key is asked for by the browser once and kept on this device wrapped under a key the browser will not hand out, so your string reads and seals for you after a reload. A stranger reads what a member has marked beyond in their own index, and nothing else. A member brings someone in with <b>Invite someone</b>: a link that lives seven days and founds one passport, the newcomer’s, keyed on their own device. A share may be sealed in a colour its keeper has given you (<b>Who reads it</b>, as you share): members holding that colour read it, and everyone else sees that a sealed share stands, and nothing of it. No link shared here is read by this site’s own function: a card shows its link’s site and path, never a picture fetched on a member’s behalf. Who you follow is kept on this device.';
     $('how-members').hidden = false;
     $('how-cards').hidden = true;
   }
-  if (window.siteDoors) siteDoors({ handle: null, here: 'string', site: true });
+  if (window.siteDoors) siteDoors(MEMBERS
+    ? { here: 'string', door: { name: WHOSE, beach: ROOT, site: new URL(DOORS[DOOR].front || HOME).hostname.replace(/^www\./, ''),
+        pages: [[DOORS[DOOR].front || HOME, WHOSE, WHOSE + '’s front page'], [HOME, 'the string', 'what ' + WHOSE + '’s members are sharing']] } }
+    : { handle: null, here: 'string', site: true });
   try { history.scrollRestoration = 'manual'; } catch(e){}
   VIEW = routeOf();
   /* a link brought with ?add=, or from the phone's share sheet, which often says it inside its text */
