@@ -121,7 +121,7 @@
 
   /* THE FIRST MESSAGE, written by the page from what it knows (spine:o-page-unit 1.12) */
   var NOUN = {
-    proposal: 'the proposal', inquiry: 'the inquiry', recipe: 'the recipe', project: 'the project',
+    proposal: 'the proposal', inquiry: 'the inquiry', explainer: 'the explainer', recipe: 'the recipe', project: 'the project',
     complete: 'the finished proposal', 'set aside': 'the set-aside proposal', meeting: 'the meeting',
     schematic: 'the schematic', document: 'the document', premiere: 'the premiere', game: 'the game'
   };
@@ -130,6 +130,7 @@
     project: 'Tell me where it stands and what is waiting, then help me answer what is still open',
     complete: 'Tell me what it did and where it ended',
     inquiry: 'Take me through it from there, then help me answer its questions',
+    explainer: 'Take me through it from there, then help me say where it holds and where it falls short',
     recipe: 'Ask me where I am, then take me through the next step',
     meeting: 'Tell me what was said and what comes next, then help me answer it',
     schematic: 'Explain this part and how it fits the whole, then help me comment where it does not fit',
