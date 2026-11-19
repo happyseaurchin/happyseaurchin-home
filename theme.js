@@ -332,7 +332,17 @@
  *                             member's invitation, at the String where the site knows it
  *   sitePass.prove({ beach, name, ask })    that proof, asked for, or not (ask: false)
  *   sitePass.held(origin)     the pass this device holds for that beach, { name, pass, expires }, or null
- * A page that draws no wall of its own where a beach refused it is given one, under its bar. */
+ * A page that draws no wall of its own where a beach refused it is given one, under its bar.
+ *
+ * WHAT A QUIET PROOF MAY SEND (eye.16, 19 Nov 2026, at David's word, from the eye seat's finding and weft's reading at
+ * watch:weft 989.6: once the eye read every watched beach by itself, a members' beach run by anyone would have been sent
+ * the apex's key unasked). At any beach but the apex, a key is found only where this device kept it for that beach
+ * (keyFor), never the apex's key or another key for the same name; and a proof made asking nothing sends only the form
+ * recorded for that beach, the derived latch where none is, never the word: the word goes to another beach's host only
+ * when its holder proves there by hand, or proved there by hand before, and a refusal then stands as the page's wall. A
+ * write's own key proves as before, since the write carries it to that beach itself. A read whose init says
+ * prove: false (the eye's, every one of them) carries a pass this device holds and proves nothing at all: there a proof
+ * is made only by the person's tap (sitePass.prove). */
 (function(){
   'use strict';
   if (!window.fetch || window.sitePass) return;
@@ -373,14 +383,18 @@
   }
   function gated(index){ return !!(index && typeof index._ === 'string' && MEMBERS.test(index._)); }
   /* a member's key for this beach: the passport's own, as every page names it, at the apex; at any other beach under a name
-   * that carries the beach, so a key there never stands in for the same name's key here */
+   * that carries the beach, so a key there never stands in for the same name's key here, and only that one: the apex's
+   * key, or any other kept for the name, is never offered to another beach's host (eye.16) */
   function keyName(name, d){ return 'passport-latch:' + name + (d === APEX ? '' : '@' + d.replace(/^https?:\/\//, '')); }
-  function keyFor(name, d){ var K = window.siteKeys; return K ? (K.get(keyName(name, d)) || K.get('passport-latch:' + name) || K.forName(name)) : ''; }
-  /* the proof, in the form this device keeps for the name at this beach, else the derived latch first (the derived latch) */
-  function proof(d, name, key){
-    var kept = formOf(d, name);
+  function keyFor(name, d){ var K = window.siteKeys; if (!K) return ''; return d === APEX ? (K.get(keyName(name, d)) || K.forName(name)) : (K.get(keyName(name, d)) || ''); }
+  /* the proof, in the form this device keeps for the name at this beach, else the derived latch first (the derived latch).
+   * Made quietly (the page asking nothing) at any beach but the apex: the form recorded for that beach alone, the derived
+   * latch where none is, never the word unasked; a refusal stands (eye.16) */
+  function proof(d, name, key, quiet){
+    var kept = formOf(d, name), strict = !!quiet && d !== APEX;
     return sealLib().then(function(S){ return S.latch(key, name); }, function(){ return ''; }).then(function(L){
-      var forms = !L ? [key] : kept.indexOf('derived:') === 0 ? [L] : kept === 'word' ? [key, L] : [L, key], last = null;
+      var forms = strict ? (kept === 'word' ? [key] : L ? [L] : [])
+        : !L ? [key] : kept.indexOf('derived:') === 0 ? [L] : kept === 'word' ? [key, L] : [L, key], last = null;
       function one(i){
         if (i >= forms.length) return last;
         return raw(d + '/.well-known/pscale-beach', { method: 'POST', cache: 'no-store',
@@ -416,11 +430,11 @@
     PROVING[d] = (window.siteKeys ? window.siteKeys.ready() : Promise.resolve()).then(function(){
       var v = window.beachVoice;
       if (who && v && v.beach === d && typeof v.prove === 'function') tries.push({ name: who, voice: true });
-      else if (who){ var k = keyFor(who, d); if (k && !tries.some(function(t){ return t.name === who && t.key === k; })) tries.push({ name: who, key: k }); }
+      else if (who){ var k = keyFor(who, d); if (k && !tries.some(function(t){ return t.name === who && t.key === k; })) tries.push({ name: who, key: k, quiet: true }); }
       function next(i){
         if (i >= tries.length) return null;
         var t = tries[i];
-        return Promise.resolve(t.voice ? window.beachVoice.prove({ name: t.name, ask: false }) : proof(d, t.name, t.key))
+        return Promise.resolve(t.voice ? window.beachVoice.prove({ name: t.name, ask: false }) : proof(d, t.name, t.key, t.quiet))
           .then(function(r){ return r && r.ok && held(d) ? held(d) : next(i + 1); }, function(){ return next(i + 1); });
       }
       return next(0);
@@ -496,10 +510,11 @@
     o.headers.set('Authorization', 'Bearer ' + p.pass);
     return o;
   }
+  /* a pass the door no longer takes (its secret turned) is given up, its name kept for the proof */
+  function giveUp(d, p){ if (p) try { localStorage.setItem(PASS + d, JSON.stringify({ name: p.name })); } catch(e){} }
   function refused(w, url, init, r, p){
     WALLED[w.deploy] = true;
-    /* a pass the door no longer takes (its secret turned) is given up, its name kept for the proof */
-    if (p) try { localStorage.setItem(PASS + w.deploy, JSON.stringify({ name: p.name })); } catch(e){}
+    giveUp(w.deploy, p);
     return reprove(w, init).then(function(p2){
       if (!p2){ wallSoon(w.deploy); return r; }
       WALLED[w.deploy] = false;
@@ -507,20 +522,21 @@
     });
   }
   function carry(url, init, w, again){
-    var rec = record(w.deploy);
-    var first = live(rec) ? Promise.resolve(rec) : rec && !again ? reprove(w, init) : Promise.resolve(null);
+    /* a read that says prove: false carries a pass held and proves nothing: a refusal is its page's to show (eye.16) */
+    var rec = record(w.deploy), quietly = init.prove !== false;
+    var first = live(rec) ? Promise.resolve(rec) : rec && !again && quietly ? reprove(w, init) : Promise.resolve(null);
     return first.then(function(p){
       return raw(url, p ? withPass(init, p) : init).then(function(r){
         var reading = !init.method || /^get$/i.test(init.method);
         if (r.status === 401) return r.clone().json().then(function(x){
           if (!x || x.code !== 'members_only') return r;
-          if (again){ WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
+          if (again || !quietly){ if (!quietly) giveUp(w.deploy, p); WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
           return refused(w, url, init, r, p);
         }, function(){ return r; });
         /* an index a stranger is shown: what its keepers mark beyond, and the words saying so */
         if (r.ok && reading && w.index && !p && !OPEN[w.deploy]) return r.clone().json().then(function(x){
           if (!gated(x)){ OPEN[w.deploy] = true; return r; }
-          if (again){ WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
+          if (again || !quietly){ WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
           return refused(w, url, init, r, null);
         }, function(){ return r; });
         return r;
