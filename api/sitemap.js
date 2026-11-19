@@ -29,11 +29,12 @@
 import { mayRead } from './string.js';
 
 const AGENT = 'happyseaurchin-eye/1.0 (+https://happyseaurchin.com/eye)';
-const MAPS = 12;             // maps read at most, an index's among them
-const BYTES = 6000000;       // bytes of one map read at most, once opened where it came gzipped
+const MAPS = 6;              // maps read at most, an index's among them
+const BYTES = 1500000;       // bytes of one map read at most, once opened where it came gzipped (some 12,000 addresses,
+                             // far more than PAGES needs; so one read costs at most about 9 MB, whatever the site)
 const ROBOTS = 200000;       // bytes of robots.txt read at most
 const PAGES = 2000;          // pages kept in the block at most
-const BUDGET = 14000;        // ms for the whole read: what is read by then is what is kept
+const BUDGET = 10000;        // ms for the whole read: what is read by then is what is kept
 const HOPS = 3;              // redirects followed at most, each address looked at first
 const WELL_KNOWN = ['/sitemap.xml', '/sitemap_index.xml'];
 
