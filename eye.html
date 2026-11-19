@@ -501,6 +501,14 @@ button{font:inherit;color:inherit}
 .dcard .t{overflow-wrap:anywhere}
 .du-beach,.du-set,.du-pkg{border-style:dashed}
 .du-beach .kicker,.du-set .kicker,.du-pkg .kicker{color:var(--iris)}
+/* weft (eye.15): every beach, and a beach as it answered: a members' beach under its lock in amber, one with no answer grey */
+.du-uni{border-style:dashed}
+.du-uni .kicker{color:var(--iris)}
+.du-beach.du-members{border-color:rgba(230,165,74,.55)}
+.du-beach.du-members .kicker{color:var(--ember)}
+.du-beach.du-down{opacity:.58;filter:grayscale(1)}
+.du-beach.du-down .kicker{color:var(--mist)}
+.du-beach.du-reading .kicker,.du-beach.du-idle .kicker{color:var(--mist)}
 .du-blk{opacity:.82}
 .dn>.card.is-focus{border-color:color-mix(in srgb,var(--iris) 60%,var(--line))}
 /* the words at the top, and the search beside them */
@@ -567,6 +575,13 @@ button{font:inherit;color:inherit}
 .btn.ghost{border-color:var(--line);background:none;color:var(--mist)}
 .err{color:#f0a48a;font-size:.88rem}
 .start{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+/* weft (eye.15): the drawer's two tabs, Mine and This site */
+.dtabs{display:inline-flex;gap:2px;background:rgba(210,232,245,.05);border:1px solid var(--line);border-radius:999px;padding:3px;margin:4px 0 10px}
+.dtabs button{border:0;background:none;color:var(--mist);border-radius:999px;padding:7px 16px;font-size:.92rem;cursor:pointer}
+.dtabs button[aria-selected="true"]{background:color-mix(in srgb,var(--iris) 24%,transparent);color:var(--ink)}
+.dtab h3{margin-top:14px}
+.dtab .start+.src{margin-top:8px}
+.linkish{border:0;background:none;color:var(--iris);padding:0;font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .blist{display:flex;flex-direction:column;gap:4px;margin-top:8px}
 .bl{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:0;border-radius:10px;padding:7px 8px;cursor:pointer}
 .bl:hover{background:var(--glass)}
@@ -635,7 +650,8 @@ button{font:inherit;color:inherit}
     <div class="tg" id="tg-walk"></div>
     <div class="tg" id="tg-beneath"></div>
     <!-- weft (eye.11), 17 Nov 2026: the Magic Eye's shape, the ring you stand in or the directory laid flat -->
-    <div class="tg" id="tg-eshape"></div>
+    <div class="tg" id="tg-scale"></div>
+    <div class="tg" id="tg-elens"></div>
     <!-- weft (eye.7), 16 Nov 2026: the Magic Eye's two settings, which way the ring turns and which way a swipe goes in -->
     <div class="tg" id="tg-ring"></div>
     <div class="tg" id="tg-zoom"></div>
@@ -685,23 +701,36 @@ const fmtPs = n => n > 0 ? '+' + n : n < 0 ? '−' + Math.abs(n) : '0';
 
 /* ---------------- store ---------------- */
 const store = { blocks: new Map(), snap: new Set(Object.keys(RAW.blocks || {})), apex: new Set(RAW.names || []), live: false, liveNames: new Set(), yours: 0 };
+const BEACHES = new Map();   // weft (eye.15): every beach the universe holds, by its address (beachList, below)
 let knownCache = null;
 const mirrorCache = new Map(), famPageCache = new Map(), famLookCache = new Map();
 let famLineCache = null;
 function invalidate() { knownCache = null; mirrorCache.clear(); famPageCache.clear(); famLookCache.clear(); if (store.ways) store.ways.clear(); }
-function known() { if (knownCache) return knownCache; const s = new Set(store.snap); for (const n of store.blocks.keys()) s.add(n); if (store.live) for (const n of store.liveNames) s.add(n); return (knownCache = s); }
+// weft (eye.15), 19 Nov 2026, at David's 'Yes, go ahead' (iris.3's reading of his two questions): a block is known by its
+// beach and its name. The home beach's blocks keep their bare names; another beach's are keyed as the lanes already write
+// them, <beach>~<name>, so two beaches' proposals never meet in the store. b.name is the key, b.bare the name on its beach
+const HOME = BEACH.replace(/\/$/, '');
+const baseOf = u => String(u || '').trim().replace(/\/$/, '');
+function bKey(name, beach) { const b = baseOf(beach); return !b || b === HOME || b === baseOf(WHERE[name]) ? name : b + '~' + name; }
+function bParts(key) { const m = /^(https:\/\/[^~\s]+)~(.+)$/.exec(String(key || '')); return m ? { beach: m[1], name: m[2] } : { beach: '', name: String(key || '') }; }
+const bareOf = b => (b && (b.bare || b.name)) || '';
+function known() { if (knownCache) return knownCache; const s = new Set(store.snap); for (const n of store.blocks.keys()) if (!bParts(n).beach) s.add(n); if (store.live) for (const n of store.liveNames) s.add(n); return (knownCache = s); }
 // weft, 16 Nov 2026: a block a page keeps at another beach (META.where, the Brackenfoot map at /w/brackenfoot) is loadable too
-function loadable(name) { return store.blocks.has(name) || store.snap.has(name) || (store.live && (store.liveNames.has(name) || has(WHERE, name))); }
+function loadable(name) {
+  const p = bParts(name); if (p.beach) { const B = BEACHES.get(p.beach); return store.blocks.has(name) || !!(B && B.names && B.names.has(p.name)); }   // weft (eye.15): another beach's, by its own index
+  return store.blocks.has(name) || store.snap.has(name) || (store.live && (store.liveNames.has(name) || has(WHERE, name)));
+}
 function onBeach(name) { return store.apex.has(name) || store.liveNames.has(name); }
 
 function makeBlock(name, data, source, extra) {
-  const b = Object.assign({ name, data, source }, extra || {});
+  const key = bKey(name, extra && extra.beach);
+  const b = Object.assign({ name: key, bare: name, data, source }, extra || {});
   b.floor = computeFloor(data);
   b.accum = detectAccum(data);
-  store.blocks.set(name, b);
-  if (name === 'proposals') famLineCache = null;
+  store.blocks.set(key, b);
+  if (key === 'proposals') famLineCache = null;
   invalidate();
-  b.family = familyOf(name);
+  b.family = key === name ? familyOf(name) : null;    // weft (eye.15): another beach's blocks belong to no family of this site's pages
   b.accent = (b.family && ACCENTS[b.family]) || null;
   return b;
 }
@@ -709,6 +738,7 @@ function blockSync(name) {
   if (!name) return null;
   if (store.blocks.has(name)) return store.blocks.get(name);
   if (name.includes('*')) return ensureHidden(name);
+  if (bParts(name).beach) return null;                 // weft (eye.15): another beach's block, not read yet
   if (store.snap.has(name)) return makeBlock(name, RAW.blocks[name], 'snapshot');
   return null;
 }
@@ -718,17 +748,18 @@ async function fetchJSON(url, ms) {
   finally { clearTimeout(t); }
 }
 async function ensureBlock(name, beach) {
-  const b0 = store.blocks.get(name);
+  const p = bParts(name); if (p.beach) { name = p.name; beach = beach || p.beach; }   // weft (eye.15): a key names its beach
+  const key = bKey(name, beach), b0 = store.blocks.get(key);
   if (b0 && !(store.live && b0.source === 'snapshot')) return b0;
   if (store.live || beach) {
-    const base = (beach || WHERE[name] || BEACH).replace(/\/$/, '');
+    const base = baseOf(beach || WHERE[name] || BEACH);
     try {
       const d = await fetchJSON(base + '/.well-known/pscale-beach?block=' + encodeURIComponent(name), 9000);
       // weft, 16 Nov 2026: a block read from another beach remembers it, so the address bar can name it (linkOf)
-      if (d !== null && d !== undefined && !(isObj(d) && d.error && Object.keys(d).length < 4)) return makeBlock(name, d, 'live', beach && base !== BEACH.replace(/\/$/, '') && base !== String(WHERE[name] || '').replace(/\/$/, '') ? { beach: base } : null);
+      if (d !== null && d !== undefined && !(isObj(d) && d.error && Object.keys(d).length < 4)) return makeBlock(name, d, 'live', key !== name ? { beach: base } : null);
     } catch (e) { /* fall back to the snapshot */ }
   }
-  return b0 || blockSync(name);
+  return b0 || blockSync(key);
 }
 
 /* ---------------- block geometry ---------------- */
@@ -874,7 +905,7 @@ function labelOf(b, path) {
   if (rf) { const ln = rf.own ? splitTail(rf.own) : lineOf(rf.family); return { title: rf.family, body: ln.text, raw: v, family: rf.family }; }
   return Object.assign(splitVoice(v), { raw: v });
 }
-function blockTitle(b) { if (!b) return ''; const t = splitVoice(voiceOf(b.data)).title; return t || b.name; }
+function blockTitle(b) { if (!b) return ''; const t = splitVoice(voiceOf(b.data)).title; return t || bareOf(b); }
 /* weft, 16 Nov 2026 (eye.2): the sundial's arithmetic, as /walk reads it: year digits, season, month in the season,
  * the week's band, the day in the band, the gathering, the beat; then the minute, the breath, the second. A 0 is the
  * whole of the rung above. Only a name for an unvoiced rung: what a rung says for itself always comes first. */
@@ -968,8 +999,18 @@ function starTargets(b, path) {
   const raw = labelOf(b, path).raw || '';
   const rf = refFamily(raw);
   if (rf) for (const pre of ['spine:', 'proposal:']) { if (loadable(pre + rf.family) || onBeach(pre + rf.family)) { add({ block: pre + rf.family, addr: '', how: 'its own block' }); break; } }
-  refsIn(raw).forEach(add);
+  const rb = bParts(b.name).beach;
+  if (rb) remoteRefs(raw, rb).forEach(add); else refsIn(raw).forEach(add);   // weft (eye.15): another beach's words name its own blocks
   if (!path.length && b.family) for (const [pre, how] of [['spine:', 'the spine'], ['function:', 'the law'], ['pool:', 'the room']]) { const nm = pre + b.family; if (nm !== b.name && (loadable(nm) || onBeach(nm))) add({ block: nm, addr: '', how }); }
+  return out;
+}
+// the blocks another beach's words name, read off that beach's own index
+function remoteRefs(raw, base) {
+  const B = BEACHES.get(base), out = [], seen = new Set(); if (!B || !B.names) return out;
+  for (const tok of String(raw || '').split(/[\s,;()"'“”‘’<>]+/)) {
+    const nm = tok.replace(/[.!?]+$/, ''); if (!nm || seen.has(nm) || !B.names.has(nm)) continue;
+    seen.add(nm); out.push({ block: nm, beach: base, addr: '', how: 'named here' });
+  }
   return out;
 }
 function familyOf(name) {
@@ -1152,10 +1193,40 @@ const HL_IN = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.4 9.6l3.2
 const HL_OUT = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.8h3.7v3.7"/><path d="M13.2 2.8L7.6 8.4"/><path d="M11.6 9.4v2.9a1 1 0 0 1-1 1H3.7a1 1 0 0 1-1-1V5.4a1 1 0 0 1 1-1h2.9"/></svg>';
 function webLinkIn(raw) { const m = /\bhttps?:\/\/[^\s<>"')\]]+/i.exec(String(raw || '')); return m ? m[0].replace(/[.,;:!?)\]]+$/, '') : ''; }
 function sitePath(url) { try { const u = new URL(url, location.href); return u.pathname + u.search + u.hash; } catch (e) { return url; } }
+/* THE DRAWER'S LISTS (weft, eye.15, 19 Nov 2026, at David's 'Yes, go ahead' to iris.3's reading of 'the go menu for the
+ * site and the personalised one … personal (happyseaurchin list), site … It is related to the top left button'): a hand's
+ * go listing (lists:<handle> 2) names the pages it wants by the page alone, and the page's shape says where the hand's
+ * name goes, as theme.js's go menu builds them (WORK, GLANCE and WITH, theme.js href). So a point in a go listing is that
+ * hand's page, framed at page size, as any point that names a page is */
+const DOOR_SHAPE = { walk: 'family', recency: 'family', ring: 'carry', availability: 'carry', premiere: 'carry', met: 'who', connect: 'bare', moneybox: 'optional', globe: 'optional', 'social-brain': 'optional', earth: 'optional' };
+const DOOR_ALIAS = { shell: 'passport', self: 'passport' };
+function doorUrl(page, h, fam) {
+  page = DOOR_ALIAS[page] || page;
+  if (/^https:\/\/\S+$/.test(page)) return page;
+  if (!/^[a-z][a-z0-9/-]*$/.test(page)) return '';
+  const e = encodeURIComponent(h || ''), base = SITE.replace(/\/$/, '') + '/' + page, sh = DOOR_SHAPE[page] || 'handle';
+  if (sh === 'bare' || !h) return base;
+  if (sh === 'carry') return base + '?h=' + e;
+  if (sh === 'who') return base + '?who=' + e;
+  if (sh === 'family') return fam ? base + '/' + encodeURIComponent(fam) + '/' + e : page === 'recency' ? base + '/now/' + e : base + '?h=' + e;
+  return base + '/' + e;
+}
+// a list kept rank as depth (lists:<handle>, the site's own): its items down digit 1 beneath the list's own place
+function listChain(b, top) {
+  const out = []; let path = [String(top)];
+  for (let i = 0; i < 200; i++) { path = path.concat(['1']); const n = nodeAt(b, path); if (n === undefined) break; const v = String(voiceOf(n) || '').trim(); if (v) out.push({ path: path.slice(), voice: v }); }
+  return out;
+}
+function doorOfPoint(b, path) {
+  const m = /^lists:(.+)$/.exec(b && !bParts(b.name).beach ? b.name : ''); if (!m || path[0] !== '2' || path.length < 2 || !path.slice(1).every(k => k === '1')) return '';
+  const first = listChain(b, '1')[0], fam = first ? (first.voice.match(/^[a-z0-9][a-z0-9-]*/) || [''])[0] : '';
+  return doorUrl(String(voiceOf(nodeAt(b, path)) || '').trim(), m[1], fam);
+}
 function linkOfPoint(b, path, lab) {
   let url = '';
   const sh = shareOf(b, path, lab.raw);
   if (sh) url = state.look === 'snazzy' ? sh.link : sh.page;
+  else if ((url = doorOfPoint(b, path))) { /* weft (eye.15): a door in a hand's go listing */ }
   else {
     const fam = lab.family || pointFamily(b, path);
     const urls = fam || /^arrangement:/.test(b.name) ? pagesOf(fam, b) : {};
@@ -1237,7 +1308,7 @@ function sigil(path, o) {
 
 /* ---------------- state ---------------- */
 function loadPrefs() { try { return JSON.parse(localStorage.getItem('iris-magic-eye.prefs') || '{}') || {}; } catch (e) { return {}; } }
-function savePrefs() { try { localStorage.setItem('iris-magic-eye.prefs', JSON.stringify({ axis: state.axis, shape: state.shape, surface: state.surface, layout: state.layout, curve: state.curve, toggles: state.toggles, tgSet: state.tgSet ? 1 : 0, look: state.look, size: state.size, uSize: state.uSize, addr: state.addr, depth: state.depth, ringAxis: state.ringAxis, zoomDir: state.zoomDir, links: state.links, stack: state.stack, dirView: state.dirView })); } catch (e) { /* storage unavailable */ } }
+function savePrefs() { try { localStorage.setItem('iris-magic-eye.prefs', JSON.stringify({ axis: state.axis, shape: state.shape, surface: state.surface, layout: state.layout, curve: state.curve, toggles: state.toggles, tgSet: state.tgSet ? 1 : 0, look: state.look, size: state.size, uSize: state.uSize, who: state.who || '', addr: state.addr, depth: state.depth, ringAxis: state.ringAxis, zoomDir: state.zoomDir, links: state.links, stack: state.stack, dirView: state.dirView })); } catch (e) { /* storage unavailable */ } }
 const P0 = loadPrefs();
 /* weft, 16 Nov 2026 (eye.2): Iris reads two shapes of one block (whetstone 2). The WALK (shape 'walk'): the spindle
  * from the root to the point, the point's ring across it and its ring beneath, the choice the walk ends in; drawn
@@ -1260,6 +1331,7 @@ const state = {
   size: ['title', 'icon', 'card', 'big', 'page'].includes(P0.size) ? P0.size : 'card',
   // weft (eye.14), 18 Nov 2026, at David's word ('just a set size for it all'): the universe's one size of card, its own
   uSize: ['title', 'icon', 'card', 'big'].includes(P0.uSize) ? P0.uSize : 'title',
+  who: typeof P0.who === 'string' ? P0.who.slice(0, 60) : '',   // weft (eye.15): whose lists the drawer's Mine reads, where the device signs with no name
   addr: !!P0.addr, depth: [1, 2, 3, 4].includes(P0.depth) ? P0.depth : 2,
   // weft (eye.7), 16 Nov 2026, at David's word: in the Magic Eye, the ring's axis (siblings across, or up and down) and
   // which way a swipe goes in (up goes in, or up comes out); and every card's hyperlink, shown or hidden (⚙)
@@ -1356,7 +1428,7 @@ function wayOf(b, path) {
   } else if (b.accum) {
     how = 'newest';
     for (const p = path.slice(); p.length < b.floor;) { const ks = digits(p); if (!ks.length) break; const k = ks[ks.length - 1]; out.push(k); p.push(k); }
-  } else if (/^spine:/.test(b.name)) {
+  } else if (/^spine:/.test(bareOf(b))) {
     how = 'steps';
     for (const p = path.slice(); out.length < 64 && childKeys(b, p).includes('1');) { out.push('1'); p.push('1'); }
   }
@@ -1435,7 +1507,7 @@ function linkOf() {
   const b = cur(); if (!b || b.source === 'yours') return '/eye';
   let nb = b, p = state.path, S = state.spindle, beneath = state.beneath;
   if (b.source === 'hidden') { nb = blockSync(b.host) || b; p = (b.hostPath || []).slice(); S = p; beneath = 0; }
-  let u = '/eye/' + pathPart(nb.name);
+  let u = '/eye/' + pathPart(bareOf(nb));
   // weft (eye.5), 16 Nov 2026: the spindle, then the point's pscale where the point is not the spindle's end
   let n = 0; while (n < S.length && isDigit(S[n])) n++;
   if (n < p.length) { S = p; n = p.length; beneath = 0; }             // a point off the digits (a JSON key) has no address
@@ -1459,7 +1531,7 @@ function laneSpec(nb, p, S, beneath) {
   if (!nb || nb.source === 'yours' || nb.source === 'hidden') return '';
   let n = 0; while (n < S.length && isDigit(S[n])) n++;
   if (n < p.length) { S = p; n = p.length; beneath = 0; }
-  let s = (nb.beach ? nb.beach + '~' : '') + nb.name;
+  let s = nb.name;   // weft (eye.15): another beach's block is keyed <beach>~<name> already
   if (n && p.every(isDigit)) {
     const Sd = S.slice(0, n), P = beneath > 0 && p.length === S.length ? nb.floor - Sd.length - beneath : nb.floor - p.length;
     s += '/' + addrOf(nb, Sd); if (P !== nb.floor - Sd.length) s += '/' + P;
@@ -1566,9 +1638,10 @@ function pageView(b, path) {
   const fam = pointFamily(b, path);
   const L = state.look === 'snazzy' && fam ? familyLook(fam) : null;
   if (L) { el.setAttribute('style', lookStyle(L)); el.dataset.fam = fam; }
-  const urls = fam || /^arrangement:/.test(b.name) ? pagesOf(fam, b) : {};
+  const door = doorOfPoint(b, path);   // weft (eye.15): a door in a hand's go listing is that hand's page
+  const urls = !door && (fam || /^arrangement:/.test(b.name)) ? pagesOf(fam, b) : {};
   const which = state.look === 'snazzy' ? (urls.snazzy ? 'snazzy' : urls.standard ? 'standard' : '') : state.look === 'standard' && urls.standard ? 'standard' : '';
-  let url = which ? urls[which] : '';
+  let url = which ? urls[which] : door && state.look !== 'eye' ? door : '';
   if (url && which === 'standard' && b.name === 'spine:' + fam && /^DECIDE\b/.test(lab.title || '') && path.every(isDigit)) url += '#d-' + addrOf(b, path);
   // weft, 16 Nov 2026: no family page, but the point's own words name one of this site's pages (siteLinkIn)
   const linked = !urls.snazzy && !urls.standard ? siteLinkIn(lab.raw) : '';
@@ -1591,7 +1664,7 @@ function pageView(b, path) {
   // weft (eye.7): the page read here as one document still names its own page in its corner (a framed page has its bar)
   if (state.links !== 'off') { const ln = linkOfPoint(b, path, lab); if (ln) el.insertAdjacentHTML('afterbegin', hlinkHTML(ln)); }
   const doc = el.querySelector('.doc');
-  const other = url || (sh && sh.page) || urls.snazzy || urls.standard || linked;
+  const other = url || (sh && sh.page) || urls.snazzy || urls.standard || linked || door;
   if (other && doc) doc.insertAdjacentHTML('beforeend', '<p class="pv-open"><a href="' + esc(other) + '" target="_blank" rel="noopener">Open ' + (url || sh ? word : urls.snazzy ? 'the snazzy page' : urls.standard ? 'the standard page' : 'the page') + ' ↗</a>' + (state.look !== 'eye' ? ' It opens here, in a frame, when this navigator is hosted on happyseaurchin.com.' : '') + '</p>');
   el.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (!g || e.target.closest('.ref, a, button')) return; const cp = paths[+g.dataset.go]; if (!cp) return; if (db === b) moveTo(cp, 'down'); else jump({ block: db.name, path: cp, how: 'its own block' }); });
   el.querySelectorAll('img').forEach(i => i.addEventListener('error', () => { const w = i.parentNode; if (w) w.remove(); }));
@@ -1605,7 +1678,7 @@ function docHTML(b, path, fam, paths) {
   if (st) html += '<div class="doc-date">' + fmtDate(st) + '</div>';
   if (lab.body) html += '<div class="doc-lead">' + rich(lab.body) + '</div>';
   // in a spine the 1 carries the argument on: a step's side-rooms come first, then the next step at the same rung
-  const spine = /^(spine|proposal):/.test(b.name);
+  const spine = /^(spine|proposal):/.test(bareOf(b));
   let count = 0;
   const walk = (p, level) => {
     let out = '';
@@ -2209,7 +2282,7 @@ function zFrame() {
   const rim = Z.rim;
   if (here >= 1 || Z.stacked) {
     const lab = here >= 1 ? labelOf(b, E.slice(0, here - 1)) : null, rg = zRung(b, here);
-    const html = '<span class="rim-k">' + (Z.stacked ? '<span class="rim-b">' + esc(b.name) + '</span>' : '') + 'pscale ' + rg.ps + (rg.name ? ' · ' + rg.name : '') + '</span><span class="rim-t">' + (lab ? '<span class="rim-w">within</span> ' + titleHTML(lab.title || blockTitle(b)) : titleHTML(blockTitle(b))) + '</span>';
+    const html = '<span class="rim-k">' + (Z.stacked ? '<span class="rim-b">' + esc(bareOf(b)) + '</span>' : '') + 'pscale ' + rg.ps + (rg.name ? ' · ' + rg.name : '') + '</span><span class="rim-t">' + (lab ? '<span class="rim-w">within</span> ' + titleHTML(lab.title || blockTitle(b)) : titleHTML(blockTitle(b))) + '</span>';
     if (rim._html !== html) { rim.innerHTML = html; rim._html = html; rim.setAttribute('aria-label', lab ? 'Out to ' + (lab.title || blockTitle(b)) : blockTitle(b) + ', the top of ' + b.name); }
     rim._owner = here >= 1 ? here - 1 : null; rim._rung = here; rim.hidden = false;
     rim.style.opacity = Z.stacked ? '1' : (1 - Math.min(.65, Math.abs(d - here) * 1.3)).toFixed(3);
@@ -2754,6 +2827,35 @@ const STACK_SVG_COLS = { off: STACK_SVG.off, on: '<svg viewBox="0 0 22 18" aria-
 const SIZE_OPTS = [['title', 'title'], ['icon', 'icon'], ['card', 'card'], ['big', 'large'], ['page', 'page']];
 // weft (eye.14): the universe, the beach seen from inside (a function, so the toggles read it before its section has run)
 function uniOn() { return state.axis === 'eye' && state.shape === 'dir' && state.dirView === 'room'; }
+// weft (eye.15): where you stand, read off the place; and the moves the scale toggle makes
+function eScale() {
+  if (state.shape !== 'dir') return 'block';
+  if (DR.above) return /^(U$|B$|B:)/.test(DR.above) ? 'universe' : 'beach';
+  return state.path.length ? 'block' : 'beach';
+}
+const eLens = () => state.shape === 'walk' || state.dirView === 'room' ? 'curved' : 'flat';
+// a point to stand on in a block: the spindle's first step, else the block's own way, else its first place
+function eInto(b) {
+  if (!b || state.path.length) return;
+  const S = state.spindleOf === b.name ? state.spindle : [], k = S.length ? S[0] : (wayOf(b, []).keys || [])[0] != null ? wayOf(b, []).keys[0] : childKeys(b, [])[0];
+  if (k != null) setPlace(b, [k], S.length ? S : null, 0);
+}
+function eScaleTo(v) {
+  const b = cur(), curved = eLens() === 'curved';
+  if (v === 'block') { DR.above = null; if (curved) state.shape = 'walk'; else { state.shape = 'dir'; state.dirView = 'flat'; eInto(b); } }
+  else {
+    state.shape = 'dir'; state.dirView = curved ? 'room' : 'flat';
+    if (v === 'beach') { DR.above = null; if (b) setPlace(b, [], state.spindleOf === b.name ? state.spindle : null, 0); }
+    else { const at = dirUniverse().byBlock.get(state.block); DR.above = at ? at.beach.k : 'U'; DR.placeKey = placeKey(); }
+  }
+  state.view = 'main';
+}
+function eLensTo(v) {
+  const sc = eScale();
+  if (v === 'curved') { if (sc === 'block') state.shape = 'walk'; else { state.shape = 'dir'; state.dirView = 'room'; } }
+  else { state.shape = 'dir'; state.dirView = 'flat'; if (sc === 'block') eInto(cur()); }
+  state.view = 'main';
+}
 const TOGGLES = [
   { id: 'axis', name: 'Iris or Magic Eye', opts: [['iris', 'Iris'], ['eye', 'Magic Eye']], get: () => state.axis,
     set: v => { state.axis = v; state.eye = 'focus'; state.choiceOf = null; state.view = 'main'; }, tr: 'fade' },
@@ -2761,15 +2863,19 @@ const TOGGLES = [
     set: v => { state.shape = 'walk'; state.surface = v; state.view = 'main'; }, show: () => state.axis === 'iris', tr: 'fade' },
   { id: 'beneath', name: 'The directory, a dropdown or columns', opts: [['dropdown', 'dropdown'], ['columns', 'columns']], get: () => state.layout, lit: () => state.shape === 'dir',
     set: v => { state.shape = 'dir'; state.layout = v; state.view = 'main'; }, show: () => state.axis === 'iris', tr: 'fade' },
-  // weft (eye.11), 17 Nov 2026, at David's word ('Directory method first'): the Magic Eye stands inside a ring, or looks
-  // down on the directory laid flat; the shape is the Iris's own (the walk or the directory), so switching keeps it.
-  // weft (eye.12), the same day ('In the room'): or stands inside the directory, rolled round you. eye.13, 18 Nov 2026, at
-  // David's word ('Block, beach, universe?'): the three named for what each holds, the ring one block, laid flat the
-  // beach, the room all round you (one beach today; others with the far vantage)
-  { id: 'eshape', name: 'Block, beach or universe', opts: [['walk', 'block'], ['dir', 'beach'], ['room', 'universe']], get: () => state.shape === 'dir' ? (state.dirView === 'room' ? 'room' : 'dir') : 'walk',
-    set: v => { if (v === 'walk') state.shape = 'walk'; else { state.shape = 'dir'; state.dirView = v === 'room' ? 'room' : 'flat'; } state.view = 'main'; }, show: () => state.axis === 'eye', tr: 'fade',
-    say: v => v === 'room' ? 'the beach from inside, round you: every card one size, drag or swipe to move round and up and down, pinch to zoom, tap a card to face it and again to go in, double-tap to come out, ◎ Centre for the middle of the beach'
-      : v === 'dir' ? 'the beach laid flat: every place a square with its places inside it, every block above a block\'s top; drag to move, pinch or scroll to zoom, tap to go' : 'one block, as a ring: you stand inside it, facing one point, its siblings round you' },
+  // weft (eye.11 to eye.13): the Magic Eye stood inside a ring, looked down on the directory laid flat, or stood inside it,
+  // one toggle of three ('Block, beach, universe?'). eye.15, 19 Nov 2026, at David's 'Yes, go ahead' to iris.3's reading
+  // of his 'we could have flat/curved as a sub-option for beach': two toggles, each meaning one thing. SCALE is where you
+  // stand, a step out along the bsp call each: a point in a block (the spindle moves), a block on a beach (the block
+  // moves), a beach among beaches (the beach moves). LENS is how it is drawn at any scale: curved round you (the ring for a
+  // block, the drum for a beach or every beach) or laid flat on the plane.
+  { id: 'scale', name: 'Where you stand', opts: [['block', 'block'], ['beach', 'beach'], ['universe', 'universe']], get: () => eScale(), sig: () => DR.above || '',
+    set: v => eScaleTo(v), show: () => state.axis === 'eye', tr: 'fade',
+    say: v => v === 'universe' ? 'a beach among beaches: every beach this one knows (the ones you watch, the worlds it names), each a set on one plane' : v === 'beach' ? 'a block on a beach: its family, its set, every block round it' : 'a point in a block: its siblings round you, the rungs above and beneath' },
+  { id: 'elens', name: 'Lens', opts: [['curved', 'curved'], ['flat', 'flat']], get: () => eLens(),
+    set: v => eLensTo(v), show: () => state.axis === 'eye', tr: 'fade',
+    say: v => v === 'curved' ? (eScale() === 'block' ? 'curved: the block as a ring round you, facing one point' : 'curved: all round you, every card one size; drag or swipe to move, pinch to zoom, tap a card to face it and again to go in, double-tap to come out')
+      : 'flat: laid on the plane, every place a square with its places inside it; drag to move, pinch or scroll to zoom, tap to go' },
   // weft (eye.7), 16 Nov 2026, at David's word: which way the siblings lie, so which swipe turns the ring (the zoom takes
   // the other); and which way a swipe goes in, as a screen scrolls one way or the other and people find one natural
   { id: 'ring', name: 'Siblings', opts: [['x', 'across'], ['y', 'up/down']], svg: RING_SVG, get: () => state.ringAxis,
@@ -2898,7 +3004,7 @@ let tabs = (function () { try { const v = JSON.parse(localStorage.getItem(TABS_K
 function saveTabs() { try { localStorage.setItem(TABS_KEY, JSON.stringify(tabs)); } catch (e) { /* storage unavailable: the tabs last this visit */ } }
 function hereTab() {
   const b = cur(); if (!b || b.source === 'yours' || b.source === 'hidden' || !state.spindle.every(isDigit)) return null;
-  return { block: b.name, beach: b.beach || '', at: state.spindle.length ? addrOf(b, state.spindle) : '', p: callOf(b).P, t: clip(labelOf(b, state.path).title || blockTitle(b), 48) };
+  return { block: bareOf(b), beach: b.beach || '', at: state.spindle.length ? addrOf(b, state.spindle) : '', p: callOf(b).P, t: clip(labelOf(b, state.path).title || blockTitle(b), 48) };
 }
 const sameSpindle = (a, c) => !!a && !!c && a.block === c.block && (a.beach || '') === (c.beach || '') && a.at === c.at;
 async function goTab(t) {
@@ -3027,7 +3133,8 @@ function openBlocks() {
   const body = h('div', 'blocks');
   body.innerHTML =
     '<p class="src">' + (store.live ? 'Reading the beach live.' : !store.snap.size ? 'The beach could not be read just now; open this page again in a moment.' : 'Reading a snapshot of the beach taken ' + esc(fmtStamp(META.stamp)) + ': the proposals list, every proposal\'s own blocks, the laws they point to, two kernels, and the Brackenfoot map. Inside claude.ai a page cannot reach another site; opened from a file, or hosted on happyseaurchin.com, this same page reads the beach live.') + '</p>' +
-    '<h3>Start here</h3><div class="start" id="startList"></div>' +
+    '<div class="dtabs" role="tablist" aria-label="Lists"><button type="button" role="tab" id="tabMineB" aria-controls="tabMine" data-tab="mine">Mine</button><button type="button" role="tab" id="tabSiteB" aria-controls="tabSite" data-tab="site">This site</button></div>' +
+    '<div class="dtab" role="tabpanel" id="tabMine" aria-labelledby="tabMineB"></div><div class="dtab" role="tabpanel" id="tabSite" aria-labelledby="tabSiteB" hidden></div>' +
     '<h3>Your own JSON</h3><label class="lbl" for="pasteArea">Paste a block, such as your axiom dimension JSON. Any JSON works; a pscale block reads best.</label>' +
     '<textarea id="pasteArea" rows="5" spellcheck="false" placeholder="{&quot;_&quot;: &quot;…&quot;, &quot;1&quot;: &quot;…&quot;}"></textarea>' +
     '<div class="row"><button id="pasteGo" class="btn" type="button">Look at this JSON</button><label class="btn ghost" for="fileIn">Choose a file</label><input id="fileIn" type="file" accept=".json,application/json,text/plain" hidden></div>' +
@@ -3035,17 +3142,7 @@ function openBlocks() {
     '<h3>Open a block by name</h3><div class="row"><input id="nameIn" type="text" placeholder="spine:the-sea" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Block name"><button id="nameGo" class="btn" type="button">Open</button>' + (laneOffer() ? '<button id="nameLane" class="btn ghost" type="button">＋ as a ' + laneWord() + '</button>' : '') + '</div>' +
     '<h3>Every block here</h3><input id="blockQ" type="search" placeholder="Find by name or title" autocomplete="off" aria-label="Find a block"><div id="blockList" class="blist"></div>';
   openSheet('Blocks', body);
-  const start = $('#startList');
-  [['proposals', ['4'], 'Proposals, in the order shared', 'the beach\'s own list, nine at a time; ✳ on one opens its spine'],
-   ['arrangement:happyseaurchin', [], 'Your arrangement of the proposals', 'the Y-ray\'s first step: each place names a proposal by reference'],
-   ['spine:nothing-between-us', [], 'Nothing between us is finished', 'the axiom dimension note as a block: nine strands and the tenth, with keel\'s readings at ◐'],
-   ['spatial:brackenfoot', [], 'Brackenfoot', 'the RPG\'s map: village, alehouse, hearth. Try it in Magic Eye'],
-   ['spine:fulcrum', [], 'Fulcrum', 'your whole system: the book laid on the beach as one spine, its seven volumes around Volume 0'],
-   ['spine:systemic-kernel', [], 'The systemic kernel', 'nine regions, four questions at each: the minimum ground any whole system covers'],
-   ['whole-system:keel', [], 'Keel\'s whole system', 'an LLM shell\'s own, written by keel on 15 November'],
-   ['spine:y-ray', [], 'Y-ray', 'each person arranging the proposals their own way'],
-   ['spine:threads', [], 'Threads', 'every piece of work carrying the record of its own passage']
-  ].forEach(([nm, path, t, d]) => { if (!loadable(nm)) return; const bt = h('button', 'li', sigil(path) + '<span><b>' + esc(t) + '</b><small>' + esc(d) + '</small></span>'); bt.type = 'button'; bt.addEventListener('click', () => openBlock(nm, path)); start.append(laneRow(bt, () => laneAdd({ block: nm, path }), 'Add ' + nm + ' as a ' + laneWord())); });
+  drawerTabs();
   $('#pasteGo').addEventListener('click', () => readYours($('#pasteArea').value, ''));
   $('#fileIn').addEventListener('change', e => { const f = e.target.files && e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => readYours(String(r.result || ''), f.name); r.readAsText(f); });
   const openByName = async () => { const nm = $('#nameIn').value.trim(); if (!nm) return; const b = await ensureBlock(nm); if (b) openBlock(b.name, []); else { const e = $('#pasteErr'); e.hidden = false; e.textContent = notHere(nm) + '.'; } };
@@ -3065,6 +3162,80 @@ function openBlocks() {
     if (!hits.length) list.append(h('p', 'empty', 'No block here matches.'));
   };
   q.addEventListener('input', draw); draw();
+}
+/* the drawer's two tabs (weft, eye.15): MINE, the reader's own lists on the beach, and THIS SITE, the site's own pages from
+ * the block every page's go menu reads. The tab chosen is kept on the device */
+const SITE_LIST = 'site:' + (() => { try { return new URL(SITE).hostname.replace(/^www\./, ''); } catch (e) { return 'happyseaurchin.com'; } })();
+// whose lists: the name given here, else the name this device signs with (render:who); '~' once 'not you?' let it go
+function cleanWho(v) { return String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim(); }
+function whoMine() { return state.who === '~' ? '' : cleanWho(state.who) || beachSign(); }
+function drawerTabs() {
+  const tabs = Array.from(document.querySelectorAll('.dtabs [data-tab]'));
+  const show = which => {
+    tabs.forEach(b => { const on = b.dataset.tab === which; b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1; });
+    $('#tabMine').hidden = which !== 'mine'; $('#tabSite').hidden = which !== 'site';
+    try { localStorage.setItem('iris-magic-eye.tab', which); } catch (e) { /* storage unavailable */ }
+    (which === 'mine' ? drawMine : drawSite)();
+  };
+  tabs.forEach(b => b.addEventListener('click', () => show(b.dataset.tab)));
+  $('.dtabs').addEventListener('keydown', e => { if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; e.preventDefault(); const i = tabs.findIndex(b => b.getAttribute('aria-selected') === 'true'), n = tabs[(i + 1) % tabs.length]; show(n.dataset.tab); n.focus(); });
+  let t0 = ''; try { t0 = localStorage.getItem('iris-magic-eye.tab') || ''; } catch (e) { /* storage unavailable */ }
+  show(t0 === 'site' ? 'site' : 'mine');
+}
+// a row in a tab: its words, what it opens, and what a tap does
+function drawerRow(box, words, small, go, add) {
+  const bt = h('button', 'li', sigil([]) + '<span><b>' + titleHTML(clip(words, 90)) + '</b>' + (small ? '<small>' + esc(small) + '</small>' : '') + '</span>'); bt.type = 'button'; bt.addEventListener('click', go);
+  box.append(add ? laneRow(bt, add, 'Add ' + words + ' as a ' + laneWord()) : bt);
+}
+// a page from a list opens at page size, in Standard (or Snazzy, if that is the look), as the eye frames the site's pages
+async function openListPage(name, path) {
+  if (state.look === 'eye') state.look = 'standard';
+  state.size = 'page'; if (state.axis === 'eye' && state.shape === 'dir') state.shape = 'walk';
+  savePrefs(); return openBlock(name, path);
+}
+async function drawMine() {
+  const box = $('#tabMine'); if (!box) return;
+  const who = whoMine();
+  if (!who) {
+    box.innerHTML = '<p class="src">Your own lists on the beach: the pages in your go menu, your projects, and the beaches you watch. Whose are they?</p><div class="row"><input id="whoIn" type="text" placeholder="your handle" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Your handle"><button id="whoGo" class="btn" type="button">Read them</button></div>';
+    const go = () => { const v = cleanWho($('#whoIn').value); if (!v) return; state.who = v; savePrefs(); beachList().catch(() => null); drawMine(); };
+    $('#whoGo').addEventListener('click', go); $('#whoIn').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    return;
+  }
+  box.innerHTML = '<p class="src">' + esc(who) + '\'s own lists, as they stand on the beach. <button type="button" class="linkish" id="whoNot">not ' + esc(who) + '?</button></p><div id="mineBody"><p class="src">Reading…</p></div>';
+  $('#whoNot').addEventListener('click', () => { state.who = '~'; savePrefs(); drawMine(); });   // the device's own name stays the device's; only this drawer lets it go
+  const [lb, sb] = await Promise.all([ensureBlock('lists:' + who).catch(() => null), ensureBlock('shell:' + who).catch(() => null)]);
+  const body = $('#mineBody'); if (!body || whoMine() !== who) return;
+  body.innerHTML = '';
+  const sec = (title, note) => { body.append(h('h3', null, esc(title))); if (note) body.append(h('p', 'src', note)); const g = h('div', 'start'); body.append(g); return g; };
+  const go = lb ? listChain(lb, '2') : [], pj = lb ? listChain(lb, '1') : [];
+  { const g = sec('Your go menu', lb ? 'lists:' + esc(who) + ' 2, in the order you keep it; each opens its page here' : 'lists:' + esc(who) + ' is not on the beach yet');
+    go.forEach(it => { const u = doorOfPoint(lb, it.path); drawerRow(g, it.voice, u ? hostPath(u) : '', () => u ? openListPage(lb.name, it.path) : openBlock(lb.name, it.path)); });
+    if (lb && !go.length) g.append(h('p', 'empty', 'Nothing chosen there yet.')); }
+  { const g = sec('Your projects', lb ? 'lists:' + esc(who) + ' 1, most-standing first; each opens its spine' : '');
+    pj.forEach(it => { const f = (it.voice.match(/^[a-z0-9][a-z0-9-]*/i) || [''])[0], nm = f && (loadable('spine:' + f) || onBeach('spine:' + f)) ? 'spine:' + f : null; drawerRow(g, it.voice, nm || 'not a family here', () => nm ? openBlock(nm, []) : openBlock(lb.name, it.path), nm ? () => laneAdd({ block: nm }) : null); });
+    if (lb && !pj.length) g.append(h('p', 'empty', 'No projects listed there yet.')); }
+  { const g = sec('The beaches you watch', sb ? 'shell:' + esc(who) + ' 2; each opens among every beach' : 'shell:' + esc(who) + ' is not on the beach yet');
+    const w = sb ? nodeAt(sb, ['2']) : null;
+    if (isObj(w)) Object.keys(w).filter(isDigit).sort().forEach(k => { const u = (String(voiceOf(w[k]) || '').match(/^https:\/\/\S+/) || [''])[0]; if (!u) return; drawerRow(g, hostPath(u), baseOf(u) === HOME || ('https://beach.' + hostPath(u)) === HOME ? 'this beach' : 'a beach you watch', () => openBeach(u)); });
+    else if (sb) g.append(h('p', 'empty', 'No beaches listed at its 2.')); }
+}
+// a beach from a list opens among every beach, standing at it, in the lens chosen
+function openBeach(u) {
+  let base = baseOf(u); try { const hn = new URL(base).hostname; if (!/^beach\./.test(hn) && ('https://beach.' + hn) === HOME) base = HOME; } catch (e) { return; }
+  if (base !== HOME) beachAdd(base, 'watched');
+  state.axis = 'eye'; state.shape = 'dir'; if (state.dirView !== 'room') state.dirView = 'flat';
+  DR.above = base === HOME ? 'B' : 'B:' + base; DR.placeKey = placeKey(); state.view = 'main';
+  savePrefs(); closeSheet(); render('fade'); beachLoad(base);
+}
+async function drawSite() {
+  const box = $('#tabSite'); if (!box) return;
+  box.innerHTML = '<p class="src">This site\'s own pages, the ways in and the places to look around, as every page\'s go menu lists them: the block ' + esc(SITE_LIST) + ' on the beach. Each opens here at page size.</p><div class="start" id="siteList"><p class="src">Reading…</p></div>';
+  const b = await ensureBlock(SITE_LIST).catch(() => null), g = $('#siteList'); if (!g) return;
+  g.innerHTML = '';
+  const items = b ? listChain(b, '1') : [];
+  if (!items.length) { g.append(h('p', 'empty', b ? 'No pages listed there yet.' : SITE_LIST + ' could not be read from the beach just now.')); return; }
+  items.forEach(it => { const m = it.voice.match(/^(\S+)\s+—\s+([\s\S]+)$/), words = m ? m[2] : it.voice, where = m ? m[1].replace(/^https?:\/\//, '') : ''; drawerRow(g, words, where, () => openListPage(b.name, it.path)); });
 }
 function readYours(text, fname) {
   const err = $('#pasteErr');
@@ -3090,7 +3261,7 @@ function snapLane(ln, i) {
   const onBeach = b.source !== 'yours' && b.source !== 'hidden', digits = S.every(isDigit) && p.every(isDigit);
   const words = path => { const n = nodeAt(b, path), v = n === undefined ? '' : voiceOf(n); return v ? String(v).trim() : '(no content)'; };
   const line = (path, pad) => pad + 'd' + path.length + ' p' + (f - path.length) + ' [' + (path.length ? addrOf(b, path) : 'top') + ']: ' + words(path);
-  const out = [], args = ['agent_id="' + String(b.beach || WHERE[b.name] || BEACH).replace(/\/$/, '') + '"', 'block="' + b.name + '"'], sd = S.length && digits ? addrOf(b, S) : '';
+  const out = [], args = ['agent_id="' + String(b.beach || WHERE[bareOf(b)] || BEACH).replace(/\/$/, '') + '"', 'block="' + bareOf(b) + '"'], sd = S.length && digits ? addrOf(b, S) : '';
   let shape;
   if (p.length < S.length) {                                // a rung on the spindle: the point, and the walk that reaches it
     if (sd) args.push('spindle="' + sd + '"', 'pscale_attention=' + (f - p.length));
@@ -3175,10 +3346,13 @@ function openHelp() {
     '<p>Two toggles at the top are the Magic Eye\'s own. <b>Siblings</b>: across, turned by swiping or scrolling left and right (the zoom then swipes up and down), or up and down, turned by swiping up and down (the zoom then swipes across). <b>Zoom</b>: which way a swipe goes in, as a screen scrolls one way or the other and people find one natural: ↑ in, a swipe up goes in (the wheel rolled down, or two fingers pushed up a trackpad that scrolls naturally), or ↑ out, the other way round. A pinch spread always goes in. On the rail, <b>glide</b> lets a swipe or a flick carry on, across rungs or round the ring, and settle on the nearest; <b>step</b> moves one rung, or one sibling, a gesture.</p>' +
     '<p>Keys: − PageDown Enter in, + PageUp Backspace out; the arrows along the ring turn it and the other two zoom (↓ in and ↑ out, or with the siblings up and down → in and ← out); ~ the whole ring, C Centre, Home the top, End the spindle\'s end; in a stack, [ and ] take the lane before or after in hand. A tap on a sibling turns you to it; a tap on the one you face walks you in.</p>' +
     // weft (eye.11), 17 Nov 2026, at David's word: the directory laid flat
-    '<h3>The directory</h3><p>The Magic Eye\'s other shapes (at the top, <b>block</b> is the ring, <b>beach</b> the directory laid flat, <b>universe</b> the room). Laid flat you look down on the block: every point is a square, its own words at its head and the places inside it beneath, the ten digits standing as a phone\'s keypad (1 to 9 in rows of three, 0 under the 8), so where a card stands is its address and a gap stays a gap. The deeper inside a place something stands, the smaller it is drawn: a large card, a card, an icon, a title, a mark. <b>Drag</b> to move across; <b>pinch</b>, or scroll the wheel, to zoom; let go and the view settles on the nearest whole place, which becomes the point, as the address bar says. A tap on any card flies there. On the rail, <b>+</b> and <b>−</b> go out and in a rung, <b>‹ ›</b> to the place before or after, ◎ <b>Centre</b> to every block on the beach, and again back to where you were; with glide a drag let go carries on, with step it settles where it is.</p>' +
-    '<p><b>Zoom out past a block\'s top</b> and the plane goes on into the beach: the block among its family (its spine, its law, its room and everyone\'s mirrors), the proposals as their list orders them, the other families, the shells (the blocks of a person or an agent, known by their passport), and the rest gathered by the first word of their names. <b>Find</b>, at the top right, takes a block\'s name, words in the blocks read so far, or an address in this block, and flies there along the one shortest path: out until both places stand in sight, across, then in. Keys: − PageDown Enter in, + PageUp Backspace out, the arrows to the neighbour that way, Home the block\'s top, U every block on the beach, C Centre, / to find, ~ the ring. A place above a block\'s top has a link of its own, as <a href="/eye?uni=B">/eye?uni=B</a> (every block) does, and any link with <b>?fly</b> opens on every block on the beach and flies to its place, as <a href="/eye/spine:the-sea/1.18?fly">/eye/spine:the-sea/1.18?fly</a> does: a link your own AI hands you plays as a flight.</p>' +
+    // weft (eye.15), 19 Nov 2026: where you stand, and how it is drawn
+    '<h3>Where you stand, and the lens</h3><p>Two toggles at the top while the Magic Eye looks, each meaning one thing. <b>Where you stand</b>, a step out along the call each time: <b>block</b>, a point in a block, its siblings round you; <b>beach</b>, a block on a beach, its family and its set round it; <b>universe</b>, a beach among beaches. <b>Lens</b>, at any of the three: <b>curved</b>, all round you (a block as the ring, a beach or every beach as the drum), or <b>flat</b>, laid on the plane. Choosing where you stand takes you there; choosing the lens keeps you where you stand.</p>' +
+    '<h3>Every beach</h3><p>Out past a beach\'s top the plane goes on into the beaches, each a set on the same plane. There is no list of every beach anywhere: beaches are found by watching. So the universe holds this beach, the beaches you watch (the list at the 2 of your shell, <code>shell:&lt;you&gt;</code>, read under the name this device signs with, or the name you give in the drawer\'s Mine), the worlds this beach names (its tables and its sub-beaches), and any beach a link opened. An open beach is read as you near it, and its blocks gathered as this one\'s are. A members\' beach shows what its keepers mark beyond, under a lock; a member\'s pass is a later step. A beach that does not answer stands grey and says so. A beach has a link of its own, as <a href="/eye?uni=B:https://beach.idiothuman.com">/eye?uni=B:https://beach.idiothuman.com</a> does; <a href="/eye?uni=U">/eye?uni=U</a> is every beach.</p>' +
+    '<h3>The directory</h3><p>Laid flat (the lens <b>flat</b>) you look down on the block: every point is a square, its own words at its head and the places inside it beneath, the ten digits standing as a phone\'s keypad (1 to 9 in rows of three, 0 under the 8), so where a card stands is its address and a gap stays a gap. The deeper inside a place something stands, the smaller it is drawn: a large card, a card, an icon, a title, a mark. <b>Drag</b> to move across; <b>pinch</b>, or scroll the wheel, to zoom; let go and the view settles on the nearest whole place, which becomes the point, as the address bar says. A tap on any card flies there. On the rail, <b>+</b> and <b>−</b> go out and in a rung, <b>‹ ›</b> to the place before or after, ◎ <b>Centre</b> to every block on the beach, and again back to where you were; with glide a drag let go carries on, with step it settles where it is.</p>' +
+    '<p><b>Zoom out past a block\'s top</b> and the plane goes on into the beach: the block among its family (its spine, its law, its room and everyone\'s mirrors), the proposals as their list orders them, the other families, the shells (the blocks of a person or an agent, known by their passport), and the rest gathered by the first word of their names. <b>Find</b>, at the top right, takes a block\'s name, words in the blocks read so far, or an address in this block, and flies there along the one shortest path: out until both places stand in sight, across, then in. Keys: − PageDown Enter in, + PageUp Backspace out, the arrows to the neighbour that way, Home the block\'s top, U every beach, C Centre, / to find, ~ the ring. A place above a block\'s top has a link of its own, as <a href="/eye?uni=B">/eye?uni=B</a> (every block) does, and any link with <b>?fly</b> opens on every block on the beach and flies to its place, as <a href="/eye/spine:the-sea/1.18?fly">/eye/spine:the-sea/1.18?fly</a> does: a link your own AI hands you plays as a flight.</p>' +
     // weft (eye.12), 17 Nov 2026, at David's word ('In the room'): the same directory seen from inside
-    '<h3>The universe</h3><p>The beach seen from inside (at the top, <b>universe</b>), as the middle of the beach is seen: every place a card, all of them one size, the one you choose with <b>Size</b> (title until you choose; the smaller, the more stand round you), only scaled as they near and never swapped for another. At rest the place you face is that card, straight ahead; round it stand its neighbours, the room it stands in, open with its name at its head, and the rooms beside that, on a wall that bends round you through a lens centred where you look, as far as nearly half a turn either way. Up and down the wall bends too, so the rows above and below stay in sight, smaller. The lens never changes, so nothing jumps. <b>Drag</b>, or swipe two fingers on a trackpad, to move round you and up and down; <b>pinch</b> (a trackpad\'s pinch, or the wheel with ctrl, alt or cmd) to zoom; let go and you settle on the nearest card. A <b>tap</b> on a card faces it, a tap on the card you face goes in, and a <b>double tap</b> comes out. <b>◎ Centre</b> on the rail (or C) goes to the middle of the beach, its sets round you; Centre again (or Esc) takes you back to where you were. The rail, the arrows, Find and links move as they do laid flat. A link with <b>?room</b> opens in the universe.</p>' +
+    '<h3>Curved</h3><p>A beach seen from inside (the lens <b>curved</b>, standing at a block, a beach or every beach), as the middle of the beach is seen: every place a card, all of them one size, the one you choose with <b>Size</b> (title until you choose; the smaller, the more stand round you), only scaled as they near and never swapped for another. At rest the place you face is that card, straight ahead; round it stand its neighbours, the room it stands in, open with its name at its head, and the rooms beside that, on a wall that bends round you through a lens centred where you look, as far as nearly half a turn either way. Up and down the wall bends too, so the rows above and below stay in sight, smaller. The lens never changes, so nothing jumps. <b>Drag</b>, or swipe two fingers on a trackpad, to move round you and up and down; <b>pinch</b> (a trackpad\'s pinch, or the wheel with ctrl, alt or cmd) to zoom; let go and you settle on the nearest card. A <b>tap</b> on a card faces it, a tap on the card you face goes in, and a <b>double tap</b> comes out. <b>◎ Centre</b> on the rail (or C) goes to the middle of the beach you stand on, its sets round you; Centre again (or Esc) takes you back to where you were. The rail, the arrows, Find and links move as they do laid flat. A link with <b>?room</b> opens curved.</p>' +
     // weft (eye.8), 17 Nov 2026, at David's word: the stack, and the snapshot
     '<h3>The stack</h3><p>With <b>Stack</b> on (at the top, in the Magic Eye), more blocks stand beside the one you look at, a lane each, round the one centre you stand at: the lane in hand at eye level, whole, and the others as storeys of the same drum, above and below as rows when the siblings run across, either side as columns when they run up and down, smaller the further off, so every lane stays in sight. Each lane is its own call, its block, its spindle and its point, so a place, a time and who is there can be laid together and each walked along its own spindle. Add a lane with <b>＋ row</b> (or column) among the doors, which opens the blocks; with ✳, beside any block the point reaches; or with ◐, the family\'s other blocks at the same address, which join <b>in step</b>: they go to the address the lane in hand goes to, as far as each block holds it. The chain at a lane\'s top right puts it in step or lets it move on its own, and × lets it go. A touch on another lane (on its cards, or on the ground beside them), the wheel over it, or [ and ] takes it in hand, and it glides to eye level: the rail, the doors and the address bar are its, and a tap on another lane only takes it; a swipe is the lane\'s own, and never moves between lanes. In a stack the size you chose is drawn where the lanes beside it have room to be read, else the next smaller; at page size only the lane in hand shows. The link carries the whole stack, nine lanes at most, as a node holds nine.</p>' +
     '<h3>Snapshot</h3><p><b>Snapshot</b>, beside <i>＋ keep</i> in the row of your spindles, fires the lanes as one: what an LLM is handed by those calls, in order. The walk to each point is what stands decided; the rings beneath a point, where its call looks past the spindle\'s end, are what is still open. Copy the calls, for an AI that reads the beach itself, or the words they reach, every rung whole, for any AI: a context window composed by hand. Nothing is sent and nothing is written.</p>' +
@@ -3596,46 +3770,122 @@ const dirFitK = R => dirFit() / R.s;
 const ROOT_R = { x: 0, y: 0, s: 1 };
 const placeKey = () => state.block + '|' + state.path.join('.');
 
-/* the beach above every block's top: its blocks gathered by what the beach itself says of them */
-function dirUniverse() {
-  const all = Array.from(known()).filter(n => n && !n.includes('*'));
-  const lines = familyLines(), sig = all.length + '|' + lines.size;
-  if (DR.uni && DR.uni.sig === sig) return DR.uni;
-  const isFam = f => !!f && !f.includes(':') && (onBeach('spine:' + f) || onBeach('function:' + f) || loadable('spine:' + f));
-  const isHand = x => !!x && !x.includes(':') && (onBeach('passport:' + x) || loadable('passport:' + x));
+/* THE UNIVERSE (weft, eye.15, 19 Nov 2026, at David's 'Yes, go ahead' to iris.3's reading of his questions: 'what about
+ * other beaches? … I guess the universe should show the multiple beaches too … Each beach as a sphere?'). Each beach is a
+ * set in the one plane, never a sphere of its own (separate spheres are separate centres, which is what split the view
+ * before): above every beach's top the plane goes on into the beaches. There is no central registry of beaches
+ * (federation-protocol 5): they are found by watching, so the universe holds the home beach always, the beaches the
+ * reader watches (shell:<handle> 2, the handle this device signs with), the worlds this beach names (`worlds`: the /w/
+ * tables and the sub-beaches), and a beach a link opened. An open beach is read at once; a members' beach shows what
+ * its keepers mark beyond, under a lock (no pass in this step); a beach that does not answer stands grey and says so. */
+const MEMBERS_SAY = /\bis its members(?:'|’) beach\b/;   // theme.js sitePass.gated: an index that says it is a members' beach's
+function beachAdd(base, why, title) {
+  base = baseOf(base); if (!/^https:\/\/[^\s]+$/.test(base)) return null;
+  let B = BEACHES.get(base);
+  if (!B) { B = { base, why, title: title || '', state: base === HOME ? 'home' : 'idle', names: null, total: 0, at: BEACHES.size }; BEACHES.set(base, B); DR.uni = null; }
+  else if (title && !B.title) B.title = title;
+  return B;
+}
+beachAdd(HOME, 'home');
+// a beach read: its index, once, three at a time; a bare domain that serves none is tried at beach.<host>, as bsp-mcp does
+const beachReading = new Set();
+function beachLoad(base) {
+  const B = BEACHES.get(base);
+  if (!B || B.state !== 'idle' || beachReading.has(base) || beachReading.size >= 3) return;
+  beachReading.add(base); B.state = 'reading';
+  const done = st => { beachReading.delete(base); B.state = st; DR.uni = null; dirKick(); if (dirShown()) { dirChrome(); renderToggles(); } setTimeout(() => { for (const x of BEACHES.values()) if (x.state === 'idle' && dirShown()) { beachLoad(x.base); } }, 0); };
+  fetchJSON(base + '/.well-known/pscale-beach', 12000).then(idx => {
+    if (!idx || !Array.isArray(idx.blocks)) return done('down');
+    B.names = new Set(idx.blocks.map(String)); B.total = B.names.size;
+    B.members = typeof idx._ === 'string' && MEMBERS_SAY.test(idx._);
+    done(B.members ? 'members' : 'open');
+  }, () => done('down'));
+}
+// the beaches this reader watches and the worlds this beach names, read once the beach is
+const beachSign = () => { try { const v = String(localStorage.getItem('render:who') || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim(); return v || ''; } catch (e) { return ''; } };
+async function beachList() {
+  if (!store.live) return;
+  const who = whoMine();
+  const reads = [ensureBlock('worlds').catch(() => null), who ? ensureBlock('shell:' + who).catch(() => null) : null];
+  const [wb, sb] = await Promise.all(reads);
+  if (sb) {
+    const w = nodeAt(sb, ['2']);
+    if (isObj(w)) for (const k of Object.keys(w).filter(isDigit).sort()) {
+      const u = String(voiceOf(w[k]) || '').trim().match(/^https:\/\/[^\s]+/); if (!u) continue;
+      let base = baseOf(u[0]);
+      try { const h = new URL(base).hostname; if (!/^beach\./.test(h) && ('https://beach.' + h) === HOME) base = HOME; } catch (e) { continue; }
+      beachAdd(base, 'watched');
+    }
+  }
+  if (wb) (function walk(n) {
+    if (typeof n === 'string') {
+      const m = n.match(/^([a-z0-9][a-z0-9-]*) → (\S+)/i); if (!m) return;
+      const r = m[2], base = r[0] === '/' ? HOME + r : /^https:\/\//.test(r) ? r : 'https://' + r;
+      beachAdd(base, 'world', m[1]); return;
+    }
+    if (isObj(n)) for (const k of Object.keys(n).sort()) walk(n[k]);
+  })(wb.data);
+  DR.uni = null; dirKick(); if (dirShown()) dirChrome();
+}
+const beachTitle = B => B.title || hostPath(B.base);
+const beachesSig = () => Array.from(BEACHES.values()).map(B => B.state + (B.total || '')).join(',');
+
+/* a beach's own blocks gathered by what the beach itself says of them: the proposals as their list orders them, the
+ * other families each known by its spine, the shells each known by their passport, the rest by the first word of their
+ * names. A beach elsewhere is gathered the same way from its own index, its sets keyed by its address */
+function beachSets(base, all, on, lines, byBlock, bn) {
+  const own = base === HOME, kp = n => own ? n : bKey(n, base), idp = own ? '' : base + '~';
+  const isFam = f => !!f && !f.includes(':') && (on('spine:' + f) || on('function:' + f));
+  const isHand = x => !!x && !x.includes(':') && on('passport:' + x);
+  const famOf = n => { for (const pre of ['spine:', 'proposal:', 'function:', 'pool:']) if (n.startsWith(pre)) return n.slice(pre.length); const i = n.lastIndexOf(':'); if (i > 0) { const f = n.slice(0, i); if (!f.includes(':') && on('spine:' + f)) return f; } return on('spine:' + n) ? n : null; };
   const fams = new Map(), shells = new Map(), kinds = new Map(), add = (m, k, n) => { if (!m.has(k)) m.set(k, []); m.get(k).push(n); };
-  for (const n of all.sort()) {
-    const f = familyOf(n);
+  for (const n of all.slice().sort()) {
+    const f = own ? familyOf(n) : famOf(n);
     if (isFam(f)) { add(fams, f, n); continue; }
     const i = n.indexOf(':');
     if (i > 0 && isHand(n.slice(i + 1))) add(shells, n.slice(i + 1), n);
     else add(kinds, i > 0 ? n.slice(0, i) : '', n);
   }
-  const byBlock = new Map(), sets = [];
+  const sets = [];
   const famRank = n => /^spine:/.test(n) ? 0 : /^proposal:/.test(n) ? 1 : /^function:/.test(n) ? 2 : /^pool:/.test(n) ? 3 : n.includes(':') ? 5 : 4;
-  const blk = (n, up) => ({ k: 'K:' + n, t: 'blk', name: n, up });
+  const blk = (n, up) => ({ k: 'K:' + kp(n), t: 'blk', name: kp(n), up });
   const pkg = (set, kind, name, members, line) => {
     const p = { k: 'P:' + set.id + ':' + name, t: 'pkg', kind, title: name, line: line || '', up: set };
     const ord = kind === 'family' ? (a, b) => famRank(a) - famRank(b) || (a < b ? -1 : 1) : (a, b) => (b.startsWith('passport:') - a.startsWith('passport:')) || (a < b ? -1 : 1);
-    p.kids = members.slice().sort(ord).map(n => { byBlock.set(n, { set, pkg: p }); return blk(n, p); });
+    p.kids = members.slice().sort(ord).map(n => { byBlock.set(kp(n), { beach: bn, set, pkg: p }); return blk(n, p); });
     return p;
   };
-  const mk = (id, title, note) => { const s = { k: 'S:' + id, t: 'set', id, title, note }; sets.push(s); return s; };
-  const listed = Array.from(lines.keys()).filter(f => fams.has(f));
-  if (listed.length) { const s = mk('proposals', 'Proposals', 'as the list at proposals orders them'); s.kids = listed.map(f => pkg(s, 'family', f, fams.get(f), splitTail(lines.get(f)).text)); }
-  const rest = Array.from(fams.keys()).filter(f => !lines.has(f)).sort();
-  if (rest.length) { const s = mk('families', 'Families', 'each known by its spine'); s.kids = rest.map(f => pkg(s, 'family', f, fams.get(f))); }
-  if (shells.size) { const s = mk('shells', 'Shells', 'the blocks of a person or an agent, known by their passport'); s.kids = Array.from(shells.keys()).sort().map(x => pkg(s, 'shell', x, shells.get(x))); }
+  const mk = (id, title, note) => { const st = { k: 'S:' + idp + id, t: 'set', id: idp + id, title, note, up: bn }; sets.push(st); return st; };
+  const listed = lines ? Array.from(lines.keys()).filter(f => fams.has(f)) : [];
+  if (listed.length) { const st = mk('proposals', 'Proposals', 'as the list at proposals orders them'); st.kids = listed.map(f => pkg(st, 'family', f, fams.get(f), splitTail(lines.get(f)).text)); }
+  const rest = Array.from(fams.keys()).filter(f => !(lines && lines.has(f))).sort();
+  if (rest.length) { const st = mk('families', 'Families', 'each known by its spine'); st.kids = rest.map(f => pkg(st, 'family', f, fams.get(f))); }
+  if (shells.size) { const st = mk('shells', 'Shells', 'the blocks of a person or an agent, known by their passport'); st.kids = Array.from(shells.keys()).sort().map(x => pkg(st, 'shell', x, shells.get(x))); }
   Array.from(kinds.entries()).sort((a, b) => b[1].length - a[1].length || (a[0] < b[0] ? -1 : 1)).forEach(([kd, ns]) => {
-    const s = mk('kind:' + kd, kd ? kd + ':' : 'named alone', kd ? 'blocks whose names begin ' + kd + ':' : 'blocks with a name of their own');
-    s.kids = ns.map(n => { byBlock.set(n, { set: s, pkg: null }); return blk(n, s); });
+    const st = mk('kind:' + kd, kd ? kd + ':' : 'named alone', kd ? 'blocks whose names begin ' + kd + ':' : 'blocks with a name of their own');
+    st.kids = ns.map(n => { byBlock.set(kp(n), { beach: bn, set: st, pkg: null }); return blk(n, st); });
   });
-  const root = { k: 'B', t: 'beach', title: 'The beach', kids: sets, total: all.length };
-  sets.forEach(s => { s.up = root; });
-  return (DR.uni = { sig, root, byBlock, sets });
+  return sets;
 }
-// where the plane starts: the beach, or a block this beach's index does not hold (hidden beneath a point, another
-// beach's, your own JSON), which then stands alone as the whole plane
+function dirUniverse() {
+  const all = Array.from(known()).filter(n => n && !n.includes('*'));
+  const lines = familyLines(), sig = all.length + '|' + lines.size + '|' + beachesSig();
+  if (DR.uni && DR.uni.sig === sig) return DR.uni;
+  const byBlock = new Map(), beaches = [];
+  const Bs = Array.from(BEACHES.values()).sort((a, b) => (a.base === HOME ? -1 : b.base === HOME ? 1 : 0) || a.at - b.at);   // in the order they joined, so none moves as more answer
+  for (const B of Bs) {
+    const own = B.base === HOME, bn = { k: own ? 'B' : 'B:' + B.base, t: 'beach', base: B.base, B, title: beachTitle(B) };
+    bn.kids = own ? beachSets(HOME, all, n => onBeach(n) || loadable(n), lines, byBlock, bn) : B.names ? beachSets(B.base, Array.from(B.names), n => B.names.has(n), null, byBlock, bn) : [];
+    bn.total = own ? all.length : B.total;
+    beaches.push(bn);
+  }
+  const home = beaches[0];
+  const root = { k: 'U', t: 'uni', title: 'The beaches', kids: beaches, total: beaches.length };
+  beaches.forEach(b => { b.up = root; });
+  return (DR.uni = { sig, root, home, byBlock, beaches, sets: home.kids });
+}
+// where the plane starts: every beach, or a block no beach's index holds (hidden beneath a point, your own JSON, a beach
+// not read yet), which then stands alone as the whole plane
 function dirBaseOf(name) {
   const U = dirUniverse();
   return name && !U.byBlock.has(name) && blockSync(name) ? { k: 'K:' + name, t: 'blk', name, up: null, alone: true } : U.root;
@@ -3653,6 +3903,13 @@ function dirKids(n) {
 function dirLayout(n, R, kids) {
   const pad = R.s * .03, hb = R.s * .2, w = R.s - 2 * pad, hh = R.s - hb - pad, out = [];
   if (!kids.length) return out;
+  if (n.t === 'uni') {   // weft (eye.15): every beach on a grid that does not move as more answer, four across until there are more than sixteen
+    const cols = Math.max(4, Math.ceil(Math.sqrt(kids.length))), cell = Math.min(w / cols, hh / cols), g = cell * .045;
+    const x0 = R.x + (R.s - cols * cell) / 2, y0 = R.y + hb;
+    kids.forEach((k, i) => out.push({ n: k, R: { x: x0 + (i % cols) * cell + g, y: y0 + ((i / cols) | 0) * cell + g, s: cell - 2 * g } }));
+    out.geo = { pad: false, cell, g, x0, y0 };
+    return out;
+  }
   if (kids.length <= 10 && kids.every(k => k.d !== null && k.d !== undefined)) {
     const rows = kids.some(k => k.d === 0) ? 4 : 3, cell = Math.min(w / 3, hh / rows), g = cell * .045;
     const x0 = R.x + (R.s - 3 * cell) / 2, y0 = R.y + hb;
@@ -3676,17 +3933,20 @@ const dirIn_ = (L, x, y) => L.find(c => x >= c.R.x && x <= c.R.x + c.R.s && y >=
 function dirTrail(name, path) {
   const U = dirUniverse(), base = dirBaseOf(name), out = [{ n: base, R: ROOT_R }];
   const step = want => { const t = out[out.length - 1], c = dirLayout(t.n, t.R, dirKids(t.n)).find(c => c.n.k === want); if (c) out.push({ n: c.n, R: c.R }); return !!c; };
-  if (base === U.root) { const at = U.byBlock.get(name); if (!at || !step(at.set.k) || (at.pkg && !step(at.pkg.k)) || !step('K:' + name)) return out; }
+  if (base === U.root) { const at = U.byBlock.get(name); if (!at || !step(at.beach.k) || !step(at.set.k) || (at.pkg && !step(at.pkg.k)) || !step('K:' + name)) return out; }
   for (let i = 1; i <= (path || []).length; i++) if (!step('T:' + name + '|' + path.slice(0, i).join('.'))) break;
   return out;
 }
 function dirTrailKey(key) {
   const U = dirUniverse(), out = [{ n: U.root, R: ROOT_R }];
-  if (key === 'B') return out;
-  const L = dirLayout(U.root, ROOT_R, U.root.kids);
-  for (const c of L) {
+  if (key === 'U') return out;
+  // weft (eye.15): every beach, then its sets and their families (B, B:<beach>, S:…, P:…)
+  for (const c of dirLayout(U.root, ROOT_R, U.root.kids)) {
     if (c.n.k === key) { out.push({ n: c.n, R: c.R }); return out; }
-    if (key.startsWith('P:' + c.n.id + ':')) { const d = dirLayout(c.n, c.R, c.n.kids).find(x => x.n.k === key); if (d) { out.push({ n: c.n, R: c.R }, { n: d.n, R: d.R }); return out; } }
+    for (const d of dirLayout(c.n, c.R, c.n.kids)) {
+      if (d.n.k === key) { out.push({ n: c.n, R: c.R }, { n: d.n, R: d.R }); return out; }
+      if (key.startsWith('P:' + d.n.id + ':')) { const e = dirLayout(d.n, d.R, d.n.kids).find(x => x.n.k === key); if (e) { out.push({ n: c.n, R: c.R }, { n: d.n, R: d.R }, { n: e.n, R: e.R }); return out; } }
+    }
   }
   return out;
 }
@@ -3728,6 +3988,8 @@ function dirStop() { DR.fly = null; DR.gl = null; clearTimeout(DR.wt); DR.wt = 0
 function dirKick() { if (!DR.raf) DR.raf = requestAnimationFrame(dirTick); }
 function dirTick(now) {
   DR.raf = 0; if (!dirShown() || !DR.cam) return;
+  // weft (eye.15): the universe rebuilt while at rest (a beach answered): the view stays on its place, wherever the plane put it
+  { const U = dirUniverse(); if (DR.uniSeen !== U && !DR.fly && !DR.gl && !DR.ptr.size && !DR.wt) { const t = dirHere(), last = t[t.length - 1]; if (last.n.k === DR.at) DR.cam = restCam(last.R); DR.uniSeen = U; } }
   const frame = DR.mode === 'room' ? roomFrame : dirFrame;       // weft (eye.13): the room is the same camera, seen from inside
   let more = false;
   if (DR.fly) {
@@ -3765,6 +4027,7 @@ function dirFrame() {
     if (S < 2.5 || X > W || Y > H || X + S < 0 || Y + S < 0) return;
     if (S < DIR_MARK || budget <= 0) return mark(n, X, Y, S);   // a mark on the floor: something stands here
     if (n.t === 'blk' && !blockSync(n.name) && S > DIR_OPEN * .55) dirLoad(n.name);
+    else if (n.t === 'beach' && n.B.state === 'idle' && S > DIR_MARK) beachLoad(n.base);   // weft (eye.15): a beach in sight is read
     const kids = dirKids(n), open = S >= DIR_OPEN && kids.length > 0;
     if (!open) { const i = R.s * .02; if (!dirCard(n, R, { x: R.x + i, y: R.y + i, w: R.s - 2 * i, h: R.s - 2 * i }, 'sq', seen)) mark(n, X, Y, S); budget--; return; }
     const L = dirLayout(n, R, kids), G = L.geo;
@@ -3792,7 +4055,7 @@ function dirCardAt(n, R, X, Y, ws, hs, mode, seen, asp, fix) {
   let best = DIR_SIZES[mode][0], bd = Infinity;
   if (fix) best = DIR_SIZES[mode].find(s => s[0] === fix) || best;   // weft (eye.14): the universe's one class, only scaled
   else for (const s of DIR_SIZES[mode]) { const d = Math.abs(Math.log(room / s[1])); if (d < bd) { bd = d; best = s; } }
-  const cls = best[0], sc = room / best[1], read = n.t === 'blk' ? (blockSync(n.name) ? 1 : 0) : 2;
+  const cls = best[0], sc = room / best[1], read = n.t === 'blk' ? (blockSync(n.name) ? 1 : 0) : n.t === 'beach' ? n.B.state + n.total + '.' + n.kids.length : 2;   // weft (eye.15): a beach's card as it answered
   const key = n.k + '|' + cls + best[1] + '|' + mode + '|' + read + '|' + asp;
   let el = DR.els.get(key);
   if (!el) {
@@ -3810,19 +4073,28 @@ function dirCardAt(n, R, X, Y, ws, hs, mode, seen, asp, fix) {
 }
 function dirCardEl(n, cls) {
   const b = n.t === 'pt' || n.t === 'blk' ? blockSync(n.name) : null;
-  if (b) return card(b, n.t === 'pt' ? n.path : [], cls, n.t === 'blk' ? { kicker: n.name } : {});
+  if (b) return card(b, n.t === 'pt' ? n.path : [], cls, n.t === 'blk' ? { kicker: bParts(n.name).name } : {});
   // the beach, a set, a package, a block not read yet: their names, and how many stand inside
   const el = h('article', 'card s-' + cls + ' dcard du-' + n.t);
   let kick = '', title = '', body = '';
-  if (n.t === 'beach') { kick = 'every block'; title = hostPath(BEACH); body = n.total + ' blocks in ' + n.kids.length + ' sets'; }
+  if (n.t === 'uni') { kick = 'every beach'; title = 'The beaches'; body = n.total + (n.total === 1 ? ' beach' : ' beaches') + ': this one, the ones watched, the worlds it names'; }
+  else if (n.t === 'beach') {   // weft (eye.15): a beach as it answered
+    const B = n.B, st = B.state, own = n.base === HOME;
+    el.classList.add('du-' + (st === 'home' ? 'open' : st));
+    kick = own ? 'this beach · every block' : st === 'members' ? '🔒 a members\' beach' : st === 'down' ? 'a beach · no answer' : B.why === 'world' ? 'a world' : 'a beach';
+    title = own ? hostPath(BEACH) : beachTitle(B);
+    body = st === 'reading' || st === 'idle' ? 'reading ' + hostPath(B.base) + '…' : st === 'down' ? hostPath(B.base) + ' did not answer: nothing there could be read just now'
+      : st === 'members' ? 'its keepers mark ' + n.total + (n.total === 1 ? ' block' : ' blocks') + ' beyond; members come in with a pass' : n.total + ' blocks in ' + n.kids.length + (n.kids.length === 1 ? ' set' : ' sets') + (own || !B.title ? '' : ' · ' + hostPath(B.base));
+  }
   else if (n.t === 'set') { kick = 'a set of ' + n.kids.length; title = n.title; body = n.note; }
   else if (n.t === 'pkg') { kick = (n.kind === 'shell' ? 'a shell' : 'a family') + ' of ' + n.kids.length; title = n.title; body = n.line; }
-  else { kick = 'a block'; title = n.name; body = DR.loading.has(n.name) ? 'reading…' : store.live ? 'zoom in to read it' : 'not in this copy'; }
+  else { kick = 'a block'; title = bParts(n.name).name; body = DR.loading.has(n.name) ? 'reading…' : store.live ? 'zoom in to read it' : 'not in this copy'; }
   el.innerHTML = '<div class="kicker">' + esc(kick) + '</div><div class="head"><h2 class="t">' + esc(title) + '</h2></div>' + (body && cls !== 'title' ? '<div class="b">' + esc(clip(body, 220)) + '</div>' : '');
   return el;
 }
 function dirLoad(name) {
-  if (!store.live || DR.loading.has(name) || DR.loading.size >= 4 || store.blocks.has(name)) return;
+  const rb = bParts(name).beach;   // weft (eye.15): another beach's block is read from it once its index has answered
+  if ((rb ? !(BEACHES.get(rb) || {}).names : !store.live) || DR.loading.has(name) || DR.loading.size >= 4 || store.blocks.has(name)) return;
   DR.loading.add(name);
   ensureBlock(name).then(() => { DR.loading.delete(name); dirKick(); }, () => { DR.loading.delete(name); });
 }
@@ -3871,7 +4143,7 @@ function dirCommit(n) {
 function dirLink() {
   if (!DR.above) return syncLink();
   const t = dirTrailKey(DR.above), n = t[t.length - 1].n;
-  document.title = (n.t === 'beach' ? 'Every block' : n.title) + ' · Iris and Magic Eye';
+  document.title = (n.t === 'uni' ? 'Every beach' : n.t === 'beach' ? (n.base === HOME ? 'Every block' : n.title) : n.title) + ' · Iris and Magic Eye';
   if (!LINKED) return;
   try { const u = '/eye?uni=' + encodeURIComponent(DR.above); if (u !== location.pathname + location.search) history.replaceState(null, '', u); } catch (e) { /* a frame that keeps its own address */ }
 }
@@ -3885,7 +4157,7 @@ function dirRefresh() {
 
 /* the moves: + out a rung, − in a rung, ‹ › the place before or after, the arrows the neighbour that way */
 function dirGo(c) { if (!c) return; dirFlyTo(c.R, () => dirCommit(c.n)); }
-const dirTopSays = t => t[0].n.t === 'beach' ? 'This is every block on the beach' : 'This block is not on this beach\'s index: its top is the whole plane';
+const dirTopSays = t => t[0].n.t === 'uni' ? 'This is every beach' : 'This block is not on a beach\'s index here: its top is the whole plane';
 function dirOut() {
   const t = dirHere(); if (t.length < 2) return bump(dirTopSays(t));
   dirGo(t[t.length - 2]);
@@ -3899,7 +4171,7 @@ function dirIn() {
 // one you were in, or 1
 function dirInPick(n, L) {
   let want = null;
-  if (n.t === 'beach' || n.t === 'set' || n.t === 'pkg') {
+  if (n.t === 'uni' || n.t === 'beach' || n.t === 'set' || n.t === 'pkg') {
     const t2 = dirTrail(state.block, state.path), i = t2.findIndex(x => x.n.k === n.k); if (i >= 0 && t2[i + 1]) want = t2[i + 1].n.k;
   } else {
     const b = blockSync(n.name), path = n.t === 'pt' ? n.path : [];
@@ -3941,20 +4213,22 @@ function dirChrome() {
   {
     let k = '', w = '';
     if (DR.mode === 'room' && n.t === 'set' && up) { const c = dirKids(up).length; k = 'the beach · ' + c + (c === 1 ? ' set' : ' sets') + ' round you'; w = titleHTML(n.title); }   // weft (eye.14): its sets round you
-    else if (n.t === 'beach') { k = 'every block · ' + n.total; w = titleHTML(hostPath(BEACH)); }
+    else if (DR.mode === 'room' && n.t === 'beach' && up) { const c = dirKids(up).length; k = 'every beach · ' + c + ' round you'; w = titleHTML(n.title); }   // weft (eye.15)
+    else if (n.t === 'uni') { k = 'every beach · ' + n.total; w = titleHTML('The beaches'); }
+    else if (n.t === 'beach') { const st = n.B.state; k = (n.base === HOME ? 'every block · ' + n.total : st === 'members' ? '🔒 a members\' beach · ' + n.total + ' marked beyond' : st === 'down' ? 'a beach · no answer' : st === 'open' ? 'a beach · ' + n.total + ' blocks' : 'a beach · reading…'); w = titleHTML(n.base === HOME ? hostPath(BEACH) : n.title); }
     else if (n.t === 'set') { k = 'a set · ' + n.kids.length; w = titleHTML(n.title); }
     else if (n.t === 'pkg') { k = (n.kind === 'shell' ? 'a shell' : 'a family') + ' · ' + n.kids.length; w = titleHTML(n.title); }
     else {
       const b = blockSync(n.name), path = n.t === 'pt' ? n.path : [];
-      if (b) { const rg = zRung(b, path.length), lab = path.length ? labelOf(b, path.slice(0, -1)) : null; k = '<span class="rim-b">' + esc(b.name) + '</span> pscale ' + rg.ps + (rg.name ? ' · ' + rg.name : ''); w = path.length ? '<span class="rim-w">within</span> ' + titleHTML(lab.title || blockTitle(b)) : '<span class="rim-w">the top of</span> ' + titleHTML(blockTitle(b)); }
-      else { k = esc(n.name); w = titleHTML(n.name); }
+      if (b) { const rg = zRung(b, path.length), lab = path.length ? labelOf(b, path.slice(0, -1)) : null; k = '<span class="rim-b">' + esc(bareOf(b)) + '</span> pscale ' + rg.ps + (rg.name ? ' · ' + rg.name : ''); w = path.length ? '<span class="rim-w">within</span> ' + titleHTML(lab.title || blockTitle(b)) : '<span class="rim-w">the top of</span> ' + titleHTML(blockTitle(b)); }
+      else { k = esc(bParts(n.name).name); w = titleHTML(bParts(n.name).name); }
     }
     const html = '<span class="rim-k">' + k + '</span><span class="rim-t">' + w + '</span>';
     if (DR.words._h !== html) { DR.words.innerHTML = html; DR.words._h = html; }
   }
   const s = dirSibs(), kids = dirKids(n);
   const set = (bt, dis, aria) => { bt.disabled = !!dis; bt.setAttribute('aria-label', aria); bt.title = aria; };
-  set(DR.btn.out, !up, up ? 'Out: what this stands within, a rung up' + (up.t === 'beach' ? ': every block on the beach' : '') : dirTopSays(t));
+  set(DR.btn.out, !up, up ? 'Out: what this stands within, a rung up' + (up.t === 'uni' ? ': every beach' : up.t === 'beach' ? ': every block on ' + (up.base === HOME ? 'the beach' : up.title) : '') : dirTopSays(t));
   set(DR.btn.prev, !s || s.i <= 0, 'The place before this one');
   set(DR.btn.next, !s || s.i < 0 || s.i >= s.L.length - 1, 'The place after this one');
   set(DR.btn.in, !kids.length, 'In: what stands inside this, a rung deeper');
@@ -3964,7 +4238,8 @@ function dirChrome() {
   DR.btn.mode.title = Z.mode === 'glide' ? 'Glide: a drag let go carries on, and settles on the nearest place. Tap for step' : 'Step: a drag let go settles where it is. Tap for glide';
   // weft (eye.14): Centre, the top, every block laid flat or the middle of the beach in the universe; again, back
   { const room = DR.mode === 'room', atC = n.k === dirCentreOf().n.k, bk = atC && DR.back ? DR.back.n : null;
-    set(DR.btn.ring, atC && !bk, bk ? 'Centre again: back to ' + dirNodeName(bk) : atC ? (room ? 'This is the middle of the beach' : dirTopSays(t)) : room ? 'Centre: the middle of the beach, its sets round you' : 'Centre: every block on the beach');
+    const bw = dirBeachName(dirBeachHere().n);
+    set(DR.btn.ring, atC && !bk, bk ? 'Centre again: back to ' + dirNodeName(bk) : atC ? (room ? 'This is the middle of ' + bw : 'This is every block on ' + bw) : room ? 'Centre: the middle of ' + bw + ', its sets round you' : 'Centre: every block on ' + bw);
     DR.btn.ring.setAttribute('aria-pressed', String(!!bk)); }
 }
 function dirRail() {
@@ -3978,7 +4253,8 @@ function dirRail() {
 function dirToRing() { state.shape = 'walk'; savePrefs(); render('fade'); }
 // a place's name, as the words at the top name it
 function dirNodeName(n) {
-  if (n.t === 'beach') return hostPath(BEACH);
+  if (n.t === 'uni') return 'every beach';
+  if (n.t === 'beach') return n.base === HOME ? hostPath(BEACH) : n.title;
   if (n.t === 'set' || n.t === 'pkg') return n.title;
   const b = blockSync(n.name); if (!b) return n.name;
   return n.t === 'pt' ? (labelOf(b, n.path).title || n.path.join('.')) : blockTitle(b);
@@ -4043,7 +4319,7 @@ function renderDirEye() {
   let seen = ''; try { seen = localStorage.getItem(DR.mode === 'room' ? 'iris-magic-eye.roomhint3' : 'iris-magic-eye.dirhint') || ''; } catch (e) { /* storage unavailable */ }
   if (!seen) {
     const hint = h('div', 'dhint', DR.mode === 'room' ? '<span>Drag or swipe to move round you, and up and down; pinch to zoom. Tap a card to face it, tap it again to go in, double-tap to come out. ◎ Centre: the middle of the beach.</span>'
-      : '<span>Pinch or scroll to zoom, drag to move, tap a card to go there. Zoom out past a block\'s top for every block on the beach.</span>');
+      : '<span>Pinch or scroll to zoom, drag to move, tap a card to go there. Zoom out past a block\'s top for every block on the beach, and past the beach\'s for every beach.</span>');
     const x = h('button', 'dhint-x', '×'); x.type = 'button'; x.setAttribute('aria-label', 'Hide this line'); x.addEventListener('click', dirHintDone);
     hint.append(x); L.append(hint);
   }
@@ -4133,7 +4409,7 @@ function dirKey(e) {
   else if (k === 'PageDown' || k === '-' || k === '_' || (k === 'Enter' && !onBtn)) f = dirIn;
   else if (k === 'PageUp' || k === '+' || k === '=' || k === 'Backspace') f = dirOut;
   else if (k === 'Home') f = () => { const t = dirTrail(state.block, []); dirGo(t[t.length - 1]); };
-  else if (k === 'u' || k === 'U') f = () => dirGo({ n: dirUniverse().root, R: ROOT_R });
+  else if (k === 'u' || k === 'U') f = () => dirGo({ n: dirUniverse().root, R: ROOT_R });   // weft (eye.15): every beach
   else if (k === '~' || k === '`') f = dirToRing;
   else if (k === 'c' || k === 'C' || (k === 'Escape' && DR.back)) f = dirCentre;   // weft (eye.13, eye.14): Centre, and back
   if (!f) return false;
@@ -4241,6 +4517,7 @@ function roomFrame() {
     const qy = Math.max(R.y, Math.min(R.y + R.s, cam.y)) - cam.y, Sa = R.s * k * rmLatD(qy / r);   // its size where it is nearest where you look
     if (Sa < 2.5) return;
     if (n.t === 'blk' && !blockSync(n.name) && Sa > OPEN * .55) dirLoad(n.name);
+    else if (n.t === 'beach' && n.B.state === 'idle') beachLoad(n.base);
     const kids = dirKids(n), open = kids.length > 0 && (Sa >= OPEN || (trail.has(n.k) && n.k !== DR.at && Sa >= rest * 1.1));
     if (open) {
       const near = R.s * k < LIM;
@@ -4272,8 +4549,16 @@ function roomFrame() {
  * replace them with centre -- it backs the person back to top level (kinda like universe)'): laid flat, every block on the
  * beach; in the universe, the middle of the beach, the set nearest its middle straight ahead and the others round you.
  * Centre again takes you back to the place you were at, until you rest somewhere else */
+// weft (eye.15): the beach you stand on (the one you are inside, else the home beach), or a block standing alone
+function dirBeachHere() {
+  const t = dirHere(), i = t.findIndex(x => x.n.t === 'beach'); if (i >= 0) return t[i];
+  if (t[0].n.t !== 'uni') return t[0];
+  const U = dirUniverse(), c = dirLayout(U.root, ROOT_R, U.root.kids).find(x => x.n === U.home);
+  return c ? { n: c.n, R: c.R } : t[0];
+}
+const dirBeachName = n => n.t === 'beach' ? (n.base === HOME ? 'the beach' : n.title) : 'this block';
 function dirCentreOf() {
-  const B = { n: dirBase(), R: ROOT_R };
+  const B = dirBeachHere();
   if (DR.mode !== 'room') return B;
   const kids = dirKids(B.n); if (!kids.length) return B;
   const L = dirLayout(B.n, B.R, kids); let y0 = Infinity, y1 = -Infinity;
@@ -4288,7 +4573,7 @@ function dirCentre() {
   const t = dirHere(), last = t[t.length - 1], c = dirCentreOf();
   if (last.n.k === c.n.k) {
     if (DR.back) { const b = DR.back; DR.back = null; return dirGo(b); }
-    return bump(DR.mode === 'room' ? 'This is the middle of the beach' : dirTopSays(t));
+    const bn = dirBeachHere().n; return bump(DR.mode === 'room' ? 'This is the middle of ' + dirBeachName(bn) : 'This is every block on ' + dirBeachName(bn));
   }
   DR.back = { n: last.n, R: last.R };
   dirGo(c);
@@ -4360,8 +4645,12 @@ window.addEventListener('resize', () => { cancelAnimationFrame(rsz); rsz = reque
   } catch (e) { /* inside a sandbox the beach is out of reach; the snapshot serves */ }
   // weft, 16 Nov 2026: a link opens the eye where it points (readLink, above)
   const link = readLink();
-  if (link.block) { state.block = link.block; state.path = []; }
-  if (store.live || link.beach) await Promise.all([ensureBlock(state.block, link.beach || undefined), store.live && state.block !== 'proposals' ? ensureBlock('proposals') : null].map(p => p && p.catch(() => null)));
+  // weft (eye.15): a block on another beach is keyed by that beach, and the beach joins the universe for the visit (read
+  // first, so the plane holds it from the start)
+  const linkB = link.beach && baseOf(link.beach) !== HOME && baseOf(link.beach) !== baseOf(WHERE[link.block]) ? beachAdd(link.beach, 'linked') : null;
+  if (link.block) { state.block = bKey(link.block, link.beach); state.path = []; }
+  if (store.live || link.beach) await Promise.all([ensureBlock(link.block || state.block, link.beach || undefined), store.live && state.block !== 'proposals' ? ensureBlock('proposals') : null, linkB ? new Promise(r => { beachLoad(linkB.base); const t0 = Date.now(), w = () => linkB.state !== 'reading' || Date.now() - t0 > 12000 ? r() : setTimeout(w, 120); w(); }) : null].map(p => p && p.catch(() => null)));
+  beachList().catch(() => null);   // the beaches this reader watches, and the worlds this beach names, in the background
   let asked = ''; if (link.block && cur()) asked = placeFromLink(cur(), link); // weft (eye.5): the link is the call
   const missed = link.block && !cur() ? link.block : '';
   if (!cur()) { state.block = loadable('proposals') ? 'proposals' : Array.from(store.snap)[0] || ''; state.path = state.block === 'proposals' ? ['4'] : []; if (store.live && !cur()) await ensureBlock(state.block).catch(() => null); }
@@ -4372,8 +4661,8 @@ window.addEventListener('resize', () => { cancelAnimationFrame(rsz); rsz = reque
   // a link that carries a stack opens where a stack is drawn, the Magic Eye, unless it names an axis (weft's finding)
   if (lanes.length > 1 && !Q0.get('axis')) state.axis = 'eye';
   // weft (eye.11): a link to a place above every block's top (the beach, a set, a family) opens the directory there
-  const uni = Q0.get('uni'); if (uni && /^(B$|S:|P:)/.test(uni)) { DR.above = uni; DR.placeKey = placeKey(); }
-  const fly = Q0.get('fly'); if (fly !== null) DR.from = /^(B$|S:|P:)/.test(fly) ? fly : 'B';   // ?fly: from every block on the beach to the place
+  const uni = Q0.get('uni'); if (uni && /^(U$|B$|B:https:|S:|P:)/.test(uni)) { DR.above = uni; DR.placeKey = placeKey(); if (uni.startsWith('B:')) beachAdd(uni.slice(2), 'linked'); else { const m = /^[SP]:(https:\/\/[^~]+)~/.exec(uni); if (m) beachAdd(m[1], 'linked'); } }
+  const fly = Q0.get('fly'); if (fly !== null) DR.from = /^(U$|B$|S:|P:)/.test(fly) ? fly : 'B';   // ?fly: from every block on the beach to the place
   render(null);
   if (missed) toast(notHere(missed)); else if (asked) toast(asked); else if (laneMissed.length) toast(notHere(laneMissed[0]) + (laneMissed.length > 1 ? ', and ' + (laneMissed.length - 1) + ' more' : ''));
 })();

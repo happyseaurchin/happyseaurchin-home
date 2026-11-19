@@ -1682,6 +1682,38 @@
     ['webllm',      'a mind in your browser']
   ];
 
+  /* THE SITE'S OWN PAGES, ON THE BEACH (weft, eye.15, 19 Nov 2026, at David's 'Yes, go ahead' to iris.3's reading of
+   * 'the go menu for the site and the personalised one'): the list above stands in a block too, site:happyseaurchin.com,
+   * its pages down branch 1 rank as depth (as a hand's lists are kept), each '<address> — <its name here>', so this menu
+   * and the eye's drawer (This site) read one list, and a page added there reaches both. SITE is its copy and the
+   * fallback: the block is read when the site's list is first shown and kept on this device an hour (site:pages), and
+   * only a list read whole and well formed takes the copy's place. */
+  var SITE_BLOCK = 'site:happyseaurchin.com', SITE_KEEP = 'site:pages', SITE_HOUR = 3600e3, siteReading = null;
+  function siteFromBlock(b){
+    var items = b && typeof b === 'object' ? chainToItems(b['1']) : [];
+    var out = items.map(function(x){
+      var m = /^(?:https?:\/\/)?(?:www\.)?happyseaurchin\.com(\/\S*)\s+—\s+(\S[\s\S]*)$/.exec(x.name);
+      return m && m[1].length > 1 ? [m[1].slice(1), m[2].trim(), m[1]] : null;
+    });
+    return out.length && out.every(Boolean) ? out : null;
+  }
+  function siteKept(){
+    try { var k = JSON.parse(localStorage.getItem(SITE_KEEP) || 'null'); return k && Date.now() - k.at < SITE_HOUR && Array.isArray(k.list) && k.list.length ? k.list : null; }
+    catch(e){ return null; }
+  }
+  function sitePages(){ return siteKept() || SITE; }
+  function readSite(){
+    if (!siteReading) siteReading = fetch('https://beach.happyseaurchin.com/.well-known/pscale-beach?block=' + encodeURIComponent(SITE_BLOCK), { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(b){
+        var list = siteFromBlock(b);
+        if (list) { try { localStorage.setItem(SITE_KEEP, JSON.stringify({ at: Date.now(), list: list })); } catch(e){} }
+        return list;
+      })
+      .catch(function(){ return null; });
+    return siteReading;
+  }
+
   /* THE NAME THIS DEVICE SIGNS WITH — render:who, kept by whichever page last wrote
    * under it (/welcome's 'that's me' and its three cards, /page, /view, /render,
    * /network, and /now when a line lands under its key). Never a sign-in: it only says
@@ -3037,8 +3069,15 @@
       if (!HAND || (me && me.toLowerCase() === HAND.toLowerCase())) return url;
       return url + (url.indexOf('?') < 0 ? '?' : '&') + 'h=' + encodeURIComponent(HAND);
     }
+    /* a page knows itself in the list by its path, or by the path's first word where its address carries more
+     * (/path/beach-venture is the path page's) */
+    function hereIs(key){ return !!cfg.here && (key === cfg.here || key.indexOf(cfg.here + '/') === 0); }
+    function shown(l){ return l.map(function(p){ return p[1] + '|' + (p[2] || '/' + p[0]); }).join(','); }
     function paintSite(){
-      SITE.forEach(function(p){ door(p[1], carry(p[2] || '/' + p[0]), p[0] === cfg.here); });
+      var list = sitePages();
+      list.forEach(function(p){ door(p[1], carry(p[2] || '/' + p[0]), hereIs(p[0])); });
+      /* the block read once the list is shown, and the list painted again only if the block says otherwise */
+      if (!siteKept()) readSite().then(function(got){ if (got && shown(got) !== shown(list) && TAB === 'site' && !menu.querySelector('.dd__ask')) paint(); });
       rule();
       door('the mirror ↗', 'https://mirror.onen.ai/');
       door('the tables', '/rpg');
