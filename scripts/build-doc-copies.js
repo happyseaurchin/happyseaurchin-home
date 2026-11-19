@@ -14,7 +14,7 @@
 // from that code, and inlined here by its caption, coloured by the page's own palette through the doc's
 // --cds-* names. Any other embed gets a line saying what the doc draws there.
 //
-// Handles exactly the constructs the exports use: #/##/### headings, the byline, paragraphs, "- " and "1. "
+// Handles exactly the constructs the exports use: #/##/### headings, the byline (an author before its date or not), paragraphs, "- " and "1. "
 // lists, "- [ ]" tasks, pipe tables, **bold**, *em*, [text](url) and [text](<url>), backslash and &#91;
 // escapes, and the embed placeholders.
 
@@ -63,6 +63,40 @@ const DOCS = [
       '--cds-chart-categorical-1:#1E7D6C;--cds-chart-reference-tint:var(--card)',
     dark: '--page:#0D1316;--ink:#E3EAEC;--ink-soft:#9EAEB6;--rule:#36464E;--link:#6FD3BC;--accent:#E6A63C;--card:#16201F;' +
       '--cds-chart-axis:#6B7C85;--cds-chart-categorical-1:#4FC3A9',
+  },
+  {
+    slug: 'the-bond-table',
+    title: 'The bond table, and two spines for one niche',
+    doc: 'https://claude.ai/artifact/CsKKvPufjbsvs17H2WsYaD',
+    copied: '26 October 2026',
+    living: 'The living doc, where it is revised, is kept in Claude for those it is shared with',
+    description: 'How blocks attach, in six bonds and two ways of gathering that are not bonds, each named by what joins it, what breaks it and whose write can; why a reader\u2019s zero can never re-address a block; and how two minds or two people with different spines for one niche can bond instead of merging or splitting.',
+    embed: (caption) => '<p class="note">The doc draws today\u2019s fit here (' + inline(caption) + '). The same fit is sewn, a stitch at a time, on ' +
+      '<a href="/two-spines">Two spines, one niche</a>.</p>',
+    home: '<a href="/read">Everything to read</a> \u00b7 <a href="/two-spines">Two spines, one niche, the proposal</a> \u00b7 ' +
+      '<a href="/time-nesting">Time Nesting, where it grew</a>',
+    // Two spines, one niche's boro: indigo cloth, beni red and kihada gold
+    fonts: 'family=IBM+Plex+Mono:wght@400;500&family=Shippori+Mincho+B1:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;700',
+    light: '--page:#EEF2F8;--ink:#0F1A33;--ink-soft:#4A5877;--rule:#C4CFE2;--link:#B3322B;--accent:#8C6A0E;--card:#F8FAFD;' +
+      '--display:"Shippori Mincho B1",Georgia,serif;--body:"Zen Kaku Gothic New",system-ui,-apple-system,"Segoe UI",sans-serif;--size:18px',
+    dark: '--page:#070C1C;--ink:#E8EDF8;--ink-soft:#9EADD0;--rule:#1E2B55;--link:#F0716A;--accent:#E9C46A;--card:#0C1430',
+  },
+  {
+    slug: 'coloured-stigmergy',
+    title: 'Coloured stigmergy — sealing on the beach',
+    doc: 'https://claude.ai/artifact/S4FFrAen89bpekwtMd7bfg',
+    copied: '26 October 2026',
+    living: 'The living doc, where it is revised and where weft\u2019s evaluation is to be written, is kept in Claude for those it is shared with',
+    description: 'On the beach a seal belongs to the line, not the block: how sealing works now, and four moves that build on it \u2014 pages that seal, a private sed-chat, lines anywhere that only one colour can read, and sealed rooms that grow past nine.',
+    embed: (caption) => '<p class="note">The doc draws ' + inline(caption) + ' here. The proposal\u2019s page draws the same live, as a shore of sea glass: ' +
+      '<a href="/coloured-stigmergy">Coloured stigmergy</a>.</p>',
+    home: '<a href="/read">Everything to read</a> \u00b7 <a href="/coloured-stigmergy">Coloured stigmergy, the proposal</a> \u00b7 ' +
+      '<a href="/social-brain">The social brain, where the gap was found</a>',
+    // Coloured stigmergy's sea glass: frosted and clear glass on wet sand, teal for the accent
+    fonts: 'family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,300..800&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,400',
+    light: '--page:#eef2ef;--ink:#1b2a2d;--ink-soft:#536467;--rule:#cbd6d2;--link:#2b7a71;--accent:#a8722a;--card:#f8fbf9;' +
+      '--display:"Bricolage Grotesque",system-ui,sans-serif;--body:"Newsreader","Iowan Old Style",Georgia,serif;--size:19px',
+    dark: '--page:#081517;--ink:#e2ebe7;--ink-soft:#98aeaa;--rule:#1d3436;--link:#7cc7bb;--accent:#e3b062;--card:#0e2022',
   },
 ];
 
@@ -114,8 +148,8 @@ function render(md, d) {
     if (line.startsWith('# ')) { out.push('<h1>' + inline(line.slice(2)) + '</h1>'); i++; continue; }
     if (line.startsWith('## ')) { out.push('<h2 id="' + slug(line.slice(3)) + '">' + inline(line.slice(3)) + '</h2>'); i++; continue; }
     if (line.startsWith('### ')) { out.push('<h3 id="' + slug(line.slice(4)) + '">' + inline(line.slice(4)) + '</h3>'); i++; continue; }
-    if ((m = line.match(/^([A-Z][a-z]{2}) (\d{1,2}), (\d{4}) · @(.+)$/))) {
-      out.push('<p class="byline">' + m[2] + ' ' + MONTHS[m[1]] + ' ' + m[3] + ' · ' + esc(m[4]) + '</p>');
+    if ((m = line.match(/^(?:(.+?) · )?([A-Z][a-z]{2}) (\d{1,2}), (\d{4}) · @(.+)$/))) {
+      out.push('<p class="byline">' + (m[1] ? esc(m[1]) + ' · ' : '') + m[3] + ' ' + MONTHS[m[2]] + ' ' + m[4] + ' · ' + esc(m[5]) + '</p>');
       out.push('<p class="copynote">A copy of the doc as it stood on ' + d.copied + ', to read without signing in. ' +
         d.living + ': <a href="' + d.doc + '">claude.ai</a>.</p>');
       i++; continue;

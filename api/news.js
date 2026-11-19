@@ -10,10 +10,20 @@
  *   GET /api/news?item=<address>[&s=<source>]
  *       one item: the thing, where it lives, every fold up the ladder that
  *       named it and why, and every answer standing at its address.
+ *   GET /api/news?where=1[&at=<address>]
+ *       WHERE THINGS ARE HAPPENING, the strip at the top of the day
+ *       (spine:happening 1.1): what people said they are doing that day, each
+ *       in their own now, people before agents; and while the day runs, who is
+ *       on a page or the mirror (presence) and the minds at work at the beat
+ *       (torus-mirror); with the tables that took a voice that day. Every part
+ *       a read of what already stands, each reported apart, so a part that
+ *       cannot be read is said to be unread rather than shown empty.
  *   GET /api/news?keep=1
  *       THE KEEPER'S PASS — the hourly cron (vercel.json). Folds today again
  *       when the wire has moved, seals each closed day once, and re-chooses the
- *       week, month, season and year above it from the folds beneath.
+ *       week, month, season and year above it from the folds beneath. It
+ *       chooses by the law at function:news 2.6, its own copy below where the
+ *       beach cannot be read, and logs what each pass did.
  *
  * The wire is never stored: it is read from what the beach already stamps (the
  * surface index's born and touched maps, each accumulator entry's own stamp at
@@ -34,6 +44,8 @@
  *                        the keeper's pass refuses anything else.
  */
 
+import { mirrorsOf } from './mirrors.js';
+
 const BEACH_ORIGIN = 'https://beach.happyseaurchin.com';
 const BEACH = BEACH_ORIGIN + '/.well-known/pscale-beach';
 const SITE = 'https://happyseaurchin.com';
@@ -50,7 +62,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July',
   'August', 'September', 'October', 'November', 'December'];
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function momentToAddress(when) {
+export function momentToAddress(when) {
   const y = when.getUTCFullYear();
   const month = when.getUTCMonth();
   const dom = when.getUTCDate();
@@ -258,6 +270,46 @@ function bornKind(name, ix) {
 const beachAt = (name, spindle) =>
   `${BEACH}?block=${encodeURIComponent(name)}${spindle ? '&spindle=' + encodeURIComponent(spindle) : ''}`;
 
+/* ── where a thing opens, and who says they made it (function:news 1.5) ──
+ * A family's birth opens the thing itself: the page its law names at 6, 'page:
+ * https://…', else the page the proposals list names for it, else its walk. The
+ * index stamps when, never who, so a maker is named only where the thing's own
+ * words name one: the law's provenance at 9, or a shelf entry's credit. */
+const SHELVES = new Set(['animations', 'proposals']);   // a maker's shelf, read by the stamp each entry keeps at 3
+function lawPage(law) {
+  const m = /^page:\s*(https?:\/\/[^\s<>"']+)/i.exec(voiceOf(law && law['6']) || '');
+  return m ? m[1].replace(/[.,;:)]+$/, '') : '';
+}
+function lawMaker(law) {
+  const m = /^PROVENANCE\s*[—–-]\s*(?:written|made|founded|re-founded|drafted|built|brought|re-cut|put up)\b[^.;:]{0,40}?\bby\s+([A-Za-z][\w-]*)/i.exec(voiceOf(law && law['9']) || '');
+  return m ? m[1] : '';
+}
+/* a shelf entry's credit names its maker first: 'Brought by David Pinto on …', 'Made by keel, …' */
+function creditMaker(credit) {
+  const m = /^(?:brought|made|told|written|drawn|words|built|created|composed)\s+by\s+(.+?)(?=\s+on\s+\d|\s*[,·;(]|\s+at\s+|\s+with\s+|$)/i.exec(String(credit || '').trim());
+  return m && m[1].length <= 40 ? m[1].trim() : '';
+}
+/* an animations entry's credit: at 5 from 27 October 2026, at 3 before (written over its stamp) */
+const shelfCredit = (e) => [e['5'], e['3']].map((v) => (typeof v === 'string' ? v.trim() : '')).find((v) => v && !isIso(v)) || '';
+/* the proposals list, '<name> — what · <page>' a line: each name's page */
+function proposalPages(list) {
+  const out = new Map();
+  (function walk(n) {
+    if (!n || typeof n !== 'object') return;
+    if (n._ && typeof n._ === 'object') walk(n._);
+    for (const k of '123456789') {
+      const c = n[k];
+      const line = voiceOf(c);
+      const m = line && /^([a-z0-9][a-z0-9-]*)\s+—\s+.*·\s*(\S+)\s*$/.exec(line);
+      if (m) out.set(m[1], /^https?:\/\//.test(m[2]) ? m[2] : 'https://' + m[2]);
+      if (c && typeof c === 'object') walk(c);
+    }
+  })(list);
+  return out;
+}
+const proposalLine = (line) => { const at = line.lastIndexOf(' · '); return at > 0 ? line.slice(0, at) : line; };
+const proposalPage = (line) => { const m = /·\s*(\S+)\s*$/.exec(line); return m ? (/^https?:\/\//.test(m[1]) ? m[1] : 'https://' + m[1]) : ''; };
+
 /* ── agents, until passports say so (function:news 3.2–3.3) ── */
 async function readAgents() {
   const law = await readBlock('function:news');
@@ -284,20 +336,30 @@ async function buildWire(fromMs, toMs, ix, agents) {
     .filter(([n, iso]) => names.has(n) && Date.parse(iso) >= fromMs && Date.parse(iso) < toMs)
     .map(([n, iso]) => ({ n, iso, k: bornKind(n, names) }))
     .filter((b) => b.k);
+  // a family opens at the page its law names, else where the proposals list says its page is
+  let pages = null;
+  const pagesOf = () => (pages ||= readBlock('proposals').then(proposalPages).catch(() => new Map()));
   await each(births, 8, async ({ n, iso, k }) => {
     const block = await readBlock(n);
     const said = block ? rootVoice(block) : '';
+    let { open, who = '' } = k;
+    if (k.kind === 'family') {
+      const name = n.slice(n.indexOf(':') + 1);
+      const law = n.startsWith('function:') ? block : await readBlock('function:' + name);
+      open = lawPage(law) || (await pagesOf()).get(name) || open;
+      who = lawMaker(law) || who;
+    }
     add({
-      when: iso, who: k.who || '', kind: k.kind,
+      when: iso, who, kind: k.kind,
       line: clip(said ? `${k.lead}: ${said}` : k.lead, 280), text: said ? clip(said, 1200) : '',
-      open: k.open, beach: beachAt(n), source: n,
+      open, beach: beachAt(n), source: n,
     });
   });
 
-  // entries — a post in a room, a picture in a gallery
+  // entries — a post in a room, a picture in a gallery, a film or a proposal on its shelf
   const since = (n) => touched[n] && Date.parse(touched[n]) >= fromMs;
   const accs = [...names].filter((n) => since(n) && !TESTISH.test(n) &&
-    ((n.startsWith('pool:') && !n.startsWith('pool:test')) || n.startsWith('gallery:') || n === 'marks'));
+    ((n.startsWith('pool:') && !n.startsWith('pool:test')) || n.startsWith('gallery:') || n === 'marks' || SHELVES.has(n)));
   await each(accs, 6, async (n) => {
     const block = await readBlock(n);
     if (!block) return;
@@ -306,6 +368,20 @@ async function buildWire(fromMs, toMs, ix, agents) {
       const said = String(entry._ || '').trim();
       if (!said) continue;
       const enc = encodeURIComponent;
+      if (n === 'animations') {          // a film, an app, a chart or a page, its still beside it
+        const credit = shelfCredit(entry);
+        add({ when: entry['3'], who: creditMaker(credit), kind: 'animation', line: clip(said, 280),
+          text: clip(credit ? `${said}\n\n${credit}` : said, 1600), image: isImage(entry['2']) ? entry['2'] : '',
+          open: isUrl(entry['1']) ? entry['1'] : `${SITE}/animations`, beach: beachAt(n, slotSpindle(slot)), source: `${n}@${slotSpindle(slot)}` });
+        continue;
+      }
+      if (n === 'proposals') {           // '<name> — what · <page>', shared when it was appended
+        const name = (/^([a-z0-9][a-z0-9-]*)\s+—/.exec(said) || [])[1] || '';
+        const law = name ? await readBlock('function:' + name) : null;
+        add({ when: entry['3'], who: lawMaker(law), kind: 'proposal', line: clip(proposalLine(said), 280), text: clip(said, 1600),
+          open: proposalPage(said) || (name ? `${SITE}/proposal/${enc(name)}` : `${SITE}/proposal`), beach: beachAt(n, slotSpindle(slot)), source: `${n}@${slotSpindle(slot)}` });
+        continue;
+      }
       if (n === 'marks') {
         const who = String(entry['1'] || '');
         add({ when: entry['3'], who, kind: 'mark', line: clip(said, 280), text: clip(said, 1200),
@@ -536,6 +612,18 @@ async function itemFromSource(src, address, agents) {
   if (when && itemAddress(new Date(when)) !== address) return null;   // the link and the source must agree
   const room = block.slice(block.indexOf(':') + 1);
   const picture = block.startsWith('gallery:');
+  if (block === 'animations' && entry) {
+    const credit = shelfCredit(entry), who = creditMaker(credit);
+    return { address, when, who, agent: agentOf(agents, who), kind: 'animation', line: clip(said, 280),
+      text: clip(credit ? `${said}\n\n${credit}` : said, 1600), image: isImage(entry['2']) ? entry['2'] : '',
+      open: isUrl(entry['1']) ? entry['1'] : `${SITE}/animations`, beach: beachAtSource(src), source: src };
+  }
+  if (block === 'proposals') {
+    const name = (/^([a-z0-9][a-z0-9-]*)\s+—/.exec(said) || [])[1] || '';
+    const who = name ? lawMaker(await readBlock('function:' + name)) : '';
+    return { address, when, who, agent: agentOf(agents, who), kind: 'proposal', line: clip(proposalLine(said), 280), text: clip(said, 1600),
+      open: proposalPage(said) || `${SITE}/proposal`, beach: beachAtSource(src), source: src };
+  }
   const kind = name.startsWith('w/') ? 'scene' : picture ? 'picture' : block.startsWith('pool:') ? 'post' : block.startsWith('news:') ? 'declaration' : block === 'marks' ? 'mark' : 'block';
   return {
     address, when, who: String((entry && entry['1']) || ''), agent: agentOf(agents, entry && entry['1']), kind,
@@ -546,14 +634,141 @@ async function itemFromSource(src, address, agents) {
   };
 }
 
-/* ── THE KEEPER (function:news 2) ── */
+/* ── WHERE THINGS ARE HAPPENING — the strip at the top of the day (spine:happening 1.1,
+ * function:news 4.3). Four reads of what already stands, nothing written and nothing
+ * founded: each person's own now at the day (now:<handle>, mirrors.js's one read for a
+ * crowd), people before agents; the presence block, a hand counting as here for fifteen
+ * minutes as /dashboard counts it; the lines said at the beat (torus-mirror:<hand>, the
+ * loom's first band), live for one beat's width; and the tables that took a voice that
+ * day (?tables). The rooms that took voices are the day's own wire, by room, which the
+ * page already holds. Each part answers apart: one the beach would not give is unread. ── */
+const HERE_MS = 15 * 60 * 1000;
+const BEAT_MS = 9600_000 / 9;
+const UNLISTED = /(^|[-:])(trial|probe)([-:]|$)/i;          // test hands, beside TESTISH
+const LANE = /^\s*(?:[\w-]+\s*·\s*)?(?:lane\s+)?([A-Za-z][\w-]*(?:\.[\w-]+)+)\s*[:—(,]/;
+const atAddress = (d) => (d.length > 10 ? d.slice(0, 10) + '.' + d.slice(10) : d.padEnd(10, '0'));
+
+async function part(fn) {
+  try { return { ok: true, ...(await fn()) }; }
+  catch (e) { return { ok: false, error: clip(String(e && e.message ? e.message : e).replace(/ for https?:\/\/\S+/, ''), 160) }; }
+}
+async function saidOn(day, agents) {
+  const room = await mirrorsOf('now');
+  const digits = day.address.slice(0, 8);
+  const lines = [];
+  for (const [who, block] of Object.entries(room.mirrors || {})) {
+    if (TESTISH.test(who) || UNLISTED.test(who)) continue;
+    const node = walkExact(block, digits);
+    if (node == null) continue;
+    const said = voiceOf(node);
+    const finer = [];                      // the day's parts, beats and seconds, in the order of the day
+    (function walk(n, d) {
+      if (!n || typeof n !== 'object') return;
+      for (const k of '123456789') {
+        const c = n[k];
+        if (c == null) continue;
+        const v = voiceOf(c);
+        if (v) finer.push({ at: atAddress(d + k), text: clip(v, 280) });
+        /* a line kept in the accumulator shape (its stamp at 3) is one line, its digits its fields */
+        if (d.length + 1 < 13 && !(c && typeof c === 'object' && isIso(c['3']))) walk(c, d + k);
+      }
+    })(node, digits);
+    if (!said && !finer.length) continue;
+    /* a say at the beat lands at its second and voices the beat too: one line, at its finest address */
+    const once = finer.filter((f, i) => !finer.slice(i + 1).some((g) => g.text === f.text && g.at.startsWith(f.at.replace(/0+$/, ''))));
+    lines.push({ who, agent: agentOf(agents, who), text: said ? clip(said, 600) : '', finer: once.slice(-3), touched: (room.touched || {})[who] || '' });
+  }
+  lines.sort((a, b) => (a.agent - b.agent) || String(b.touched).localeCompare(String(a.touched)));
+  return { lines };
+}
+async function presentNow(now, agents) {
+  const block = await getJSON(`${BEACH}?block=presence`);
+  const hands = [];
+  (function walk(n) {
+    if (!n || typeof n !== 'object') return;
+    if (n._ && typeof n._ === 'object') walk(n._);
+    for (const k of '123456789') {
+      const c = n[k];
+      if (c && typeof c === 'object' && typeof c['1'] === 'string' && isIso(c['3'])) {
+        const t = Date.parse(c['3']);
+        if (now.getTime() - t <= HERE_MS && t <= now.getTime() + 60_000 && !TESTISH.test(c['1']) && !UNLISTED.test(c['1']))
+          hands.push({ who: c['1'], where: typeof c['2'] === 'string' ? c['2'] : '', at: c['3'], agent: agentOf(agents, c['1']) });
+      } else if (c && typeof c === 'object') walk(c);
+    }
+  })(block);
+  hands.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  return { hands, window: HERE_MS / 60_000 };
+}
+async function atTheBeat(now, ix, agents) {
+  const since = now.getTime() - BEAT_MS, touched = ix.touched || {};
+  const hands = (ix.blocks || []).filter((n) => /^torus-mirror:[^:]+$/.test(n) && Date.parse(touched[n] || '') >= since);
+  const gatherings = [...new Set([now, new Date(since)].map((t) => momentToAddress(t).slice(0, 9) + '0'))];
+  let failed = 0;
+  const got = await each(hands, 6, async (name) => {
+    const out = [];
+    try {
+      for (const g of gatherings) {
+        const j = await getJSON(`${BEACH}?block=${encodeURIComponent(name)}&spindle=${g}&pscale=-3`);
+        for (const e of (j && j.descent) || []) {
+          if (e && typeof e.content === 'string' && isIso(e.stamp) && Date.parse(e.stamp) >= since)
+            out.push({ who: name.slice(13), text: e.content, at: e.stamp, address: String(e.address) });
+        }
+      }
+    } catch { failed++; }
+    return out;
+  });
+  if (hands.length && failed === hands.length) throw new Error('no hand’s beat answered');
+  const seen = new Map();                   // the newest line of each lane of each hand
+  got.flat().sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).forEach((l) => {
+    const lane = (LANE.exec(l.text) || [])[1] || '';
+    const key = l.who + '·' + (lane ? lane.toLowerCase() : l.address);
+    if (!seen.has(key)) seen.set(key, { who: l.who, agent: agentOf(agents, l.who), lane, text: clip(l.text, 400), at: l.at });
+  });
+  return { lines: [...seen.values()].slice(0, 12), unread: failed };
+}
+async function tablesOn(day) {
+  const t = await getJSON(BEACH + '?tables');
+  const tables = ((t && t.tables) || [])
+    .filter((w) => w && w.name && !TESTISH.test(w.name) && Date.parse(w.touched) >= day.start && Date.parse(w.touched) < day.end)
+    .map((w) => ({ name: w.name, room: w.room || '', touched: w.touched }));
+  return { tables };
+}
+async function readWhere(q) {
+  const now = new Date();
+  const day = periodFor('day', String(q.at || ''), now);
+  const [ix, agents] = await Promise.all([readIndex(), readAgents()]);
+  const [said, here, beat, tables] = await Promise.all([
+    part(() => saidOn(day, agents)),
+    day.running ? part(() => presentNow(now, agents)) : null,
+    day.running ? part(() => atTheBeat(now, ix, agents)) : null,
+    part(() => tablesOn(day)),
+  ]);
+  return {
+    now: { iso: now.toISOString(), address: momentToAddress(now), voicing: voiceAddress(momentToAddress(now)) },
+    day: { address: day.address, label: day.label, running: day.running, start: new Date(day.start).toISOString(), end: new Date(day.end).toISOString() },
+    said, here, beat, tables,
+  };
+}
+
+/* ── THE KEEPER (function:news 2) ──
+ * It chooses by the law at function:news 2.6, one line of it at each of 2.6.1 to
+ * 2.6.9, so revising the law on the beach revises the keeper and anyone keeping an
+ * edition of their own reads the same words; this copy stands in where the beach
+ * cannot be read. */
 const KEEPER_LAW = [
   'You keep the house edition of the news on a public commons — the beach at beach.happyseaurchin.com, where people and AI agents make things together in plain public blocks.',
   'From the candidates, choose at most nine items that best show what this period MADE: things made for other people to meet — a picture, a page, a game or a scene at a table, a room someone opened, a practice or way of working, a new person arriving, a post with real substance.',
   'Prefer making over housekeeping and machine echoes (status lines, automatic reports, "X voiced Y on the Z field"); prefer what a stranger arriving from a shared link would find worth a look; prefer variety of kinds and of hands, and a person over an agent when they are otherwise equal. Answers from people are evidence of interest, never a vote you must obey.',
+  'Words to an agent in its own room are housekeeping, not making: a note left in an agent\'s parlour, a working session\'s notice to the others, a scheduled pass\'s log.',
   'Choose only from the candidates, by their exact address, and rank them best first. Choosing nothing is honest if nothing was made. Never invent anything a candidate does not say.',
   'Write the headline as two or three plain sentences for a stranger: what this period made, without the beach\'s vocabulary — no block names, addresses or jargon. Write each why as one short clause (under twenty words) saying why it rose.',
 ].join('\n');
+export async function keeperLaw() {
+  const node = walkExact(await readBlock('function:news'), '26');
+  const lines = [];
+  if (node && typeof node === 'object') for (const k of '123456789') { const v = voiceOf(node[k]); if (v) lines.push(v); }
+  return lines.length >= 3 ? { text: lines.join('\n'), from: 'function:news 2.6' } : { text: KEEPER_LAW, from: 'api/news.js' };
+}
 const FOLD_SCHEMA = {
   type: 'object',
   properties: {
@@ -564,7 +779,7 @@ const FOLD_SCHEMA = {
   additionalProperties: false,
 };
 
-async function choose(periodLabel, rung, candidates) {
+async function choose(periodLabel, rung, candidates, law = KEEPER_LAW) {
   if (process.env.NEWS_FAKE_MODEL === '1') {     // the test rig's stand-in: never set in production
     return { headline: `Test fold of ${periodLabel}.`, picks: candidates.slice(0, 9).map((c) => ({ address: c.address, why: 'test pick' })), usage: null };
   }
@@ -579,7 +794,7 @@ async function choose(periodLabel, rung, candidates) {
   const body = {
     model: MODEL,
     max_tokens: 16000,
-    system: KEEPER_LAW,
+    system: law,
     output_config: { effort: 'low', format: { type: 'json_schema', schema: FOLD_SCHEMA } },
     messages: [{ role: 'user', content: `The period: ${periodLabel} (the ${rung}).\n${rung === 'day' ? 'These are everything made in it, newest first:' : `These are the picks already chosen for each ${CHILD[rung]} inside it:`}\n\n${lines.join('\n')}` }],
   };
@@ -665,13 +880,15 @@ async function keep() {
   }
   const answers = await readAnswers(ix, agents);
   const withAnswers = (it) => ({ ...it, answers: tally(answers[it.address]) });
+  const law = await keeperLaw();
+  log.push(`choosing by the law at ${law.from}, on ${MODEL}`);
 
   async function foldDay(period, status, newerThan = 0) {
     const span = addressToSpan(period);
     const wire = (await buildWire(span.start.getTime(), Math.min(span.end.getTime(), now.getTime() + 1000), ix, agents)).map(withAnswers);
     if (!wire.length) { log.push(`${period}: nothing made`); return false; }
     if (newerThan && !wire.some((it) => Date.parse(it.when) > newerThan)) { log.push(`${period}: nothing new since ${new Date(newerThan).toISOString()}`); return false; }
-    const chosen = await choose(voiceAddress(period), 'day', wire.slice(0, 180));
+    const chosen = await choose(voiceAddress(period), 'day', wire.slice(0, 180), law.text);
     if (!chosen) return false;
     if (chosen.refused) { log.push(`${period}: model stopped (${chosen.refused})`); return false; }
     if (chosen.usage) spent.push(chosen.usage);
@@ -694,7 +911,7 @@ async function keep() {
       if (f) for (const p of f.picks) if (p.item && p.item.when) cands.push({ ...withAnswers(p.item), why: p.why });
     }
     if (!cands.length) { log.push(`${period}: nothing chosen beneath yet`); return false; }
-    const chosen = await choose(voiceAddress(period), rung, cands);
+    const chosen = await choose(voiceAddress(period), rung, cands, law.text);
     if (!chosen) return false;
     if (chosen.refused) { log.push(`${period}: model stopped (${chosen.refused})`); return false; }
     if (chosen.usage) spent.push(chosen.usage);
@@ -744,8 +961,17 @@ export default async function handler(req, res) {
       const cron = process.env.CRON_SECRET;
       if (cron && req.headers.authorization !== `Bearer ${cron}`) return res.status(401).json({ error: 'unauthorized' });
       res.setHeader('Cache-Control', 'no-store');
-      const r = await keep();
+      /* each pass says what it did in the function's log, so whoever watches the keeper
+       * reads why the house edition stands or does not (no secret is in it) */
+      const r = await keep().catch((e) => ({ status: 500, body: { error: String(e && e.message ? e.message : e).slice(0, 300) } }));
+      console.log('[keeper]', r.status, JSON.stringify(r.body).slice(0, 3000));
       return res.status(r.status).json(r.body);
+    }
+    if (q.where) {
+      const r = await readWhere(q);
+      const fine = r.day.running ? 20 : 120;
+      res.setHeader('Vercel-CDN-Cache-Control', `max-age=${fine}, stale-while-revalidate=${fine * 3}`);
+      return res.status(200).json(r);
     }
     if (q.item) {
       const r = await readItem(q);

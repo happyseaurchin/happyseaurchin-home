@@ -21,6 +21,25 @@
   var saved = stored();
   apply(saved === 'light' || saved === 'dark' ? saved : (prefersLight() ? 'light' : 'dark'));
 
+  /* A DROPPED STYLESHEET IS ASKED FOR ONCE MORE. On a weak phone signal theme.css can
+   * fail while the page and its reads arrive, and the page then stands bare: every button
+   * plain text, the dictation glyph as wide as the screen (a phone on /walk/leros-timeline,
+   * 2026-10-27). A sheet that loaded has rules; one that failed has none. */
+  window.addEventListener('load', function(){
+    var links = document.querySelectorAll('link[rel="stylesheet"]');
+    for (var i = 0; i < links.length; i++){
+      var l = links[i];
+      if (!/(^|\/)theme\.css(\?|$)/.test(l.getAttribute('href') || '')) continue;
+      var ok = false;
+      try { ok = !!(l.sheet && l.sheet.cssRules && l.sheet.cssRules.length); } catch(e){ ok = true; }
+      if (ok) return;
+      var again = document.createElement('link');
+      again.rel = 'stylesheet'; again.href = '/theme.css?again=' + Date.now();
+      l.parentNode.insertBefore(again, l.nextSibling);
+      return;
+    }
+  });
+
   function toggle(){
     var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
     apply(next);
@@ -72,6 +91,580 @@
     } else { b.className = 'theme-toggle'; document.body.appendChild(b); }
   });
 })();
+
+/* ── THE KEYS THIS DEVICE KEEPS, NEVER IN PLAIN TEXT (siteKeys) — the doors' battery, 5 Nov 2026 (bsp-mcp
+ * proposals/2026-11-05-the-doors-battery-minimal.md §8 item 20; spine:security-schematic 1.12 and 4.3).
+ *
+ * A key a person gives a page is kept on this device so they type it once (security-schematic 1.1), and it is
+ * kept WRAPPED under a key the browser will not hand out: the beach's own keeping (button/seal.js keep, an AES-GCM
+ * key made non-extractable and kept in this origin's IndexedDB), the same the beach's voice gives its own copies.
+ * What stands in storage is ciphertext (w1.<iv>.<ct>); the key itself is held in this page's memory alone. The
+ * pages name a key as they always have (passport-latch:<handle>, journal-latch:<host>:<handle>, …) and ask here:
+ *
+ *   siteKeys.get(name)               the key kept under the name, or ''; at once, and every key once ready() has run
+ *   siteKeys.ready()                 resolves once every key this device keeps is read (a page reading one as it loads
+ *                                    waits for it; a tap comes long after)
+ *   siteKeys.set(name, key, { tab }) kept wrapped, for this tab alone where tab is true; '' forgets it
+ *   siteKeys.del(name)               forgotten, every copy
+ *   siteKeys.has(name)               whether a key stands under the name, said at once (a box's hint)
+ *   siteKeys.forName(handle)         a key kept for any block named for the handle, as the voice looks for one
+ *   siteKeys.able()                  whether this browser keeps keys at all, once ready() has run
+ *
+ * WHERE EACH NAME GOES. The five names the voice reads as keys (next-latch:<block>, mirror-latch:<block>,
+ * passport-latch:<h>, lists-latch:<h>, now-latch:<h>) MOVE onto the voice's own keeping, beach-key:<block> (for
+ * the last three passport:<h>, lists:<h> and now:<h>), so a key a page kept is the voice's and the voice's the
+ * page's, one copy a block: wrapped where they stood, the voice would read the wrapped text as a key. Every other
+ * name a key stood under (here-latch:, journal-latch:, grain-latch:, shell-latch:, the keepers' next-keeper:,
+ * morning-keeper: and invite-keeper:, models:key:, gallery:pass, gallery:key, gallery:place-key, group:narrator) is
+ * WRAPPED WHERE IT STANDS, under its own name, in localStorage, or sessionStorage for a tab. Where two old names held
+ * different keys for one block, the second stands beside the first as a spare (beach-spare:<old name>), read back
+ * under its own name until a key is next given for that block, so no key anyone kept is lost.
+ *
+ * THE MOVE ON LOAD reads each plain copy, wraps it, and deletes the plain copy. A browser that cannot wrap (no
+ * IndexedDB, no SubtleCrypto) keeps what it kept, as it kept it, and is given nothing new to keep, as the voice does.
+ * Once a browser has wrapped a key here (site-keys:able), the names the voice reads move at once, as this file
+ * loads and before any voice on the page reads storage, to the voice's own name for the block, so whichever wraps
+ * them first, this page or the voice, finds them there; everything else is wrapped as soon as the seal has loaded.
+ * mindflow's key (mindflow-api-key) is kept by mindflow's own pages, which load no theme.js. */
+(function(){
+  'use strict';
+  var SEAL = 'https://beach.happyseaurchin.com/button/seal.js';
+  var ABLE = 'site-keys:able', SPARE = 'beach-spare:';
+  var MOVES = /^(next-latch|mirror-latch|passport-latch|lists-latch|now-latch):(.+)$/;
+  var WRAPS = /^(?:here-latch:|journal-latch:|grain-latch:|shell-latch:|next-keeper:|morning-keeper:|invite-keeper:|models:key:).+|^gallery:(?:pass|key|place-key)$|^group:narrator$/;
+  var MEM = {}, TAB = {}, GONE = {}, READY = null, ABLE_NOW = false, sealP = null;
+
+  function store(tab){ try { return tab ? window.sessionStorage : window.localStorage; } catch(e){ return null; } }
+  function rd(st, k){ try { return st ? st.getItem(k) : null; } catch(e){ return null; } }
+  function wr(st, k, v){ try { if (st) st.setItem(k, v); } catch(e){} }
+  function rm(st, k){ try { if (st) st.removeItem(k); } catch(e){} }
+  function names(st){ var out = []; try { for (var i = 0; st && i < st.length; i++) out.push(st.key(i)); } catch(e){} return out; }
+  function wrapped(v){ return typeof v === 'string' && v.indexOf('w1.') === 0; }
+  function plain(v){ return typeof v === 'string' && v && !wrapped(v) ? v : ''; }
+  /* the voice's own name for the key an old name held: beach-key:<the block it latches> */
+  function moved(name){
+    var m = MOVES.exec(String(name || ''));
+    if (!m) return '';
+    return 'beach-key:' + (m[1] === 'passport-latch' ? 'passport:' : m[1] === 'lists-latch' ? 'lists:' : m[1] === 'now-latch' ? 'now:' : '') + m[2];
+  }
+  function isKey(name){ return !!moved(name) || WRAPS.test(String(name || '')); }
+
+  /* AT ONCE, AS THIS FILE LOADS: an old name the voice reads moves to beach-key:<block>, or, where that block already
+   * holds another key, beside it as a spare, compared once both can be read; a write that did not take leaves the old
+   * name standing. Only where this browser has wrapped a key before, so a browser that cannot never meets a voice that
+   * drops a plain key it cannot wrap. */
+  (function moveNow(){
+    var st = store(false);
+    if (rd(st, ABLE) !== '1') return;
+    names(st).forEach(function(n){
+      var to = moved(n), v = to ? plain(rd(st, n)) : '';
+      if (!v) return;
+      var cur = rd(st, to);
+      if (cur == null) wr(st, to, v); else if (cur !== v) wr(st, SPARE + n, v);
+      if (cur === v || rd(st, to) === v || rd(st, SPARE + n) === v) rm(st, n);
+    });
+  })();
+
+  function seal(){
+    if (window.beachSeal) return Promise.resolve(window.beachSeal);
+    if (sealP) return sealP;
+    sealP = new Promise(function(ok, no){
+      var s = document.createElement('script');
+      s.src = SEAL; s.async = true;
+      s.onload = function(){ if (window.beachSeal) ok(window.beachSeal); else { sealP = null; no(new Error('the seal did not load')); } };
+      s.onerror = function(){ sealP = null; no(new Error('could not load ' + SEAL)); };
+      (document.head || document.documentElement).appendChild(s);
+    });
+    return sealP;
+  }
+  function settled(jobs){ return Promise.all(jobs.map(function(j){ return Promise.resolve(j).catch(function(){}); })); }
+  /* what was not moved at once (the first page on this browser, before it had wrapped anything) is moved now; an old name
+   * that a voice on this page may already have read as a key stands until the next page, which moves it before any voice */
+  function migrate(S){
+    var st = store(false), jobs = [];
+    names(st).forEach(function(n){
+      var to = moved(n), v = to ? plain(rd(st, n)) : '';
+      if (!v) return;
+      var cur = rd(st, to);
+      jobs.push((cur === v ? Promise.resolve(true) : S.keep.wrap(v).then(function(w){
+        if (rd(st, n) !== v) return false;                       // given or forgotten meanwhile: that stands
+        var now = rd(st, to);
+        if (now == null || plain(now) === v){ wr(st, to, w); return rd(st, to) === w; }
+        wr(st, SPARE + n, w); return rd(st, SPARE + n) === w;
+      })).then(function(done){ if (done && !window.beachVoice && rd(st, n) === v) rm(st, n); }));
+    });
+    [false, true].forEach(function(tab){
+      var s = store(tab);
+      names(s).forEach(function(n){
+        var v = WRAPS.test(n) ? plain(rd(s, n)) : '';
+        if (v) jobs.push(S.keep.wrap(v).then(function(w){ if (rd(s, n) === v) wr(s, n, w); }));
+      });
+    });
+    return settled(jobs);
+  }
+  /* every key kept, opened into this page's memory; a plain one met here (a name just moved) wrapped where it stands */
+  function readAll(S){
+    var jobs = [];
+    [false, true].forEach(function(tab){
+      var s = store(tab), into = tab ? TAB : MEM;
+      names(s).forEach(function(n){
+        if (!(WRAPS.test(n) || (!tab && /^beach-(key|spare):/.test(n)))) return;
+        var v = rd(s, n);
+        if (plain(v)){
+          if (!(n in into) && !GONE[n]) into[n] = v;
+          jobs.push(S.keep.wrap(v).then(function(w){ if (rd(s, n) === v) wr(s, n, w); }));
+        } else if (wrapped(v)) jobs.push(S.keep.unwrap(v).then(function(t){ if (t !== null && !(n in into) && !GONE[n] && rd(s, n) === v) into[n] = t; }));
+      });
+    });
+    return settled(jobs).then(function(){
+      /* a spare that agrees with its block's key is no spare */
+      Object.keys(MEM).forEach(function(n){
+        if (n.indexOf(SPARE) !== 0 || MEM[moved(n.slice(SPARE.length))] !== MEM[n]) return;
+        delete MEM[n]; rm(store(false), n);
+      });
+    });
+  }
+  function ready(){
+    if (READY) return READY;
+    READY = seal().then(function(S){
+      if (!S.keep || !S.keep.able()) return;
+      return S.keep.wrap('able').then(function(w){ return S.keep.unwrap(w); }).then(function(t){
+        if (t !== 'able') return;
+        ABLE_NOW = true; wr(store(false), ABLE, '1');
+        return migrate(S).then(function(){ return readAll(S); });
+      });
+    }).catch(function(){}).then(function(){});
+    return READY;
+  }
+
+  function get(name){
+    name = String(name || '');
+    var to = moved(name), st = store(false);
+    if (to) return GONE[to] ? '' : (MEM[SPARE + name] || MEM[to] || plain(rd(st, SPARE + name)) || plain(rd(st, to)) || plain(rd(st, name)) || '');
+    if (WRAPS.test(name)) return GONE[name] ? '' : (MEM[name] || TAB[name] || plain(rd(st, name)) || plain(rd(store(true), name)) || '');
+    return rd(st, name) || '';
+  }
+  function has(name){
+    if (get(name)) return true;
+    var to = moved(name), st = store(false);
+    if (to) return !GONE[to] && (rd(st, to) != null || rd(st, SPARE + name) != null);
+    return WRAPS.test(String(name || '')) && !GONE[name] && (rd(st, name) != null || rd(store(true), name) != null);
+  }
+  function forName(handle){
+    var tail = ':' + String(handle || ''), n, st = store(false), all;
+    if (tail === ':') return '';
+    for (n in MEM) if (n.indexOf('beach-key:') === 0 && n.slice(-tail.length) === tail && MEM[n]) return MEM[n];
+    all = names(st);
+    for (var i = 0; i < all.length; i++){
+      n = all[i];
+      if ((n.indexOf('beach-key:') === 0 || MOVES.test(n)) && n.slice(-tail.length) === tail && !GONE[moved(n) || n] && plain(rd(st, n))) return plain(rd(st, n));
+    }
+    return '';
+  }
+  function dropSpares(to){
+    Object.keys(MEM).forEach(function(n){ if (n.indexOf(SPARE) === 0 && moved(n.slice(SPARE.length)) === to) delete MEM[n]; });
+    var st = store(false);
+    names(st).forEach(function(n){ if (n.indexOf(SPARE) === 0 && moved(n.slice(SPARE.length)) === to) rm(st, n); });
+  }
+  /* wrapped, once the seal is here; the newest key given wins, so an older wrap landing late never covers it */
+  function keep(tab, n, v){
+    return ready().then(function(){
+      var S = window.beachSeal;
+      if (!ABLE_NOW || !S) return false;
+      return S.keep.wrap(v).then(function(w){ if ((tab ? TAB : MEM)[n] !== v) return false; wr(store(tab), n, w); return true; }, function(){ return false; });
+    });
+  }
+  function set(name, value, opts){
+    name = String(name || ''); value = value == null ? '' : String(value).trim();
+    if (!value) return del(name);
+    var to = moved(name), st = store(false), tab = store(true), t = !!(opts && opts.tab);
+    if (to){
+      /* a key just given for a block is its key: a spare beside it is no longer anyone's */
+      delete GONE[to]; MEM[to] = value; dropSpares(to);
+      if (rd(st, name) != null) rm(st, name);
+      if (plain(rd(st, to))) rm(st, to);
+      return keep(false, to, value);
+    }
+    if (WRAPS.test(name)){
+      delete GONE[name];
+      (t ? TAB : MEM)[name] = value; delete (t ? MEM : TAB)[name];
+      rm(t ? st : tab, name);
+      if (plain(rd(t ? tab : st, name))) rm(t ? tab : st, name);
+      return keep(t, name, value);
+    }
+    wr(st, name, value);
+    return Promise.resolve(true);
+  }
+  function del(name){
+    name = String(name || '');
+    var to = moved(name), st = store(false), tab = store(true);
+    if (to){ GONE[to] = true; delete MEM[to]; rm(st, to); dropSpares(to); rm(st, name); }
+    else if (WRAPS.test(name)){ GONE[name] = true; delete MEM[name]; delete TAB[name]; rm(st, name); rm(tab, name); }
+    else rm(st, name);
+    return Promise.resolve(true);
+  }
+
+  window.siteKeys = { get: get, set: set, del: del, has: has, ready: ready, forName: forName, isKey: isKey, able: function(){ return ABLE_NOW; }, seal: seal };
+  /* a device that keeps a key reads them all straight away, so a tap never waits on the seal */
+  var any = false;
+  [false, true].forEach(function(tab){ names(store(tab)).forEach(function(n){ if (isKey(n) || /^beach-(key|spare):/.test(n)) any = true; }); });
+  if (any) ready();
+})();
+
+/* ── THE PASS AT A MEMBERS' BEACH (sitePass) — the doors' battery, 5 Nov 2026 (§8 item 19; spine:security-schematic
+ * 1.35). A beach an organisation runs for its members (pscale-beach, the members' gate) answers a stranger 401
+ * members_only for every block but what its keepers mark beyond, and lists only those in its index; a member proves
+ * their passport once for a pass the device keeps twelve hours, which the beach's voice keeps as beach-pass:<beach>.
+ * Every page here reads and writes a beach by its address with a small client of its own, so the pass is carried
+ * here, once, for all of them: a request this page makes to a beach's wire (<origin>[/w/<table>]/.well-known/
+ * pscale-beach) carries the pass held for that beach as Authorization: Bearer, where it sets none itself; and the
+ * door's refusal (members_only, or an index saying it is a members' beach's) is proved once more, asking nothing,
+ * with a key this device keeps (a write's own key for the handle its block is named for, as the voice does; else the
+ * passport's of the member the pass was last for, or of the name this device signs with), through the voice where it
+ * speaks for that beach, else with the voice's own proof, kept where the voice keeps it; then made once again. A
+ * beach's sub-beaches and tables are its deploy's, and share its pass.
+ *
+ * What cannot be passed is said in plain words, with the way in, never as nobody, nothing or a 401:
+ *   sitePass.walled(origin)   that beach refused this page, and no pass was had
+ *   sitePass.gated(index)     an index the page read is a members' beach's, as a stranger is shown it
+ *   sitePass.wall(origin)     the words: whose beach; a member proves their key once (a button that asks for the
+ *                             name and the key, proves, and reads the page again); a newcomer comes in by a
+ *                             member's invitation, at the String where the site knows it
+ *   sitePass.prove({ beach, name, ask })    that proof, asked for, or not (ask: false)
+ *   sitePass.held(origin)     the pass this device holds for that beach, { name, pass, expires }, or null
+ * A page that draws no wall of its own where a beach refused it is given one, under its bar.
+ *
+ * WHAT A QUIET PROOF MAY SEND (eye.16, 19 Nov 2026, at David's word, from the eye seat's finding and weft's reading at
+ * watch:weft 989.6: once the eye read every watched beach by itself, a members' beach run by anyone would have been sent
+ * the apex's key unasked). At any beach but the apex, a key is found only where this device kept it for that beach
+ * (keyFor), never the apex's key or another key for the same name; and a proof made asking nothing sends only the form
+ * recorded for that beach, the derived latch where none is, never the word: the word goes to another beach's host only
+ * when its holder proves there by hand, or proved there by hand before, and a refusal then stands as the page's wall. A
+ * write's own key proves as before, since the write carries it to that beach itself. A read whose init says
+ * prove: false (the eye's, every one of them) carries a pass this device holds and proves nothing at all: there a proof
+ * is made only by the person's tap (sitePass.prove). */
+(function(){
+  'use strict';
+  if (!window.fetch || window.sitePass) return;
+  var raw = window.fetch.bind(window);
+  var PASS = 'beach-pass:', WIRE = /\/\.well-known\/pscale-beach$/, APEX = 'https://beach.happyseaurchin.com';
+  /* the members' beaches whose String the site knows: where a newcomer takes a member's invitation (string.html DOORS) */
+  var DOORS = { 'https://beach.bringingtheflavour.com': { name: 'SALT', join: 'https://www.bringingtheflavour.com/string' } };
+  var MEMBERS = /\bis its members(?:'|’) beach\b/;
+  var OPEN = {}, WALLED = {}, TRIED = {}, PROVING = {}, SHOWN = {}, styled = false;
+
+  function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  function clean(v){ return window.cleanHandle ? window.cleanHandle(v) : String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim(); }
+  function signer(){ try { return clean(localStorage.getItem('render:who')); } catch(e){ return ''; } }
+  /* the deploy an address belongs to: <x>.beach.<domain> and /w/<table> are the beach's own */
+  function deployOf(origin){
+    try {
+      var u = new URL(origin, location.href), h = u.hostname, i = h.indexOf('.beach.');
+      if (i > 0) h = h.slice(i + 1);
+      return u.protocol + '//' + h + (u.port ? ':' + u.port : '');
+    } catch(e){ return ''; }
+  }
+  function wireOf(url){
+    try {
+      var u = new URL(url, location.href);
+      if (!/^https?:$/.test(u.protocol) || !WIRE.test(u.pathname)) return null;
+      return { deploy: deployOf(u.origin), index: !u.searchParams.has('block') && !u.searchParams.has('tables') };
+    } catch(e){ return null; }
+  }
+  function record(d){ try { var p = JSON.parse(localStorage.getItem(PASS + d) || 'null'); return p && p.name ? p : null; } catch(e){ return null; } }
+  function live(p){ return !!(p && p.pass && Date.parse(p.expires) - Date.now() > 60000); }
+  function held(origin){ var p = record(deployOf(origin || APEX)); return live(p) ? { name: p.name, pass: p.pass, expires: p.expires } : null; }
+  function bodyOf(init){ try { return init && typeof init.body === 'string' ? JSON.parse(init.body) : null; } catch(e){ return null; } }
+  /* the proof passes as the voice sends it: a passport's latch, and nothing else */
+  function isProof(init){
+    var b = bodyOf(init);
+    return !!(b && /^post$/i.test((init && init.method) || '') && /^passport:/.test(String(b.block || '')) && b.content === undefined &&
+      b.new_lock === undefined && b.append !== true && b.invite !== true && typeof b.secret === 'string');
+  }
+  function gated(index){ return !!(index && typeof index._ === 'string' && MEMBERS.test(index._)); }
+  /* a member's key for this beach: the passport's own, as every page names it, at the apex; at any other beach under a name
+   * that carries the beach, so a key there never stands in for the same name's key here, and only that one: the apex's
+   * key, or any other kept for the name, is never offered to another beach's host (eye.16) */
+  function keyName(name, d){ return 'passport-latch:' + name + (d === APEX ? '' : '@' + d.replace(/^https?:\/\//, '')); }
+  function keyFor(name, d){ var K = window.siteKeys; if (!K) return ''; return d === APEX ? (K.get(keyName(name, d)) || K.forName(name)) : (K.get(keyName(name, d)) || ''); }
+  /* the proof, in the form this device keeps for the name at this beach, else the derived latch first (the derived latch).
+   * Made quietly (the page asking nothing) at any beach but the apex: the form recorded for that beach alone, the derived
+   * latch where none is, never the word unasked; a refusal stands (eye.16) */
+  function proof(d, name, key, quiet){
+    var kept = formOf(d, name), strict = !!quiet && d !== APEX;
+    return sealLib().then(function(S){ return S.latch(key, name); }, function(){ return ''; }).then(function(L){
+      var forms = strict ? (kept === 'word' ? [key] : L ? [L] : [])
+        : !L ? [key] : kept.indexOf('derived:') === 0 ? [L] : kept === 'word' ? [key, L] : [L, key], last = null;
+      function one(i){
+        if (i >= forms.length) return last;
+        return raw(d + '/.well-known/pscale-beach', { method: 'POST', cache: 'no-store',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'passport:' + name, secret: forms[i] }) })
+          .then(function(r){
+            return r.json().catch(function(){ return null; }).then(function(x){
+              if (r.ok && x && x.pass){
+                try { localStorage.setItem(PASS + d, JSON.stringify({ name: name, pass: x.pass, expires: x.expires })); } catch(e){}
+                if (forms[i] === key) keepForm(d, name, 'word'); else if (kept.indexOf('derived:') !== 0) keepForm(d, name, 'derived:');
+                return { ok: true, name: name, expires: x.expires };
+              }
+              if (r.ok) return { ok: false, open: true };
+              last = { ok: false, status: r.status, code: x && x.code, error: x && (x.error || x.message) };
+              return r.status === 403 ? one(i + 1) : last;
+            });
+          }, function(e){ return { ok: false, error: String((e && e.message) || e) }; });
+      }
+      return one(0);
+    });
+  }
+  /* PROVED ONCE MORE, ASKING NOTHING — once a page for each beach */
+  function reprove(w, init){
+    var d = w.deploy;
+    if (PROVING[d]) return PROVING[d];
+    if (TRIED[d]) return Promise.resolve(null);
+    TRIED[d] = true;
+    var tries = [], b = bodyOf((init && init.__word) || init), rec = record(d), who = clean((rec && rec.name) || signer());
+    if (b && typeof b.block === 'string' && b.block.lastIndexOf(':') > 0){
+      var wk = typeof b.secret === 'string' && b.secret ? b.secret : typeof b.new_lock === 'string' ? b.new_lock : '';
+      var wh = clean(b.block.slice(b.block.lastIndexOf(':') + 1));
+      if (wk && wh) tries.push({ name: wh, key: wk });
+    }
+    PROVING[d] = (window.siteKeys ? window.siteKeys.ready() : Promise.resolve()).then(function(){
+      var v = window.beachVoice;
+      if (who && v && v.beach === d && typeof v.prove === 'function') tries.push({ name: who, voice: true });
+      else if (who){ var k = keyFor(who, d); if (k && !tries.some(function(t){ return t.name === who && t.key === k; })) tries.push({ name: who, key: k, quiet: true }); }
+      function next(i){
+        if (i >= tries.length) return null;
+        var t = tries[i];
+        return Promise.resolve(t.voice ? window.beachVoice.prove({ name: t.name, ask: false }) : proof(d, t.name, t.key, t.quiet))
+          .then(function(r){ return r && r.ok && held(d) ? held(d) : next(i + 1); }, function(){ return next(i + 1); });
+      }
+      return next(0);
+    }).then(function(p){ delete PROVING[d]; return p; }, function(){ delete PROVING[d]; return null; });
+    return PROVING[d];
+  }
+  /* ── THE DERIVED LATCH (bsp-mcp proposals/2026-11-05-the-derived-latch.md §4: one word, two keys). A word typed once
+   * makes two keys: the sealing pair no beach sees, and the latch a beach checks, beachSeal.latch(word, handle). Where the
+   * hand's passport at the surface a write goes to says "latch: derived" at 9.3, and the word derives the halves at 9.1
+   * and 9.2, the write carries the derived latch in place of the word, as secret and as new_lock alike, so the beach's
+   * host never sees the word; anything else (a shared key, another's latch) goes as it is. A hand seen switched at a beach
+   * is kept on this device, beach-form:<beach>|<hand> with its published half, and a passport there without the marker
+   * is then refused with nothing sent (§4.4). The proof comes before any read at a members' beach, so it proves in the
+   * form kept, else the derived latch first. A page moves no latch: what still answers to the word is moved by its
+   * holder's switch, the voice at key-in or pscale_key_publish through their AI. ── */
+  var FORM = 'beach-form:', NINES = {}, MARK = /^latch: derived\b/;
+  function sealLib(){ return window.beachSeal ? Promise.resolve(window.beachSeal) : window.siteKeys && window.siteKeys.seal ? window.siteKeys.seal() : Promise.reject(new Error('the seal did not load')); }
+  function handIn(block){ if (/^(sed|grain|archive):/.test(block)) return ''; var i = block.lastIndexOf(':'), h = i > 0 ? block.slice(i + 1) : ''; return /^[A-Za-z0-9_-]{1,64}$/.test(h) ? h : ''; }
+  function formOf(d, h){ try { return localStorage.getItem(FORM + d + '|' + h) || ''; } catch(e){ return ''; } }
+  function keepForm(d, h, v){ try { localStorage.setItem(FORM + d + '|' + h, v); } catch(e){} }
+  /* the hand's 9 at the surface the write goes to, read once a page */
+  function nineAt(base, h){
+    var k = base + '|' + h;
+    if (!(k in NINES)) NINES[k] = window.fetch(base + '?block=' + encodeURIComponent('passport:' + h), { cache: 'no-store', headers: { Accept: 'application/json' } })
+      .then(function(r){ return r.ok ? r.json().then(function(p){ return (p && p['9']) || null; }) : r.status === 404 ? null : 'unread'; }, function(){ return 'unread'; });
+    return NINES[k];
+  }
+  function gone(d, h){ var e = new Error(d.replace(/^https?:\/\//, '') + ' no longer says ' + h + '’s key is derived, though this device saw it say so: nothing was sent. The word does not go to a beach that stops saying its form.'); e.formGone = true; return e; }
+  /* the latch a write sends in place of s */
+  function latchOf(base, d, block, s){
+    if (typeof s !== 'string' || !s) return Promise.resolve(s);
+    var hands = [handIn(String(block || '')), signer()].filter(function(h, i, a){ return h && a.indexOf(h) === i; });
+    function next(i){
+      if (i >= hands.length) return s;
+      var h = hands[i];
+      return nineAt(base, h).then(function(nine){
+        var derived = nine && nine !== 'unread' && typeof nine['3'] === 'string' && MARK.test(nine['3']), kept = formOf(d, h);
+        if (nine === 'unread' || (!derived && kept.indexOf('derived:') !== 0)) return next(i + 1);
+        return sealLib().then(function(S){
+          return S.pair(s, h).then(function(pair){
+            var mine = S.published(pair)['2'];
+            if (!derived){ if (kept === 'derived:' + mine) throw gone(d, h); return next(i + 1); }
+            var has = S.publishedOf(nine);
+            if (!has) return next(i + 1);
+            keepForm(d, h, 'derived:' + has.x25519);
+            return has.x25519 === mine ? S.latch(s, h) : next(i + 1);
+          });
+        });
+      });
+    }
+    return next(0);
+  }
+  /* a write's body with its keys in the form each hand's passport names */
+  function derivedInit(url, init, w){
+    var b = bodyOf(init);
+    if (!b || !/^post$/i.test(init.method || '') || !((typeof b.secret === 'string' && b.secret) || (typeof b.new_lock === 'string' && b.new_lock))) return Promise.resolve(init);
+    var u = new URL(url, location.href), base = u.origin + u.pathname, block = b.block || u.searchParams.get('block') || '';
+    return Promise.all([latchOf(base, w.deploy, block, b.secret), latchOf(base, w.deploy, block, b.new_lock)]).then(function(r){
+      if (r[0] === b.secret && r[1] === b.new_lock) return init;
+      var o = {}, nb = {}, k;
+      for (k in init) o[k] = init[k];
+      for (k in b) nb[k] = b[k];
+      if (typeof b.secret === 'string') nb.secret = r[0];
+      if (typeof b.new_lock === 'string') nb.new_lock = r[1];
+      o.body = JSON.stringify(nb);
+      return o;
+    });
+  }
+  function withPass(init, p){
+    var o = {}, k;
+    for (k in init) o[k] = init[k];
+    o.headers = new Headers((init && init.headers) || undefined);
+    o.headers.set('Authorization', 'Bearer ' + p.pass);
+    return o;
+  }
+  /* a pass the door no longer takes (its secret turned) is given up, its name kept for the proof */
+  function giveUp(d, p){ if (p) try { localStorage.setItem(PASS + d, JSON.stringify({ name: p.name })); } catch(e){} }
+  function refused(w, url, init, r, p){
+    WALLED[w.deploy] = true;
+    giveUp(w.deploy, p);
+    return reprove(w, init).then(function(p2){
+      if (!p2){ wallSoon(w.deploy); return r; }
+      WALLED[w.deploy] = false;
+      return carry(url, init, w, true);
+    });
+  }
+  function carry(url, init, w, again){
+    /* a read that says prove: false carries a pass held and proves nothing: a refusal is its page's to show (eye.16) */
+    var rec = record(w.deploy), quietly = init.prove !== false;
+    var first = live(rec) ? Promise.resolve(rec) : rec && !again && quietly ? reprove(w, init) : Promise.resolve(null);
+    return first.then(function(p){
+      return raw(url, p ? withPass(init, p) : init).then(function(r){
+        var reading = !init.method || /^get$/i.test(init.method);
+        if (r.status === 401) return r.clone().json().then(function(x){
+          if (!x || x.code !== 'members_only') return r;
+          if (again || !quietly){ if (!quietly) giveUp(w.deploy, p); WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
+          return refused(w, url, init, r, p);
+        }, function(){ return r; });
+        /* an index a stranger is shown: what its keepers mark beyond, and the words saying so */
+        if (r.ok && reading && w.index && !p && !OPEN[w.deploy]) return r.clone().json().then(function(x){
+          if (!gated(x)){ OPEN[w.deploy] = true; return r; }
+          if (again || !quietly){ WALLED[w.deploy] = true; wallSoon(w.deploy); return r; }
+          return refused(w, url, init, r, null);
+        }, function(){ return r; });
+        return r;
+      });
+    });
+  }
+  window.fetch = function(input, init){
+    var url = typeof input === 'string' ? input : (typeof URL !== 'undefined' && input instanceof URL) ? input.href : '';
+    var w = url ? wireOf(url) : null;
+    if (!w || !w.deploy) return raw(input, init);
+    init = init || {};
+    var h; try { h = new Headers(init.headers || undefined); } catch(e){ return raw(input, init); }
+    if (h.has('Authorization') || isProof(init)) return raw(input, init);
+    return derivedInit(url, init, w).then(function(i2){
+      if (i2 !== init) i2.__word = init;   // the proof, if the door asks for one, is made from the word
+      return carry(url, i2, w, false);
+    }, function(e){
+      if (!e || !e.formGone) throw e;
+      return new Response(JSON.stringify({ error: e.message, code: 'form_gone' }), { status: 403, headers: { 'Content-Type': 'application/json' } });
+    });
+  };
+
+  /* ── the wall, in plain words, with the way in ── */
+  function style(){
+    if (styled || !document.head) return;
+    styled = true;
+    var s = document.createElement('style');
+    s.textContent = '.pass-wall{box-sizing:border-box;max-width:100%;border:1px solid var(--line-strong,rgba(196,219,223,.24));border-radius:6px;' +
+      'background:var(--card,#123742);color:var(--foam,#EFF6F5);padding:12px 14px;margin:12px 0;font-family:var(--body,Georgia,serif);' +
+      'font-size:15px;line-height:1.5;overflow-wrap:anywhere;text-align:left}' +
+      '.pass-wall p{margin:0 0 8px}.pass-wall p:last-child{margin:0}.pass-wall a{color:var(--liquid,#33C2D2)}' +
+      '.pass-wall__go{font-family:var(--mono,ui-monospace,monospace);font-size:12.5px;color:var(--liquid,#33C2D2);background:none;' +
+      'border:1px solid var(--liquid,#33C2D2);border-radius:4px;padding:5px 10px;margin:4px 0 0;cursor:pointer;max-width:100%;white-space:normal;text-align:left}' +
+      '.pass-wall__go:disabled{opacity:.6;cursor:default}' +
+      '.pass-wall__said{font-family:var(--mono,ui-monospace,monospace);font-size:12px;color:var(--vapour,#C4DBDF)}' +
+      '.pass-wall__said:empty{display:none}.pass-wall__said.err{color:var(--solid,#E7B24C)}' +
+      '.pass-wall--top{margin:10px 16px}';
+    document.head.appendChild(s);
+  }
+  function words(d){
+    var door = DOORS[d] || {}, host = d.replace(/^https?:\/\//, ''), name = door.name || host;
+    return '<p><b>' + esc(name) + '</b> is its members’ beach' + (door.name ? ' (' + esc(host) + ')' : '') +
+      ': what its members keep there is theirs, and a stranger is shown only what they mark open, not even that the rest is there.</p>' +
+      '<p>A member proves their key once, and this device keeps a pass for twelve hours. ' +
+      '<button type="button" class="pass-wall__go" data-pass-prove="' + esc(d) + '">I’m a member: prove my key</button></p>' +
+      '<p class="pass-wall__said" aria-live="polite"></p>' +
+      '<p>Not a member? A member can invite you: their link brings you in with a name and a key of your own' +
+      (door.join ? ', at <a href="' + esc(door.join) + '">' + esc(name) + '’s String</a>' : '') + '.</p>';
+  }
+  function wall(origin){ var d = deployOf(origin || APEX); style(); return '<div class="pass-wall" data-pass-wall="' + esc(d) + '">' + words(d) + '</div>'; }
+  /* a page that drew no wall of its own is given one, under its bar */
+  function wallSoon(d){
+    if (SHOWN[d]) return;
+    SHOWN[d] = true;
+    setTimeout(function(){
+      if (held(d) || !document.body || document.querySelector('[data-pass-wall]')) return;
+      style();
+      var box = document.createElement('div');
+      box.className = 'pass-wall pass-wall--top'; box.setAttribute('data-pass-wall', d); box.setAttribute('role', 'status');
+      box.innerHTML = words(d);
+      var top = document.querySelector('.stickyhead') || document.querySelector('.bar');
+      if (top && top.parentNode) top.parentNode.insertBefore(box, top.nextSibling); else document.body.insertBefore(box, document.body.firstChild);
+    }, 1200);
+  }
+
+  /* PROVED, ASKED FOR: the name (the one the pass was last for, else asked, offering the name this device signs with) and
+   * the key (the one kept for it at this beach, else asked, twice more while the beach refuses it), kept wrapped once it
+   * proves; through the voice where it speaks for this beach, which asks and keeps as it always has */
+  function prove(op){
+    op = op || {};
+    var d = deployOf(op.beach || APEX), door = DOORS[d] || {}, host = d.replace(/^https?:\/\//, ''), place = door.name || host;
+    var ask = op.ask !== false, rec = record(d), name = clean(op.name || (rec && rec.name) || '');
+    if (!name && ask){
+      var v = window.prompt('Your name at ' + place + ': the one your passport there is under', signer());
+      if (v === null) return Promise.resolve({ ok: false, quiet: true });
+      name = clean(v);
+    }
+    if (!name || name.length > 32) return Promise.resolve({ ok: false, needName: true, error: 'a member’s name: up to 32 letters, digits, - or _' });
+    TRIED[d] = false; WALLED[d] = false;
+    var vc = window.beachVoice;
+    if (vc && vc.beach === d && typeof vc.prove === 'function') return vc.prove({ name: name, ask: ask }).then(function(r){ if (r && r.ok) r.name = name; return r; });
+    return (window.siteKeys ? window.siteKeys.ready() : Promise.resolve()).then(function(){
+      var key = keyFor(name, d), asked = 0, last = null;
+      function attempt(){
+        if (!key){
+          if (!ask || asked++ === 2) return last || { ok: false, needKey: true, error: name + '’s key is not on this device' };
+          var k = window.prompt((last ? 'That key is not the one ' + name + '’s passport at ' + place + ' uses. Enter it again' : 'The key ' + name + '’s passport at ' + place + ' uses') +
+            ' (kept on this device — check the first letter: phones capitalise it):');
+          if (k === null || !k.trim()) return { ok: false, quiet: true };
+          key = k.trim();
+        }
+        return proof(d, name, key).then(function(r){
+          /* kept, wrapped, before the page is read again */
+          if (r.ok) return (window.siteKeys ? window.siteKeys.set(keyName(name, d), key) : Promise.resolve()).then(function(){ return r; }, function(){ return r; });
+          if (r.open) return { ok: false, error: place + ' is open to anyone: no pass is needed' };
+          if (r.status === 404) return { ok: false, error: 'no member called ' + name + ' at ' + place };
+          if (r.status === 403 || r.code === 'lock_required' || r.code === 'handle_bound'){ last = { ok: false, error: 'that key does not open ' + name + '’s passport at ' + place }; key = ''; return attempt(); }
+          return r;
+        });
+      }
+      return attempt();
+    });
+  }
+  document.addEventListener('click', function(e){
+    var b = e.target && e.target.closest ? e.target.closest('[data-pass-prove]') : null;
+    if (!b) return;
+    e.preventDefault();
+    var box = b.closest('[data-pass-wall]'), said = box ? box.querySelector('.pass-wall__said') : null;
+    var say = function(t, err){ if (said){ said.textContent = t || ''; said.classList.toggle('err', !!err); } };
+    b.disabled = true; say('proving your key…');
+    prove({ beach: b.getAttribute('data-pass-prove'), ask: true }).then(function(r){
+      b.disabled = false;
+      if (r && r.ok){ say('a pass for ' + (r.name || 'you') + ', kept on this device for twelve hours: reading again…'); setTimeout(function(){ location.reload(); }, 500); return; }
+      say(r && r.quiet ? '' : (r && r.error) || 'the beach did not take that key', !(r && r.quiet));
+    });
+  });
+
+  window.sitePass = {
+    held: held, prove: prove, gated: gated, wall: wall, deployOf: deployOf,
+    walled: function(origin){ var d = deployOf(origin || APEX); return !!WALLED[d] && !held(d); }
+  };
+})();
+
+/* ── THE READER'S LOOK (look.2, 27 Oct 2026) was taken out on 28 Oct 2026 at David's word ("I need a SUPER SIMPLE
+ * way … two paths and the user can choose, and there's no logic which is being tripped"): a proposal's crafted page
+ * and its standard view, /proposal/<name>, each always show themselves, and nothing sends a reader from one to the
+ * other; the cards on /proposal carry a button to each (proposal.html). settings:<handle> 9.4, where the choice was
+ * kept, and localStorage view:look are read by nothing now. ── */
 
 /* ── THE HOURS — the clock's gatherings and beats, read on this device's clock.
  *
@@ -191,9 +784,17 @@
  * view that hides its own edge is a lie rather than a view (sed:beach-venture-cast).
  * Nothing is hidden on the beach and nothing is gated; every voice stands where it stood.
  * Never out of scope: the page's own hand (a /now/<handle> is that hand's) and the name
- * this device signs with. A group that seats nobody holds everyone. No scope until one is
+ * this device signs with. A group that seats nobody holds everyone. No group until one is
  * chosen, and offered only on a page that lists voices; once a person's organic web can
- * be read (open-commons 3.1), that is the default to come.
+ * be read (open-commons 3.1), that is the default to come. The choice of no group is
+ * called SCOPE: EVERYONE, never 'no scope' (David, 2026-10-20, the card on his timer:
+ * "'no scope' is just ugly").
+ *
+ * THE SCOPE WHERE THE VOICES ARE (David, 2026-10-20: "add scope dropdown to the pop ups on
+ * /now and /walk so that a user can scope the voices … whenever there's a bunch of voices,
+ * we want the voices to be below generally, and easily scope-able"). A page lays
+ * siteScope.pick(out) above the voices it governs: one dropdown, everyone and the groups
+ * that seat somebody, and more… for the chooser. Choosing there is choosing under options.
  *
  * WHERE A SCOPE IS HELD (David, 2026-10-13: "yes build both — lists branch 5 and fold the
  * cast in"). Who is in a scope stands in the group's own seats and nowhere else. Which
@@ -202,7 +803,7 @@
  * first of the scopes they read through at lists:<handle> branch 5 — rank is depth, so it
  * follows the person to every device and their own AI can read it, as the row at 3 does;
  * what this device last chose (localStorage, for a reader the device knows no name for);
- * else no scope. 'make this my default' writes branch 5 under the passport's key.
+ * else everyone. 'make this my default' writes branch 5 under the passport's key.
  *
  * A page opts in once with siteScope.watch(redraw, { owner }), asks siteScope.keep(handle)
  * of each voice as it draws (or siteScope.sift(list, handleOf) for the kept and the count
@@ -217,9 +818,9 @@
   function low(s){ return String(s == null ? '' : s).toLowerCase(); }
   function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
   function clean(v){ return low(v).replace(/^sed:/, '').replace(/[^a-z0-9_-]/g, ''); }
-  /* the scope this window looks through: its own choice ('-' is no scope chosen here), else the
+  /* the scope this window looks through: its own choice ('-' is everyone, chosen here), else the
    * person's default, else what this device last chose — one made under the first name,
-   * voices, carries over — else none */
+   * voices, carries over — else everyone ('') */
   function chosen(){
     var w = null; try { w = sessionStorage.getItem(KEY); } catch(e){}
     if (w !== null) return w === '-' ? '' : clean(w);
@@ -284,7 +885,7 @@
     (list || []).forEach(function(x){ if (keep(handleOf ? handleOf(x) : x)) kept.push(x); else aside++; });
     return { kept: kept, aside: aside };
   }
-  /* the line that says what the scope left out — empty when there is no scope */
+  /* the line that says what the scope left out — empty when the scope is everyone */
   function note(out){
     var g = chosen(); if (!g) return '';
     var ch = ' · <button type="button" data-scope>change</button>';
@@ -292,9 +893,41 @@
     if (!seats.length) return '<p class="sc-note">sed:' + esc(g) + ' seats nobody yet, so the scope holds everyone' + ch + '</p>';
     return '<p class="sc-note">scope sed:' + esc(g) + ' — ' + (out ? out + (out === 1 ? ' voice' : ' voices') + ' out of scope' : 'every voice here is in scope') + ch + '</p>';
   }
+  /* THE DROPDOWN, laid above a list of voices: everyone, then the groups that seat somebody in
+   * the chooser's own order (read once, the first time a dropdown is laid, and filled in where it
+   * stands), the window's own choice wherever it is not among them, and more… for the chooser.
+   * `out` is how many the scope left out, or the page's own line about what was set aside. */
+  var groupsP = null;
+  function options(){
+    var g = chosen(), seen = {}, h = '';
+    var add = function(n){ if (seen[n]) return; seen[n] = 1; h += '<option value="' + esc(n) + '"' + (n === g ? ' selected' : '') + '>scope: ' + esc(n || 'everyone') + '</option>'; };
+    add('');
+    (groups ? groups.map(function(x){ return x.name; }) : personal || []).forEach(add);
+    if (g) add(g);
+    return h + (groups ? '' : '<option disabled>reading the groups…</option>') + '<option value="*">more…</option>';
+  }
+  function pick(out){
+    var g = chosen();
+    style();
+    var refill = function(){ [].forEach.call(document.querySelectorAll('select[data-scope-pick]'), function(s){ s.innerHTML = options(); }); };
+    if (!groupsP) groupsP = listGroups().then(refill, function(){ groups = groups || []; refill(); });
+    var line = typeof out === 'string' ? out : !g ? '' : !seats ? 'reading its seats…'
+      : !seats.length ? 'it seats nobody yet, so it holds everyone'
+      : out ? out + (out === 1 ? ' voice' : ' voices') + ' out of scope' : 'every voice here is in scope';
+    return '<p class="sc-pick"><select data-scope-pick' + (g ? ' class="on"' : '') + ' aria-label="scope: whose voices to show">' +
+      options() + '</select>' + (line ? '<span>' + line + '</span>' : '') + '</p>';
+  }
 
   var CSS = '.sc-note{font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);margin:6px 0}' +
     '.sc-note button{background:none;border:0;padding:0;font:inherit;letter-spacing:inherit;color:var(--liquid);cursor:pointer;text-decoration:underline;text-underline-offset:3px}' +
+    '.sc-pick{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;margin:2px 0;font-family:var(--mono);font-size:11.5px;letter-spacing:0.04em;color:var(--vapour-dim);line-height:1.5}' +
+    /* as wide as the choice it shows, where the browser can size a box to its content */
+    '.sc-pick select{font:inherit;letter-spacing:inherit;color:var(--vapour);background:rgb(var(--well-rgb));border:1px solid var(--line);border-radius:6px;padding:4px 6px;cursor:pointer;max-width:100%;field-sizing:content}' +
+    '.sc-pick select.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),0.5)}' +
+    '.sc-pick select:hover{border-color:var(--liquid)}' +
+    '.sc-pick option{background:rgb(var(--well-rgb));color:var(--foam)}' +
+    /* a phone zooms the page into any box under 16px when it is tapped */
+    '@media (pointer:coarse){.sc-pick select{font-size:16px}}' +
     '.sc{border:1px solid var(--line-strong);border-radius:12px;background:rgb(var(--well-rgb));color:var(--foam);padding:0;' +
       'width:min(420px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 12px 40px rgba(0,0,0,0.4)}' +
     '.sc::backdrop{background:rgba(0,0,0,0.5)}' +
@@ -328,7 +961,7 @@
   function label(){
     var b = document.getElementById('btn-scope'); if (!b) return;
     var g = chosen();
-    b.textContent = g ? 'scope: ' + g : 'no scope';
+    b.textContent = 'scope: ' + (g || 'everyone');
   }
   function offer(){
     if (document.getElementById('btn-scope')) return;
@@ -343,7 +976,7 @@
     label();
   }
 
-  /* the chooser: no scope, or a group that seats somebody — the groups this device's
+  /* the chooser: everyone, or a group that seats somebody — the groups this device's
    * name sits in first — or any group by its name */
   function set(g){
     try { sessionStorage.setItem(KEY, g || '-'); } catch(e){}
@@ -351,8 +984,8 @@
     settle(); redraw(); if (card && card.open) card.close();
   }
   /* the person's default: branch 5 of their lists, written whole under the passport's key —
-   * this scope first and the rest after it, or the list emptied for no scope */
-  var SCOPES_SAYS = "The scopes this hand reads through, the one it reads through first — each a standing group, sed:<group>, whose seated people's walks every page shows while the scope is on (happyseaurchin.com: scope, under options); a voice out of scope is left out and counted, never hidden. RANK IS DEPTH, as in the lists beside this: 5.1 is the default, taken up wherever this hand's name is on the device, and 5.11 the next, offered first in the chooser. Empty, no scope. Who is in a scope stands in that group's own seats, never here, and a window may look through another scope for itself without touching this list. Once this hand's organic web can be read (open-commons 3.1), an empty list means that instead.";
+   * this scope first and the rest after it, or the list emptied for everyone */
+  var SCOPES_SAYS = "The scopes this hand reads through, the one it reads through first — each a standing group, sed:<group>, whose seated people's walks every page shows while the scope is on (happyseaurchin.com: scope, under options); a voice out of scope is left out and counted, never hidden. RANK IS DEPTH, as in the lists beside this: 5.1 is the default, taken up wherever this hand's name is on the device, and 5.11 the next, offered first in the chooser. Empty, scope: everyone. Who is in a scope stands in that group's own seats, never here, and a window may look through another scope for itself without touching this list. Once this hand's organic web can be read (open-commons 3.1), an empty list means that instead.";
   var said = '';   /* what the last keep said, shown in the footer it redraws */
   function makeDefault(g){
     var h = meRaw(), say = card && card.querySelector('.sc__said');
@@ -360,7 +993,7 @@
     var names = g ? [g].concat((personal || []).filter(function(x){ return x !== g; })) : [];
     if (say) say.textContent = 'keeping it in lists:' + h + '…';
     window.siteLists.save(h, 5, SCOPES_SAYS, names.map(function(x){ return 'sed:' + x; })).then(function(w){
-      if (w && w.ok){ personal = names; said = g ? 'sed:' + g + ' is your default now, wherever your name is on the device.' : 'No scope is your default now.'; settle(); redraw(); fill(); }
+      if (w && w.ok){ personal = names; said = (g ? 'sed:' + g : 'Everyone') + ' is your default now, wherever your name is on the device.'; settle(); redraw(); fill(); }
       else if (say) say.textContent = w && w.quiet ? 'Nothing kept.' : 'The beach refused it (' + ((w && w.status) || '?') + ').';
     });
   }
@@ -380,7 +1013,7 @@
   }
   function fill(){
     var g = chosen(), list = card.querySelector('.sc__list');
-    var row = function(name, line){ return '<button type="button" class="sc__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'no scope') + '</b><span>' + line + '</span></button>'; };
+    var row = function(name, line){ return '<button type="button" class="sc__g" data-g="' + esc(name) + '" aria-pressed="' + (name === g) + '"><b>' + (name ? 'sed:' + esc(name) : 'everyone') + '</b><span>' + line + '</span></button>'; };
     list.innerHTML = row('', 'every walk, as the beach has it') + '<p class="sc__wait">reading the groups on the beach…</p>';
     var def = function(){ return (personal && personal[0]) || ''; };
     listGroups().then(function(gs){
@@ -395,11 +1028,10 @@
     foot.hidden = !h;
     if (!h) return;
     (personaP || Promise.resolve()).then(function(){
-      var d = def(), act = '';
-      if (g && g !== d) act = '<button type="button" data-make="' + esc(g) + '">make sed:' + esc(g) + ' my default</button>';
-      else if (!g && d) act = '<button type="button" data-make="">make no scope my default</button>';
-      foot.innerHTML = '<p class="sc__p">Your default, kept in your lists so it follows you to every device: <b>' + (d ? 'sed:' + esc(d) : 'no scope') + '</b>.' +
-        (g === d ? ' This window is looking through it.' : ' This window is looking through ' + (g ? 'sed:' + esc(g) : 'no scope') + '.') + '</p>' +
+      var d = def(), act = '', called = function(x){ return x ? 'sed:' + esc(x) : 'everyone'; };
+      if (g !== d) act = '<button type="button" data-make="' + esc(g) + '">make ' + called(g) + ' my default</button>';
+      foot.innerHTML = '<p class="sc__p">Your default, kept in your lists so it follows you to every device: <b>' + called(d) + '</b>.' +
+        (g === d ? ' This window is set to it.' : ' This window is set to ' + called(g) + '.') + '</p>' +
         (act ? '<p class="sc__acts">' + act + '</p>' : '') + '<p class="sc__said">' + esc(said) + '</p>';
       said = '';
     });
@@ -435,6 +1067,13 @@
     if (card.showModal) card.showModal(); else card.setAttribute('open', '');
   }
   document.addEventListener('click', function(e){ if (e.target.closest && e.target.closest('[data-scope]')) choose(); });
+  /* a dropdown's choice is the choice under options; more… opens the chooser and leaves it as it was */
+  document.addEventListener('change', function(e){
+    var s = e.target;
+    if (!s || !s.matches || !s.matches('select[data-scope-pick]')) return;
+    if (s.value === '*'){ s.value = chosen(); choose(); return; }
+    set(s.value);
+  });
   window.addEventListener('storage', function(e){ if (e.key === KEY || e.key === OLD){ load(); redraw(); } });
 
   window.siteScope = {
@@ -445,7 +1084,7 @@
       if (fn && watchers.indexOf(fn) < 0) watchers.push(fn);
       style(); offer(); load();
     },
-    keep: keep, sift: sift, note: note, active: active,
+    keep: keep, sift: sift, note: note, pick: pick, active: active,
     name: chosen, choose: choose,
     /* for a page that reads as it draws: whether the scope is settled (none, or its seats
      * read), and a promise of that — draw once it holds, and again only when it changes */
@@ -610,7 +1249,9 @@
   var MARK = '…';                      /* after the phrase still being revised */
   var SIZE = 22, INSET = 5;                 /* the glyph, and its distance from the corner */
   var TITLE = 'dictate — Chrome transcribes on this device or sends audio to Google; Safari transcribes mostly on device';
-  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+  /* its own size rides the glyph, so a page whose stylesheet never arrived shows a small
+   * microphone, never one as wide as the screen; theme.css sets the same */
+  var ICON = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" focusable="false">' +
     '<path d="M12 15a4 4 0 0 0 4-4V6a4 4 0 1 0-8 0v5a4 4 0 0 0 4 4z"/>' +
     '<path d="M18 10a1 1 0 0 1 1 1 7 7 0 0 1-6 6.93V20h2a1 1 0 1 1 0 2H9a1 1 0 1 1 0-2h2v-2.07A7 7 0 0 1 5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 0 1 1-1z"/></svg>';
   var TERMINAL = { 'not-allowed':1, 'service-not-allowed':1, 'audio-capture':1, 'network':1, 'language-not-supported':1 };
@@ -942,7 +1583,11 @@
      * carried in the query and the ring moves it to /ring/<name>/<handle>, where it
      * fills the reader's name, so the browser can fill their key (David, 2026-10-10: "Are
      * meetings included in the drop-down go menu"; "can we do a /ring/<name>/<handle>") */
-    ['meetings',     'ring',     'carry'],
+    ['ring-meetings','ring',     'carry'],
+    /* every meeting held, after the hour — /met lists them all and /met?who=<handle> this
+     * hand's own, each opening its page after the hour (David, 2026-11-12, meetings.personal:
+     * "rename meetings to ring-meetings and met-reviews so that I can find the /met page") */
+    ['met-reviews',  'met',      'who'],
     /* when people are free — each person's calendar on the clock, filled by their own
      * AI, drawn as a week; the handle rides the query and marks their own lane
      * (David, 2026-10-10, availability.1: "an /availability o-page … a traditional
@@ -957,6 +1602,10 @@
      * 2026-10-18: "it should be in the go dropdown list under the user's handle in order
      * to navigate to the user's premieres") */
     ['premieres',    'premiere', 'carry'],
+    /* the hand's record drawn as threads through the days, each turn's pull requests, pages, documents and
+     * apps a link; /lanes/<hand>+<hand> lays several side by side (David, 2026-10-20: "a simple visual for
+     * the lanes/sessions we are operating with; and allows others to attach theirs") */
+    ['lanes',        'lanes',    'handle'],
     ['one at a time','next',     'handle'],
     ['the morning',  'morning',  'handle'],
     ['the ledger',   'ledger',   'handle']
@@ -970,7 +1619,7 @@
     ['earth',            'earth',        'optional']
   ];
   /* off until chosen — every other door is what a newcomer meets */
-  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, 'https://mirror.onen.ai/':1 };
+  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, lanes:1, 'https://mirror.onen.ai/':1 };
   /* a page renamed keeps the lists that named it */
   var DOOR_ALIAS = { shell:'passport', self:'passport' };
   /* who you do it with: the door in, and the live surface where people actually
@@ -1002,6 +1651,24 @@
     /* every reflexive experience, gathered from each maker's own list (David, 2026-10-18:
      * "We definitely need a gallery of them") */
     ['premiere',    'premieres'],
+    /* the game arcade's front door: every game on the shelf with its top ten today (the game-arcade
+     * proposal's build order, 1.11111.3; David's GO, 26 Oct 2026) */
+    ['arcade',      'the arcade'],
+    /* every proposal on the beach, each drawn from its own blocks, and the form that makes one
+     * (function:proposal, 2026-10-22: "build the proposal-package") */
+    ['proposal',    'proposals'],
+    /* every schematic on the beach, each a running process drawn at the face of whoever reads it, and the form that
+     * draws one (function:schematic; David's GO at spine:schematics 1.111118, 28 Oct 2026) */
+    ['schematic',   'schematics'],
+    /* every whole system on the beach, a person's or an AI's, each with its standard view and, where its holder has
+     * made one, its snazzy page (the list block whole-systems; David, 17 Nov 2026: "like proposals") */
+    ['whole-system', 'whole systems'],
+    /* keel's navigator: any block walked on two axes, Iris and Magic Eye, and at page size the site's own pages framed
+     * like a browser; every place in it a link, /eye/<block>/<address> (pool:weft 526, lane eye.1, 16 Nov 2026) */
+    ['eye',         'the eye'],
+    /* one screen for what is live and what asks of David, every lane, project and decision in four colours
+     * (spine:loom 1.1; David's GO at the build order and 'loom sounds good', 27 Oct 2026) */
+    ['loom',        'the loom'],
     ['dashboard',   'the beach, live'],
     /* the window as it is compiled — ribbons of what entered each call (David, 2026-10-13: "if only it were included in the go dropdown") */
     ['mindflow/flow', 'semantic flow'],
@@ -1009,7 +1676,9 @@
     ['mindflow/reflection', 'the reflection, live'],
     ['path',        'part by part', '/path/beach-venture'],
     ['tracks',      'the tracks',   '/tracks/beach-venture'],
-    ['ring',        'meetings'],
+    ['ring',        'ring-meetings'],
+    /* every meeting held, after the hour, each opening its own page (meetings.personal, 2026-11-12) */
+    ['met',         'met-reviews'],
     /* a meeting's State Stack, live: phones set their stacks, one screen draws the room (task:weft 33, 2026-10-14) */
     ['stack',       'the state stack'],
     ['availability','availability'],
@@ -1017,8 +1686,49 @@
     ['tree',        'every field'],
     ['found',       'found a field'],
     ['lately',      'lately'],
-    ['news',        'news']
+    ['news',        'news'],
+    /* what people are sharing: a link and a line of why, each in its sharer's own mirror at the second it was shared
+     * (function:string; David's GO at spine:happening 1.1118, 27 Oct 2026) */
+    ['string',      'the string'],
+    /* the middle point's app: one button over a host of cells that listen at several speeds and speak only at the middle
+     * point, with the settings, the score and the voice out (the verso build record, §2.3; lane verso.1, 5 Nov 2026) */
+    ['verso',       'verso'],
+    /* an open model in the visitor's own browser (WebLLM), with the beach as its memory, its knowledge and its company
+     * (lane web-llm.1, 6 Nov 2026, at David's GO) */
+    ['webllm',      'a mind in your browser']
   ];
+
+  /* THE SITE'S OWN PAGES, ON THE BEACH (weft, eye.15, 19 Nov 2026, at David's 'Yes, go ahead' to iris.3's reading of
+   * 'the go menu for the site and the personalised one'): the list above stands in a block too, site:happyseaurchin.com,
+   * its pages down branch 1 rank as depth (as a hand's lists are kept), each '<address> — <its name here>', so this menu
+   * and the eye's drawer (This site) read one list, and a page added there reaches both. SITE is its copy and the
+   * fallback: the block is read when the site's list is first shown and kept on this device an hour (site:pages), and
+   * only a list read whole and well formed takes the copy's place. */
+  var SITE_BLOCK = 'site:happyseaurchin.com', SITE_KEEP = 'site:pages', SITE_HOUR = 3600e3, siteReading = null;
+  function siteFromBlock(b){
+    var items = b && typeof b === 'object' ? chainToItems(b['1']) : [];
+    var out = items.map(function(x){
+      var m = /^(?:https?:\/\/)?(?:www\.)?happyseaurchin\.com(\/\S*)\s+—\s+(\S[\s\S]*)$/.exec(x.name);
+      return m && m[1].length > 1 ? [m[1].slice(1), m[2].trim(), m[1]] : null;
+    });
+    return out.length && out.every(Boolean) ? out : null;
+  }
+  function siteKept(){
+    try { var k = JSON.parse(localStorage.getItem(SITE_KEEP) || 'null'); return k && Date.now() - k.at < SITE_HOUR && Array.isArray(k.list) && k.list.length ? k.list : null; }
+    catch(e){ return null; }
+  }
+  function sitePages(){ return siteKept() || SITE; }
+  function readSite(){
+    if (!siteReading) siteReading = fetch('https://beach.happyseaurchin.com/.well-known/pscale-beach?block=' + encodeURIComponent(SITE_BLOCK), { headers:{Accept:'application/json'}, cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(b){
+        var list = siteFromBlock(b);
+        if (list) { try { localStorage.setItem(SITE_KEEP, JSON.stringify({ at: Date.now(), list: list })); } catch(e){} }
+        return list;
+      })
+      .catch(function(){ return null; });
+    return siteReading;
+  }
 
   /* THE NAME THIS DEVICE SIGNS WITH — render:who, kept by whichever page last wrote
    * under it (/welcome's 'that's me' and its three cards, /page, /view, /render,
@@ -1156,6 +1866,8 @@
     if (shape === 'bare')   return '/' + page;
     /* carry: the page's path names something else (a meeting), so the handle rides in the query */
     if (shape === 'carry')  return handle ? '/' + page + '?h=' + h : '/' + page;
+    /* who: the page lists everyone's and narrows to one person's by ?who= (/met) */
+    if (shape === 'who')    return handle ? '/' + page + '?who=' + h : '/' + page;
     /* optional: the page does not need a handle to work, but carries one so the
      * chain of doors is not broken by passing through it. */
     if (shape === 'optional') return handle ? '/' + page + '/' + h : '/' + page;
@@ -1270,6 +1982,9 @@
   var shareCard = null;
   function shareAct(mount){
     if (document.getElementById('btn-share-forward')) return;
+    /* not at a members' door (data-door on <html>): the invite is the open commons' own, and a door shows only what acts
+     * on its own beach (spine:salt-app 1.1, OWN; lane salt.app.2, 19 Nov 2026) */
+    if (document.documentElement.hasAttribute('data-door')) return;
     var b = document.createElement('button');
     b.type = 'button'; b.id = 'btn-share-forward';
     b.textContent = 'share forward';
@@ -1315,6 +2030,10 @@
   function mintAct(){
     var mount = document.querySelector('.bar');
     if (!mount || document.getElementById('btn-mint')) return;
+    /* not at a members' door (data-door on <html>): a card goes into a hand on the open beach (hand.js), so ＋card would
+     * carry a member's words past their door's edge, and on the door's own site its scripts are not there to load
+     * (spine:salt-app 1.1.4; lane salt.app.2, 19 Nov 2026) */
+    if (document.documentElement.hasAttribute('data-door')) return;
     /* ON A PHONE THE BAR HAS NO ROOM TO SPARE: the longest title cannot wrap
      * below its longest word (a handle), so the bar's gaps and side padding
      * tighten a little there and the word stacks under its ＋ — else the bar
@@ -1401,13 +2120,17 @@
   /* the beach's voice, once a page: a page that carries it already is not given a second */
   function voice(){
     if (window.beachVoice) return Promise.resolve(window.beachVoice);
-    if (!voiceP) voiceP = new Promise(function(ok, no){
+    /* the keys this device keeps are moved onto the voice's own names before it first reads them (siteKeys, above),
+     * so it finds every one; a seal slow to come holds it up three seconds at most */
+    var keys = window.siteKeys ? Promise.race([window.siteKeys.ready(), new Promise(function(r){ setTimeout(r, 3000); })]) : Promise.resolve();
+    if (!voiceP) voiceP = keys.then(function(){ return new Promise(function(ok, no){
+      if (window.beachVoice) return ok(window.beachVoice);
       var s = document.createElement('script');
       s.src = VOICE; s.async = true;
       s.onload = function(){ if (window.beachVoice) ok(window.beachVoice); else no(); };
       s.onerror = function(){ voiceP = null; no(); };
       document.body.appendChild(s);
-    });
+    }); });
     return voiceP;
   }
   /* the act under options, saying what it will do */
@@ -1684,8 +2407,8 @@
     var chain = listToChain(items);
     if (chain) branch['1'] = chain;
 
-    return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
-                 { headers:{Accept:'application/json'}, cache:'no-store' })
+    return window.siteKeys.ready().then(function(){ return fetch(origin + '/.well-known/pscale-beach?block=' + encodeURIComponent(name),
+                 { headers:{Accept:'application/json'}, cache:'no-store' }); })
       .then(function(r){
         /* a read that failed is never written over: the block would be replaced by its error */
         if (!r.ok && r.status !== 404) throw { ok:false, status:r.status };
@@ -1696,9 +2419,8 @@
         if (typeof content._ !== 'string' || !content._) content._ = ROOT_SAYS;
         content[String(digit)] = branch;
 
-        var key = null;
-        /* the passport's own key first: the beach binds lists:<handle> to it (handle_bound) */
-        try { key = localStorage.getItem(latchFor(handle)) || localStorage.getItem('passport-latch:' + handle); } catch(e){}
+        /* the passport's own key first: the beach binds lists:<handle> to it (handle_bound); both kept wrapped (siteKeys) */
+        var key = window.siteKeys.get(latchFor(handle)) || window.siteKeys.get('passport-latch:' + handle) || null;
         if (!key){
           key = prompt('Your key for ' + name + ' — the one your passport uses, if you have one; it keeps these lists yours to edit:');
           if (key === null || !key.trim()) return { ok:false, quiet:true };
@@ -1709,14 +2431,14 @@
 
         var landed = function(){ listsRead[origin + '|' + handle] = Promise.resolve(content); };
         return post(origin, body).then(function(w){
-          if (w.ok){ try { localStorage.setItem(latchFor(handle), key); } catch(e){} landed(); return w; }
+          if (w.ok){ window.siteKeys.set(latchFor(handle), key); landed(); return w; }
           var bound = !w.ok && w.data && w.data.code === 'handle_bound';
           if (!lockRequired(w) && !bound) return w;
           var v = prompt(bound ? 'The beach binds ' + name + " to your passport's key — enter that key:" : 'That key was refused for ' + name + '. Try again:');
           if (v === null || !v.trim()) return { ok:false, quiet:true };
           body.secret = v.trim(); body.new_lock = v.trim();
           return post(origin, body).then(function(w2){
-            if (w2.ok){ try { localStorage.setItem(latchFor(handle), v.trim()); } catch(e){} landed(); }
+            if (w2.ok){ window.siteKeys.set(latchFor(handle), v.trim()); landed(); }
             return w2;
           });
         });
@@ -2263,6 +2985,63 @@
     var menu = document.createElement('div');
     menu.className = 'dd__menu';
 
+    /* A MEMBERS' DOOR (19 Nov 2026, lane salt.app.2; spine:salt-app 1.1, OWN three for three on 4 Nov, and David's 'Start
+     * the header' that day): a page served at a door of a members' beach goes only to that beach's own pages, never the
+     * site's or a hand's, which stand on the open beach and answer nothing on the door's own site. The page names its door
+     * (cfg.door: its name, its beach, its own site, and its own list as [address, name, what it is] each). Its go reads the
+     * beach's own lighthouse at 8 ('<address> — <what it is>', block-conventions 4.4), kept by the beach's keeper and marked
+     * beyond so a stranger's go reads it too, the menu showing what each is up to its first colon: a page joins the door
+     * with one line there and no code. Until that stands, or where it cannot be read whole, the page's own list. A place on
+     * another site is marked ↗, so a link that leads out says so before the tap. Read when the menu first opens, as the
+     * site's list is. */
+    if (cfg.door){
+      var DOOR_LIST = (cfg.door.pages || []).slice(), doorAsked = false;
+      s.title = (cfg.door.name ? cfg.door.name + '’s' : 'this door’s') + ' own pages';
+      var doorSite = function(addr){ try { return new URL(addr, location.href).hostname.replace(/^www\./, ''); } catch(e){ return ''; } };
+      var doorHere = function(addr){
+        try {
+          var u = new URL(addr, location.href), seg = u.pathname.replace(/^\/+|\/+$/g, '').split('/')[0];
+          return cfg.here ? seg === cfg.here : (u.host === location.host && u.pathname === location.pathname);
+        } catch(e){ return false; }
+      };
+      var paintDoor = function(){
+        menu.textContent = '';
+        DOOR_LIST.forEach(function(p){
+          var out = !!cfg.door.site && doorSite(p[0]) !== cfg.door.site;
+          door(p[1] + (out ? ' ↗' : ''), p[0], !out && doorHere(p[0]));
+          if (menu.lastChild && (p[2] || out)) menu.lastChild.title = (p[2] || '') + (out ? (p[2] ? ' — ' : '') + 'on ' + doorSite(p[0]) : '');
+        });
+      };
+      var fromLighthouse = function(b){
+        var eight = b && typeof b === 'object' ? b['8'] : null, out = [];
+        if (!eight || typeof eight !== 'object') return null;
+        for (var k = 1; k <= 9; k++){
+          var e = eight[String(k)], t = typeof e === 'string' ? e : (e && typeof e._ === 'string' ? e._ : '');
+          if (!t) continue;
+          var m = /^(https?:\/\/\S+)\s+—\s+(\S[\s\S]*)$/.exec(t.trim());
+          if (!m) return null;
+          out.push([m[1], m[2].split(/:\s/)[0].trim(), m[2].trim()]);
+        }
+        return out.length ? out : null;
+      };
+      var fitDoor = function(){ menu.style.maxHeight = Math.max(180, window.innerHeight - menu.getBoundingClientRect().top - 12) + 'px'; };
+      paintDoor();
+      d.appendChild(menu);
+      window.addEventListener('resize', function(){ if (d.open) fitDoor(); });
+      d.addEventListener('toggle', function(){
+        if (!d.open) return;
+        fitDoor();
+        if (doorAsked || !cfg.door.beach) return;
+        doorAsked = true;
+        fetch(String(cfg.door.beach).replace(/\/+$/, '') + '/.well-known/pscale-beach?block=lighthouse', { headers: { Accept: 'application/json' }, cache: 'no-store' })
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .then(function(b){ var got = fromLighthouse(b); if (got){ DOOR_LIST = got; paintDoor(); fitDoor(); } })
+          .catch(function(){});
+      });
+      mount.appendChild(d);
+      return d;
+    }
+
     /* THE LISTS AS TABS (tidying.22; David, 2026-10-12: "I need to work on it so that
      * it is more obvious"). The go menus are kinds of list — a hand's places, the site's
      * own pages, the tables or a character's table — and a reader standing in one must
@@ -2370,8 +3149,15 @@
       if (!HAND || (me && me.toLowerCase() === HAND.toLowerCase())) return url;
       return url + (url.indexOf('?') < 0 ? '?' : '&') + 'h=' + encodeURIComponent(HAND);
     }
+    /* a page knows itself in the list by its path, or by the path's first word where its address carries more
+     * (/path/beach-venture is the path page's) */
+    function hereIs(key){ return !!cfg.here && (key === cfg.here || key.indexOf(cfg.here + '/') === 0); }
+    function shown(l){ return l.map(function(p){ return p[1] + '|' + (p[2] || '/' + p[0]); }).join(','); }
     function paintSite(){
-      SITE.forEach(function(p){ door(p[1], carry(p[2] || '/' + p[0]), p[0] === cfg.here); });
+      var list = sitePages();
+      list.forEach(function(p){ door(p[1], carry(p[2] || '/' + p[0]), hereIs(p[0])); });
+      /* the block read once the list is shown, and the list painted again only if the block says otherwise */
+      if (!siteKept()) readSite().then(function(got){ if (got && shown(got) !== shown(list) && TAB === 'site' && !menu.querySelector('.dd__ask')) paint(); });
       rule();
       door('the mirror ↗', 'https://mirror.onen.ai/');
       door('the tables', '/rpg');
@@ -2827,4 +3613,305 @@
       });
     });
   };
+})();
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * WITH YOUR AI — the door every page a person is handed carries (spine:o-page-unit
+ * 1.1; David's GO at 1.18, 15 November 2026; thread:41).
+ *
+ * A page that is the face of one family carries one button, 'with your AI', in the
+ * same place on every page: the bottom left, the beach button's corner being the
+ * bottom right. A tap fetches /door.js (never before), which opens a sheet over the
+ * page: how to add the beach to one's AI, a first message written for this page and
+ * the place the reader has reached, and /connect for the rest.
+ *
+ * The page says which family it is, as it already does: data-proposal, data-meeting
+ * or data-schematic on its <html> (data-family for any other), or its address
+ * (/proposal/<name>, /schematic/<name>, /met/<name>). A page with its own door
+ * (window.openDoor) keeps it and this stands aside, so no page shows two, though since
+ * 19 November 2026 no page keeps one (David: 'use the shared door') and smoke-door fails
+ * a page that does; never in a frame; never where the html or the body says
+ * data-ai-door="off". Any element marked data-ai-door opens the same door, so a page can
+ * set it in its own header, and the corner button then stands aside, as the eight pages
+ * that kept doors of their own now do.
+ * (Not data-door: five pages already use that word for doors of their own.)
+ * ───────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  function slug(v){ return String(v || '').toLowerCase().replace(/[^a-z0-9-]/g, ''); }
+  function familyOf(){
+    var h = document.documentElement, p = location.pathname, m, q;
+    try { q = new URLSearchParams(location.search); } catch(e){ q = { get: function(){ return null; } }; }
+    var fam = null;
+    if (h.getAttribute('data-family')) fam = { name: slug(h.getAttribute('data-family')) };
+    else if (h.getAttribute('data-proposal')) fam = { name: slug(h.getAttribute('data-proposal')) };
+    else if (h.getAttribute('data-meeting')) fam = { name: slug(h.getAttribute('data-meeting')), kind: 'meeting' };
+    else if (h.getAttribute('data-schematic')) fam = { name: slug(h.getAttribute('data-schematic')).replace(/-schematic$/, '') + '-schematic', kind: 'schematic' };
+    else if ((m = /^\/proposal(?:\.html)?(?:\/([A-Za-z0-9-]+))?\/?$/.exec(p)) && (m[1] || q.get('p'))) fam = { name: slug(m[1] || q.get('p')) };
+    else if ((m = /^\/schematic(?:\.html)?(?:\/([A-Za-z0-9-]+))?\/?$/.exec(p)) && (m[1] || q.get('s'))) fam = { name: slug(m[1] || q.get('s')).replace(/-schematic$/, '') + '-schematic', kind: 'schematic' };
+    else if ((m = /^\/met(?:\.html)?(?:\/([^\/?#]+))?\/?$/.exec(p)) && (m[1] || q.get('f'))) {
+      var n = ''; try { n = decodeURIComponent(m[1] || ''); } catch(e){}
+      fam = { name: slug(n || q.get('f')), kind: 'meeting' };
+    }
+    /* a document or a recipe drawn plainly at /walk/<name>; never /walk/<family>/<handle>, a hand's own */
+    else if ((m = /^\/walk\/([A-Za-z0-9-]+)\/?$/.exec(p))) fam = { name: slug(m[1]) };
+    return fam && fam.name && fam.name !== '-schematic' ? fam : null;
+  }
+  window.siteDoorFamily = familyOf;
+
+  var loading = null;
+  function load(){
+    if (window.siteDoor) return Promise.resolve(window.siteDoor);
+    if (!loading) loading = new Promise(function(ok, no){
+      var s = document.createElement('script');
+      s.src = '/door.js';
+      s.onload = function(){ window.siteDoor ? ok(window.siteDoor) : no(new Error('the door did not load')); };
+      s.onerror = function(){ loading = null; no(new Error('the door did not load')); };
+      document.head.appendChild(s);
+    });
+    return loading;
+  }
+  /* the page's own door where it has one; else this one; /connect if neither loads */
+  window.siteDoorOpen = function(from, opts){
+    if (typeof window.openDoor === 'function') return window.openDoor(from);
+    load().then(function(d){
+      var o = opts || {}; o.from = from || o.from;
+      d.open(o);
+    }, function(){ location.href = '/connect'; });
+  };
+
+  var CSS =
+    '.aid-pill{position:fixed;left:max(14px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));z-index:45;' +
+      'display:inline-flex;align-items:center;gap:7px;margin:0;padding:8px 14px 8px 11px;border-radius:999px;' +
+      'border:1px solid rgba(91,63,207,.42);background:#fbfaf7;color:#3d2a96;' +
+      'font:600 13px/1.1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.01em;' +
+      'box-shadow:0 4px 18px rgba(20,10,60,.18);cursor:pointer;-webkit-tap-highlight-color:transparent;' +
+      'transition:opacity .2s ease,transform .2s ease}' +
+    '.aid-pill:hover{border-color:#5b3fcf}' +
+    '.aid-pill:focus-visible{outline:2px solid #5b3fcf;outline-offset:3px}' +
+    'html[data-theme="dark"] .aid-pill{background:#201d29;color:#cdbfff;border-color:rgba(171,152,255,.5);box-shadow:0 4px 18px rgba(0,0,0,.45)}' +
+    'html[data-theme="dark"] .aid-pill:hover{border-color:#ab98ff}' +
+    '.aid-pill svg{width:16px;height:16px;flex:none}' +
+    '.aid-pill.aid-away{opacity:0;pointer-events:none;transform:translateY(10px)}' +
+    'html.aid-open .aid-pill,body:has(dialog[open]) .aid-pill,body:has(.pop-back:not([hidden]):not(.hidden)) .aid-pill,' +
+      'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-pill{display:none}' +
+    '@media print{.aid-pill{display:none}}';
+  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M3.5 21h17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="14.6" cy="12.4" r="1.3" fill="currentColor"/></svg>';
+
+  function pill(){
+    if (document.querySelector('.aid-pill')) return;
+    var st = document.createElement('style');
+    st.textContent = CSS;
+    document.head.appendChild(st);
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'aid-pill';
+    b.setAttribute('aria-haspopup', 'dialog');
+    b.setAttribute('aria-label', 'With your AI: bring your own AI to this page');
+    b.innerHTML = ICON + '<span>with your AI</span>';
+    b.addEventListener('click', function(){ window.siteDoorOpen(b); });
+    document.body.appendChild(b);
+    keepClear(b);
+    /* a phone's keyboard: the corner button steps away while words are being typed */
+    function typing(el){ return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|submit|checkbox|radio|range|color|file|reset)$/i.test(el.type)) || el.isContentEditable); }
+    document.addEventListener('focusin', function(e){ if (window.innerWidth < 700 && typing(e.target)) b.classList.add('aid-away'); });
+    document.addEventListener('focusout', function(){ b.classList.remove('aid-away'); });
+  }
+
+  /* THE CORNER IS SHARED: a page's own fixed control, or a sticky one while it stands stuck (a
+   * rail down the left, a player along the foot), keeps its place and the button steps clear of it:
+   * above a bar, beside a rail. Only what stands still counts, so a sticky heading still moving
+   * with the page never makes the button jump. Looked for once the page has drawn, and again as
+   * it grows; checked as the page scrolls or the window changes. */
+  function stuck(el, cs, r){
+    if (cs.position === 'fixed') return true;
+    if (cs.position !== 'sticky') return false;
+    var t = parseFloat(cs.top), bt = parseFloat(cs.bottom), l = parseFloat(cs.left);
+    return (!isNaN(t) && Math.abs(r.top - t) < 2) || (!isNaN(bt) && Math.abs(window.innerHeight - r.bottom - bt) < 2) || (!isNaN(l) && Math.abs(r.left - l) < 2);
+  }
+  function keepClear(b){
+    var held = [], ticking = false;
+    function scan(){
+      held = [];
+      var all = document.body.getElementsByTagName('*');
+      for (var i = 0; i < all.length; i++){
+        var el = all[i];
+        if (el === b || b.contains(el) || (el.closest && el.closest('.aid-back'))) continue;
+        var cs = window.getComputedStyle(el);
+        if (cs.position === 'fixed' || cs.position === 'sticky') held.push({ el: el, cs: cs });
+      }
+      place();
+    }
+    function place(){
+      ticking = false;
+      b.style.left = ''; b.style.bottom = '';
+      if (!held.length) return;
+      var p = b.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, left = null, bottom = null;
+      held.forEach(function(o){
+        if (o.cs.display === 'none' || o.cs.visibility === 'hidden') return;
+        var r = o.el.getBoundingClientRect();
+        if (!r.width || !r.height || (r.width > W * 0.6 && r.height > H * 0.6)) return;   /* a whole-screen layer is no neighbour */
+        if (!(r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top)) return;
+        if (!stuck(o.el, o.cs, r)) return;
+        if (r.width >= r.height) bottom = Math.max(bottom || 0, H - r.top + 10);           /* a bar: stand above it */
+        else left = Math.max(left || 0, r.right + 12);                                       /* a rail: stand beside it */
+      });
+      if (bottom !== null) b.style.bottom = bottom + 'px';
+      if (left !== null) b.style.left = left + 'px';
+    }
+    function soon(){ if (!ticking){ ticking = true; window.requestAnimationFrame(place); } }
+    window.addEventListener('scroll', soon, { passive: true });
+    window.addEventListener('resize', function(){ setTimeout(scan, 150); });
+    setTimeout(scan, 300); setTimeout(scan, 1500); setTimeout(scan, 4000);
+  }
+
+  function wire(){
+    if (window.top !== window) return;
+    var h = document.documentElement, body = document.body;
+    if (!body || h.getAttribute('data-ai-door') === 'off' || body.getAttribute('data-ai-door') === 'off') return;
+    if (typeof window.openDoor === 'function') return;                       /* the page's own door */
+    document.addEventListener('click', function(e){
+      var t = e.target && e.target.closest ? e.target.closest('[data-ai-door]') : null;
+      if (!t || t.getAttribute('data-ai-door') === 'off') return;
+      e.preventDefault();
+      window.siteDoorOpen(t, { family: t.getAttribute('data-ai-door') || undefined });
+    });
+    if (document.querySelector('[data-ai-door]:not([data-ai-door="off"])')) return;   /* set in the page's own header */
+    if (!familyOf()) return;
+    pill();
+  }
+  /* after the page's own scripts, which is where a page defines a door of its own */
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(wire, 0); });
+  else setTimeout(wire, 0);
+})();
+
+/* ───────────────────────────────────────────────────────────
+ * siteHand: hand the page on in person (David, 17 November 2026, thread 49: 'a simple qr code
+ * I can flash them'; 'add the code to the pages with their own doors too'). One card over the
+ * page, opened by the corner door's 'Someone beside you? Show this page as a code' and by any
+ * element marked data-hand-on (the pages that keep a door of their own put one in their sheet):
+ * the page's own address as a QR code a phone beside you can scan, dark on white in either
+ * theme, /vendor/qrcode.js fetched on the first use, never before.
+ *
+ * A page may say what its code carries for the person showing it: window.siteHandUrl(handle)
+ * returns the address to encode, and window.siteHandAsk = { label, empty } names that handle,
+ * so the card shows it, the name this device signs with to start (render:who), and redraws the
+ * code as it is changed. /mind-meld does: its code carries ?with=<handle>, so whoever scans it
+ * melds with the person who showed it. It writes nothing and keeps nothing.
+ * ─────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  var lib = null;
+  function loadQr(){
+    if (typeof window.qrcode === 'function') return Promise.resolve();
+    if (!lib) lib = new Promise(function(ok, no){
+      var sc = document.createElement('script');
+      sc.src = '/vendor/qrcode.js'; sc.async = true;
+      sc.onload = function(){ typeof window.qrcode === 'function' ? ok() : no(); };
+      sc.onerror = function(){ lib = null; no(); };
+      document.head.appendChild(sc);
+    });
+    return lib;
+  }
+  /* a QR code of url drawn into el as an SVG, dark modules on white with a quiet zone */
+  function draw(el, url){
+    return loadQr().then(function(){
+      var q = window.qrcode(0, 'M'); q.addData(url); q.make();
+      var svg = q.createSvgTag(4, 16), m = /width="(\d+)px"/.exec(svg) || /width="(\d+)"/.exec(svg);
+      if (m && svg.indexOf('viewBox') < 0) svg = svg.replace('<svg ', '<svg viewBox="0 0 ' + m[1] + ' ' + m[1] + '" ');
+      el.innerHTML = svg.replace(/ width="[^"]*"/, '').replace(/ height="[^"]*"/, '');
+      el.setAttribute('data-for', url);
+    }, function(){ el.textContent = url; });
+  }
+  /* the page's own address, as the door gives it: canonical host and path, never a query or hash */
+  function base(){
+    var c = document.querySelector('link[rel="canonical"]'), o = document.querySelector('meta[property="og:url"]');
+    var href = (c && c.getAttribute('href')) || (o && o.getAttribute('content')) || '';
+    try { if (href) { var u = new URL(href, location.href); return 'https://' + u.host + u.pathname.replace(/\/+$/, ''); } } catch(e){}
+    var host = /(^|\.)happyseaurchin\.com$/.test(location.hostname) ? location.host : 'happyseaurchin.com';
+    return 'https://' + host + location.pathname.replace(/\.html$/, '').replace(/\/+$/, '');
+  }
+  function clean(v){ return window.cleanHandle ? window.cleanHandle(v) : String(v || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 32); }
+  function me(){ try { return clean(localStorage.getItem('render:who')) || ''; } catch(e){ return ''; } }
+  function url(h){ return typeof window.siteHandUrl === 'function' ? window.siteHandUrl(h || '') : base(); }
+
+  var CSS =
+    '.site-hand{border:0;border-radius:18px;padding:18px 18px 16px;width:min(360px,92vw);max-height:92vh;overflow:auto;background:#fbfaf7;color:#17161a;' +
+      'box-shadow:0 22px 70px rgba(0,0,0,.4);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
+    '.site-hand::backdrop{background:rgba(10,10,16,.62)}' +
+    '.site-hand .sh-x{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:50%;border:1px solid #d8d3c9;background:#fff;color:#17161a;font-size:21px;line-height:1;cursor:pointer}' +
+    '.site-hand .sh-k{margin:0 0 2px;font:700 11px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;text-transform:uppercase;color:#6c675e}' +
+    '.site-hand .sh-h{margin:0 44px 12px 0;font:700 20px/1.2 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}' +
+    '.site-hand .sh-ask{margin:0 0 10px}' +
+    '.site-hand .sh-lab{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;font-weight:600;font-size:14px}' +
+    '.site-hand .sh-in{flex:1;min-width:8em;border:1px solid #cdc7bb;border-radius:10px;padding:7px 10px;font:15px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;background:#fff;color:#17161a}' +
+    '.site-hand .sh-note{margin:6px 0 0;font-size:13px;color:#6c675e}' +
+    '.site-hand .sh-img{width:min(262px,72vw);margin:2px auto 8px;background:#fff;border-radius:10px}' +
+    '.site-hand .sh-img svg{display:block;width:100%;height:auto}' +
+    '.site-hand .sh-cap{margin:0;text-align:center;font-size:13.5px;color:#4b4840}' +
+    '.site-hand .sh-cap b{color:#17161a;overflow-wrap:anywhere}' +
+    '.sh-btn{border:1px solid currentColor;background:transparent;color:inherit;border-radius:999px;padding:5px 12px;font-family:inherit;font-weight:600;font-size:13px;line-height:1.3;cursor:pointer}' +
+    '.sh-btn:hover{background:color-mix(in srgb,currentColor 10%,transparent)}';
+
+  /* the style goes in at once, so a page's own data-hand-on button wears it before the card first opens */
+  (function(){ var st = document.createElement('style'); st.setAttribute('data-site-hand', ''); st.textContent = CSS; (document.head || document.documentElement).appendChild(st); })();
+  var dlg = null, timer = 0;
+  function $(s){ return dlg.querySelector(s); }
+  function build(){
+    if (dlg) return;
+    dlg = document.createElement('dialog');
+    dlg.className = 'site-hand';
+    dlg.setAttribute('aria-labelledby', 'shH');
+    dlg.innerHTML =
+      '<button type="button" class="sh-x" aria-label="Close">×</button>' +
+      '<p class="sh-k">Hand this page on</p>' +
+      '<h2 class="sh-h" id="shH">Show them this code</h2>' +
+      '<div class="sh-ask" hidden><label class="sh-lab"><span class="sh-labt"></span><input class="sh-in" type="text" maxlength="32" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="your name on the beach"></label><p class="sh-note" aria-live="polite"></p></div>' +
+      '<div class="sh-img" role="img" aria-label="A code that opens this page on another phone"></div>' +
+      '<p class="sh-cap">Point a phone’s camera at it. It opens <b class="sh-url"></b> there.</p>';
+    document.body.appendChild(dlg);
+    $('.sh-x').addEventListener('click', close);
+    dlg.addEventListener('click', function(e){ if (e.target === dlg) close(); });
+    /* the card's keys are its own: a page's door beneath it never sees them */
+    dlg.addEventListener('keydown', function(e){ e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    dlg.addEventListener('cancel', function(e){ e.preventDefault(); close(); });
+    $('.sh-in').addEventListener('input', function(){
+      var c = clean(this.value);
+      if (c !== this.value) this.value = c;
+      clearTimeout(timer); timer = setTimeout(refresh, 220);
+    });
+  }
+  function refresh(){
+    var ask = window.siteHandAsk, h = '';
+    $('.sh-ask').hidden = !ask;
+    if (ask) {
+      $('.sh-labt').textContent = ask.label || 'Yours';
+      h = clean($('.sh-in').value);
+      $('.sh-note').textContent = h ? '' : (ask.empty || '');
+    }
+    var u = url(h);
+    $('.sh-url').textContent = u.replace(/^https:\/\//, '');
+    var img = $('.sh-img');
+    if (img.getAttribute('data-for') !== u || !img.firstChild) draw(img, u);
+  }
+  var opener = null;
+  function open(from){
+    build();
+    opener = from || document.activeElement;
+    if (window.siteHandAsk && !$('.sh-in').value) $('.sh-in').value = me();
+    refresh();
+    if (dlg.showModal) { if (!dlg.open) dlg.showModal(); } else dlg.setAttribute('open', '');
+  }
+  function close(){
+    if (!dlg) return;
+    if (dlg.close) { if (dlg.open) dlg.close(); } else dlg.removeAttribute('open');
+    if (opener && opener.focus) { try { opener.focus({ preventScroll: true }); } catch(e){ opener.focus(); } }
+  }
+  window.siteHand = { open: open, close: close, url: url, draw: draw };
+  document.addEventListener('click', function(e){
+    var t = e.target && e.target.closest ? e.target.closest('[data-hand-on]') : null;
+    if (!t) return;
+    e.preventDefault();
+    open(t);
+  });
 })();

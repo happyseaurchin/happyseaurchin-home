@@ -157,13 +157,13 @@ function fetchWordImage(word) {
 
 // ── LLM Integration ────────────────────────────────────────
 
+// the key is kept on this device wrapped, never in plain text (../key.js)
 function getApiKey() {
-  return localStorage.getItem('mindflow-api-key') || '';
+  return window.mindflowKey ? window.mindflowKey.get() : '';
 }
 
 function setApiKey(key) {
-  if (key) localStorage.setItem('mindflow-api-key', key);
-  else localStorage.removeItem('mindflow-api-key');
+  if (window.mindflowKey) window.mindflowKey.set(key || '');
 }
 
 // Non-streaming call (for connection test)

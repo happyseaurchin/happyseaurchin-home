@@ -48,7 +48,7 @@
   .ask__row button{background:var(--liquid);border:none;border-radius:8px;color:var(--abyss);font-weight:700;font-size:13px;padding:11px 16px}
 
   .head{padding:12px 0 4px}
-  .head h1{font-family:var(--display);font-weight:800;font-size:clamp(1.9rem,8vw,2.8rem);line-height:1.05;margin:0 0 10px}
+  .head h1{font-family:var(--display);font-weight:800;font-size:clamp(1.9rem,8vw,2.8rem);line-height:1.05;margin:0 0 10px;overflow-wrap:anywhere}
   .head h1 .cool{color:var(--liquid)}
   .head h1 .at{font-family:var(--mono);font-size:12px;font-weight:400;letter-spacing:0.1em;color:var(--vapour-dim);display:block;margin-top:6px;text-transform:uppercase}
   .head h1 a.at{border-bottom:none;text-decoration:none;width:max-content} .head h1 a.at:hover{color:var(--liquid)}
@@ -172,7 +172,7 @@
   .parlour .card{margin:0 0 10px;color:var(--vapour);white-space:pre-line}
   .vrow{display:flex;gap:10px;align-items:baseline;padding:8px 0;border-top:1px solid var(--line)}
   .vwho{font-family:var(--mono);font-size:11px;color:var(--solid);flex:none;min-width:80px}
-  .vtext{flex:1;color:var(--foam);font-size:0.98rem;white-space:pre-line}
+  .vtext{flex:1;min-width:0;overflow-wrap:anywhere;color:var(--foam);font-size:0.98rem;white-space:pre-line}
   .vago{font-family:var(--mono);font-size:10.5px;color:var(--vapour-dim);flex:none}
   .vnone{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);padding:8px 0}
   .parlour .say{margin-top:10px;border-top:1px dashed var(--line-strong);padding-top:12px}
@@ -504,6 +504,12 @@ function showState(title, body){
   $('state-body').innerHTML = body;
   $('state').classList.remove('hidden');
 }
+/* a members' beach that refused this page (or showed it only what is marked open): its own words, with the way in */
+function walled(shown){
+  if (!window.sitePass || !(shown || sitePass.walled(BEACH))) return false;
+  showState('This beach is its members’.', sitePass.wall(BEACH));
+  return true;
+}
 function wireAddr(walk){ return fmtAddr(walk, FLOOR); }
 
 /* ── the standpoint — the Location star-ref at position 3 of the passport, parsed as
@@ -630,7 +636,8 @@ async function load(){
   $('bar-handle').textContent = HANDLE;
   document.title = HANDLE + ' — the page' + (WORLD ? ' at ' + WORLD : '');
   let index;
-  try { index = await readIndex(); } catch(e){ return showState('The beach is out of reach.', esc(String(e.message || e))); }
+  const keys = siteKeys.ready();
+  try { index = await readIndex(); } catch(e){ return walled() || showState('The beach is out of reach.', esc(String(e.message || e))); }
   INDEX = index.blocks || [];
   const has = n => INDEX.includes(n);
   const mirrorNames = INDEX.filter(b => b.startsWith(HANDLE + ':') && HANDLE_RE.test(b.slice(HANDLE.length + 1))).sort();
@@ -662,6 +669,9 @@ async function load(){
   PASSPORT = passport; KNOWS = knows; PURPOSE = purpose; HISTORY = history; WITNESSED = witnessed; PRESENCE = presence;
 
   if (!passport && !now && !spine && !pool && !knows && !purpose && !history && !witnessed){
+    /* A MEMBERS' BEACH shows a stranger only what its keepers mark open, so nothing here is not nobody here: it says
+       so, with the way in (theme.js sitePass; the doors' battery, 5 Nov 2026) */
+    if (window.sitePass && (sitePass.gated(index) || sitePass.walled(BEACH))) return walled(true);
     const lc = HANDLE.toLowerCase();
     const near = [...new Set(INDEX.filter(n => /^(passport|knows|stash|purpose|witnessed|history|spine|now|pool):/.test(n)).map(n => n.slice(n.indexOf(':') + 1))
       .filter(n => n !== HANDLE && n.toLowerCase() === lc))];
@@ -683,6 +693,7 @@ async function load(){
     if (has('pool:' + STAND.addr)) ROOM = await readBlock('pool:' + STAND.addr).catch(() => null);
     LIQUID = has('liquid:pool:' + STAND.addr) ? await readBlock('liquid:pool:' + STAND.addr).catch(() => null) : null;
   }
+  await keys;
   OPEN = !!latchGet();
   if (WORLD && OPEN){
     /* where the doorman's door is — the beach says, as the mirror reads it (ways:doorbell 2) */
@@ -1254,11 +1265,11 @@ function wireKey(){
   });
 }
 
-/* the character's key, remembered on this device (the /now latch pattern). The storage name
-   is the one the page has always used, so a key a player already holds still opens. */
+/* the character's key, remembered on this device (the /now latch pattern), wrapped (theme.js siteKeys). The
+   name is the one the page has always used, so a key a player already holds still opens. */
 const latchHome = () => 'journal-latch:' + host(BEACH) + ':' + HANDLE;
-function latchGet(){ try { return localStorage.getItem(latchHome()) || null; } catch(e){ return null; } }
-function latchSet(v){ try { if (v) localStorage.setItem(latchHome(), v); else localStorage.removeItem(latchHome()); } catch(e){} }
+function latchGet(){ return siteKeys.get(latchHome()) || null; }
+function latchSet(v){ if (v) siteKeys.set(latchHome(), v); else siteKeys.del(latchHome()); }
 
 function renderPost(d){
   const node = walkTo(SPINE, d);
@@ -1329,9 +1340,9 @@ function renderVoices(pool){
    invents, remembered on this device; the same key serves /walk and /recency ── */
 const readerLatchHome = reader => 'mirror-latch:' + HANDLE + ':' + reader;
 function readerLatchGet(reader){
-  try { return localStorage.getItem(readerLatchHome(reader)) || localStorage.getItem('next-latch:' + HANDLE + ':' + reader) || localStorage.getItem('passport-latch:' + reader) || null; } catch(e){ return null; }
+  return siteKeys.get(readerLatchHome(reader)) || siteKeys.get('next-latch:' + HANDLE + ':' + reader) || siteKeys.get('passport-latch:' + reader) || null;
 }
-function readerLatchSet(reader, v){ try { localStorage.setItem(readerLatchHome(reader), v); } catch(e){} }
+function readerLatchSet(reader, v){ siteKeys.set(readerLatchHome(reader), v); }
 async function ensureReaderMirror(reader){
   const name = HANDLE + ':' + reader;
   const existing = await readBlock(name).catch(() => undefined);
@@ -1471,8 +1482,8 @@ function scrollToHash(){
 /* ── the owner's post — the /now latch pattern: the same key across their estate,
    kept on this device; the diary is founded by its first post, born locked ── */
 const ownerLatchHome = () => 'now-latch:' + HANDLE;
-function ownerLatchGet(){ try { return localStorage.getItem(ownerLatchHome()) || localStorage.getItem('passport-latch:' + HANDLE) || null; } catch(e){ return null; } }
-function ownerLatchSet(v){ try { localStorage.setItem(ownerLatchHome(), v); } catch(e){} }
+function ownerLatchGet(){ return siteKeys.get(ownerLatchHome()) || siteKeys.get('passport-latch:' + HANDLE) || null; }
+function ownerLatchSet(v){ siteKeys.set(ownerLatchHome(), v); }
 function wireNewPost(){
   const text = $('np-text'), go = $('np-go'), hint = $('np-hint');
   if (!go) return;

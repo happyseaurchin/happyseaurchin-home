@@ -324,6 +324,8 @@
   .vrow .mlink{flex:none}
   .silent{font-family:var(--mono);font-size:11px;color:var(--vapour-dim)}
   .mirrorbox{border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px}
+  /* the box that heads the voices draws its line beneath it, between your words and theirs */
+  .sheet__body > .mirrorbox:first-child{border-top:none;padding-top:0;border-bottom:1px solid var(--line);padding-bottom:12px}
   .mirrorbox textarea{width:100%;background:rgba(var(--well-rgb),0.6);border:1px solid var(--line-strong);border-radius:8px;
     color:var(--foam);font-family:var(--body);font-size:0.95rem;padding:9px 11px;resize:vertical;min-height:52px}
   .mirrorbox .row{display:flex;gap:8px;align-items:center}
@@ -567,6 +569,8 @@ async function writeBlock(body){
   return { ok: r.ok, status: r.status, data: d };
 }
 const lockRequired = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
+/* a founding's key refused: a latch stands, or the passport binds the name to its own key (handle_bound) */
+const keyRefused = w => lockRequired(w) || (!w.ok && !!w.data && w.data.code === 'handle_bound');
 /* the same latch the deck page stores, so a key entered once serves both pages */
 const latchKey = () => 'next-latch:' + FIELD + ':' + HANDLE;
 
@@ -627,6 +631,26 @@ function plainHtml(line, n){
   if (n) t = short(t, n);
   return esc(t).replace(/\uE000(\d+)\uE001/g, (m, i) => '<a href="' + esc(refs[i]) + '">' + esc(refs[i]) + '</a>');
 }
+/* A PROJECT ON THE CLOCK, READ BY A PERSON (2026-11-09): every clock family but the now family,
+ * whose spine is content-free by law (function:now 4). Its lines are drawn in the person's reading
+ * (plain: references for minds dropped) unless the workings are on, as a branch family's are. */
+const clockSaid = () => MODE === 'clock' && VENTURE !== 'now';
+/* the law's opening sentence: the family's purpose said to a person; the rest of the law is how a
+ * line is written there, for minds, and stands whole under the workings and at its own address */
+function firstSentence(line){
+  const s = String(line || '').trim(), m = s.match(/^[^]*?[.!?](?=\s+[A-Z(\u2018\u201c]|\s*$)/);
+  return m ? m[0] : s;
+}
+/* THE ZERO RUNG ECHOES THE RUNG ABOVE IT (sundial 3.4): the year 2020 is the 2020s' own node and
+ * the 2000s the century's, so their cards repeated the line written one row up, as if someone had
+ * said it twice. A line is drawn at the rung it was written for; the echo is dropped wherever that
+ * rung's own row is showing, and kept where it is the only place the line can be seen. */
+const PARENT_LV = { de: 'ce', y: 'de', s: 'y', m: 's', w: 'm', d: 'w', g: 'd' };
+function zeroEcho(addr, raw, lv){
+  const a = String(addr || '');
+  if (MODE !== 'clock' || !raw || !a.endsWith('0') || !PARENT_LV[lv] || !PREFS.rows[PARENT_LV[lv]]) return false;
+  return lensText(a.slice(0, -1)) === raw;
+}
 /* the fold's line at a node — for a path, where that part stands (function:path 2) */
 function foldAt(addr){ return FOLD ? textAt(FOLD, addr) : null; }
 const MARK_RE = /^([A-Z]{3,})(?=[\s,.:;—-]|$)/;
@@ -666,7 +690,7 @@ function partCards(addr){
 const ownCards = addr => partCards(addr).concat(famCards().filter(c => !String(c.from || '').startsWith(VENTURE + ' ')));
 /* WHAT THE PROJECT LOOKS LIKE is read off the animations block, never kept here. Each film or
  * chart there is one position (_ its title and what it shows, 1 where it plays, 2 its still,
- * 3 who made it), and one that shows a project names it at its 4: by the bare name a card
+ * 3 when it was added, 5 who made it), and one that shows a project names it at its 4: by the bare name a card
  * carries toward (beach-venture, bobble), or as one of its parts (bobble 2.2) */
 function filmsFor(block){
   const web = u => typeof u === 'string' && /^https:\/\/[^\s"'<>]+$/.test(u.trim()) ? u.trim() : '';
@@ -900,9 +924,10 @@ const ORD = n => n + (n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n 
 let toastT = null;
 function toast(msg, err){
   let el = document.querySelector('.toast');
-  if (!el){ el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); }
+  if (!el){ el = document.createElement('div'); el.className = 'toast'; document.body.appendChild(el); el.addEventListener('click', () => el.remove()); }
   el.textContent = msg; el.classList.toggle('err', !!err);
-  clearTimeout(toastT); toastT = setTimeout(() => el.remove(), 4200);
+  /* a refusal stays long enough to read, a second for every twelve characters, and a tap clears it */
+  clearTimeout(toastT); toastT = setTimeout(() => el.remove(), err ? Math.max(4200, String(msg).length * 80) : 4200);
 }
 function showState(title, body){
   $('app').classList.add('hidden');
@@ -1017,7 +1042,19 @@ function lensed(vs){
   if (!cast && !group) return { shown: vs, aside: [], by: '' };
   const shown = [], aside = [];
   vs.forEach(v => ((!cast || CAST.has(v.who)) && (!group || VL.keep(v.who)) ? shown : aside).push(v));
-  return { shown, aside, by: [cast ? 'the formal lens' : '', group ? 'the scope sed:' + VL.name() : ''].filter(Boolean).join(' and ') };
+  return { shown, aside, cast, by: [cast ? 'the formal lens' : '', group ? 'the scope sed:' + VL.name() : ''].filter(Boolean).join(' and ') };
+}
+/* THE SCOPE ABOVE THE VOICES IT GOVERNS, wherever a point holds more than one voice or a scope
+ * is chosen (theme.js siteScope.pick). SAYS SO, ALWAYS — the family's own law: a fold that drops
+ * a voice says so, the names riding with the count, so what the lens set aside stays knowable
+ * from inside the view rather than only by turning the lens off. The dropdown names the scope,
+ * so the line names only the formal lens. */
+function scopeLine(lens){
+  const n = lens.aside.length, VL = window.siteScope;
+  const said = n ? n + (n === 1 ? ' voice' : ' voices') + ' set aside' + (lens.cast ? ' by ' + esc(lens.by) : '') + ': ' +
+    esc(lens.aside.map(v => whoName(v.who)).join(', ')) + ' · still standing at this point' : '';
+  if (VL && (lens.shown.length + n > 1 || VL.name())) return VL.pick(said || 0);
+  return said ? '<span class="silent">' + said + '</span>' : '';
 }
 /* what stands attached to an address: each hand's words there, plus placed gathering voices */
 function voicesAt(addr){
@@ -1113,11 +1150,13 @@ async function writeWithLatch(body, what){
   /* THE KEY FOLLOWS THE BLOCK BEING WRITTEN — one name per block, shared with
    * /next and /hands — with this page's old deck-scoped key and the recency
    * page's mirror-latch as read-fallbacks, so nobody re-types a key they set
-   * elsewhere. A success re-homes it under the shared name. */
+   * elsewhere. A success re-homes it under the shared name. Every one kept
+   * wrapped (theme.js siteKeys), read once the keyring is ready. */
+  await siteKeys.ready();
   const home = 'next-latch:' + body.block;
-  const latch = localStorage.getItem(home)
-    || localStorage.getItem('mirror-latch:' + body.block)
-    || localStorage.getItem(latchKey());
+  const latch = siteKeys.get(home)
+    || siteKeys.get('mirror-latch:' + body.block)
+    || siteKeys.get(latchKey());
   if (latch) body.secret = latch;
   let w = await writeBlock(body);
   if (lockRequired(w)){
@@ -1125,8 +1164,8 @@ async function writeWithLatch(body, what){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(home, v.trim());
-  } else if (w.ok && latch) localStorage.setItem(home, latch);
+    if (w.ok) siteKeys.set(home, v.trim());
+  } else if (w.ok && latch) siteKeys.set(home, latch);
   return w;
 }
 async function ensureVentureMirror(){
@@ -1150,14 +1189,24 @@ async function ensureVentureMirror(){
    * founding: an unprotected one is not the fallback. A handle whose passport is
    * latched founds its blocks under that same key (the beach refuses any other),
    * so the prompt asks for it rather than inviting a new one. */
-  let latch = localStorage.getItem(latchKey());
+  await siteKeys.ready();
+  let latch = siteKeys.get(latchKey());
   if (!latch){
     const v = prompt('This founds your mirror, locked to you.\nEnter your key — the one your passport uses, if you have one (kept on this device — check the first letter: phones capitalise it):');
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     latch = v.trim();
   }
-  const w = await writeBlock({ block: name, content: root, new_lock: latch });
-  if (w.ok){ localStorage.setItem(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
+  let w = await writeBlock({ block: name, content: root, new_lock: latch });
+  /* A KEPT KEY CAN BE STALE — a roll changes the passport's key while this device
+   * keeps the old one, and the founding is refused. Ask once for the key that works,
+   * as lists does (theme.js saveBranch), and keep it in the old one's place. */
+  if (keyRefused(w)){
+    const v = prompt('That key was refused — enter the key your passport uses (kept on this device; check the first letter — phones capitalise it):');
+    if (v === null || !v.trim()) return { ok: false, quiet: true };
+    latch = v.trim();
+    w = await writeBlock({ block: name, content: root, new_lock: latch });
+  }
+  if (w.ok){ siteKeys.set(latchKey(), latch); toast('mirror born latched to ' + HANDLE); }
   return w;
 }
 async function writeMirrorAt(addr, content){
@@ -1170,10 +1219,11 @@ async function writeMirrorAt(addr, content){
 const keeperKey = () => 'morning-keeper:spine:' + VENTURE;
 /* the page sees no latch, only the key this device was given: options → add my latch-key, or
  * kept after a spine write the beach admitted */
-const keeperHeld = () => { try { return !!localStorage.getItem(keeperKey()); } catch(e){ return false; } };
+const keeperHeld = () => siteKeys.has(keeperKey());
 async function writeSpine(addr, content){
+  await siteKeys.ready();
   const body = { block: 'spine:' + VENTURE, spindle: wireAddr(addr), content };
-  let latch = localStorage.getItem(keeperKey());
+  let latch = siteKeys.get(keeperKey());
   if (!latch){
     latch = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; check the first letter — phones capitalise it):');
     if (latch === null || !latch.trim()) return { ok: false, quiet: true };
@@ -1186,8 +1236,8 @@ async function writeSpine(addr, content){
     if (v === null || !v.trim()) return { ok: false, quiet: true };
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(keeperKey(), v.trim());
-  } else if (w.ok) localStorage.setItem(keeperKey(), latch);
+    if (w.ok) siteKeys.set(keeperKey(), v.trim());
+  } else if (w.ok) siteKeys.set(keeperKey(), latch);
   return w;
 }
 async function appendCard(entry, pile){
@@ -1388,11 +1438,11 @@ async function joinFamily(){
   const mine = (MIRRORS.find(x => x[0] === HANDLE) || [])[1];
   if (!mine){
     const born = await ensureVentureMirror();
-    if (!born.ok){ if (go) go.disabled = false; if (!born.quiet) toast('the mirror could not be founded' + (born.data && (born.data.error || born.data.code) ? ' — ' + (born.data.error || born.data.code) : '')); return; }
+    if (!born.ok){ if (go) go.disabled = false; if (!born.quiet) toast('the mirror could not be founded' + (born.data && (born.data.error || born.data.code) ? ' — ' + (born.data.error || born.data.code) : ''), true); return; }
   }
   const w = await siteRelation.write('https://beach.happyseaurchin.com', HANDLE, VENTURE, line).catch(() => null);
   if (go) go.disabled = false;
-  if (!w || !w.ok){ if (!(w && w.quiet)) toast('the line could not be written' + (w && w.data && (w.data.error || w.data.code) ? ' — ' + (w.data.error || w.data.code) : '')); return; }
+  if (!w || !w.ok){ if (!(w && w.quiet)) toast('the line could not be written' + (w && w.data && (w.data.error || w.data.code) ? ' — ' + (w.data.error || w.data.code) : ''), true); return; }
   toast(line ? 'listed — ' + line : 'listed');
   location.reload();
 }
@@ -1421,9 +1471,10 @@ function render(){
   if (LAW){
     const line = voice(LAW) || '';
     /* in branch mode the law's line keeps the row grammar too: its brackets are for minds */
-    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + (MODE === 'tree' && !PREFS.workings ? plainHtml(line, 520) : esc(short(line, 520)));
+    const said = clockSaid() && !PREFS.workings ? firstSentence(line) : line;
+    if (bp) bp.innerHTML = '<b>its form</b> \u2014 ' + ((MODE === 'tree' || clockSaid()) && !PREFS.workings ? plainHtml(said, 520) : esc(short(said, 520)));
     fp.hidden = false;
-    fp.innerHTML = 'form: <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>' + (line.length > 520 ? ' \u2014 the whole line there' : '');
+    fp.innerHTML = 'form: <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent(LAWREF) + '">' + esc(LAWREF) + ' \u2192</a>' + (said.length > 520 || said.length < line.length ? ' \u2014 the whole ' + (clockSaid() ? 'law' : 'line') + ' there' : '');
   } else {
     if (bp) bp.innerHTML = '<b>No form yet.</b> This family stands as a spine without its law, so its rows are drawn bare \u2014 ' + (MODE === 'clock' ? 'the shared clock' : 'its own branches') + ', with nothing to say what a line at a part means. To give it a form, its keeper writes the law at <b>function:' + esc(VENTURE) + '</b>: what the family is, what a line means, how the fold reads. <a href="/found">/found</a> founds a family with its form in a step.';
     fp.hidden = false; fp.textContent = 'form: none stands yet';
@@ -1525,13 +1576,18 @@ function inviteAt(lv, isNow, label){
     return (askAt(lv, label) || 'say what ' + what + ' is toward') + ' — tap twice to say it';
   }
   if (!isNow || !what) return 'nothing written here yet';
+  /* on a project's clock the spine says what is needed, and voices say what each person means to do */
+  if (clockSaid()) return lv === 'w'
+    ? 'nothing needed is written for this week, so the day hangs straight off the month — tap to see what people mean to do, and add yours'
+    : 'nothing needed is written for ' + what + ' yet — tap to see what people mean to do, and add yours';
   if (lv === 'w') return 'this week has no words yet, so the day hangs straight off the month — tap twice to give the week its line, or propose one in voices';
   return what + ' has no words yet — tap twice to give it a line, or propose one in voices';
 }
 function rcard(label, addr, isSel, isNow, data, extra, whole){
-  const raw = lensText(addr), tt = MODE === 'tree' && !PREFS.workings && raw ? titled(raw) : null;
-  const t = MODE === 'tree' && !PREFS.workings && raw ? plain(tt ? tt.line : raw) : raw;
   const lv = (String(data).match(/data-lv="(\w+)"/) || [])[1];
+  const raw0 = lensText(addr), raw = zeroEcho(addr, raw0, lv) ? null : raw0;
+  const tt = MODE === 'tree' && !PREFS.workings && raw ? titled(raw) : null;
+  const t = (MODE === 'tree' || clockSaid()) && !PREFS.workings && raw ? plain(tt ? tt.line : raw) : raw;
   const vs = lensed(voicesAt(addr)).shown.length, cs = cardsAt(addr).length;
   /* data-addr carries the cell's own address into the markup. The rack already
    * SHOWS it (the work lens prints wireAddr), but showing is not carrying:
@@ -1541,7 +1597,7 @@ function rcard(label, addr, isSel, isNow, data, extra, whole){
   return '<div class="rcard' + (isSel ? ' sel' : '') + (t ? '' : ' empty') + '" role="button" tabindex="0" ' +
     'data-addr="' + esc(addr) + '" ' + (isNow ? 'data-now="1" ' : '') + data + '>' +
     '<span class="lab">' + (lv === 'g' ? '<span data-when="' + esc(addr) + '">' + esc(label) + '</span>' : esc(label)) + (isNow ? '<span class="now">now</span>' : '') + '<span class="addr work">' + esc(wireAddr(addr)) + '</span><a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a></span>' +
-    '<span class="say">' + (t && MODE === 'tree' && !PREFS.workings ? plainHtml(tt ? tt.line : raw, whole ? 0 : 240) : esc(t ? (whole ? t : short(t, 240)) : inviteAt(lv, isNow, label))) + '</span>' +
+    '<span class="say">' + (t && (MODE === 'tree' || clockSaid()) && !PREFS.workings ? plainHtml(tt ? tt.line : raw, whole ? 0 : 240) : esc(t ? (whole ? t : short(t, 240)) : inviteAt(lv, isNow, label))) + '</span>' +
     '<div class="badges">' + (vs ? '<span class="b bv" title="open the detail below">' + vs + (vs === 1 ? ' voice' : ' voices') + '</span>' : '') +
     (cs ? '<span class="b bc" title="what closed here — open the detail below">' + cs + ' done</span>' : '') +
     (MODE === 'tree' ? standChip(addr) + marksAt(addr) : '') + '</div>' + (extra || '') + '</div>';
@@ -1757,11 +1813,10 @@ function renderRack(){
    * the holder's own words — so the one line above the walk was spent saying
    * something twice. A card is the thing on this page nobody arrives knowing
    * (David, 2026-09-15), so the line says that instead. */
-  $('toward').innerHTML = '<b>cards</b> · something you mean to do, held at a rung '
-    + '— within hours, today, this week, this year. Each rung’s golden slot '
-    + 'counts what is waiting there — tap it to see them (turn them on under <b>options</b>); you take one up and finish it '
-    + 'at <a href="/hands' + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') + '">your hands</a>, '
-    + 'and once done it stands here in the timeline, at the rung it was held at.';
+  /* shortened 2026-11-09 with the masthead: one line, what a card is and where it goes */
+  $('toward').innerHTML = '<b>cards</b> · a thing someone means to do, held at a rung. The golden slot counts what waits there; '
+    + 'take one up at <a href="/hands' + (HANDLE ? '/' + encodeURIComponent(HANDLE) : '') + '">your hands</a>, '
+    + 'and once done it stands here, at the rung it was held at.';
   renderRowsFrom('ce');
 }
 /* THE NINTH BRANCH IS A BRANCH, unless it is the operator's own stem — and the stem says
@@ -2099,9 +2154,15 @@ function wirePileSheet(p, cs){
 /* THE SAY BOX: your reading at one address, into your own mirror (writeMirrorAt). One box and one
  * write path wherever the page offers it, the sheet's voices pane and the document; its draft is
  * kept under where the words are going, as every write box on this site keeps one. */
+/* ON A PROJECT'S CLOCK THE BOX ASKS FOR AN INTENTION (2026-11-09): what you mean to do at this rung,
+ * in your own words, said before or as the period opens; never a report of what was done, which goes
+ * on its thread. Anywhere else it takes a reading, as it always has. */
+const INTEND = { de: 'By the end of this decade I mean to', y: 'This year I mean to', s: 'This season I mean to', m: 'This month I mean to',
+                 w: 'This week I mean to', d: 'Today I mean to', g: 'In this part of the day I mean to' };
 function sayBoxHtml(addr){
-  return '<div class="mirrorbox"><div class="sub">leave your reading here</div>' +
-    '<textarea id="mir-text" placeholder="a comment, or a suggestion to change what’s written — yours, at this point"></textarea>' +
+  const ask = clockSaid() && INTEND[SEL.level];
+  return '<div class="mirrorbox"><div class="sub">' + (ask ? 'what you mean to do here' : 'leave your reading here') + '</div>' +
+    '<textarea id="mir-text" placeholder="' + (ask ? esc(ask) + '\u2026 (a sentence or two, in your own words)' : 'a comment, or a suggestion to change what’s written — yours, at this point') + '"></textarea>' +
     '<div class="row"><span class="hint">signed with your key, so it stays yours' +
     '<span class="work"> · <b>' + esc(VENTURE) + ':' + esc(HANDLE) + ' · ' + esc(wireAddr(addr)) + '</b></span></span>' +
     '<button id="mir-go">into your mirror</button></div></div>';
@@ -2240,14 +2301,20 @@ function paintSheet(){
   if (mlink) $('sh-mirror').href = mirrorUrl(addr);
   tabs.querySelectorAll('button').forEach(b => {
     b.classList.toggle('on', b.dataset.p === SHEET.pane);
-    if (b.dataset.p === 'voices') b.textContent = 'your mirror · ' + (vs.length ? vs.length + (vs.length === 1 ? ' voice' : ' voices') : 'voices');
+    if (b.dataset.p === 'voices') b.textContent = clockSaid()
+      ? 'what people intend' + (vs.length ? ' · ' + vs.length : '')
+      : 'your mirror · ' + (vs.length ? vs.length + (vs.length === 1 ? ' voice' : ' voices') : 'voices');
+    if (b.dataset.p === 'text') b.textContent = clockSaid() ? 'what\u2019s needed' : 'the spine';
     /* on a path the cards tab IS where the part stands: the fold's line and the cards behind it */
     if (b.dataset.p === 'cards')  b.textContent = (PATH_OF ? 'where it stands' : 'cards') + (cs.length ? ' · ' + cs.length + (PATH_OF ? (cs.length === 1 ? ' card' : ' cards') : '') : '');
   });
   const b = [];
   if (SHEET.pane === 'text'){
-    const rawLine = textAt(SPINE, addr), lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
-    b.push('<div class="fulltext">' + ((MODE === 'tree' && !PREFS.workings && rawLine ? plainHtml(lineTt ? lineTt.line : rawLine) : esc(rawLine)) || esc('nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it')) + '</div>');
+    const rawLine0 = textAt(SPINE, addr), rawLine = clockSaid() && rawLine0 && String(addr).endsWith('0') && PARENT_LV[SEL.level] && textAt(SPINE, String(addr).slice(0, -1)) === rawLine0 ? null : rawLine0;
+    const lineTt = MODE === 'tree' && !PREFS.workings && rawLine ? titled(rawLine) : null;
+    b.push('<div class="fulltext">' + (((MODE === 'tree' || clockSaid()) && !PREFS.workings && rawLine ? plainHtml(lineTt ? lineTt.line : rawLine) : esc(rawLine))
+      || esc(clockSaid() ? 'nothing needed is written here yet — what the project needs at this rung is its keepers\u2019 line; what you mean to do goes in what people intend'
+                         : 'nothing written here yet — this line belongs to the venture’s keeper; say what you’d put here in voices, and the keeper may adopt it')) + '</div>');
     /* THE CENTURY HOLDS NO PEN HERE: its address collapses on the wire to the
      * millennium node (sundial 3.4 — a zero digit has no distinct coarse address),
      * so a write at this rung would land a level up and eat what stands beneath —
@@ -2260,8 +2327,19 @@ function paintSheet(){
     b.push('<span class="silent work">spine:' + esc(VENTURE) + ' · ' + esc(wireAddr(addr)) +
       ' · <a href="https://happyseaurchin.com/render?beach=beach.happyseaurchin.com&block=' + encodeURIComponent('spine:' + VENTURE) + '&spindle=' + wireAddr(addr) + '">the raw walk →</a></span>');
   } else if (SHEET.pane === 'voices'){
+    /* YOUR BOX FIRST, THE VOICES BENEATH IT (David, 2026-10-20: "place the text entry at the
+     * top of voice so user can just add their voice immediately without having to scroll
+     * through a dross of voices"), and the scope between them, chosen where the voices are.
+     * Only this pane: the spine's line and the cards keep their order. */
+    if (HANDLE && SEL.level === 'ce')
+      b.push('<div class="mirrorbox"><span class="hint">the century shares its wire address with the millennium (sundial 3.4), so a mirror write here would land a rung up — voice this stretch at /now, which holds the coarse rungs the safe way</span></div>');
+    else if (HANDLE)
+      b.push(sayBoxHtml(addr));
+    else
+      b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
+    b.push(scopeLine(lens));
     b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + esc(v.t) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + (clockSaid() && !PREFS.workings ? plainHtml(v.t) : esc(v.t)) + '</span>' + (v.ts ? '<span class="ago">' + (v.room ? 'room \u00b7 ' : '') + esc(ago(v.ts)) + '</span>' : '') +
           /* a reading opens THE POINT, where it stands among the others. It
            * used to name its holder's own block — true of where the words
            * live, and the mirror shows the same view either way, so all the
@@ -2270,19 +2348,6 @@ function paintSheet(){
            * row carries none either: the header's mirror ↗ already goes there. */
           (!v.room && v.who !== HANDLE ? '<a class="mlink" target="_blank" rel="noopener" href="' + esc(mirrorUrl(addr)) + '">mirror ↗</a>' : '') + '</div>').join('')
       : '<span class="silent">' + (lens.aside.length ? 'no member has written here yet' : 'nobody has written here yet') + '</span>');
-    /* SAYS SO, ALWAYS — the family's own law: a fold that drops a voice says so.
-     * The names ride with the count, so what the lens set aside stays knowable
-     * from inside the view rather than only by turning the lens off. */
-    if (lens.aside.length)
-      b.push('<span class="silent">' + lens.aside.length + (lens.aside.length === 1 ? ' voice' : ' voices') +
-        ' set aside by ' + esc(lens.by) + ' — ' + esc(lens.aside.map(v => whoName(v.who)).join(', ')) +
-        ' · still standing at this point</span>');
-    if (HANDLE && SEL.level === 'ce')
-      b.push('<div class="mirrorbox"><span class="hint">the century shares its wire address with the millennium (sundial 3.4), so a mirror write here would land a rung up — voice this stretch at /now, which holds the coarse rungs the safe way</span></div>');
-    else if (HANDLE)
-      b.push(sayBoxHtml(addr));
-    else
-      b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
   } else {
     /* WHERE IT STANDS, SAID WHOLE — the fold's line heads the cards it was folded from
      * (function:path 2; David, 2026-10-06: "it seems related to cards") */
@@ -2467,8 +2532,8 @@ document.getElementById('btn-mirror').addEventListener('click', () => document.b
 document.getElementById('btn-latch').addEventListener('click', () => {
   const v = prompt('Keeper key for spine:' + VENTURE + ' (kept on this device; blank clears; check the first letter — phones capitalise it):');
   if (v === null) return;
-  if (!v.trim()){ localStorage.removeItem(keeperKey()); toast('key cleared'); }
-  else { localStorage.setItem(keeperKey(), v.trim()); toast('key kept on this device'); }
+  if (!v.trim()){ siteKeys.del(keeperKey()); toast('key cleared'); }
+  else { siteKeys.set(keeperKey(), v.trim()); toast('key kept on this device'); }
   if (SHEET) paintSheet();
 });
 document.getElementById('btn-refresh').addEventListener('click', () => load().then(() => toast('re-read')));
@@ -2486,6 +2551,12 @@ document.getElementById('btn-refresh').addEventListener('click', () => load().th
    ═══════════════════════════════════════════════════════════════════════ */
 const HOW_ROWS = $('mast-how').textContent;
 const HOW_COLS = 'Each column is one level: tap a card to stand there, and what is beneath it opens in the next column, beside it. Tap it again for its words, the voices and — with your handle in the URL — your own writing.';
+/* A CLOCK FAMILY, SAID TO A PERSON (David, 2026-11-09: "There's a big block of text at the top of
+ * the page which I ignore and really doesn't explain much to anyone. It needs to be super clear for a
+ * human"): what a row is, what a card is, what to write there and what not to. The family's own law
+ * still speaks beneath it, its first sentence only until the workings are on (firstSentence). The now
+ * family keeps HOW_ROWS: its spine says nothing by law, so no card there says what is needed. */
+const HOW_CLOCK = 'Each row is a stretch of time, from the decade down to today. A card says what the project needs then. Tap it to see what each person means to do toward it, and add your own: a sentence or two, in your own words, about what you intend. What you have already done goes on its thread, not here.';
 const HOW_DOC = 'Every line in its own order, each nested under the line it belongs to. Tap a line to open it where it stands, and tap it again to fold it. Every hand’s reading stands with the line it answers; with your handle in the URL, yours lands in your own mirror at that line.';
 let DOC_OPEN = new Set();            /* the positions open, by address; a re-read keeps them open */
 let DOC_SEEDED = false;              /* the run down digit 1 opens once, on arrival */
@@ -2512,7 +2583,7 @@ function paintView(){
   $('btn-render').hidden = false;
   const eb = document.querySelector('#review .eyebrow');
   if (eb) eb.textContent = v === 'dropdown' ? 'the dropdown' : MODE === 'tree' ? 'the columns' : 'the rows';
-  $('mast-how').textContent = v === 'dropdown' ? HOW_DOC : MODE === 'tree' ? HOW_COLS : HOW_ROWS;
+  $('mast-how').textContent = v === 'dropdown' ? HOW_DOC : MODE === 'tree' ? HOW_COLS : clockSaid() ? HOW_CLOCK : HOW_ROWS;
   if (v === 'dropdown') $('band-title').textContent = 'Read ' + VENTURE + ' from the top.';
 }
 /* an address as the floor writes it: a floor-1 family's 1,1 reads 1.1 and its root 0 */
@@ -2569,7 +2640,7 @@ function docReadings(addr){
 function docNode(addr, node){
   const open = DOC_OPEN.has(addr), raw = textOf(node), kids = childDigits(node), n = lensed(voicesAt(addr)).shown.length;
   const said = raw ? (open ? '<span class="dline">' + docLine(raw) + '</span>' : docTitle(raw)) : '<span class="silent">nothing written here yet</span>';
-  return '<div class="dfold' + (open ? ' open' : '') + '">' +
+  return '<div class="dfold' + (open ? ' open' : '') + '" data-at="' + esc(docAddr(addr)) + '" id="' + esc(docAddr(addr)) + '">' +
     '<div class="dtab" role="button" tabindex="0" aria-expanded="' + open + '" data-open="' + esc(addr) + '">' +
       '<span class="daddr">' + esc(docAddr(addr)) + '</span><span class="chev">' + (open ? '▾' : '▸') + '</span>' + said +
       (n && !open ? '<span class="dn">' + n + (n === 1 ? ' reading' : ' readings') + '</span>' : '') + '</div>' +
@@ -2584,7 +2655,7 @@ function renderDoc(){
   }
   const raw = textOf(SPINE);
   $('toward').innerHTML = '';
-  $('rack').innerHTML = '<article class="doc"><span class="daddr">' + esc(docAddr('')) + '</span>' +
+  $('rack').innerHTML = '<article class="doc" data-at="' + esc(docAddr('')) + '" id="' + esc(docAddr('')) + '"><span class="daddr">' + esc(docAddr('')) + '</span>' +
     '<p class="dline droot">' + (raw ? docLine(raw) : '<span class="silent">nothing written here yet</span>') + '</p>' +
     docKids('', SPINE, childDigits(SPINE).filter(d => !(NINE_OFF && d === '9'))) + '</article>';
   if (HANDLE && DOC_SAY && $('mir-go')){
@@ -2822,9 +2893,10 @@ function gNextFree(walk){
  * write replaces the node it names, and a bare string over a node carrying a zero chain wipes
  * everything beneath (function:earth 7.2) — so this page never sends one. */
 async function gSave(kind, walk, text){
+  await siteKeys.ready();
   const name = (kind === 'voice' ? 'identity:' : 'spatial:') + HANDLE;
-  const latchKeyG = 'here-latch:' + name;   /* shared with /here — one key per block, kept on this device */
-  const known = localStorage.getItem(latchKeyG) || localStorage.getItem('now-latch:' + HANDLE) || null;
+  const latchKeyG = 'here-latch:' + name;   /* shared with /here — one key per block, kept on this device, wrapped */
+  const known = siteKeys.get(latchKeyG) || siteKeys.get('now-latch:' + HANDLE) || null;
   const reach = (obj, w) => { let n = obj; for (const ch of w){ const k = ch === '0' ? '_' : ch; if (n[k] == null) n[k] = {}; else if (typeof n[k] === 'string') n[k] = { '_': n[k] }; n = n[k]; } return n; };
   const fresh = await readBlock(name).catch(() => undefined);
   if (fresh === undefined) return 'the beach did not answer — nothing written';
@@ -2842,9 +2914,15 @@ async function gSave(kind, walk, text){
       : 'MIRROR — ' + HANDLE + "'s own map of the real, at spatial:" + GROUND.world + "'s self-same addresses: the places " + HANDLE + ' has added — a house, a road, a room — only where voiced, revisable forever. Sovereign; the keeper\'s pass folds them into the map and replies.';
     for (let i = 0; i < GROUND.floor; i++) root = { '_': root };
     reach(root, walk)['_'] = text;
-    const w = await writeBlock({ block: name, content: root, new_lock: latch });
+    let w = await writeBlock({ block: name, content: root, new_lock: latch });
+    if (keyRefused(w)){
+      const v = prompt('That key was refused — enter the key your passport uses (kept on this device; check the first letter — phones capitalise it):');
+      if (v === null || !v.trim()) return 'nothing written';
+      latch = v.trim();
+      w = await writeBlock({ block: name, content: root, new_lock: latch });
+    }
     if (!w.ok) return 'the block could not be born (' + w.status + ')';
-    localStorage.setItem(latchKeyG, latch);
+    siteKeys.set(latchKeyG, latch);
     toast(name + ' born, latched to ' + HANDLE);
     return true;
   }
@@ -2858,8 +2936,8 @@ async function gSave(kind, walk, text){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await writeBlock(body);
-    if (w.ok) localStorage.setItem(latchKeyG, v.trim());
-  } else if (w.ok && known) localStorage.setItem(latchKeyG, known);
+    if (w.ok) siteKeys.set(latchKeyG, v.trim());
+  } else if (w.ok && known) siteKeys.set(latchKeyG, known);
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
   return true;
 }
@@ -2867,6 +2945,7 @@ async function gSave(kind, walk, text){
  * as the fallback): the words before 'Location:' stay, the clause after it becomes this address.
  * The passport's own key, kept on this device as passport-latch:<handle> — the same name /here uses. */
 async function gStandHere(walk, words){
+  await siteKeys.ready();
   const name = 'passport:' + HANDLE;
   let origin = APEX, fresh = await readAt(APEX, name).catch(() => null);
   if (!fresh){ origin = BEACH; fresh = await readAt(BEACH, name).catch(() => null); }
@@ -2877,7 +2956,7 @@ async function gStandHere(walk, words){
   const key = 'passport-latch:' + HANDLE;
   const post = async body => { const r = await fetch(origin, { method:'POST', cache:'no-store', headers:{'Content-Type':'application/json', Accept:'application/json'}, body: JSON.stringify(body) }); let d = null; try { d = await r.json(); } catch(e){} return { ok: r.ok, status: r.status, data: d }; };
   const body = { block: name, spindle: '3', content: line };
-  let latch = null; try { latch = localStorage.getItem(key); } catch(e){}
+  const latch = siteKeys.get(key) || null;
   if (latch) body.secret = latch;
   let w = await post(body);
   if (lockRequired(w)){
@@ -2885,15 +2964,17 @@ async function gStandHere(walk, words){
     if (v === null || !v.trim()) return 'nothing written';
     body.secret = v.trim();
     w = await post(body);
-    if (w.ok){ try { localStorage.setItem(key, v.trim()); } catch(e){} }
+    if (w.ok) siteKeys.set(key, v.trim());
   }
   if (!w.ok) return 'the beach refused it (' + w.status + ') — key trouble? happyseaurchin.com/key';
+  /* the globe draws people from census:earth — refold it now, not at the evening pass */
+  if (GROUND.world === 'earth') fetch('/api/earth-census', { method: 'POST', keepalive: true }).catch(() => {});
   return true;
 }
 function paintGroundSheet(){
   const tabs = $('sh-tabs'); tabs.classList.remove('hidden');
   const walk = G_SHEET_WALK || SEL.gpath, node = gNode(SPINE, walk), t = gSem(node);
-  const vs = lensed(voicesAt(walk)).shown;
+  const lens = lensed(voicesAt(walk)), vs = lens.shown;
   if (SHEET.pane === 'cards') SHEET.pane = 'text';
   $('sh-where').textContent = gLabel(walk);
   $('sh-mirror').textContent = 'mirror ↗'; $('sh-mirror').classList.remove('hidden'); $('sh-mirror').href = gMirrorUrl(walk);
@@ -2926,9 +3007,7 @@ function paintGroundSheet(){
     }
     b.push('<span class="silent work">spatial:' + esc(GROUND.world) + ' · ' + esc(gFull(walk)) + '</span>');
   } else {
-    b.push(vs.length
-      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + esc(v.t) + '</span></div>').join('')
-      : '<span class="silent">nobody has spoken here yet</span>');
+    /* your box first, the scope, then the voices — as on every point of the walk */
     if (HANDLE && t)
       b.push('<div class="mirrorbox"><div class="sub">your voice here</div>' +
         '<textarea id="gv-text" placeholder="what this place is to you — who is here, what it is like"></textarea>' +
@@ -2937,6 +3016,10 @@ function paintGroundSheet(){
       b.push('<span class="silent">undecided ground has no voice — speak at the decided rung above or below</span>');
     else
       b.push('<div class="mirrorbox"><span class="hint">walking as anyone — </span><div class="row"><button id="mir-as">write as…</button></div></div>');
+    b.push(scopeLine(lens));
+    b.push(vs.length
+      ? vs.map(v => '<div class="vrow"><span class="who' + (v.who === HANDLE ? ' you' : '') + '">' + whoMark(v.who) + '</span><span class="said">' + esc(v.t) + '</span></div>').join('')
+      : '<span class="silent">nobody has spoken here yet</span>');
   }
   $('sh-body').innerHTML = b.join('');
   const mas = document.getElementById('mir-as');
@@ -3055,7 +3138,10 @@ if (!VENTURE){
   $('ask-handle').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
 } else {
   $('app').classList.remove('hidden');
-  load().catch(e => showState('The beach would not read.', esc(String(e.message || e)) + '<br>Try again in a moment — nothing here is stored, so nothing is lost.'));
+  load().catch(e => (window.sitePass && sitePass.walled(BEACH))
+    /* a members' beach that refused this page: its own words, with the way in (theme.js sitePass) */
+    ? showState('This beach is its members’.', sitePass.wall(BEACH))
+    : showState('The beach would not read.', esc(String(e.message || e)) + '<br>Try again in a moment — nothing here is stored, so nothing is lost.'));
 }
 })();
 </script>

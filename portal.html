@@ -363,7 +363,7 @@ function render(){
    passport's key (handle_bound). Writing again at the same part replaces it. The
    name and key are kept on this device so they are typed once. */
 const home = n => 'mirror-latch:' + FAMILY + ':' + n;
-const kept = n => { try { return localStorage.getItem(home(n)) || localStorage.getItem('next-latch:' + FAMILY + ':' + n) || localStorage.getItem('passport-latch:' + n); } catch(e){ return null; } };
+const kept = n => { try { return siteKeys.get(home(n)) || siteKeys.get('next-latch:' + FAMILY + ':' + n) || siteKeys.get('passport-latch:' + n); } catch(e){ return null; } };
 const savedName = () => { try { return localStorage.getItem('venture:who') || localStorage.getItem('render:who') || ''; } catch(e){ return ''; } };
 
 function openBox(sect){
@@ -382,11 +382,12 @@ function openBox(sect){
     who.value = savedName();
     const keyHint = () => { const n = cleanHandle(who.value); key.placeholder = n && kept(n) ? 'key kept on this device' : 'your key'; };
     who.addEventListener('input', () => { const c = cleanHandle(who.value, true); if (c !== who.value) who.value = c; keyHint(); });
-    keyHint();
+    keyHint(); siteKeys.ready().then(keyHint);
     const say = (cls, t) => { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t; };
     const refused = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
     const bound = w => !w.ok && w.data && (w.data.code === 'handle_bound' || w.data.error === 'handle_bound');
     async function submit(){
+      await siteKeys.ready();
       const text = ta.value.trim(); if (!text) { ta.focus(); return; }
       const name = cleanHandle(who.value);
       if (!name || name.length > 32) { say('err', 'Pick a name of up to 32 letters, digits, - or _ — it is how your reading is signed.'); who.focus(); return; }
@@ -403,7 +404,7 @@ function openBox(sect){
         const w = await write({ block, spindle: d, content: text, secret });
         if (refused(w) || bound(w)) { say('err', 'That name’s readings are kept under another key. If it is yours, check the key (phones capitalise the first letter); if not, choose another name.'); send.disabled = false; return; }
         if (!w.ok) throw new Error((w.data && (w.data.error || w.data.message)) || ('the beach said ' + w.status));
-        try { localStorage.setItem(home(name), secret); localStorage.setItem('venture:who', name); } catch(e){}
+        try { siteKeys.set(home(name), secret); localStorage.setItem('venture:who', name); } catch(e){}
         clear(); ta.value = ''; key.value = '';
         await load(); render();
         const again = document.getElementById('part-' + d);

@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="en">
+<head>
+<script src="/games/bridge.js"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- FILL 0 · THE NAME: the title, one line for the description, and the game's name in the plug's tag at the foot (data-game) -->
+<title>Cairn</title>
+<meta name="description" content="Cairn: tap to drop each stone as it swings over the one below, and stack the day's stones into a cairn as fast as you can. New stones every day, the same for everyone.">
+<style>
+  /* FILL 5 · THE LOOK: colours for light and dark; everything else may stay */
+  :root { --ground: #f3efe6; --ink: #1d2328; --dim: #6f7780; --line: #cfc6b4; --accent: #c9602a; --stone: #8b8e88; --stone2: #a9a79e; --sea: #8fb8c4; --foam: #ffffff; --sand: #e2d2ac; --ghost: #4f7482; }
+  @media (prefers-color-scheme: dark) { :root { --ground: #0f151b; --ink: #e9e5dc; --dim: #8b939b; --line: #2e3842; --accent: #f08a4b; --stone: #6b706d; --stone2: #858983; --sea: #1d4554; --foam: #9cc5d0; --sand: #3a3325; --ghost: #9cc0cc; } }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--ground); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 520px; margin: 0 auto; padding: 12px 16px 40px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 1.3rem; margin: 4px 0; }
+  h2 { font-size: 1rem; margin: 22px 0 6px; }
+  .day, .small { color: var(--dim); font-size: .85rem; }
+  canvas { display: block; width: 100%; aspect-ratio: 1; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+  .brief { margin: 6px 0 0; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; }
+  .card[hidden] { display: none; }
+  .line { font-size: 1.25rem; font-variant-numeric: tabular-nums; margin: 0 0 8px; }
+  input, button { font: inherit; color: inherit; }
+  input { padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: transparent; width: 11em; max-width: 100%; }
+  button { padding: 7px 14px; border: 1px solid currentColor; border-radius: 999px; background: transparent; cursor: pointer; }
+  button.main { background: var(--ink); color: var(--ground); border-color: var(--ink); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  a { color: inherit; }
+  footer { margin-top: 28px; }
+</style>
+</head>
+<body>
+<main>
+  <header><h1>Cairn</h1><span class="day" id="day"></span></header>
+  <canvas id="game" aria-label="the game: tap anywhere on it"></canvas>
+  <!-- FILL 6 · THE BRIEFING: three things and no more: where they start, their move, what they are trying to do (the same words as your law's 2) -->
+  <p class="brief" id="brief">The first stone of your cairn sits on the sand. Tap to drop each stone as it swings over the one below. Stack all of the day's stones, as fast as you can.</p>
+  <p class="small" id="state">Tap the shore to start: the clock starts at your first touch.</p>
+
+  <div class="card" id="end" hidden>
+    <p class="line" id="end-line"></p>
+    <div id="keep">
+      <div class="row"><input id="who" maxlength="32" placeholder="your name" autocomplete="nickname"><button class="main" id="keep-btn">Put it on the board</button></div>
+      <p class="small" id="keep-state"></p>
+    </div>
+    <p class="small" id="made" hidden></p>
+    <div class="row"><button id="again">Again</button><button id="challenge" hidden>Challenge someone</button><button id="bring">Bring someone</button></div>
+    <p class="small" id="share-note"></p>
+  </div>
+
+  <h2 id="board-title">Today's board</h2>
+  <beach-board id="board" n="5" verify="checkRun" empty="Nobody has built today's cairn yet. The first is yours."></beach-board>
+  <h2>The room</h2>
+  <beach-room n="5" placeholder="Say anything about today's cairn"></beach-room>
+  <footer class="small"><span id="sound-wrap"><button id="sound">Sound on</button></span> · <a href="https://happyseaurchin.com/arcade" target="_top">the arcade</a></footer>
+</main>
+
+<!-- THE TWO TAGS, in this order, and nothing else of the beach's. FILL 0: your game's name in data-game -->
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+<script src="https://beach.happyseaurchin.com/button/game.js" data-game="cairn"></script>
+<script>
+// ENGINE BEGIN — everything a run depends on: no page, no clock, no Math.random, whole numbers and + - * / only
+var ENGINE = (function () {
+  'use strict';
+  var RATE = 60;                 // steps a second, fixed for every run
+  var VERSION = 'cn1';           // FILL 1 · THE PROOF'S NAME: a short prefix and a version; a new version whenever a level or a rule changes
+  var LIMIT = 60 * RATE;         // a run unfinished at a minute is out of time
+  var FIELD = 1000;              // the shore, in thousandths across; the first stone sits in its middle
+  var SQUARE = 6;                // a stone dropped within this of the one below sits square on it, and nothing is cut
+  var HOLD = 14;                 // at least this much must rest on the stone below, or the stone falls into the sea
+  var FALL = 30;                 // a stone that falls: half a second before it swings in again
+  /* the day's seed: FNV-1a over the day's address, then mulberry32; the same day draws the same numbers everywhere */
+  function seedOf(day) {
+    var h = 2166136261;
+    for (var i = 0; i < day.length; i++) { h ^= day.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+    return h >>> 0;
+  }
+  function rng(seed) {
+    var a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) >>> 0;
+      var t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return (t ^ (t >>> 14)) >>> 0;
+    };
+  }
+  /* FILL 2 · THE LEVEL: the day's level, drawn from its seed alone, in whole numbers.
+   * The first stone's edges a and b; then each stone to stack: its speed v (a step), how far it swings either side of the top (reach), and the side it swings in from. */
+  function level(day) {
+    var r = rng(seedOf(day)), n = 8 + r() % 4, base = 260 + r() % 81, a = Math.floor((FIELD - base) / 2), stones = [];
+    for (var i = 0; i < n; i++) stones.push({ v: 6 + r() % 4 + Math.floor(4 * i / n), reach: base + 90 + r() % 101, side: r() % 2 });
+    return { day: day, a: a, b: a + base, stones: stones };
+  }
+  /* the next stone swings in from its side, its reach wide of the top stone (always wider than the top, so a drop there falls) */
+  function swingIn(lv, n) {
+    var st = lv.stones[n.next];
+    n.x = st.side ? n.a + st.reach : n.a - st.reach;
+    n.dir = st.side ? -1 : 1;
+  }
+  /* FILL 3 · THE START: the state a run begins in. a and b are the top stone's edges, x the swinging stone's left edge (it is as wide as the top) */
+  function start(lv) {
+    var s = { step: 0, next: 0, misses: 0, squares: 0, a: lv.a, b: lv.b, x: 0, dir: 1, fall: 0, won: false, cairn: [], cut: null, placedAt: -1 };
+    swingIn(lv, s);
+    return s;
+  }
+  /* FILL 4 · ONE STEP: the rule. move is 1 on a step where the player made their move (a tap), else 0.
+   * For a HOLD game, the steps you record are the steps where holding began or ended, and move is 1 while held. */
+  function step(lv, s, move) {
+    var n = { step: s.step + 1, next: s.next, misses: s.misses, squares: s.squares, a: s.a, b: s.b, x: s.x, dir: s.dir, fall: s.fall, won: s.won, cairn: s.cairn, cut: s.cut, placedAt: s.placedAt };
+    if (n.won) return n;
+    if (n.fall > 0) { n.fall -= 1; if (n.fall === 0) swingIn(lv, n); return n; }   // a stone is falling into the sea, and a tap does nothing
+    var st = lv.stones[n.next], w = n.b - n.a;
+    if (move) {
+      var d = n.x - n.a, off = d < 0 ? -d : d, na = n.a, nb = n.b;
+      if (off <= SQUARE) { n.squares += 1; n.cut = null; }                         // square on the stone below: nothing is cut
+      else if (w - off < HOLD) { n.misses += 1; n.fall = FALL; return n; }          // too little of it rests on the stone below: it falls
+      else if (d > 0) { na = n.x; n.cut = [n.b, n.x + w]; }                          // what overhangs is cut off, and falls
+      else { nb = n.x + w; n.cut = [n.x, n.a]; }
+      n.cairn = n.cairn.concat([[na, nb]]); n.a = na; n.b = nb; n.next += 1; n.placedAt = n.step;
+      if (n.next === lv.stones.length) { n.won = true; return n; }
+      swingIn(lv, n);
+      return n;
+    }
+    var lo = n.a - st.reach, hi = n.a + st.reach;                                  // the stone swings to its reach either side of the top, and back
+    n.x += n.dir * st.v;
+    if (n.x >= hi) { n.x = hi; n.dir = -1; } else if (n.x <= lo) { n.x = lo; n.dir = 1; }
+    return n;
+  }
+  function finished(lv, s) { return s.won; }
+  /* a run kept as its moves: VERSION.<day>.<steps>.<the steps of each move, each as the steps since the one before>, base 36 */
+  function encode(day, steps, moves) {
+    var last = 0, parts = [];
+    for (var i = 0; i < moves.length; i++) { parts.push((moves[i] - last).toString(36)); last = moves[i]; }
+    return VERSION + '.' + day + '.' + steps.toString(36) + '.' + parts.join('-');
+  }
+  function decode(proof) {
+    var p = String(proof || '').split('.');
+    if (p.length !== 4 || p[0] !== VERSION || !/^\d{8}00$/.test(p[1]) || !/^[0-9a-z]+$/.test(p[2])) return null;
+    var steps = parseInt(p[2], 36), moves = [], at = 0;
+    if (!(steps > 0 && steps <= LIMIT)) return null;
+    if (p[3]) {
+      var d = p[3].split('-');
+      for (var i = 0; i < d.length; i++) {
+        if (!/^[0-9a-z]+$/.test(d[i])) return null;
+        at += parseInt(d[i], 36);
+        if ((i && parseInt(d[i], 36) < 1) || at >= steps) return null;
+        moves.push(at);
+      }
+    }
+    return { day: p[1], steps: steps, moves: moves };
+  }
+  function timeWords(steps) { return (steps / RATE).toFixed(2); }
+  /* a proof re-run: it counts only if it finishes on its last step */
+  function rerun(proof) {
+    var r = decode(proof);
+    if (!r) return { ok: false, error: 'not a run of this game' };
+    var lv = level(r.day), s = start(lv), at = {}, i;
+    for (i = 0; i < r.moves.length; i++) at[r.moves[i]] = 1;
+    for (i = 0; i < r.steps; i++) {
+      if (finished(lv, s)) return { ok: false, error: 'it finished before its last step' };
+      s = step(lv, s, at[i] ? 1 : 0);
+    }
+    return finished(lv, s) ? { ok: true, day: r.day, steps: r.steps, time: timeWords(r.steps), state: s } : { ok: false, error: 'it does not finish' };
+  }
+  /* FILL 7 · A GOOD PLAYER, for the checks: { moves, steps } that finish a level well inside thirty seconds, or null.
+   * It drops each stone at the nearest it comes to the top on its first swing, where it would rest. */
+  function bot(lv) {
+    var s = start(lv), moves = [];
+    while (!finished(lv, s) && s.step < LIMIT) {
+      var move = 0;
+      if (s.fall === 0) {
+        var st = lv.stones[s.next], off = s.x - s.a, nx = s.x + s.dir * st.v, lo = s.a - st.reach, hi = s.a + st.reach;
+        if (nx > hi) nx = hi; else if (nx < lo) nx = lo;
+        var noff = nx - s.a;
+        if (off < 0) off = -off;
+        if (noff < 0) noff = -noff;
+        if (off <= noff && (s.b - s.a) - off >= HOLD) move = 1;
+      }
+      if (move) moves.push(s.step);
+      s = step(lv, s, move);
+    }
+    return finished(lv, s) ? { moves: moves, steps: s.step } : null;
+  }
+  return { RATE: RATE, VERSION: VERSION, LIMIT: LIMIT, level: level, start: start, step: step, finished: finished,
+    encode: encode, decode: decode, rerun: rerun, timeWords: timeWords, bot: bot, FIELD: FIELD, FALL: FALL };
+})();
+// ENGINE END
+
+// THE PAGE — the touch, the drawing, and the beach through the plug. Nothing here changes what a run is.
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var params = new URLSearchParams(location.search);
+  var reduce = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+  function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+  function put(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  var plug = function () { return window.beachGame || null; };
+  var GAME = (plug() && plug().game) || 'cairn';
+  /* the day: the beach's day (today), or an earlier one from a challenge link (?track=<day>) */
+  function dayOf(d) { return String(d.getUTCFullYear()) + (Math.floor(d.getUTCMonth() / 3) + 1) + (d.getUTCMonth() % 3 + 1) + (Math.floor((d.getUTCDate() - 1) / 7) + 1) + ((d.getUTCDate() - 1) % 7 + 1) + '00'; }
+  var TODAY = plug() ? plug().today() : dayOf(new Date());
+  var asked = params.get('track') || '';
+  var DAY = /^\d{8}00$/.test(asked) && asked <= TODAY ? asked : TODAY;
+  var LV = ENGINE.level(DAY);
+  /* the board's verify: a line counts only if its run re-runs to a finish on its day in the time the line says */
+  window.checkRun = function (p) {
+    var r = ENGINE.rerun(p.proof || ''), m = /^\s*FINISHED\s+(\d+(?:\.\d+)?)\s*s\b/i.exec(p.line || '');
+    return !!(r.ok && m && (+m[1]).toFixed(2) === r.time && r.day.indexOf(String(p.at || '').replace(/0+$/, '')) === 0);
+  };
+  /* a day's address in words: year, season, month in the season, week of the month, day in the week, then 00 */
+  function dateWords(day) {
+    var m = (+day[4] - 1) * 3 + (+day[5]) - 1, d = new Date(Date.UTC(+day.slice(0, 4), m, (+day[6] - 1) * 7 + (+day[7])));
+    return d.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+  }
+  if (DAY !== TODAY) { $('board').setAttribute('at', DAY); $('board-title').textContent = 'The board for ' + dateWords(DAY); }
+  $('day').textContent = DAY === TODAY ? 'today' : dateWords(DAY);
+
+  // ── the run ──
+  var mode = 'ready', s = ENGINE.start(LV), moves = [], pending = false, acc = 0, last = 0, flash = 0, endedAt = 0;
+  var ghost = null;   // { name, moves: {step: 1}, s }: the day's best run, re-run beside yours
+  function begin() { mode = 'play'; s = ENGINE.start(LV); moves = []; pending = false; acc = 0; last = performance.now(); if (ghost) ghost.s = ENGINE.start(LV);
+    var t = (+get(GAME + ':tries:' + DAY) || 0) + 1; put(GAME + ':tries:' + DAY, String(t)); $('end').hidden = true; $('state').textContent = 'Tap to drop the stone as it swings over the one below.'; }
+  function touch(e) {
+    if (e) e.preventDefault();
+    if (mode === 'ready' || mode === 'done' && performance.now() - endedAt > 800) { begin(); return; }   // the first touch starts the clock and is not a move
+    if (mode === 'play') pending = true;
+  }
+  $('game').addEventListener('pointerdown', touch);
+  document.addEventListener('keydown', function (e) { if ((e.key === ' ' || e.key === 'Enter') && document.activeElement === document.body) touch(e); });
+
+  function frame(now) {
+    if (mode === 'play') {
+      acc += Math.min(250, now - last); last = now;
+      while (acc >= 1000 / ENGINE.RATE && mode === 'play') {
+        acc -= 1000 / ENGINE.RATE;
+        var move = pending ? 1 : 0; pending = false;
+        if (move) moves.push(s.step);
+        var was = s;
+        s = ENGINE.step(LV, s, move);
+        if (s.misses > was.misses) { flash = reduce.matches ? 0 : 8; buzz(); }
+        else if (s.next > was.next) beep();
+        if (ghost && !ENGINE.finished(LV, ghost.s)) ghost.s = ENGINE.step(LV, ghost.s, ghost.moves[ghost.s.step] ? 1 : 0);
+        if (ENGINE.finished(LV, s)) end(true);
+        else if (s.step >= ENGINE.LIMIT) end(false);
+      }
+    } else last = now;
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  // ── the end of a run, and keeping it ──
+  var proof = '', time = '', keptSlot = '';
+  function end(done) {
+    mode = 'done'; endedAt = performance.now();
+    proof = done ? ENGINE.encode(DAY, s.step, moves) : '';
+    time = done ? ENGINE.timeWords(s.step) : '';
+    var check = done ? ENGINE.rerun(proof) : null;
+    $('end-line').textContent = done ? 'FINISHED ' + time + 's' + (s.misses ? ' · ' + s.misses + (s.misses === 1 ? ' miss' : ' misses') : '') : 'Out of time.';
+    $('keep').hidden = !(done && check && check.ok && plug());
+    $('keep-state').textContent = plug() ? '' : 'The beach can\'t be reached just now, so this time stays on this phone.';
+    $('who').value = (plug() && plug().name()) || get(GAME + ':name') || '';
+    $('made').hidden = true; $('challenge').hidden = true; $('share-note').textContent = '';
+    $('end').hidden = false;
+    $('state').textContent = 'Tap the shore to go again.';
+  }
+  $('again').addEventListener('click', begin);
+  $('keep-btn').addEventListener('click', function () {
+    var g = plug(); if (!g || !proof) return;
+    $('keep-btn').disabled = true; $('keep-state').textContent = 'Putting it on the board…';
+    g.result({ at: DAY, line: 'FINISHED ' + time + 's', proof: proof, name: $('who').value.trim() || undefined,
+      tries: get(GAME + ':tries:' + DAY) || undefined, from: get(GAME + ':from') || undefined }).then(function (r) {
+      $('keep-btn').disabled = false;
+      if (!r || !r.ok) { $('keep-state').textContent = r && r.quiet ? 'Not kept: the key for that name was not given.' : 'That did not reach the beach: ' + ((r && r.error) || 'no answer') + '.'; return; }
+      put(GAME + ':name', r.name); keptSlot = r.slot || '';
+      $('keep').hidden = true;
+      $('keep-state').textContent = '';
+      $('share-note').textContent = r.said ? 'Your time is on the board as ' + r.name + '. The board catches up in a few seconds.' : 'Kept in the room as ' + r.name + '; your best today still stands on the board.';
+      var made = g.made();
+      if (made) { $('made').textContent = 'This phone made you a name, ' + made.name + ', and a key, ' + made.key + '. Note the key to play as ' + made.name + ' on another phone.'; $('made').hidden = false; }
+      $('challenge').hidden = !keptSlot;
+      setTimeout(function () { var b = $('board'); if (b.refresh) b.refresh(); }, 20000);
+    });
+  });
+  function pageLink() { return (LAW && LAW.page) || location.origin + location.pathname; }
+  function share(url, text) {
+    if (navigator.share) { navigator.share({ title: document.title, text: text, url: url }).catch(function () {}); return; }
+    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(function () { $('share-note').textContent = 'The link is copied: ' + url; },
+      function () { $('share-note').textContent = 'Send them this link: ' + url; });
+  }
+  $('challenge').addEventListener('click', function () { share(pageLink() + '?track=' + DAY + '&ghost=' + keptSlot, 'Beat my ' + time + 's on ' + document.title + '.'); });
+  $('bring').addEventListener('click', function () { var me = (plug() && plug().name()) || get(GAME + ':name') || ''; share(pageLink() + (me ? '?from=' + encodeURIComponent(me) : ''), 'Play ' + document.title + ' with me.'); });
+  if (params.get('from') && !get(GAME + ':from')) put(GAME + ':from', params.get('from').replace(/[^a-z0-9_ -]/gi, '').slice(0, 32));
+
+  // ── the ghost: the day's best run (or the one a challenge link names), re-run here beside yours ──
+  var LAW = null;
+  function ghostFrom(name, proofText) {
+    var r = ENGINE.decode(proofText); if (!r || r.day !== DAY || !ENGINE.rerun(proofText).ok) return;
+    var at = {}; r.moves.forEach(function (m) { at[m] = 1; });
+    ghost = { name: name, moves: at, s: ENGINE.start(LV) };
+  }
+  if (plug()) {
+    plug().law().then(function (l) { if (l && l.ok !== false) LAW = l; });
+    var slot = params.get('ghost');
+    (slot ? plug().room({ n: 500 }).then(function (r) {
+      var hit = r && r.ok ? r.lines.filter(function (x) { return x.slot === slot; })[0] : null;
+      if (hit) ghostFrom(hit.name || 'a visitor', hit.proof);
+    }) : plug().top({ at: DAY, n: 1, verify: window.checkRun }).then(function (b) {
+      if (b && b.ok && b.top[0] && b.top[0].proof) ghostFrom(b.top[0].name, b.top[0].proof.text);
+    })).catch(function () {});
+  }
+
+  // ── sound and touch, which can be turned off ──
+  var soundOn = get(GAME + ':sound') !== 'off', audio = null;
+  function label() { $('sound').textContent = soundOn ? 'Sound on' : 'Sound off'; }
+  $('sound').addEventListener('click', function () { soundOn = !soundOn; put(GAME + ':sound', soundOn ? 'on' : 'off'); label(); });
+  label();
+  function tone(f, ms) {
+    if (!soundOn) return;
+    try { audio = audio || new (window.AudioContext || window.webkitAudioContext)(); var o = audio.createOscillator(), v = audio.createGain();
+      o.frequency.value = f; v.gain.value = 0.06; o.connect(v); v.connect(audio.destination); o.start(); o.stop(audio.currentTime + ms / 1000); } catch (e) {}
+  }
+  function beep() { tone(880, 70); }
+  function buzz() { tone(160, 120); if (soundOn && navigator.vibrate) try { navigator.vibrate(30); } catch (e) {} }
+
+  // ── drawing: FILL 5 · THE LOOK. Drawing may use anything; nothing here touches a run ──
+  var cv = $('game'), ctx = cv.getContext('2d'), K = {};
+  function colours() { var cs = getComputedStyle(document.documentElement); ['ink', 'dim', 'line', 'accent', 'stone', 'stone2', 'sea', 'foam', 'sand', 'ghost', 'ground'].forEach(function (k) { K[k] = cs.getPropertyValue('--' + k).trim(); }); }
+  function size() { var dpr = Math.min(2.5, window.devicePixelRatio || 1), w = cv.clientWidth; cv.width = Math.round(w * dpr); cv.height = Math.round(w * dpr); colours(); }
+  window.addEventListener('resize', size);
+  if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', colours);
+  /* the view, in the shore's own units: wide enough to see a stone swing to its reach on either side; H is a stone's height, SAND where the first one sits */
+  var LEFT = -200, SPAN = 1400, H = 56, SAND = 1150, seenSquares = 0, glint = 0;
+  function pebble(x, y, w, h) { var r = Math.max(0, Math.min(h / 2, w / 2)); ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+  function stone(a, b, lvl, colour, k, dy, outline) {
+    pebble((a - LEFT) * k, (SAND - H * (lvl + 1) + (dy || 0)) * k, (b - a) * k, H * 0.9 * k);
+    if (outline) { ctx.strokeStyle = colour; ctx.lineWidth = Math.max(1, k * 5); ctx.setLineDash([k * 16, k * 10]); ctx.stroke(); ctx.setLineDash([]); }
+    else { ctx.fillStyle = colour; ctx.fill(); }
+  }
+  function draw() {
+    var w = cv.width, k = w / SPAN, still = reduce.matches, t = still ? 0 : performance.now() / 900, top = s.cairn.length, i;
+    ctx.clearRect(0, 0, w, w);
+    // the sea, and the sand bank the cairn stands on
+    var seaY = (SAND + 30) * k;
+    ctx.fillStyle = K.sea; ctx.fillRect(0, seaY, w, w - seaY);
+    ctx.strokeStyle = K.foam; ctx.lineWidth = Math.max(1, k * 4); ctx.globalAlpha = 0.55;
+    for (i = 0; i < 3; i++) {
+      var yy = seaY + (45 + i * 70) * k; ctx.beginPath();
+      for (var xx = 0; xx <= w + 1; xx += w / 40) { var yv = yy + Math.sin(xx / (w / 6) + t + i * 1.7) * 6 * k; if (xx === 0) ctx.moveTo(xx, yv); else ctx.lineTo(xx, yv); }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = K.sand; ctx.beginPath(); ctx.ellipse((500 - LEFT) * k, (SAND + 60) * k, 440 * k, 60 * k, 0, Math.PI, 2 * Math.PI); ctx.fill();
+    // the cairn: the first stone, then every stone that rests
+    stone(LV.a, LV.b, 0, K.stone2, k);
+    s.cairn.forEach(function (c, j) { stone(c[0], c[1], j + 1, j % 2 ? K.stone2 : K.stone, k); });
+    // a stone dropped square glints
+    if (s.squares > seenSquares && !still) glint = 24;
+    seenSquares = s.squares;
+    if (glint > 0 && top > 0) { var c = s.cairn[top - 1]; ctx.globalAlpha = glint / 24; stone(c[0] - 8, c[1] + 8, top, K.foam, k, 0, true); ctx.globalAlpha = 1; glint--; }
+    // what was cut off falls into the sea
+    if (s.cut && !still && s.step - s.placedAt < 40) { var tc = s.step - s.placedAt; ctx.globalAlpha = 1 - tc / 40; stone(s.cut[0], s.cut[1], top, K.stone, k, tc * tc * 0.9); ctx.globalAlpha = 1; }
+    // the ghost: its swinging stone, at its own cairn's height
+    if (ghost && mode === 'play' && !ENGINE.finished(LV, ghost.s) && ghost.s.fall === 0) { ctx.globalAlpha = 0.6; stone(ghost.s.x, ghost.s.x + ghost.s.b - ghost.s.a, ghost.s.next + 1, K.ghost, k, 0, true); ctx.globalAlpha = 1; }
+    // the swinging stone, with the top stone's edges marked above it; or the one falling
+    if (!ENGINE.finished(LV, s)) {
+      var sw = s.b - s.a;
+      if (s.fall > 0) {
+        if (!still) { var tf = ENGINE.FALL - s.fall; ctx.globalAlpha = 1 - tf / ENGINE.FALL; stone(s.x, s.x + sw, top + 1, K.accent, k, tf * tf * 1.2); ctx.globalAlpha = 1; }
+      } else {
+        var y0 = (SAND - H * (top + 2)) * k, y1 = (SAND - H * (top + 1)) * k;
+        ctx.strokeStyle = K.dim; ctx.lineWidth = Math.max(1, k * 3); ctx.setLineDash([k * 8, k * 10]); ctx.beginPath();
+        ctx.moveTo((s.a - LEFT) * k, y0); ctx.lineTo((s.a - LEFT) * k, y1); ctx.moveTo((s.b - LEFT) * k, y0); ctx.lineTo((s.b - LEFT) * k, y1);
+        ctx.stroke(); ctx.setLineDash([]);
+        stone(s.x, s.x + sw, top + 1, K.accent, k);
+      }
+    }
+    if (flash > 0) { ctx.globalAlpha = flash / 16; ctx.fillStyle = K.accent; ctx.fillRect(0, 0, w, w); ctx.globalAlpha = 1; flash--; }
+    ctx.fillStyle = K.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = Math.round(w * 0.075) + 'px system-ui, sans-serif';
+    ctx.fillText(mode === 'ready' ? 'tap to start' : ENGINE.timeWords(s.step) + ' s', w / 2, w * 0.1);
+    ctx.font = Math.round(w * 0.04) + 'px system-ui, sans-serif'; ctx.fillStyle = K.dim;
+    ctx.fillText(s.next + ' of ' + LV.stones.length + ' stones' + (ghost && mode === 'play' ? ' · ' + ghost.name + '’s ghost: ' + ghost.s.next : ''), w / 2, w * 0.17);
+  }
+  size(); requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

@@ -142,13 +142,19 @@ function entryOf(c, patch, inProjectHand){
 /* ── the pile law (function:ahead 1, ratified 2026-09-01) ──
  * A rung is bounded and written at its slots, never appended: a free digit
  * first, then the lowest RETIRED slot — an emptied one, a legacy DONE/DROP
- * line, or a card done or put down before today; today's stand until the
- * sweep. Nine is the shape of a node, so a full rung refuses plainly. */
+ * line, a card let go, or a card done before today. Nine is the shape of a
+ * node, so nine live cards refuse plainly.
+ * A CARD LET GO FREES ITS PLACE AT ONCE (David, 2026-10-20: five cards showing
+ * in his now, 'today 9/9', no room to add — the cards he had just let go were
+ * holding their places until the next day). It stands where it was, under
+ * done today with its undo, until a new card needs the place. A card DONE
+ * today still holds its own: one still in the pile is one whose landing has
+ * not happened, and it is never written over (function:ahead 4). */
 function reusable(n){
   if (typeof n === 'string') return !n.trim() || /^(DONE|DROP)\b/.test(n.trim());
   if (!isEntry(n)) return false;
-  if (!n._.trim()) return true;
-  return (n['4'] === 'done' || n['4'] === 'drop') && String(n['3'] || '').slice(0, 10) !== new Date().toISOString().slice(0, 10);
+  if (!n._.trim() || n['4'] === 'drop') return true;
+  return n['4'] === 'done' && String(n['3'] || '').slice(0, 10) !== new Date().toISOString().slice(0, 10);
 }
 /* every slot a card may take, in the order a landing takes them */
 function slotsFree(node){
@@ -157,19 +163,21 @@ function slotsFree(node){
   for (let d = 1; d <= 9; d++) if (!digs.includes(String(d))) free.push(String(d));
   return free.concat(digs.filter(d => reusable(node[d])));
 }
-/* how many of a rung's nine stand taken */
+/* how many of a rung's nine stand taken — its live cards, the ones a person
+ * sees in the row */
 const taken = node => 9 - slotsFree(node).length;
 
 /* ── the key ── one per holder, as every hand door has kept it, the
  * passport's behind it */
 const keyName = h => 'next-latch:ahead:' + h;
-function keyOf(h){ try { return localStorage.getItem(keyName(h)) || localStorage.getItem('passport-latch:' + h) || ''; } catch(e){ return ''; } }
-function keep(h, k){ try { localStorage.setItem(keyName(h), k); } catch(e){} }
+function keyOf(h){ try { return siteKeys.get(keyName(h)) || siteKeys.get('passport-latch:' + h) || ''; } catch(e){ return ''; } }
+function keep(h, k){ try { siteKeys.set(keyName(h), k); } catch(e){} }
 const ask = m => { const v = prompt(m); return v === null ? '' : v.trim(); };
 
 /* a write to one of a holder's hands under the key this device keeps — asked
  * once where none is kept, and kept; quiet asks nothing */
 async function put(h, body, quiet){
+  await siteKeys.ready();
   const send = k => write(Object.assign({}, body, k ? { secret: k } : {}));
   let w = await send(keyOf(h));
   if (lockRequired(w)){
@@ -193,6 +201,7 @@ const rootOf = (project, h) => 'AHEAD — ' + h + "'s hand in " + (project === '
  * founds under its own key); given as the proof, the new hand may keep the key
  * the holder's hands already use, so a person keeps one key for their cards. */
 async function found(h, project, quiet){
+  await siteKeys.ready();
   const block = name(project, h);
   let key = keyOf(h);
   if (!key){
@@ -203,14 +212,14 @@ async function found(h, project, quiet){
   const content = { '_': rootOf(project, h) };
   let w = await write({ block, content, new_lock: key });
   if (!w.ok && w.data && w.data.code === 'handle_bound'){
-    let pk = ''; try { pk = localStorage.getItem('passport-latch:' + h) || ''; } catch(e){}
+    let pk = ''; try { pk = siteKeys.get('passport-latch:' + h) || ''; } catch(e){}
     if (!pk || pk === key){
       if (quiet) return { ok: false, quiet: true };
       pk = ask('The beach binds ' + block + " to your passport's key — enter that key (kept on this device; check the first letter: phones capitalise it):");
       if (!pk) return { ok: false, quiet: true };
     }
     w = await write({ block, content, secret: pk, new_lock: key });
-    if (w.ok) try { localStorage.setItem('passport-latch:' + h, pk); } catch(e){}
+    if (w.ok) try { siteKeys.set('passport-latch:' + h, pk); } catch(e){}
   }
   if (w.ok) keep(h, key);
   return w;
@@ -268,6 +277,7 @@ async function move(c, to, quiet){
  * moves, and a card that cannot land stays where it was, still read. Done and
  * dropped cards stay as the record; the old hand is set aside, never wiped. */
 async function split(h){
+  await siteKeys.ready();
   if (!keyOf(h)) return { ok: false, quiet: true, moved: 0 };
   const old = await read('ahead:' + h).catch(() => null);
   const open = old ? cardsIn('ahead:' + h, old).filter(isOpen) : [];

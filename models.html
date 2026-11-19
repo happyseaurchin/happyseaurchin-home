@@ -151,9 +151,10 @@
   var keep  = function(list){ try { localStorage.setItem(LIST_KEY, JSON.stringify(list)); } catch(e){} };
   var keeping = function(){ try { return localStorage.getItem(KEEP_KEY) === '1'; } catch(e){ return false; } };
   var keyName = function(r){ return 'models:key:' + r.beach + '|' + r.handle; };
-  function keyOf(r){ try { return sessionStorage.getItem(keyName(r)) || localStorage.getItem(keyName(r)) || ''; } catch(e){ return ''; } }
-  function holdKey(r, k){ try { sessionStorage.setItem(keyName(r), k); if (keeping()) localStorage.setItem(keyName(r), k); } catch(e){} }
-  function dropKey(r){ try { sessionStorage.removeItem(keyName(r)); localStorage.removeItem(keyName(r)); } catch(e){} }
+  /* a passphrase held for this tab, or kept on this device with 'keep passphrases', and wrapped either way (theme.js siteKeys) */
+  function keyOf(r){ return siteKeys.get(keyName(r)); }
+  function holdKey(r, k){ siteKeys.set(keyName(r), k, { tab: !keeping() }); }
+  function dropKey(r){ siteKeys.del(keyName(r)); }
 
   function json(u){ return fetch(u, { headers:{Accept:'application/json'}, cache:'no-store' }).then(function(r){ return r.status === 404 ? null : r.json(); }); }
   function get(beach, block){
@@ -857,7 +858,8 @@
   /* A control the chrome gathers into 'options' like any other. */
   var opt = el('label', ''); opt.style.cssText = 'display:inline-flex;gap:6px;align-items:center;font-family:var(--mono);font-size:12px;color:var(--vapour-dim)';
   var box = document.createElement('input'); box.type = 'checkbox'; box.checked = keeping();
-  box.addEventListener('change', function(){ try { localStorage.setItem(KEEP_KEY, box.checked ? '1' : '0'); if (!box.checked) store().forEach(function(r){ try { localStorage.removeItem(keyName(r)); } catch(e){} }); } catch(e){} });
+  /* kept no longer: each passphrase held for this tab alone, as it was before 'keep' */
+  box.addEventListener('change', function(){ try { localStorage.setItem(KEEP_KEY, box.checked ? '1' : '0'); } catch(e){} store().forEach(function(r){ var k = keyOf(r); if (k) siteKeys.set(keyName(r), k, { tab: !box.checked }); }); });
   opt.appendChild(box); opt.appendChild(document.createTextNode('keep passphrases on this device'));
   document.querySelector('.bar').appendChild(opt);
 

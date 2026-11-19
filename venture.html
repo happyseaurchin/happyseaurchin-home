@@ -338,13 +338,13 @@ renderLadder().catch(e => { $('ladder').innerHTML = '<li class="loading">' + esc
 (function(){
   const post = $('post'), note = $('note'), who = $('who'), key = $('key'), hint = $('hint'), landed = $('landed');
   const home = n => 'next-latch:' + FAMILY + ':' + n;
-  const kept = n => { try { return localStorage.getItem(home(n)) || localStorage.getItem('mirror-latch:' + FAMILY + ':' + n); } catch(e){ return null; } };
+  const kept = n => { try { return siteKeys.get(home(n)) || siteKeys.get('mirror-latch:' + FAMILY + ':' + n); } catch(e){ return null; } };
   $('at').innerHTML = RUNGS.slice().reverse().map((r, i) =>
     '<label><input type="radio" name="rung" value="' + r.at + '"' + (i === 0 ? ' checked' : '') + '><span>' + esc(r.word) + '</span></label>').join('');
   let saved = null; try { saved = localStorage.getItem('venture:who'); } catch(e){}
   if (saved) who.value = saved;
   const keyHint = () => { const n = who.value.trim(); key.placeholder = n && kept(n) ? 'key kept on this device' : 'your key'; };
-  who.addEventListener('input', keyHint); keyHint();
+  who.addEventListener('input', keyHint); keyHint(); siteKeys.ready().then(keyHint);
   async function write(body){
     const r = await fetch(ORIGIN, { method:'POST', cache:'no-store',
       headers:{ 'Content-Type':'application/json', Accept:'application/json' }, body: JSON.stringify(body) });
@@ -354,6 +354,7 @@ renderLadder().catch(e => { $('ladder').innerHTML = '<li class="loading">' + esc
   const refused = w => !w.ok && w.data && (w.data.code === 'lock_required' || w.data.error === 'lock_required');
   function say(cls, text){ hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = text; }
   async function submit(){
+    await siteKeys.ready();
     const text = note.value.trim(); if (!text) { note.focus(); return; }
     const name = who.value.trim();
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,31}$/.test(name)) { say('err', 'Pick a name of 2 to 32 letters, digits, - or _ — it is how your statement is signed.'); who.focus(); return; }
@@ -374,7 +375,7 @@ renderLadder().catch(e => { $('ladder').innerHTML = '<li class="loading">' + esc
       const w = await write({ block, spindle: rung.at, content: text, secret });
       if (refused(w)){ say('err', 'That name’s statements are latched to another key. If it is yours, check the key (phones capitalise the first letter); if not, choose another name.'); post.disabled = false; return; }
       if (!w.ok) throw new Error((w.data && w.data.error) || ('the beach said ' + w.status));
-      try { localStorage.setItem(home(name), secret); localStorage.setItem('venture:who', name); } catch(e){}
+      try { siteKeys.set(home(name), secret); localStorage.setItem('venture:who', name); } catch(e){}
       key.value = ''; keyHint();
       say('ok', 'It stands on the venture at ' + rung.word.toLowerCase() + ' — ' + rung.date + '. Writing again at the same rung replaces it.');
       landed.textContent = '“' + text + '” — ' + name; landed.hidden = false; note.value = '';

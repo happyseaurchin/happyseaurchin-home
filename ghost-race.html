@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ghost Race</title>
+<meta name="description" content="Ghost Race: three laps of the day's circuit, racing the day's fastest ghosts. Hold to turn, let go to drive straight. A new circuit every day, the same for everyone.">
+<meta name="theme-color" content="#0a0f1f">
+<link rel="canonical" href="https://happyseaurchin.com/ghost-race">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Ghost Race">
+<meta property="og:description" content="Three laps of the day's circuit, racing the day's fastest ghosts. Hold to turn, let go to drive straight.">
+<meta property="og:url" content="https://happyseaurchin.com/ghost-race">
+<meta property="og:image" content="https://happyseaurchin.com/animations/ghost-race.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<script src="/theme.js"></script>
+<style>
+  /* Ghost Race, an arcade at night (or by day, with ◐): the track edged in Ghost Wire's neon, you in gold,
+     the ghosts in purple. The game is one canvas filling the screen; the words sit over it and let a touch
+     pass through to the canvas, except their buttons. The skin changes what is drawn and nothing else. */
+  :root {
+    --night: #0a0f1f; --track: #232a3d; --edge: #00e5ff; --edge-glow: rgba(0, 229, 255, 0.28);
+    --you: #ffd23f; --ghost: #b07cff; --buzz: #ff3b5c; --words: #e9edf5; --dim: #8f98ab;
+    --panel: rgba(10, 15, 31, 0.93); --line: rgba(233, 237, 245, 0.14); --field: rgba(233, 237, 245, 0.07);
+    --mark: rgba(0, 0, 0, 0.28); --kerb: #e9edf5;
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  :root[data-theme="light"] {
+    --night: #f2efe6; --track: #d6d0c1; --edge: #0b6e8a; --edge-glow: rgba(11, 110, 138, 0.18);
+    --you: #c98a00; --ghost: #7a3ff2; --buzz: #d61f45; --words: #1b2030; --dim: #586073;
+    --panel: rgba(242, 239, 230, 0.96); --line: rgba(27, 32, 48, 0.16); --field: rgba(27, 32, 48, 0.05);
+    --mark: rgba(0, 0, 0, 0.16); --kerb: #ffffff;
+  }
+  :root[data-skin="boat"] { --track: #12395a; --edge: #3fcf8a; --edge-glow: rgba(63, 207, 138, 0.25); --mark: rgba(255, 255, 255, 0.22); }
+  :root[data-skin="boat"][data-theme="light"] { --track: #9fd3e8; --edge: #2f8f5f; --edge-glow: rgba(47, 143, 95, 0.18); --mark: rgba(255, 255, 255, 0.6); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--night); color: var(--words); font-family: var(--font); overflow: hidden;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  canvas#game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  a { color: var(--edge); }
+  .hidden, [hidden] { display: none !important; }
+
+  /* the strip along the top: the name, the lap, the clock, three buttons */
+  .hud { position: fixed; left: 0; right: 0; top: 0; padding: calc(8px + env(safe-area-inset-top)) 12px 6px; pointer-events: none;
+    display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 4px 10px; }
+  .hud h1 { margin: 0; font-size: 17px; letter-spacing: 0.04em; font-weight: 700; align-self: center; white-space: nowrap; }
+  .hud h1 span { color: var(--ghost); }
+  .hud .sub { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: var(--words); min-height: 1.3em; overflow-wrap: anywhere; }
+  .hud .right { display: flex; align-items: center; gap: 6px; pointer-events: auto; }
+  .time { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 24px; font-weight: 700; min-width: 3.6ch; text-align: right; }
+  .chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 11px; font-size: 13.5px; line-height: 1; }
+  .chip:focus-visible, .go:focus-visible, .plain:focus-visible { outline: 2px solid var(--edge); outline-offset: 2px; }
+  .ghostline { grid-column: 1 / -1; margin: 0; font-size: 12.5px; color: var(--dim); overflow-wrap: anywhere; }
+  .ghostline b { color: var(--ghost); font-weight: 600; }
+
+  /* before the first touch: where you start, your move, what you are trying to do */
+  .brief { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(92vw, 380px);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px 12px; pointer-events: none; text-align: center; }
+  .brief .how { width: 150px; height: 74px; display: block; margin: 0 auto 4px; }
+  .brief p { margin: 4px 0; font-size: 15px; line-height: 1.4; }
+  .brief .go-word { margin-top: 8px; font-weight: 700; color: var(--you); letter-spacing: 0.03em; }
+  .brief.short .steps { display: none; }
+  .brief.top { top: var(--brief-top, 120px); bottom: auto; }
+  .flash { position: fixed; left: 50%; top: 42%; transform: translate(-50%, -50%); font-size: 22px; font-weight: 800; letter-spacing: 0.06em;
+    color: var(--buzz); pointer-events: none; text-shadow: 0 0 12px var(--night); }
+
+  /* a card from the bottom: the finish */
+  .card { position: fixed; left: 0; right: 0; bottom: 0; max-height: 88vh; overflow-y: auto; overscroll-behavior: contain;
+    background: var(--panel); border-top: 1px solid var(--line); border-radius: 18px 18px 0 0;
+    padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); -webkit-user-select: text; user-select: text; }
+  .card .inner, .sheet .inner { max-width: 460px; margin: 0 auto; }
+  .big { font-family: var(--mono); font-size: 40px; font-weight: 800; margin: 0; font-variant-numeric: tabular-nums; }
+  .card p { margin: 6px 0; line-height: 1.45; font-size: 15px; }
+  .note { color: var(--dim); font-size: 13.5px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .go { border: 0; border-radius: 999px; padding: 11px 18px; background: var(--you); color: #1a1405; font-weight: 700; font-size: 15px; }
+  .plain { border: 1px solid var(--line); border-radius: 999px; padding: 10px 15px; background: transparent; font-size: 14.5px; }
+  .who { display: grid; gap: 4px; margin-top: 10px; font-size: 13.5px; color: var(--dim); }
+  input[type="text"], textarea { font: inherit; font-size: 16px; color: var(--words); background: var(--field); border: 1px solid var(--line);
+    border-radius: 10px; padding: 9px 11px; width: 100%; -webkit-user-select: text; user-select: text; }
+  textarea { resize: vertical; min-height: 64px; }
+  .made { border: 1px dashed var(--you); border-radius: 12px; padding: 10px 12px; margin-top: 10px; }
+  .made code { font-family: var(--mono); font-size: 14px; overflow-wrap: anywhere; }
+
+  /* a sheet over the whole screen: the board, the wave, the notes; and the look and sound */
+  .sheet { position: fixed; inset: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--night);
+    padding: calc(14px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); -webkit-user-select: text; user-select: text; }
+  .sheet header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .sheet h2 { margin: 0; font-size: 19px; }
+  .sheet h3 { margin: 22px 0 6px; font-size: 15px; letter-spacing: 0.03em; }
+  .sheet p { margin: 6px 0; line-height: 1.45; font-size: 14.5px; }
+  ol.board { list-style: none; margin: 6px 0 0; padding: 0; }
+  ol.board li { display: grid; grid-template-columns: 2.2ch minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+  ol.board li .rank { color: var(--dim); font-size: 13px; }
+  ol.board li .name { overflow-wrap: anywhere; }
+  ol.board li .t { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  ol.board li .tries { display: block; font-size: 12px; color: var(--dim); }
+  ol.board li.me { background: linear-gradient(90deg, transparent, var(--field), transparent); }
+  ol.board li button { padding: 5px 10px; font-size: 13px; }
+  .wave { width: 100%; height: auto; display: block; margin-top: 6px; }
+  ul.list { list-style: none; margin: 6px 0 0; padding: 0; }
+  ul.list li { padding: 7px 0; border-top: 1px solid var(--line); font-size: 14.5px; overflow-wrap: anywhere; }
+  ul.list li .when { color: var(--dim); font-size: 12.5px; margin-left: 6px; }
+  .skins { display: flex; gap: 8px; flex-wrap: wrap; }
+  .skins button[aria-checked="true"] { border-color: var(--you); color: var(--you); }
+  .foot { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); display: flex; gap: 18px; flex-wrap: wrap; justify-content: center;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.06em; }
+  /* the site's dictation glyph (theme.js dictate), drawn in this page's palette */
+  .dictate { position: absolute; z-index: 2; width: 22px; height: 22px; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line); border-radius: 50%; background: var(--panel); color: var(--dim); cursor: pointer; }
+  .dictate svg { width: 13px; height: 13px; fill: currentColor; display: block; }
+  .dictate:hover { color: var(--words); }
+  .dictate.on { color: var(--buzz); border-color: var(--buzz); animation: dictate-pulse 1.6s ease-in-out infinite; }
+  .dictate[hidden] { display: none; }
+  @keyframes dictate-pulse { 0%, 100% { box-shadow: 0 0 0 0 var(--edge-glow); } 50% { box-shadow: 0 0 0 7px transparent; } }
+  @media (prefers-reduced-motion: reduce) { .dictate.on { animation: none; } }
+  @media (max-width: 360px) { .time { font-size: 21px; } .chip { padding: 6px 9px; } .hud h1 { font-size: 15.5px; } }
+</style>
+</head>
+<body data-beach-button="off">
+<canvas id="game" role="img" aria-label="The day's circuit, your car and the ghosts"></canvas>
+
+<header class="hud">
+  <h1>Ghost <span>Race</span></h1>
+  <div class="right">
+    <span class="time" id="time" aria-hidden="true">0.00</span>
+    <button type="button" class="chip" id="again-btn" aria-label="Start again">↺</button>
+    <button type="button" class="chip" id="board-btn">Board</button>
+    <button type="button" class="chip" id="look-btn" aria-label="Look and sound">⚙</button>
+  </div>
+  <p class="sub" id="sub">Drawing today’s circuit…</p>
+  <p class="ghostline" id="ghostline" aria-live="polite"></p>
+</header>
+
+<div class="brief" id="brief">
+  <svg class="how" viewBox="0 0 150 74" aria-hidden="true">
+    <path d="M10 12 H 70 A 34 34 0 0 1 104 46 V 70" fill="none" stroke="var(--edge)" stroke-width="22" stroke-linecap="round" stroke-linejoin="round" opacity="0.35"/>
+    <path d="M10 12 H 70 A 34 34 0 0 1 104 46 V 70" fill="none" stroke="var(--track)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+    <g class="how-car"><rect x="-6" y="-3.5" width="12" height="7" rx="2.5" fill="var(--you)"/>
+      <animateMotion dur="2.6s" repeatCount="indefinite" rotate="auto" keyPoints="0;1" keyTimes="0;1" calcMode="linear" path="M10 12 H 70 A 34 34 0 0 1 104 46 V 70"/></g>
+    <g transform="translate(134 30)"><circle r="11" fill="none" stroke="var(--you)" stroke-width="2">
+      <animate attributeName="r" values="11;11;7;7;11;11" keyTimes="0;0.42;0.45;0.81;0.84;1" dur="2.6s" repeatCount="indefinite"/></circle>
+      <text x="0" y="27" text-anchor="middle" font-size="11" fill="var(--words)">hold</text>
+      <animate attributeName="opacity" values="0.3;0.3;1;1;0.3;0.3" keyTimes="0;0.42;0.45;0.81;0.84;1" dur="2.6s" repeatCount="indefinite"/></g>
+  </svg>
+  <div class="steps">
+    <p>Your car waits on the start line.</p>
+    <p><b>Hold anywhere to turn</b>; let go to drive straight.</p>
+    <p>Three laps, as fast as you can.</p>
+  </div>
+  <p class="go-word" id="go-word">Tap to go</p>
+</div>
+<p class="flash hidden" id="flash">CRASH</p>
+
+<section class="card" id="end" hidden aria-labelledby="end-time">
+  <div class="inner">
+    <p class="big" id="end-time"></p>
+    <p id="end-line"></p>
+    <p class="note" id="end-rank"></p>
+    <div id="keep">
+      <label class="who">Your name on the board (leave it empty and one is made for you)
+        <input id="who" type="text" maxlength="32" autocomplete="nickname" autocapitalize="none" spellcheck="false" enterkeyhint="done">
+      </label>
+      <div class="row"><button type="button" class="go" id="keep-btn">Put it on the board</button></div>
+    </div>
+    <p class="note" id="keep-state" aria-live="polite"></p>
+    <div class="made" id="made" hidden></div>
+    <div class="row">
+      <button type="button" class="plain" id="again">Race again</button>
+      <button type="button" class="plain" id="challenge" hidden>Challenge a friend</button>
+      <button type="button" class="plain" id="end-board">See the board</button>
+    </div>
+    <p class="note" id="share-note" aria-live="polite"></p>
+  </div>
+</section>
+
+<section class="sheet" id="board" hidden aria-labelledby="board-title">
+  <div class="inner">
+    <header><h2 id="board-title">Today’s board</h2><button type="button" class="chip" id="board-close">Close</button></header>
+    <p class="note" id="board-sum" aria-live="polite">Reading the board from the beach…</p>
+    <ol class="board" id="board-list"></ol>
+    <button type="button" class="plain" id="board-more" hidden aria-expanded="false"></button>
+
+    <h3>The wave</h3>
+    <p class="note">Who came when, and who brought whom: everyone at the moment they first put a time on this game’s board. Early is not better, and the wave ranks nobody.</p>
+    <svg class="wave" id="wave" viewBox="0 0 320 150" role="img" aria-label="The wave of players over time"></svg>
+    <p id="wave-line"></p>
+    <div id="stood" hidden><h3>Where you stood</h3><ul class="list" id="stood-list"></ul></div>
+    <div class="row"><button type="button" class="go" id="bring">Bring someone into the wave</button></div>
+    <p class="note" id="bring-note" aria-live="polite"></p>
+
+    <h3>Notes</h3>
+    <p class="note">Say anything about the game or today’s circuit. Notes and runs stand in the room on the beach, <code>pool:ghost-race</code>, for anyone to read.</p>
+    <label class="who">Your name<input id="note-who" type="text" maxlength="32" autocomplete="nickname" autocapitalize="none" spellcheck="false"></label>
+    <div class="who" style="position:relative"><textarea id="note-box" rows="3" placeholder="A note about the game, or today’s circuit" data-dictate></textarea></div>
+    <div class="row"><button type="button" class="go" id="note-send">Leave the note</button></div>
+    <p class="note" id="note-state" aria-live="polite"></p>
+    <ul class="list" id="room-list"></ul>
+
+    <h3>Other days</h3>
+    <p class="note">Every day has its own circuit, and every run stays. Race an earlier day again, against its fastest.</p>
+    <ul class="list" id="days"></ul>
+
+    <p class="foot" id="create-your-own"><a href="/arcade">the arcade</a><a href="/game-arcade">make a game</a><a href="https://beach.happyseaurchin.com">the beach</a></p>
+  </div>
+</section>
+
+<section class="sheet" id="look" hidden aria-labelledby="look-title">
+  <div class="inner">
+    <header><h2 id="look-title">Look and sound</h2><button type="button" class="chip" id="look-close">Close</button></header>
+    <h3>Skin</h3>
+    <p class="note">A skin changes how the race looks, and nothing else: every run is the same run in any skin.</p>
+    <div class="skins" id="skins" role="radiogroup" aria-label="Skin"></div>
+    <h3>Light or dark</h3>
+    <div class="row"><button type="button" class="plain" id="btn-theme">◐ Light or dark</button></div>
+    <h3>Sound</h3>
+    <div class="row"><button type="button" class="plain" id="noise" aria-pressed="true">Sound and vibration: on</button></div>
+    <h3>Ghosts</h3>
+    <div class="row"><button type="button" class="plain" id="ghosts-btn" aria-pressed="true">Race all of today’s fastest</button></div>
+    <p class="note">The fastest run of the day is the ghost everyone races; with this on, the next four fastest race beside it, fainter.</p>
+  </div>
+</section>
+
+<script src="https://beach.happyseaurchin.com/button/voice.js"></script>
+<script src="https://beach.happyseaurchin.com/button/game.js" data-game="ghost-race"></script>
+<script type="module" src="/ghost-race/race.js"></script>
+</body>
+</html>

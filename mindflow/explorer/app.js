@@ -396,17 +396,17 @@ micBtn.addEventListener('click', () => {
 
 // ── LLM compilation ──────────────────────────────────────
 
+// the key is kept on this device wrapped, never in plain text (../key.js)
 function getApiKey() {
-  return apiKeyInput.value || localStorage.getItem('mindflow-api-key') || '';
+  return apiKeyInput.value || (window.mindflowKey ? window.mindflowKey.get() : '');
 }
 
 apiKeyInput.addEventListener('change', () => {
-  if (apiKeyInput.value) localStorage.setItem('mindflow-api-key', apiKeyInput.value);
+  if (apiKeyInput.value && window.mindflowKey) window.mindflowKey.set(apiKeyInput.value);
 });
 
-// Load saved key
-const savedKey = localStorage.getItem('mindflow-api-key');
-if (savedKey) apiKeyInput.value = savedKey;
+// Load saved key, once it is read
+if (window.mindflowKey) window.mindflowKey.ready().then(() => { const k = window.mindflowKey.get(); if (k && !apiKeyInput.value) apiKeyInput.value = k; });
 
 function blockSummary(block) {
   // Compact dir-mode summary for the LLM: addresses + truncated texts
