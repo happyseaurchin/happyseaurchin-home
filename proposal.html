@@ -231,6 +231,18 @@
   .card .two{display:flex;flex-wrap:wrap;gap:0.5rem}
   .card .two .btn{padding:0.42rem 0.9rem;font-size:0.88rem}
   .card .quipu{border-top:1px solid var(--line);padding-top:0.5rem}
+  .card[hidden]{display:none}
+  /* above the sections, a search that narrows every section as it is typed, and each section a button that jumps down
+     to it, held at the top of a wide screen while the list goes by (David, 20 Nov 2026: "we need a button at the top for
+     'others' so that it jumps to one below … Maybe a search... because i can't find them easily") */
+  .find{--gw:max(100%, min(72rem, calc(100vw - 32px)));width:var(--gw);margin:1rem 0 0 calc((100% - var(--gw)) / 2);position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem 0.9rem;padding:0.6rem 0;background:rgba(var(--well-rgb),0.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .find input{flex:1 1 14rem;min-width:0;min-height:40px;font-family:var(--mono);font-size:14px;padding:0.5rem 0.9rem;border:1px solid var(--line-strong);border-radius:999px;background:rgba(var(--card-rgb),0.6);color:var(--foam)}
+  .find input:focus{outline:none;border-color:var(--acc)}
+  .find .to{display:flex;flex-wrap:wrap;gap:0.4rem}
+  .find .to button{font-family:var(--mono);font-size:12.5px;letter-spacing:0.03em;padding:0.4rem 0.85rem;min-height:36px;border-radius:999px;border:1px solid var(--line-strong);background:transparent;color:var(--foam);cursor:pointer}
+  .find .to button:hover{border-color:var(--acc)}
+  .find .to button:disabled{opacity:0.4;cursor:default;border-color:var(--line)}
+  .find .to .n{color:var(--acc)}
   .steps{padding-left:1.4rem;display:grid;gap:0.45rem}
   .steps li::marker{font-family:var(--display);font-weight:800;color:var(--acc)}
 
@@ -246,6 +258,7 @@
     .stands .at{display:none}
     .bar #bar-all{display:none}
     details.fold>.in{padding-left:1rem}
+    .find{position:static}
   }
 </style>
 </head>
@@ -1127,8 +1140,8 @@
 
   /* ════════ the shelf: the proposals as narrow cards in sections, on the index and on a person's page ════════ */
   /* each proposal read once (its spine, its law, its mirrors, its threads), its card set in the section opts.groupOf names,
-     in the list's own order, its quipu beneath its buttons and its steps linking into its page; a section counts the cards
-     it shows. The index sorts by where each proposal stands, a person's page by what that person has answered. */
+     newest on the list first, its quipu beneath its buttons and its steps linking into its page; a section counts the
+     cards it shows. The index sorts by where each proposal stands, a person's page by what that person has answered. */
   var SHELF = {}, shelfWatching = false;   /* name → its quipu, redrawn at the figure's own width when the window changes */
   function drawShelfQuipu(name) {
     var f = document.querySelector('[data-quipu="' + name + '"]'), d = SHELF[name];
@@ -1154,33 +1167,62 @@
      decisions, answers, people, threads and latest answer, and with opts.who how many decisions that person has answered */
   function shelfInto(root, shelf, opts) {
     var GROUPS = opts.groups.concat([{ g: 'unread', h: 'Not read just now', say: 'Its blocks couldn’t be read just now, or it isn’t on the beach yet.', hide: true }]);
-    var run = {}, settled = 0;   /* a fresh run: a drawing for another person drops whatever arrives late from the last */
+    var run = {}, settled = 0, Q = [];   /* a fresh run: a drawing for another person drops whatever arrives late from the last; Q, the words searched for */
     root._run = run;
-    root.innerHTML = '<p class="qcap">' + legendOf(null) + '</p><div class="groups">' + GROUPS.map(function (G) {
+    /* above the sections, the search and a button for each section (the bar's CSS says why) */
+    root.innerHTML = '<div class="find"><input type="search" placeholder="Find one by its name or any word" aria-label="Find a proposal by its name or any word on its card" autocomplete="off" spellcheck="false">' +
+      '<div class="to">' + opts.groups.map(function (G) { return '<button type="button" data-to="' + G.g + '">' + esc(G.h) + ' <span class="n"></span></button>'; }).join('') + '</div></div>' +
+      '<p class="gempty find-none" hidden></p>' +
+      '<p class="qcap">' + legendOf(null) + '</p><div class="groups">' + GROUPS.map(function (G) {
       return '<div class="group" data-g="' + G.g + '"' + (G.hide ? ' hidden' : '') + '><div class="ghead"><h3>' + esc(G.h) + '</h3><span class="gn"></span>' +
         '<p class="gsay">' + esc(G.say) + '</p></div><div class="cards"></div><p class="gempty">Reading…</p></div>';
     }).join('') + '</div>';
     if (!shelfWatching) { shelfWatching = true; onResize(function () { Object.keys(SHELF).forEach(drawShelfQuipu); }); }
     function box(g) { return root.querySelector('.group[data-g="' + g + '"]'); }
-    /* a section counts the cards it shows; one still empty says so once every proposal has been read */
+    /* a card shows while it holds every word searched for, in its name, its line or what its card says */
+    function shows(c) { var t = c.getAttribute('data-find') || ''; return Q.every(function (w) { return t.indexOf(w) >= 0; }); }
+    var q = root.querySelector('.find input');
+    q.addEventListener('input', function () {
+      Q = q.value.toLowerCase().split(/\s+/).filter(Boolean);
+      root.querySelectorAll('.card').forEach(function (c) { c.hidden = !shows(c); });
+      tally();
+    });
+    /* a section's button scrolls to its heading, clear of the bar where the bar is held at the top */
+    root.querySelector('.find .to').addEventListener('click', function (e) {
+      var t = e.target.closest('[data-to]'), b = t && box(t.getAttribute('data-to')), bar = root.querySelector('.find');
+      if (!b) return;
+      var off = getComputedStyle(bar).position === 'sticky' ? bar.offsetHeight : 0;
+      window.scrollTo({ top: b.getBoundingClientRect().top + window.pageYOffset - off - 12, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    });
+    /* a section counts the cards it shows, and so does its button; while a search is on, a section showing none is put
+       away; one still empty says so once every proposal has been read */
     function tally() {
       if (root._run !== run) return;
+      var shown = 0;
       GROUPS.forEach(function (G) {
         var b = box(G.g); if (!b) return;
-        var n = b.querySelectorAll('.card').length, e = b.querySelector('.gempty');
+        var all = b.querySelectorAll('.card').length, n = b.querySelectorAll('.card:not([hidden])').length, e = b.querySelector('.gempty'), to = root.querySelector('.find [data-to="' + G.g + '"]');
+        shown += n;
         b.querySelector('.gn').textContent = n ? String(n) : '';
+        if (to) { to.querySelector('.n').textContent = n ? String(n) : ''; to.disabled = !n; }
+        b.hidden = (G.hide && !all) || (Q.length > 0 && !n);
         if (n) e.hidden = true;
         else { e.hidden = false; e.innerHTML = settled < shelf.length ? 'Reading…' : (G.none || 'None just now.'); }
       });
+      var none = root.querySelector('.find-none');
+      none.hidden = !Q.length || shown > 0;
+      none.textContent = settled < shelf.length ? 'Nothing yet; the list is still being read.' : 'Nothing on the list holds that.';
     }
-    /* in its section at the list's own place, wherever the others have already landed */
+    /* newest first: in its section before every card the list holds from earlier, wherever those have already landed */
     function place(i, g, html) {
       var b = root._run === run && box(g); if (!b) return;
       var cards = b.querySelector('.cards'), before = null, tmp = document.createElement('div');
-      for (var c = cards.firstElementChild; c; c = c.nextElementSibling) if (+c.getAttribute('data-i') > i) { before = c; break; }
+      for (var c = cards.firstElementChild; c; c = c.nextElementSibling) if (+c.getAttribute('data-i') < i) { before = c; break; }
       tmp.innerHTML = html;
-      cards.insertBefore(tmp.firstElementChild, before);
-      b.hidden = false;
+      var card = tmp.firstElementChild;
+      card.setAttribute('data-find', ['.nm', '.what', '.stat'].map(function (s) { var x = card.querySelector(s); return x ? x.textContent : ''; }).join(' ').toLowerCase());
+      card.hidden = !shows(card);
+      cards.insertBefore(card, before);
     }
     shelf.forEach(function (s, i) {
       Promise.all([readBlock('spine:' + s.name), readBlock('function:' + s.name), readMirrors(s.name, true),
@@ -1238,8 +1280,8 @@
          category for 'others' for now"): not touched while nobody has answered; answered once anyone has, or once it is a
          project, ready to build or being built; complete once its keeper says so or it is set aside; and others, every
          family on the list whose phase names another kind, an inquiry, a walk, a recipe or an explainer. A card lands in
-         its section once its blocks are read, in the list's own order, and a section counts what it shows. */
-      sections.push('<section id="shelf"><div class="addr">live from the beach · the list, at <b>proposals</b></div><h2>The proposals</h2>' +
+         its section once its blocks are read, newest on the list first, and a section counts what it shows. */
+      sections.push('<section id="shelf"><div class="addr">live from the beach · the list, at <b>proposals</b>, newest first</div><h2>The proposals</h2>' +
         (shelf.length ? '<div id="shelfIn"></div>' : '<p class="note">The list couldn’t be read from the beach just now. Try again in a moment.</p>') +
         '<p class="note">A crafted page wears a look of its own taken from what it proposes: its own palette and type, a drawing that moves at the top, an instrument for each step, and plain words for someone new to the beach. <a href="/explain?block=ways:proposal">The craft of making one</a>. The page drawn from its blocks needs no code at all, and exists the moment a spine and its law stand.</p></section>');
       var how = [];
