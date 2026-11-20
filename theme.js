@@ -1695,7 +1695,10 @@
     ['verso',       'verso'],
     /* an open model in the visitor's own browser (WebLLM), with the beach as its memory, its knowledge and its company
      * (lane web-llm.1, 6 Nov 2026, at David's GO) */
-    ['webllm',      'a mind in your browser']
+    ['webllm',      'a mind in your browser'],
+    /* every proposal on one board, laid out by what it shares, each person's own board kept in corkboard:<handle> under
+     * their own key (lane review.1, 20 Nov 2026, at David's 'stick it on the beach', site list and personal list) */
+    ['corkboard',   'the corkboard']
   ];
 
   /* THE SITE'S OWN PAGES, ON THE BEACH (weft, eye.15, 19 Nov 2026, at David's 'Yes, go ahead' to iris.3's reading of

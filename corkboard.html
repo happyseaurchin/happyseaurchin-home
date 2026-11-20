@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Corkboard</title>
+<meta name="description" content="Every proposal on the beach on one board, laid out by what it shares with the others. Your own board stays as it is: move cards, pick several and move them together, show them by what their threads wait on.">
+<meta property="og:title" content="Corkboard">
+<meta property="og:description" content="Every proposal on the beach on one board, laid out by what it shares with the others, kept as your own.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/theme.css">
+<script src="/theme.js"></script>
+<style>
+  /* The board fills the screen under the bar. Every colour is the theme's: the pins take its accents, the strings
+     take hues at the theme's own family lightness, so both registers read (theme.css: no colour literal in a page). */
+  :root{
+    --pin-you:var(--solid); --pin-others:var(--liquid); --pin-done:var(--vapour-dim); --pin-later:var(--bud); --pin-new:var(--vapour);
+    --st-named:hsl(212 72% var(--fam-line-l)); --st-thread:var(--bud); --st-words:hsl(285 48% var(--fam-line-l));
+    --st-alpha:.32; --lift-rgb:var(--well-rgb);
+  }
+  :root[data-theme="light"]{ --st-alpha:.5; --lift-rgb:var(--wash-rgb); }
+  *{box-sizing:border-box} html,body{margin:0;height:100%} [hidden]{display:none!important}
+  body{font-family:var(--body);color:var(--foam);background:var(--abyss);-webkit-font-smoothing:antialiased;overflow:hidden}
+  /* the board holds the whole screen: the site's footer, added beneath every page, stays under it */
+  .app{position:fixed;inset:0;z-index:1;background:var(--abyss);display:grid;grid-template-rows:auto auto 1fr;grid-template-columns:minmax(0,1fr);
+    padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-block:12px 6px;
+    padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+    font-family:var(--mono);font-size:12px;letter-spacing:.08em;color:var(--vapour-dim)}
+  .head{display:grid;gap:9px;padding-block:2px 10px;padding-left:max(16px,env(safe-area-inset-left,0px));
+    padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--line-strong)}
+  .head > *{min-width:0}
+  .top{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 14px}
+  h1{font-family:var(--display);font-weight:800;font-size:1.5rem;line-height:1.1;margin:0}
+  .lede{margin:0;color:var(--vapour-dim);font-size:15px;max-width:62rem}
+  .controls{display:flex;flex-wrap:wrap;align-items:flex-start;gap:10px 24px}
+  .sw{display:flex;gap:9px;align-items:flex-start;cursor:pointer;max-width:17rem;position:relative}
+  .sw input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+  .knob{flex:none;width:34px;height:20px;margin-top:1px;border-radius:999px;background:rgba(var(--vapour-rgb),.12);border:1px solid var(--line-strong);position:relative}
+  .knob::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--vapour-dim);transition:transform .15s}
+  .sw input:checked + .knob{background:var(--liquid);border-color:var(--liquid)}
+  .sw input:checked + .knob::after{transform:translateX(14px);background:var(--abyss)}
+  .sw input:focus-visible + .knob{outline:2px solid var(--liquid);outline-offset:2px}
+  .sw b,.group b{display:block;font-family:var(--mono);font-weight:700;font-size:12px;letter-spacing:.06em;line-height:1.4}
+  .sw small,.group small{display:block;color:var(--vapour-dim);font-size:13.5px;line-height:1.35}
+  .group{display:grid;gap:4px;min-width:0;max-width:100%}
+  .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .btn{font-family:var(--mono);font-size:12px;color:var(--foam);background:none;border:1px solid var(--line-strong);border-radius:4px;padding:5px 10px;cursor:pointer}
+  .btn:hover{border-color:var(--foam)} .btn:disabled{opacity:.4;cursor:default}
+  .btn.go-on{background:var(--liquid);color:var(--abyss);border-color:var(--liquid)}
+  .btn:focus-visible,.chip:focus-visible,.go:focus-visible,.x:focus-visible,.float:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
+  .ask{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px;max-width:36rem}
+  .filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-block:1px}
+  .filters::-webkit-scrollbar{display:none}
+  .chip{flex:none;display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;padding:4px 10px;border-radius:999px;
+    border:1px solid var(--line-strong);background:none;color:var(--foam);cursor:pointer;white-space:nowrap}
+  .chip[aria-pressed="true"]{background:var(--foam);color:var(--abyss);border-color:var(--foam)}
+  .chip .n{font-variant-numeric:tabular-nums;opacity:.7}
+  .chip.str[aria-pressed="false"]{opacity:.5}
+  .swatch{width:16px;height:3px;border-radius:2px;flex:none}
+  .swatch.named{background:var(--st-named)} .swatch.thread{background:var(--st-thread)} .swatch.words{background:var(--st-words)}
+  .dot{width:9px;height:9px;border-radius:50%;flex:none}
+  .dot.you{background:var(--pin-you)} .dot.others{background:var(--pin-others)} .dot.later,.dot.open{background:var(--pin-later)}
+  .dot.complete{background:var(--pin-done)} .dot.new{background:var(--pin-new)} .dot.none{background:none;box-shadow:inset 0 0 0 2px var(--line-strong)}
+
+  .board{position:relative;overflow:hidden;min-height:0;background-color:var(--deep)}
+  #svg{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+  #svg:active{cursor:grabbing}
+  #lift feDropShadow{flood-color:rgb(var(--lift-rgb));flood-opacity:.55}
+  .card{cursor:pointer;outline:none}
+  .card .paper{fill:var(--card);stroke:var(--line-strong);stroke-width:1}
+  .card .lbl{fill:var(--foam);font-family:var(--display);font-weight:700;font-size:13.5px}
+  .card .kind{fill:var(--vapour-dim);font-family:var(--mono);font-size:9.5px;letter-spacing:.08em;text-transform:uppercase}
+  .card .tick{fill:var(--pin-done);font-family:var(--mono);font-size:12px}
+  .card .pin{stroke:rgba(var(--well-rgb),.5);stroke-width:1}
+  .card .pin-hi{fill:rgba(var(--wash-rgb),.35)}
+  .card.s-you .pin{fill:var(--pin-you)} .card.s-others .pin{fill:var(--pin-others)} .card.s-later .pin,.card.s-open .pin{fill:var(--pin-later)}
+  .card.s-complete .pin{fill:var(--pin-done)} .card.s-new .pin{fill:var(--pin-new)}
+  .card.s-none .pin{fill:var(--card);stroke:var(--line-strong);stroke-width:2}
+  .card .tack{fill:var(--foam);opacity:.75;display:none}
+  .card.moved .tack{display:inline}
+  .card.picked .paper{stroke:var(--liquid);stroke-width:2.6;stroke-dasharray:6 3}
+  .card.open .paper,.card:focus-visible .paper{stroke:var(--liquid);stroke-width:2.8;stroke-dasharray:none}
+  .card.faded{opacity:.16} .card.faded.open,.card.faded.picked{opacity:.6}
+  .st{fill:none;stroke-linecap:round;opacity:var(--st-alpha)}
+  .st.named{stroke:var(--st-named)} .st.thread{stroke:var(--st-thread)} .st.words{stroke:var(--st-words)}
+  .st.hot{opacity:1} .st.dim{opacity:.06}
+
+  .floatrow{position:absolute;left:max(12px,env(safe-area-inset-left,0px));bottom:calc(10px + env(safe-area-inset-bottom,0px));
+    display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:calc(100% - 24px);pointer-events:none}
+  .float,.note,.picks{pointer-events:auto;font-family:var(--mono);font-size:12px;background:var(--abyss);color:var(--foam);
+    border:1px solid var(--line-strong);border-radius:999px;padding:5px 11px}
+  .float{cursor:pointer} .float[aria-pressed="true"]{background:var(--foam);color:var(--abyss);border-color:var(--foam)}
+  .picks{display:inline-flex;gap:8px;align-items:center}
+  .picks button{font:inherit;color:var(--liquid);background:none;border:0;padding:0;cursor:pointer;text-decoration:underline}
+  .note{color:var(--vapour-dim)}
+  .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--vapour-dim);font-family:var(--mono);font-size:13px;padding:24px;text-align:center}
+
+  .panel{position:absolute;z-index:3;top:12px;bottom:12px;right:max(12px,env(safe-area-inset-right,0px));width:min(380px,calc(100% - 24px));
+    background:var(--card);color:var(--foam);border:1px solid var(--line-strong);border-radius:6px;box-shadow:0 12px 34px rgba(var(--lift-rgb),.5);
+    overflow-y:auto;overscroll-behavior:contain;padding:16px 18px 20px}
+  .panel .x{position:absolute;top:8px;right:8px;width:32px;height:32px;border-radius:50%;border:0;background:none;color:var(--vapour-dim);font-size:1.4rem;line-height:1;cursor:pointer}
+  .eyebrow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 36px 4px 0;font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--vapour-dim)}
+  .panel h2{font-family:var(--display);font-weight:800;font-size:1.3rem;margin:0 36px 6px 0;line-height:1.2}
+  .panel .line{margin:0 0 10px;font-size:15.5px;line-height:1.5}
+  .links{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 12px}
+  .links a{color:var(--liquid);text-decoration:none;border-bottom:1px solid rgba(var(--liquid-rgb),.35);font-size:15px}
+  .panel h3{font-family:var(--mono);font-weight:700;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--vapour-dim);margin:16px 0 6px}
+  .panel ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+  .panel li{font-size:14.5px;line-height:1.45;min-width:0;overflow-wrap:anywhere}
+  .num{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin-right:4px}
+  .tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:0 6px;border-radius:3px;margin:2px 4px 0 0;color:var(--abyss);white-space:nowrap}
+  .tag.you{background:var(--pin-you)} .tag.others{background:var(--pin-others)} .tag.complete{background:var(--pin-done)}
+  .tag.named{background:var(--st-named)} .tag.thread{background:var(--st-thread)} .tag.words{background:var(--st-words);white-space:normal}
+  .go{font:inherit;font-family:var(--display);font-weight:700;font-size:15px;color:var(--liquid);background:none;border:0;padding:0;cursor:pointer;text-align:left;text-decoration:underline;text-underline-offset:2px;margin-right:6px}
+  .panel .btn{margin-top:10px}
+  .empty{color:var(--vapour-dim);font-size:14.5px;margin:0}
+  @media (max-width:640px){
+    .lede,.group > b,.group > small{display:none}
+    .group .row{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+    .group .row::-webkit-scrollbar{display:none}
+    .panel{top:auto;bottom:0;left:0;right:0;width:auto;max-height:56%;border-radius:14px 14px 0 0;
+      padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px));
+      padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+  }
+  @media (prefers-reduced-motion:reduce){ .knob::after{transition:none} }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="bar"><span>corkboard · <span id="who">your board</span></span></div>
+  <header class="head">
+    <div class="top">
+      <h1>Corkboard</h1>
+      <p class="lede" id="lede">Every proposal on the beach on one board, laid out by what it shares with the others. Your board stays as it is: drag a card to move it, or pick several (Select, or Shift-click) and move them together.</p>
+    </div>
+    <div class="controls">
+      <label class="sw" for="sw-moves">
+        <input type="checkbox" id="sw-moves" checked>
+        <span class="knob" aria-hidden="true"></span>
+        <span><b>MY MOVES</b><small>On, cards sit where you put them. Off, the board as it first landed.</small></span>
+      </label>
+      <div class="group">
+        <b>STRINGS</b>
+        <div class="row" id="strings" role="group" aria-label="Show or hide each kind of string"></div>
+        <small>Why cards landed together. Tap a colour to show or hide it.</small>
+      </div>
+      <div class="group">
+        <b>YOUR BOARD</b>
+        <div class="row" id="actions">
+          <button type="button" class="btn" id="clear">Clear my moves</button>
+          <button type="button" class="btn" id="recalc">Recalculate my board</button>
+        </div>
+        <div class="ask" id="ask" hidden>
+          <span id="ask-text"></span>
+          <button type="button" class="btn go-on" id="ask-yes"></button>
+          <button type="button" class="btn" id="ask-no">Keep it as it is</button>
+        </div>
+        <small id="board-note">Changes only your board.</small>
+      </div>
+    </div>
+    <div class="filters" id="filters" role="group" aria-label="Show cards by what their threads are waiting on"></div>
+  </header>
+  <main class="board" id="board">
+    <svg id="svg" aria-label="The corkboard of proposals">
+      <defs><filter id="lift" x="-20%" y="-30%" width="140%" height="170%"><feDropShadow dx="0" dy="2.2" stdDeviation="2.2"/></filter></defs>
+    </svg>
+    <div class="loading" id="loading">Reading the board from the beach…</div>
+    <div class="floatrow">
+      <button type="button" class="float" id="fit">Show all</button>
+      <button type="button" class="float" id="select" aria-pressed="false" title="Pick several cards, then drag one to move them together. On a computer, Shift-click does the same.">Select</button>
+      <span class="picks" id="picks" hidden><span id="picks-n">0 picked</span><button type="button" id="picks-clear">Clear</button></span>
+      <span class="note" id="note" role="status">Your board is kept on this device</span>
+    </div>
+    <aside class="panel" id="panel" hidden aria-live="polite">
+      <button type="button" class="x" id="close" aria-label="Close">×</button>
+      <div id="detail"></div>
+    </aside>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script>
+/* corkboard — every proposal on one board, laid out by what it shares (docs/pages/corkboard.md).
+ * The shared board is the block `corkboard`: a mirror of `proposals`, each card at its proposal's own number, its
+ * underscore the proposal and what its threads wait on, 1 its threads, 2 its strings, 3 its page. A person's own
+ * board is `corkboard:<handle>`, kept through the beach's voice under their own key: 1 where each card landed,
+ * 2 where they moved cards since. The physics only lands cards (a whole board, or a new proposal among the rest);
+ * it never runs while you look, so a board is the same at every viewing until you move something or recalculate. */
+(function () {
+  'use strict';
+  const API = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
+  const RM = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const W = 152, H = 64;
+  const ORDER = ['you', 'others', 'later', 'open', 'complete', 'none', 'new'];
+  const KINDS = [['named', 'Names it'], ['thread', 'Shares a thread'], ['words', 'Shares words']];
+  const SPECIAL = { 'y-ray': 'Y-ray', 'o-page-unit': 'O-page unit', 'ai-inoculation': 'AI inoculation', 'ai-churn': 'AI churn', 'the-ai-wave': 'The AI wave',
+    'leros-on-the-commons': 'LEROs on the Commons', 'leros-phase-two': 'LEROs, phase two', 'leros-phase-three': 'LEROs, phase three', 'web-llm': 'WebLLM',
+    'pscale-native': 'pscale native', 'pscale-mod': 'pscale mod', 'pscale-lab': 'pscale lab', 'abc-state': 'ABC State', 'salt-app': 'SALT app',
+    'the-string': 'The String', 'the-sea': 'The sea', 'run-up': 'Run-up', 'make-a-meeting-page': 'Make a meeting page', 'weft-bee': 'weft-bee', 'kin': 'kin' };
+  const $ = id => document.getElementById(id);
+  const board = $('board');
+
+  /* ---------- reading the beach ---------- */
+  function getBlock(name) {
+    return fetch(API + '?block=' + encodeURIComponent(name).replace(/%3A/gi, ':'), { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null).catch(() => null);
+  }
+  function textOf(n) { while (n && typeof n === 'object') { if (!('_' in n)) return ''; n = n._; } return typeof n === 'string' ? n.trim() : ''; }
+  function floorOf(b) { let f = 0, n = b; while (n && typeof n === 'object' && '_' in n) { f++; n = n._; } return f; }
+  /* an accumulator's entries by number: digits down to the floor, the underscore standing for 0 */
+  function entries(b) {
+    const out = [], fl = floorOf(b);
+    (function walk(n, ds) {
+      if (ds.length === fl) { out.push([parseInt(ds.join(''), 10), n]); return; }
+      if (!n || typeof n !== 'object') return;
+      for (const k of Object.keys(n)) { if (k === '_') walk(n._, ds.concat('0')); else if (/^[1-9]$/.test(k)) walk(n[k], ds.concat(k)); }
+    })(b, []);
+    return out.filter(e => e[0] % 10 !== 0).sort((p, q) => p[0] - q[0]);
+  }
+  function label(id) { return SPECIAL[id] || (id.charAt(0).toUpperCase() + id.slice(1)).replace(/-/g, ' '); }
+  function kindOf(line) { const m = /^(?:an?|the)\s+(inquiry|walk|explainer|recipe|overview)\b[^—]*?not a proposal/.exec(line); return m ? m[1] : 'proposal'; }
+  function parseThreads(s) {
+    return String(s || '').replace(/^threads:\s*/, '').split(' · ').map(x => /^#(\d+)\s+(.*)$/.exec(x.trim())).filter(Boolean).map(m => {
+      const end = m[2], waits = [];
+      end.replace(/waits on ([^·]+?)(?= and |$)/g, (w, who) => { who.split(/,\s*/).forEach(h => { if (h) waits.push(h.trim()); }); return w; });
+      return { n: m[1], waits, done: /^complete$/.test(end) };
+    });
+  }
+  function parseString(line) {
+    const m = /^(\S+) — w ([\d.]+)(.*)$/.exec(line || ''); if (!m) return null;
+    const rest = m[3], named = /names it(?: (\d+) times)?/.exec(rest), thread = /threads? #([\d, #]+)/.exec(rest), words = /words: ([^·]+)/.exec(rest);
+    return { other: m[1], w: parseFloat(m[2]) || 0.1, named: named ? (named[1] ? +named[1] : 1) : 0,
+      thread: thread ? thread[1].split(/,\s*#?/).map(x => x.replace('#', '').trim()).filter(Boolean) : [], words: words ? words[1].trim().split(/,\s*/) : [] };
+  }
+
+  let cards = [], byId = new Map(), edges = [], strands = [], nodes = [], N = new Map(), readLine = '', registry = null;
+  let viewer = '';
+
+  function build(proposals, shared) {
+    const snap = new Map();
+    if (shared && typeof shared === 'object') {
+      readLine = textOf(shared);
+      for (const [, node] of entries(shared)) {
+        const top = textOf(node), m = /^(\S+) — (.*)$/.exec(top); if (!m) continue;
+        const strs = [];
+        if (node && typeof node === 'object' && node['2'] && typeof node['2'] === 'object') for (let d = 1; d <= 9; d++) { const s = parseString(textOf(node['2'][String(d)])); if (s) strs.push(s); }
+        snap.set(m[1], { threads: parseThreads(node && node['1'] ? textOf(node['1']) : ''), strings: strs, page: node && node['3'] ? 'https://' + textOf(node['3']).replace(/^https?:\/\//, '') : null, read: true });
+      }
+    }
+    cards = [];
+    for (const [n, node] of (proposals ? entries(proposals) : [])) {
+      const t = textOf(node), i = t.indexOf(' — '); if (i < 1) continue;
+      const id = t.slice(0, i).trim(), line = t.slice(i + 3).trim(), s = snap.get(id);
+      cards.push({ id, n, label: label(id), line, kind: kindOf(line), threads: s ? s.threads : [], page: s ? s.page : null, read: !!s,
+        std: 'https://happyseaurchin.com/proposal/' + id });
+    }
+    byId = new Map(cards.map(c => [c.id, c]));
+    edges = [];
+    for (const [id, s] of snap) for (const x of s.strings) if (byId.has(id) && byId.has(x.other)) edges.push({ a: id, b: x.other, w: x.w, named: x.named, thread: x.thread, words: x.words });
+    strands = [];
+    for (const e of edges) {
+      const ks = []; if (e.named) ks.push('named'); if (e.thread.length) ks.push('thread'); if (e.words.length) ks.push('words');
+      ks.forEach((k, i) => strands.push({ e, k, off: (i - (ks.length - 1) / 2) * 4.5 }));
+    }
+    nodes = cards.map(c => ({ id: c.id, c, x: 0, y: 0 }));
+    N = new Map(nodes.map(n => [n.id, n]));
+    restate();
+  }
+  /* what each card waits on, read from where the viewer stands: their own handle is 'you' */
+  function restate() {
+    for (const c of cards) {
+      if (!c.read) { c.state = 'new'; c.who = []; continue; }
+      const live = c.threads.filter(t => t.waits.length);
+      if (viewer && live.some(t => t.waits.includes(viewer))) { c.state = 'you'; c.who = []; }
+      else if (live.length) { c.state = 'others'; c.who = [...new Set(live.flatMap(t => t.waits))]; }
+      else if (c.threads.some(t => !t.done)) { c.state = 'open'; c.who = []; }
+      else { c.state = c.threads.length ? 'complete' : 'none'; c.who = []; }
+    }
+  }
+  const STATE = () => ({ you: 'Waiting on you', others: 'Waiting on someone', later: 'Waiting from a later date', open: 'Open, with no ending yet',
+    complete: 'Complete', none: 'No thread yet', new: 'Newer than the reading' });
+
+  /* ---------- this device's copy, and a person's own block ---------- */
+  const LS = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* the page still works */ } }
+  };
+  const view = Object.assign({ moves: true, named: true, thread: true, words: true }, LS.get('corkboard:view', {}));
+  function cleanPos(o) { const out = {}; for (const [k, v] of Object.entries(o && typeof o === 'object' ? o : {})) if (Array.isArray(v) && v.length === 2 && v.every(Number.isFinite)) out[k] = [Math.round(v[0]), Math.round(v[1])]; return out; }
+  let mine = (b => b && typeof b === 'object' ? { landing: cleanPos(b.landing), moves: cleanPos(b.moves) } : null)(LS.get('corkboard:board', null)) || { landing: {}, moves: {} };
+  function entriesText(o) { return Object.keys(o).sort().map(k => k + ' ' + o[k][0] + ' ' + o[k][1]).join('; '); }
+  function parseEntries(s) { const out = {}; String(s || '').replace(/([a-z0-9][a-z0-9-]*) (-?\d+) (-?\d+)/g, (m, k, x, y) => { out[k] = [+x, +y]; return m; }); return out; }
+  function toBlock(name) {
+    const b = { _: name + "'s own corkboard of the proposals, at happyseaurchin.com/corkboard, kept under their own key: 1 is where each card landed when this board was first laid out or last recalculated, so it never moves on its own; 2 is where " + name + " has moved cards since. Each entry is a proposal's name and its place on the board, x then y. The strings and the states are the shared board, corkboard.",
+      1: entriesText(mine.landing) };
+    const mv = entriesText(mine.moves); if (mv) b[2] = mv;
+    return b;
+  }
+
+  /* ---------- the physics: it lands cards and never runs while you look ---------- */
+  function spiral(i) { const a = i * 2.39996, r = 70 * Math.sqrt(i + 0.5); return [Math.cos(a) * r * 1.25, Math.sin(a) * r * 0.8]; }
+  function rectCollide() {
+    let ns = [];
+    function force() {
+      const gx = W + 20, gy = H + 16;
+      for (let i = 0; i < ns.length; i++) {
+        const a = ns[i];
+        for (let j = i + 1; j < ns.length; j++) {
+          const b = ns[j];
+          let dx = (b.x + b.vx) - (a.x + a.vx), dy = (b.y + b.vy) - (a.y + a.vy);
+          const ox = gx - Math.abs(dx), oy = gy - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          if (dx === 0 && dy === 0) dx = (i % 2 ? 1 : -1);
+          let sx = 0, sy = 0;
+          if (ox / gx < oy / gy) sx = (dx < 0 ? -1 : 1) * ox * 0.5; else sy = (dy < 0 ? -1 : 1) * oy * 0.5;
+          const af = a.fx != null, bf = b.fx != null;
+          if (af && bf) continue;
+          if (af) { b.vx += sx; b.vy += sy; } else if (bf) { a.vx -= sx; a.vy -= sy; } else { a.vx -= sx / 2; a.vy -= sy / 2; b.vx += sx / 2; b.vy += sy / 2; }
+        }
+      }
+    }
+    force.initialize = n => { ns = n; };
+    return force;
+  }
+  function land(fixed, start) {
+    const sn = cards.map((c, i) => { const f = fixed.get(c.id); if (f) return { id: c.id, x: f[0], y: f[1], fx: f[0], fy: f[1] }; const s = start.get(c.id) || spiral(i); return { id: c.id, x: s[0], y: s[1] }; });
+    const sim = d3.forceSimulation(sn).stop().velocityDecay(0.42)
+      .force('link', d3.forceLink(edges.map(e => ({ source: e.a, target: e.b, w: e.w }))).id(d => d.id).strength(l => 0.02 + 0.6 * l.w * l.w).distance(l => 168 + 300 * (1 - l.w) * (1 - l.w)))
+      .force('charge', d3.forceManyBody().strength(-420).distanceMax(950))
+      .force('x', d3.forceX(0).strength(0.008)).force('y', d3.forceY(0).strength(0.014))
+      .force('collide', rectCollide());
+    sim.alpha(1); sim.tick(600);
+    const out = {}; for (const n of sn) if (!fixed.has(n.id)) out[n.id] = [Math.round(n.x), Math.round(n.y)];
+    return out;
+  }
+  function bounds(ps) { let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity; for (const p of ps) { x0 = Math.min(x0, p[0]); y0 = Math.min(y0, p[1]); x1 = Math.max(x1, p[0]); y1 = Math.max(y1, p[1]); } return isFinite(x0) ? { x0, y0, x1, y1 } : { x0: 0, y0: 0, x1: 0, y1: 0 }; }
+  function neighbours(id) { return edges.filter(e => e.a === id || e.b === id).map(e => e.a === id ? e.b : e.a); }
+  function landAll() {
+    const moved = Object.keys(mine.moves).filter(id => byId.has(id));
+    const L = land(new Map(moved.map(id => [id, mine.moves[id]])), new Map());
+    if (moved.length) Object.assign(L, land(new Map(Object.entries(L)), new Map(moved.map(id => [id, mine.moves[id]]))));
+    return L;
+  }
+  function landNew(ids) {
+    const fixed = new Map(), start = new Map();
+    for (const n of nodes) if (!ids.includes(n.id)) fixed.set(n.id, pos(n.id));
+    const bb = bounds([...fixed.values()]);
+    ids.forEach((id, k) => {
+      const nb = neighbours(id).map(o => fixed.get(o)).filter(Boolean);
+      if (nb.length) start.set(id, [nb.reduce((s, p) => s + p[0], 0) / nb.length + 40 * Math.cos(k * 2.4), nb.reduce((s, p) => s + p[1], 0) / nb.length + 40 * Math.sin(k * 2.4)]);
+      else start.set(id, [bb.x1 + W, bb.y0 + k * (H + 24)]);
+    });
+    return land(fixed, start);
+  }
+  function pos(id) { return (view.moves && mine.moves[id]) || mine.landing[id] || [0, 0]; }
+  function ensureBoard() {
+    if (!cards.some(c => mine.landing[c.id])) { mine.landing = landAll(); return cards.length; }
+    const missing = cards.filter(c => !mine.landing[c.id]).map(c => c.id);
+    if (missing.length) Object.assign(mine.landing, landNew(missing));
+    return missing.length;
+  }
+
+  /* ---------- drawing ---------- */
+  const svg = d3.select('#svg'), world = svg.append('g'), gS = world.append('g'), gC = world.append('g');
+  const zoom = d3.zoom().scaleExtent([0.18, 2.8]).on('zoom', e => world.attr('transform', e.transform));
+  svg.call(zoom).on('dblclick.zoom', null);
+  svg.on('click', e => { if (e.target === svg.node()) { open(null); clearPicks(); } });
+  let sSel = null, cSel = null; const elOf = new Map();
+  function wrap(t) {
+    const words = t.split(' '), lines = []; let cur = '';
+    for (const w of words) { const s = cur ? cur + ' ' + w : w; if (s.length > 16 && cur) { lines.push(cur); cur = w; } else cur = s; }
+    if (cur) lines.push(cur);
+    if (lines.length > 2) { lines[1] = lines.slice(1).join(' '); lines.length = 2; if (lines[1].length > 17) lines[1] = lines[1].slice(0, 16) + '…'; }
+    return lines;
+  }
+  function tilt(id) { let h = 0; for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0; return ((h % 1000) / 1000 - 0.5) * 2.6; }
+  function paint() {
+    sSel = gS.selectAll('line').data(strands).join('line').attr('class', s => 'st ' + s.k).attr('stroke-width', s => 0.8 + 1.4 * s.e.w);
+    cSel = gC.selectAll('g.card').data(nodes, d => d.id).join(enter => {
+      const g = enter.append('g').attr('tabindex', 0).attr('role', 'button');
+      const inner = g.append('g').attr('transform', d => 'rotate(' + tilt(d.id).toFixed(2) + ')');
+      inner.append('rect').attr('class', 'paper').attr('x', -W / 2).attr('y', -H / 2).attr('width', W).attr('height', H).attr('rx', 3).attr('filter', 'url(#lift)');
+      inner.append('rect').attr('class', 'tack').attr('x', -W / 2 + 7).attr('y', -H / 2 + 5).attr('width', 7).attr('height', 7).attr('rx', 1.5);
+      inner.append('circle').attr('class', 'pin').attr('cx', 0).attr('cy', -H / 2 + 8).attr('r', 5.6);
+      inner.append('circle').attr('class', 'pin-hi').attr('cx', -1.6).attr('cy', -H / 2 + 6.4).attr('r', 1.6);
+      inner.each(function (d) {
+        const el = d3.select(this), lines = wrap(d.c.label), hasKind = d.c.kind !== 'proposal';
+        const base = lines.length === 1 ? (hasKind ? 4 : 9) : (hasKind ? -4 : 3);
+        lines.forEach((t, i) => el.append('text').attr('class', 'lbl').attr('text-anchor', 'middle').attr('x', 0).attr('y', base + i * 16).text(t));
+        if (hasKind) el.append('text').attr('class', 'kind').attr('text-anchor', 'middle').attr('x', 0).attr('y', H / 2 - 6).text(d.c.kind);
+        el.append('text').attr('class', 'tick').attr('x', W / 2 - 15).attr('y', -H / 2 + 15).text('');
+      });
+      return g;
+    });
+    cSel.each(function (d) { elOf.set(d.id, this); });
+    cSel.call(drag)
+      .on('click', (e, d) => { e.stopPropagation(); if (selectMode || e.shiftKey || e.metaKey || e.ctrlKey) { togglePick(d.id); return; } picked.clear(); open(d.id === opened ? null : d.id); })
+      .on('keydown', (e, d) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); picked.clear(); open(d.id); } });
+  }
+  function draw() {
+    if (!cSel) return;
+    cSel.attr('transform', d => 'translate(' + d.x.toFixed(1) + ',' + d.y.toFixed(1) + ')');
+    sSel.each(function (s) {
+      const A = N.get(s.e.a), B = N.get(s.e.b), dx = B.x - A.x, dy = B.y - A.y, L = Math.hypot(dx, dy) || 1, ox = -dy / L * s.off, oy = dx / L * s.off;
+      this.setAttribute('x1', (A.x + ox).toFixed(1)); this.setAttribute('y1', (A.y + oy).toFixed(1)); this.setAttribute('x2', (B.x + ox).toFixed(1)); this.setAttribute('y2', (B.y + oy).toFixed(1));
+    });
+  }
+  let tween = 0;
+  function settleTo(animate) {
+    const to = new Map(nodes.map(n => [n.id, pos(n.id)]));
+    cancelAnimationFrame(tween);
+    if (!animate || RM) { for (const n of nodes) { const p = to.get(n.id); n.x = p[0]; n.y = p[1]; } draw(); return; }
+    const from = new Map(nodes.map(n => [n.id, [n.x, n.y]])), t0 = performance.now(), dur = 560;
+    const step = now => { const k = Math.min(1, (now - t0) / dur), e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      for (const n of nodes) { const f = from.get(n.id), p = to.get(n.id); n.x = f[0] + (p[0] - f[0]) * e; n.y = f[1] + (p[1] - f[1]) * e; }
+      draw(); if (k < 1) tween = requestAnimationFrame(step); };
+    tween = requestAnimationFrame(step);
+  }
+
+  /* ---------- what is shown ---------- */
+  let filter = 'all', opened = null, selectMode = false; const picked = new Set();
+  function shown(n) { return filter === 'all' || n.c.state === filter; }
+  function refresh() {
+    if (!cSel) return;
+    const touch = picked.size ? new Set(picked) : (opened ? new Set([opened]) : null);
+    cSel.attr('class', d => 'card s-' + d.c.state).attr('aria-label', d => d.c.label + '. ' + STATE()[d.c.state] + '.')
+      .classed('faded', d => !shown(d)).classed('open', d => d.id === opened).classed('picked', d => picked.has(d.id) && d.id !== opened)
+      .classed('moved', d => view.moves && !!mine.moves[d.id]);
+    cSel.select('.tick').text(d => d.c.state === 'complete' ? '✓' : '');
+    sSel.style('display', s => view[s.k] ? null : 'none')
+      .classed('hot', s => !!touch && (touch.has(s.e.a) || touch.has(s.e.b)))
+      .classed('dim', s => (!!touch && !(touch.has(s.e.a) || touch.has(s.e.b))) || !shown(N.get(s.e.a)) || !shown(N.get(s.e.b)));
+    $('clear').disabled = !Object.keys(mine.moves).length;
+    $('picks').hidden = picked.size < 1; $('picks-n').textContent = picked.size + ' picked';
+    if (opened) renderDetail(opened);
+  }
+  function chips() {
+    const counts = {}; for (const c of cards) counts[c.state] = (counts[c.state] || 0) + 1;
+    const S = STATE(), box = $('filters'); box.replaceChildren();
+    if (filter !== 'all' && !counts[filter]) filter = 'all';
+    for (const [key, text, n] of [['all', 'Everything', cards.length]].concat(ORDER.filter(s => counts[s]).map(s => [s, S[s], counts[s]]))) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.dataset.key = key; b.setAttribute('aria-pressed', key === filter ? 'true' : 'false');
+      if (key !== 'all') { const d = document.createElement('span'); d.className = 'dot ' + key; b.appendChild(d); }
+      b.appendChild(document.createTextNode(text + ' ')); const s = document.createElement('span'); s.className = 'n'; s.textContent = String(n); b.appendChild(s);
+      b.addEventListener('click', () => { filter = key; for (const x of box.children) x.setAttribute('aria-pressed', x.dataset.key === key ? 'true' : 'false'); refresh(); });
+      box.appendChild(b);
+    }
+    const sbox = $('strings'); sbox.replaceChildren();
+    for (const [k, text] of KINDS) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'chip str'; b.setAttribute('aria-pressed', view[k] ? 'true' : 'false');
+      const sw = document.createElement('span'); sw.className = 'swatch ' + k; b.appendChild(sw);
+      b.appendChild(document.createTextNode(text + ' ')); const c = document.createElement('span'); c.className = 'n'; c.textContent = String(strands.filter(s => s.k === k).length); b.appendChild(c);
+      b.addEventListener('click', () => { view[k] = !view[k]; b.setAttribute('aria-pressed', view[k] ? 'true' : 'false'); LS.set('corkboard:view', view); refresh(); });
+      sbox.appendChild(b);
+    }
+  }
+
+  /* ---------- picking and moving ---------- */
+  function togglePick(id) { if (opened && !picked.size) picked.add(opened); if (picked.has(id)) picked.delete(id); else picked.add(id); opened = null; $('panel').hidden = true; refresh(); }
+  function clearPicks() { picked.clear(); refresh(); }
+  $('picks-clear').addEventListener('click', clearPicks);
+  $('select').addEventListener('click', () => { selectMode = !selectMode; $('select').setAttribute('aria-pressed', selectMode ? 'true' : 'false'); if (selectMode) { open(null); note('Tap cards to pick them, then drag one to move them all', 4000); } });
+  let dragging = null;
+  const drag = d3.drag().clickDistance(5)
+    .on('start', (e, d) => {
+      cancelAnimationFrame(tween);
+      if (!view.moves) { view.moves = true; $('sw-moves').checked = true; LS.set('corkboard:view', view); settleTo(false); refresh(); note('Showing your moves again', 2600); }
+      const group = picked.has(d.id) && picked.size > 1 ? [...picked].map(id => N.get(id)) : [d];
+      dragging = { group, x: e.x, y: e.y, moved: false };
+      for (const n of group) d3.select(elOf.get(n.id)).raise();
+    })
+    .on('drag', e => { if (!dragging) return; const dx = e.x - dragging.x, dy = e.y - dragging.y; dragging.x = e.x; dragging.y = e.y; for (const n of dragging.group) { n.x += dx; n.y += dy; } dragging.moved = true; draw(); })
+    .on('end', () => { if (!dragging) return; const g = dragging; dragging = null; if (!g.moved) return; for (const n of g.group) mine.moves[n.id] = [Math.round(n.x), Math.round(n.y)]; changed(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { open(null); clearPicks(); } });
+  function changed() { LS.set('corkboard:board', mine); refresh(); scheduleKeep(); }
+
+  /* ---------- the open card ---------- */
+  function el(tag, cls, text) { const x = document.createElement(tag); if (cls) x.className = cls; if (text != null) x.textContent = text; return x; }
+  function open(id) { opened = id; $('panel').hidden = !id; refresh(); if (id) { reveal(N.get(id)); readRegistry(); } }
+  function readRegistry() {
+    if (registry) return;
+    registry = new Map();
+    getBlock('spine:thread').then(b => { if (b) for (const [n, node] of entries(b)) registry.set(String(n), textOf(node)); if (opened) renderDetail(opened); });
+  }
+  function kindTags(e) {
+    const out = [];
+    if (e.named) out.push(el('span', 'tag named', e.named === 1 ? 'names it' : 'named ' + e.named + ' times'));
+    if (e.thread.length) out.push(el('span', 'tag thread', (e.thread.length === 1 ? 'thread #' : 'threads #') + e.thread.join(', #')));
+    if (e.words.length) out.push(el('span', 'tag words', 'words: ' + e.words.join(', ')));
+    return out;
+  }
+  function renderDetail(id) {
+    const c = byId.get(id), box = $('detail'), S = STATE(); if (!c) return;
+    box.replaceChildren();
+    const eb = el('p', 'eyebrow');
+    eb.append(el('span', 'dot ' + c.state), document.createTextNode(c.kind + ' · ' + S[c.state] + (c.state === 'others' && c.who.length ? ' (' + c.who.join(', ') + ')' : '')));
+    box.append(eb, el('h2', null, c.label), el('p', 'line', c.line));
+    const links = el('div', 'links');
+    if (c.page) { const a = el('a', null, 'Open its page ↗'); a.href = c.page; links.append(a); }
+    const s = el('a', null, 'Standard view ↗'); s.href = c.std; links.append(s);
+    box.append(links);
+    box.append(el('h3', null, 'Threads'));
+    if (!c.read) box.append(el('p', 'empty', 'This proposal is newer than the board’s reading; its threads and strings come with the next.'));
+    else if (!c.threads.length) box.append(el('p', 'empty', 'No thread is tied to this one yet.'));
+    else {
+      const ul = el('ul');
+      for (const t of c.threads) {
+        const li = el('li'), line = registry && registry.get(t.n);
+        li.append(el('span', 'num', '#' + t.n), document.createTextNode((line ? line.replace(/\s·\sopened by[\s\S]*$/, '') : '') + ' '));
+        if (viewer && t.waits.includes(viewer)) li.append(el('span', 'tag you', 'waits on you'));
+        const others = t.waits.filter(w => w !== viewer); if (others.length) li.append(el('span', 'tag others', 'waits on ' + others.join(', ')));
+        if (!t.waits.length && t.done) li.append(el('span', 'tag complete', 'complete'));
+        ul.append(li);
+      }
+      box.append(ul);
+    }
+    const ties = edges.filter(e => e.a === id || e.b === id).sort((p, q) => q.w - p.w);
+    box.append(el('h3', null, 'Strings to'));
+    if (!ties.length) box.append(el('p', 'empty', 'No string reaches this one.'));
+    else {
+      const ul = el('ul');
+      for (const e of ties) {
+        const other = byId.get(e.a === id ? e.b : e.a), li = el('li');
+        const b = el('button', 'go', other.label); b.type = 'button'; b.addEventListener('click', () => { picked.clear(); open(other.id); });
+        li.append(b, el('br'), ...kindTags(e)); ul.append(li);
+      }
+      box.append(ul);
+    }
+    if (mine.moves[id]) {
+      box.append(el('h3', null, 'Your board'), el('p', 'empty', view.moves ? 'You moved this card.' : 'You moved this card. My moves is off, so it shows where it landed.'));
+      const u = el('button', 'btn', 'Put it back where it landed'); u.type = 'button';
+      u.addEventListener('click', () => { delete mine.moves[id]; changed(); settleTo(true); });
+      box.append(u);
+    }
+  }
+  $('close').addEventListener('click', () => open(null));
+
+  /* ---------- view ---------- */
+  function fit(animate, whole) {
+    const r = board.getBoundingClientRect(); if (!r.width || !r.height || !nodes.length) return;
+    const b = bounds(nodes.map(n => [n.x, n.y])), x0 = b.x0 - W / 2, x1 = b.x1 + W / 2, y0 = b.y0 - H / 2, y1 = b.y1 + H / 2;
+    const all = Math.min(1.3, (r.width - 56) / (x1 - x0), (r.height - 90) / (y1 - y0)), k = r.width <= 640 && !whole ? Math.max(all, 0.55) : all;
+    const t = d3.zoomIdentity.translate(r.width / 2 - k * (x0 + x1) / 2, (r.height - 34) / 2 - k * (y0 + y1) / 2).scale(k);
+    (animate && !RM ? svg.transition().duration(450) : svg).call(zoom.transform, t);
+  }
+  function reveal(n) {
+    const r = board.getBoundingClientRect(), t = d3.zoomTransform(svg.node()), narrow = r.width <= 640;
+    const vw = narrow ? r.width : r.width - Math.min(404, r.width - 24), vh = narrow ? r.height * 0.42 : r.height;
+    const k = Math.max(t.k, 0.75), p = [n.x * k + t.x, n.y * k + t.y];
+    if (t.k >= 0.75 && p[0] > W * k / 2 + 8 && p[0] < vw - W * k / 2 - 8 && p[1] > H * k / 2 + 8 && p[1] < vh - H * k / 2 - 8) return;
+    (RM ? svg : svg.transition().duration(420)).call(zoom.transform, d3.zoomIdentity.translate(vw / 2 - n.x * k, vh / 2 - n.y * k).scale(k));
+  }
+  $('fit').addEventListener('click', () => fit(true, true));
+
+  /* ---------- my moves, clearing, recalculating ---------- */
+  const swM = $('sw-moves'); swM.checked = !!view.moves;
+  swM.addEventListener('change', () => { view.moves = swM.checked; LS.set('corkboard:view', view); refresh(); settleTo(true); });
+  let pending = null;
+  function ask(text, yes, act) { pending = act; $('ask-text').textContent = text; $('ask-yes').textContent = yes; $('actions').hidden = true; $('board-note').hidden = true; $('ask').hidden = false; $('ask-yes').focus(); }
+  function unask() { pending = null; $('ask').hidden = true; $('actions').hidden = false; $('board-note').hidden = false; }
+  $('ask-no').addEventListener('click', unask);
+  $('ask-yes').addEventListener('click', () => { const act = pending; unask(); if (act) act(); });
+  $('clear').addEventListener('click', () => { const n = Object.keys(mine.moves).length;
+    ask('Put the ' + n + (n === 1 ? ' card' : ' cards') + ' you moved back where ' + (n === 1 ? 'it' : 'they') + ' landed?', 'Put them back', () => { mine.moves = {}; changed(); settleTo(true); note('Your moves are cleared', 3000); }); });
+  $('recalc').addEventListener('click', () => ask('Land your whole board afresh from the strings? Cards you moved stay where you put them. Only your board changes.', 'Recalculate',
+    () => { mine.landing = landAll(); changed(); settleTo(true); note('Your board has landed afresh', 3000); }));
+
+  /* ---------- the ground's grain, drawn from the theme's own colours ---------- */
+  function grain() {
+    try {
+      const cs = getComputedStyle(document.documentElement), a = 'rgb(' + cs.getPropertyValue('--vapour-rgb').trim() + ')', b = 'rgb(' + cs.getPropertyValue('--well-rgb').trim() + ')';
+      const cv = document.createElement('canvas'), S = 260; cv.width = cv.height = S; const x = cv.getContext('2d'); if (!x) return;
+      let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      for (let i = 0; i < 1500; i++) {
+        x.fillStyle = rnd() < 0.5 ? a : b; x.globalAlpha = 0.05 + rnd() * 0.12;
+        const r = 0.4 + rnd() * 1.4, px = rnd() * S, py = rnd() * S, rot = rnd() * Math.PI, sx = 0.6 + rnd();
+        for (const ox of [-S, 0, S]) for (const oy of [-S, 0, S]) { if (px + ox < -4 || px + ox > S + 4 || py + oy < -4 || py + oy > S + 4) continue; x.beginPath(); x.ellipse(px + ox, py + oy, r * sx, r, rot, 0, Math.PI * 2); x.fill(); }
+      }
+      board.style.backgroundImage = 'url(' + cv.toDataURL() + ')';
+    } catch (e) { /* the plain ground is fine */ }
+  }
+  grain();
+  new MutationObserver(grain).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  /* ---------- keeping: a person's own block through the beach's voice, else this device ---------- */
+  let noteTimer = null, steady = 'Your board is kept on this device';
+  function note(text, ms) { const n = $('note'); clearTimeout(noteTimer); n.textContent = text; if (ms) noteTimer = setTimeout(() => { n.textContent = steady; }, ms); }
+  function status(text) { steady = text; note(text); }
+  let keepTimer = null, keeping = false, again = false;
+  function scheduleKeep() { clearTimeout(keepTimer); keepTimer = setTimeout(keep, 1200); }
+  function keep() {
+    if (!window.siteVoice) return status('Your board is kept on this device');
+    if (keeping) { again = true; return; }
+    keeping = true; note('Keeping…');
+    window.siteVoice().then(v => {
+      const name = v && v.name ? v.name() : '';
+      if (!name) { status('Your board is kept on this device. Sign with your beach button to keep it on the beach'); return null; }
+      return v.keep({ field: 'corkboard', content: toBlock(name), name }).then(r => {
+        if (r && r.ok) { viewer = r.name || name; status('Kept on the beach as corkboard:' + viewer + ', under your own key'); }
+        else if (r && r.quiet) status('Your board is kept on this device');
+        else note((r && r.error) || 'The beach did not take it just now. It is kept on this device', 6000);
+      });
+    }).catch(() => status('Your board is kept on this device')).then(() => { keeping = false; if (again) { again = false; keep(); } });
+  }
+
+  /* ---------- first frame ---------- */
+  Promise.all([getBlock('proposals'), getBlock('corkboard')]).then(([proposals, shared]) => {
+    if (!proposals) { $('loading').textContent = 'The beach cannot be read just now. Try again in a moment.'; return; }
+    build(proposals, shared);
+    const added = ensureBoard();
+    LS.set('corkboard:board', mine);
+    paint(); chips(); settleTo(false); refresh();
+    $('loading').remove();
+    requestAnimationFrame(() => fit(false, false));
+    window.addEventListener('resize', () => { if (!opened) fit(false, false); });
+    if (added && added < cards.length) note(added === 1 ? 'One new proposal has landed on your board' : added + ' new proposals have landed on your board', 5000);
+    /* whoever this device signs as: their own block is their board, and their own handle is 'you' */
+    if (window.siteVoice) window.siteVoice().then(v => {
+      const name = v && v.name ? v.name() : '';
+      if (!name) return;
+      viewer = name; $('who').textContent = name + '’s board';
+      restate(); chips(); refresh();
+      return getBlock('corkboard:' + name).then(b => {
+        if (!b || typeof b !== 'object') return;
+        const landing = parseEntries(textOf(b['1'])), moves = parseEntries(b['2'] ? textOf(b['2']) : '');
+        if (!Object.keys(landing).length) return;
+        mine = { landing, moves };
+        const more = ensureBoard();
+        LS.set('corkboard:board', mine); refresh(); settleTo(true);
+        status('Your board is kept on the beach as corkboard:' + name);
+        if (more) note(more === 1 ? 'One new proposal has landed on your board' : more + ' new proposals have landed on your board', 5000);
+      });
+    }).catch(() => {});
+  });
+})();
+</script>
+</body>
+</html>
