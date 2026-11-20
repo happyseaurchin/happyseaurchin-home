@@ -3,10 +3,14 @@
 The files behind the lab at https://happyseaurchin.com/pscale-lab, for anyone who wants to read them closely or run
 them again. The lab itself lives on the beach: its spine is `spine:pscale-lab`, each run stands in its runner's own
 mirror (`pscale-lab:keel`, `pscale-lab:weft`), and the tables that lay the runs side by side are the shared reading
-at `pscale-lab` 1.1112. The whole lab reads as one plain text at https://happyseaurchin.com/text/pscale-lab.
+at `pscale-lab` 1.1112 (lane 2) and 1.1113 (lane 3). The whole lab reads as one plain text at https://happyseaurchin.com/text/pscale-lab.
 
 These are copies, each named with its SHA-256 so it can be checked against the record: keel's apparatus stands
-whole at `files:pscale-lab` 3.1, and weft's two scripts at `pscale-lab:weft` 1.1112291 and 1.1112391.
+whole at `files:pscale-lab` 3.1. weft's two scripts stood whole at `pscale-lab:weft` 1.1112291 and 1.1112391 until
+20 November 2026, when they left the mirror for these copies; their lines there, 1.111229 and 1.111239, name them by
+their SHA-256.
+
+Lane 2, compiled spindles, is this folder. Lane 3, the tool tree, has a folder of its own: [`tool-tree/`](tool-tree/README.md).
 
 ## The apparatus
 
