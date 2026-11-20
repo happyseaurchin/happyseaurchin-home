@@ -266,6 +266,7 @@
 
 <script src="https://beach.happyseaurchin.com/button/voice.js"></script>
 <script src="/threads.js"></script>
+<script src="/runs.js"></script>
 <script src="/look.js"></script>
 <script src="/arrange.js"></script>
 <script>
@@ -947,6 +948,7 @@
             (r.rest ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + (r.points.length ? '<div class="more"><details class="fold"><summary>What to know</summary><div class="in">' + pointsHTML(r.points) + '</div></details></div>' : '') +
             cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') + '</div>';
         }).join('') +
+        '<div class="runs-under" data-step="' + esc(s.addr) + '"></div>' +
         '<div class="th-under" data-step="' + esc(s.addr) + '"></div>' +
       '</section>';
     }
@@ -1037,6 +1039,32 @@
         (latest ? ', the latest ' + rel(latest) : '') + ', with the latest shared reading of them. Tap one to read it and answer.';
       paintAs();
       drawQuipu();
+      paintRuns();
+    }
+    /* the runs: lines opening RUN in the runners' own mirrors, each shown in the step that holds the deepest place on
+       the spine at or above it, the newest open and the rest a tap away, a chip per runner for that runner's series
+       (runs.js; 20 Nov 2026, lane pscale.lab, at David's 'go for it', the o-page-unit showing what experiments find) */
+    function paintRuns() {
+      if (!window.beachRuns) return;
+      var groups = {}, steps = STEPS.map(function (s) { return s.addr.replace('.', ''); });
+      beachRuns.of(MIRRORS, { spine: SPINE, touched: TOUCHED }).forEach(function (r) { (groups[r.at] = groups[r.at] || []).push(r); });
+      STEPS.forEach(function (s, i) {
+        var el = document.querySelector('.runs-under[data-step="' + s.addr + '"]'); if (!el) return;
+        var sd = steps[i], deeper = steps.indexOf(sd + '1') >= 0;
+        var here = Object.keys(groups).filter(function (at) {
+          var g = at.replace('.', '');
+          return g.indexOf(sd) === 0 && (g === sd || g.charAt(sd.length) !== '1' || !deeper);
+        }).sort();
+        Array.prototype.forEach.call(el.querySelectorAll('[data-runs-at]'), function (c) { if (here.indexOf(c.getAttribute('data-runs-at')) < 0) c.remove(); });
+        here.forEach(function (at) {
+          var box = el.querySelector('[data-runs-at="' + at + '"]');
+          if (!box) { box = document.createElement('div'); box.setAttribute('data-runs-at', at); el.appendChild(box); }
+          var side = s.sides.filter(function (r) { return r.at === at; })[0];
+          var label = at === s.addr ? 'The runs at this step, each from its runner\u2019s own mirror' :
+            'The runs at ' + at + (side && side.title ? ', ' + sentenceCase(side.title) : '') + ', each from its runner\u2019s own mirror';
+          beachRuns.draw(box, groups[at], { label: label });
+        });
+      });
     }
     function paintAs() {
       var btn = buttonShown();

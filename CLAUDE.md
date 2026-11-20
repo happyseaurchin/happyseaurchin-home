@@ -20,7 +20,7 @@ Every page, function and shared module has its own note in `docs/pages/`: `docs/
 
 - **The site shell**: `index.html`, `assets/`, `style/`, `theme.css`, and `theme.js` (the bar, the keys, the pass, the voice, the door and the code card, each noted on its own).
 - **Pages**: the `*.html` at the root, most the crafted page of a family on the beach, whose law names it at 6; `/proposal/<name>`, `/walk/<name>` and `/schematic/<name>` draw any family plainly from its blocks, and `/text/<name>` gives it as text.
-- **Shared modules**: `threads.js`, `look.js`, `arrange.js`, `says.js`, `door.js`, `vault.js`.
+- **Shared modules**: `threads.js`, `runs.js`, `look.js`, `arrange.js`, `says.js`, `door.js`, `vault.js`.
 - **Elsewhere**: `animations/` (films and stills), `read/` (long reads), `games/` (the hosted games and the plug), `dashboard/`, `button/` (a forwarding shim), `mindflow/` (speech-to-structure tools), `experiments/`, `components/` with `docs/components/`, `pscale/starstone/`; `api/` serverless functions (`docs/pages/api.md`) and `scripts/` (`docs/pages/scripts.md`).
 
 ## What NOT to do

@@ -75,6 +75,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [read](read.md) | `read/` | the longer pieces to read, each a public copy anyone can open without a Claude sign-in, listed at `/read` and linked from the animations they go with … |
 | [reflexive-charts](reflexive-charts.md) | `reflexive-charts.html` | the reflexive charts (18 Oct 2026): |
 | [run-up](run-up.md) | `run-up.html` | the run-up proposal (10 Nov 2026), at `/run-up`, its snazzy view once its law names it at 6 (`/proposal/run-up` is its standard view, drawn from its b… |
+| [runs-js](runs-js.md) | `runs.js` | a family's runs, drawn where a page asks (20 Nov 2026, lane pscale.lab; |
 | [salt-app](salt-app.md) | `salt-app.html` | the SALT app proposal (4 Nov 2026), at `/salt-app`, its snazzy view, which its law names at 6 (since 19 Nov 2026, lane salt.app.2, at David's word: |
 | [sam-6-nov](sam-6-nov.md) | `sam-6-nov.html` | the crafted page of the meeting sam-6-nov (9 Nov 2026, lane meeting.link), at `/sam-6-nov`; |
 | [says-js](says-js.md) | `says.js` | comments on a page's parts, as a kit any page carries (24 Oct 2026; |
