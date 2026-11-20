@@ -41,6 +41,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [garden](garden.md) | `garden.html` | the garden proposal (17 Nov 2026), at `/garden`, its snazzy view once its law names it at 6 (`/proposal/garden` is its standard view, drawn from its b… |
 | [ghost-race](ghost-race.md) | `ghost-race.html` + `ghost-race/` | Ghost Race (27 Oct 2026, lane ghost-race.1), at `/ghost-race`: |
 | [happening](happening.md) | `happening.html` | the happening proposal (2 Nov 2026), at `/happening`, its snazzy view, which its law names at 6 (`/proposal/happening` is its standard view, drawn fro… |
+| [health-check](health-check.md) | `health-check.html` | the health check's page (20 Nov 2026, lane door-health.1), at `/health-check`, its crafted page, which its law names at 6 (`/proposal/health-check` is its st… |
 | [host-proof](host-proof.md) | `host-proof.html` | the host-proof proposal (16 Nov 2026), at `/host-proof`, its snazzy view once its law names it at 6 (`/proposal/host-proof` is its standard view, draw… |
 | [index](index.md) | `index.html`, `assets/`, `style/` | personal site shell |
 | [iris-proposal](iris-proposal.md) | `iris-proposal.html` | the iris proposal (17 Nov 2026), at `/iris-proposal`, its snazzy view, which its law names at 6 and the spine's root 2 (`/proposal/iris` is its standa… |
