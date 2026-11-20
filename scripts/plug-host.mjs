@@ -5,7 +5,9 @@
  *                             storage it keeps inside its sandbox, standing in before anything else on the page runs
  *   framePage({ game, … })    /games/<game>: the frame it plays in, a sandboxed iframe (no allow-same-origin), so the
  *                             game runs in its own opaque origin and reads nothing this site keeps in the browser;
- *                             /games/frame.js keeps the game's own storage for it under games:<game>:
+ *                             /games/frame.js keeps the game's own storage for it under games:<game>:. Given an image
+ *                             ({ url, width, height }, a still on this site), its link card is the large one with that
+ *                             still (The Chain, lane chain.1, 20 Nov 2026); without one the frame is as it always was
  * vercel.json gives /games/<game>/game the same sandbox as a header, with the beach and this site its only connections. */
 export const SITE = 'https://happyseaurchin.com';
 export const BRIDGE = '<script src="/games/bridge.js"></script>';
@@ -20,8 +22,14 @@ export function hostedPage(html) {
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-export function framePage({ game, title, what, by }) {
+export function framePage({ game, title, what, by, image }) {
   const t = esc(title || game), w = esc(what), b = esc(by);
+  const card = image && image.url
+    ? `<meta property="og:image" content="${esc(image.url)}">
+<meta property="og:image:width" content="${esc(image.width)}">
+<meta property="og:image:height" content="${esc(image.height)}">
+<meta name="twitter:card" content="summary_large_image">`
+    : '<meta name="twitter:card" content="summary">';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -35,7 +43,7 @@ export function framePage({ game, title, what, by }) {
 <meta property="og:title" content="${t}">
 <meta property="og:description" content="${w}">
 <meta property="og:url" content="${SITE}/games/${game}">
-<meta name="twitter:card" content="summary">
+${card}
 <style>
   /* the frame of a game handed in at files:${game}${b ? ' by ' + b : ''} and plugged by the service (ways:plug 8): the game plays
      inside, sandboxed, in its own origin; this page keeps what the game keeps (games:${game}:) and nothing else */

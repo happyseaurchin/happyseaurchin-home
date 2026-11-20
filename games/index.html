@@ -87,7 +87,7 @@
   <header>
     <p class="eyebrow">Games played here</p>
     <h1>Handed in, plugged into the beach, and played here</h1>
-    <p class="lede">Each of these was made with an AI by someone with nowhere of their own to put a page. They handed it in as text on the beach; the plug service checked it, plugged it in and put it here. Every game keeps its players’ names, its board and its room on the beach, and each one plays in a sandbox of its own, so nothing it runs can read what this site keeps in your browser.</p>
+    <p class="lede">Each of these was made with an AI by someone with nowhere of their own to put a page. They handed it in as text on the beach; the plug service checked it, plugged it in and put it here. A game with a new level every day keeps its players’ names, its board and its room on the beach, and every game plays in a sandbox of its own, so nothing it runs can read what this site keeps in your browser.</p>
     <p class="today" id="today">reading the shelf…</p>
   </header>
   <ul class="shelf" id="shelf"></ul>
@@ -128,24 +128,27 @@ $('ask-copy').addEventListener('click', async () => {
 
 async function boardFor(g){
   const r = await fetch('/api/board?game=' + encodeURIComponent(g.game), { headers: { Accept: 'application/json' } });
+  if (r.status === 404) return { error: 'nothing on the beach', missing: true };   // no law and no room: played on its page alone
   const d = await r.json().catch(() => null);
   return r.ok && d ? d : { error: (d && d.error) || 'answered ' + r.status };
 }
 function card(g, b){
   const li = document.createElement('li'); li.className = 'game';
-  const page = '/games/' + encodeURIComponent(g.game);
+  const page = '/games/' + encodeURIComponent(g.game), daily = !(b && b.missing);
+  const room = g.room || (daily ? 'pool:' + g.game : ''), thread = g.thread || (daily ? 'spine:' + g.game + '-plug' : '');
   let html = '<p class="kind">A game · handed in by ' + esc(g.by) + ' · plugged ' + esc(g.plugged) + '</p>' +
     '<h2><a href="' + page + '">' + esc(g.title || g.game) + '</a></h2>' +
     (g.what ? '<p class="what">' + esc(cap(g.what)) + '</p>' : '') +
-    '<a class="play" href="' + page + '">▶ Play today’s</a>';
-  if (!b || b.error) html += '<p class="none">Its board can’t be read just now' + (b && b.error ? ': ' + esc(b.error) : '') + '.</p>';
+    '<a class="play" href="' + page + '">' + (daily ? '▶ Play today’s' : '▶ Play') + '</a>';
+  if (!daily) html += '<p class="none">It keeps no daily level and no board on the beach: it is played on its page.</p>';
+  else if (!b || b.error) html += '<p class="none">Its board can’t be read just now' + (b && b.error ? ': ' + esc(b.error) : '') + '.</p>';
   else {
     const top = (b.top || []).slice(0, 3);
     html += '<p class="count">' + (b.runs ? b.runs + (b.runs === 1 ? ' run' : ' runs') + ' by ' + b.players + (b.players === 1 ? ' player' : ' players') + ' today' : 'No runs today yet') + '</p>';
     html += top.length ? '<ol class="ten">' + top.map(r => '<li><span class="who">' + esc(r.name) + '</span><span class="score">' + esc(/\d\s*s\b/.test(r.line || '') ? fmt(r.score) : String(r.score)) + '</span></li>').join('') + '</ol>'
       : '<p class="none">No run today yet: the first is yours to make.</p>';
   }
-  html += '<p class="note">Its room, <code>' + esc(g.room || 'pool:' + g.game) + '</code>; the page as handed in, <code>' + esc(g.files || 'files:' + g.game) + '</code> 1, sha256 ' + esc(String(g.sha256 || '').slice(0, 12)) + '…; its thread, <code>' + esc(g.thread || 'spine:' + g.game + '-plug') + '</code>.</p>';
+  html += '<p class="note">' + (room ? 'Its room, <code>' + esc(room) + '</code>; the page' : 'The page') + ' as handed in, <code>' + esc(g.files || 'files:' + g.game) + '</code> 1, sha256 ' + esc(String(g.sha256 || '').slice(0, 12)) + '…' + (thread ? '; its thread, <code>' + esc(thread) + '</code>' : '') + '.</p>';
   li.innerHTML = html;
   return li;
 }
