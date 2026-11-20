@@ -882,7 +882,7 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
         tell(); return Promise.resolve(f);
       }
       inFlight = fetch('/api/mirrors?family=' + encodeURIComponent(name), { headers: { Accept: 'application/json' } })
-        .then(function (r) { return r.ok ? r.json().then(function (d) { f.fold = d.fold || null; f.touched = d.touched || {}; return d.mirrors || {}; }) : null; }, function () { return null; })
+        .then(function (r) { return r.ok ? r.json().then(function (d) { f.fold = d.fold || null; f.touched = d.touched || {}; f.born = d.born || {}; return d.mirrors || {}; }) : null; }, function () { return null; })
         .then(function (got) {
           if (got) return got;
           return fetch(BEACH, { headers: { Accept: 'application/json' }, cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (ix) {
@@ -1358,8 +1358,20 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
   /* what the drawings need from here: the parts, the comments on each, and the part card */
   var heardG = [];
   G.onRead(function () { heardG.forEach(function (fn) { try { fn(); } catch (e) {} }); });
+  /* every maker's own list of games, games:<handle>, the earliest list first, as the arcade's door reads them: the
+     mimic's 'on the door' and the arcade's key plan read it (until 20 Nov 2026 they read weft's list alone, and Ghost
+     Racer moved that day to David's own, lane chain.1) */
+  var LISTS = null;
+  function makersLists() {
+    if (!LISTS) LISTS = Family('games').read().then(function (f) {
+      var born = f.born || {};
+      return Object.keys(f.mirrors || {}).sort(function (a, b) { return (Date.parse(born[a] || '') || Infinity) - (Date.parse(born[b] || '') || Infinity) || (a < b ? -1 : 1); })
+        .map(function (h) { return { by: h, list: f.mirrors[h] }; });
+    }, function () { return []; });
+    return LISTS;
+  }
   window.SCH = {
-    preview: PREVIEW, readBlock: readBlock, nodeAt: nodeAt, textOf: textOf, voiceOf: voiceOf, entries: entries,
+    preview: PREVIEW, readBlock: readBlock, nodeAt: nodeAt, textOf: textOf, voiceOf: voiceOf, entries: entries, games: makersLists,
     gs: function () { return GS; }, part: partAt, child: child, title: titleCase,
     count: function (addr) { return G.at(addr).length; },
     counts: function () { var out = {}; Object.keys(G.mirrors).forEach(function (h) { (function walk(n, addr) { if (!n || typeof n !== 'object') return; for (var d = 1; d <= 9; d++) { var k = n[String(d)]; if (k == null) continue; var a = addr ? child(addr, d) : String(d); if (textOf(k) && /^1/.test(a)) out[a] = (out[a] || 0) + 1; walk(k, a); } })(G.mirrors[h], ''); }); return out; },
@@ -1732,8 +1744,9 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
   }
   var TRACKS = ['', 'Promenade', 'Pier Loop', 'Lighthouse', 'Dunes', 'Rockpools', 'Breakwater', 'Saltmarsh', 'Sea Caves', 'The Wreck'];
   function readLive() {
-    return Promise.all(['pool:ghost-racer', 'liquid:pool:ghost-racer', 'function:ghost-racer-plug', 'games:weft'].map(function (n) { return SCH.readBlock(n).catch(function () { return null; }); })).then(function (b) {
-      var pool = b[0], liq = b[1], plug = b[2], games = b[3], L = {};
+    return Promise.all(['pool:ghost-racer', 'liquid:pool:ghost-racer', 'function:ghost-racer-plug'].map(function (n) { return SCH.readBlock(n).catch(function () { return null; }); })
+      .concat(SCH.games ? SCH.games().catch(function () { return []; }) : [])).then(function (b) {
+      var pool = b[0], liq = b[1], plug = b[2], lists = b[3] || [], L = {};
       var runs = SCH.entries(pool).filter(function (e) { return typeof e['7'] === 'string'; }).map(function (e) {
         var m = /FINISHED\s+(\d+(?:\.\d+)?)\s*s/i.exec(SCH.voiceOf(e) || ''); return { who: String(e['1'] || '').replace(/, a visitor$/, ''), t: m ? +m[1] : null, at: String(e['2'] || ''), when: e['3'] };
       });
@@ -1750,9 +1763,9 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
       L[5] = { v: Object.keys(here).length + ' in the room now · ' + Object.keys(day).length + ' came by today', lamp: Object.keys(here).length ? 'live' : Object.keys(day).length ? 'inst' : 'dim' };
       var st = /state:\s*([A-Z][A-Z ]+?)\b(?:\s+—|$)/.exec(SCH.textOf(plug && plug['3']) || '');
       L[6] = st ? { v: 'its thread says ' + st[1], lamp: /LIVE/.test(st[1]) ? 'live' : 'inst' } : { v: 'thread not read', lamp: 'dim' };
-      var listed = '';
-      if (games) for (var d = 1; d <= 9; d++) { var t = SCH.textOf(games[String(d)]); if (/^ghost-racer\b/.test(t || '')) listed = String(d); }
-      L[7] = listed ? { v: 'on the door, listed by weft', lamp: 'live' } : { v: 'not on the door', lamp: 'dim' };
+      var listedBy = '';   // the hand whose own list holds it, the earliest list first, as the door shows a game once
+      lists.forEach(function (x) { for (var d = 1; d <= 9 && !listedBy; d++) { var t = SCH.textOf(x.list && x.list[String(d)]); if (/^ghost-racer\b/.test(t || '')) listedBy = x.by; } });
+      L[7] = listedBy ? { v: 'on the door, listed by ' + listedBy, lamp: 'live' } : { v: 'not on the door', lamp: 'dim' };
       live = L;
       var d2 = new Date(); liveAt = ('0' + d2.getHours()).slice(-2) + ':' + ('0' + d2.getMinutes()).slice(-2);
       return L;
@@ -2326,12 +2339,11 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
     var plan = 'arcade', shelves = null;
     function readShelves() {
       if (!SCH.readBlock) return Promise.resolve(null);
-      return Promise.all([SCH.readBlock('spine:arcade').catch(function () { return null; }), SCH.readBlock('games:weft').catch(function () { return null; })]).then(function (b) {
+      return Promise.all([SCH.readBlock('spine:arcade').catch(function () { return null; }), SCH.games ? SCH.games().catch(function () { return []; }) : []]).then(function (b) {
         var cat = [], mine = [];
-        for (var d = 1; d <= 9; d++) {
-          var t = b[0] ? SCH.textOf(b[0][String(d)]) : ''; if (t) cat.push(t.split(' — ')[0].trim());
-          var u = b[1] ? SCH.textOf(b[1][String(d)]) : ''; var m = /^([a-z0-9-]+) — /.exec(u || ''); if (m) mine.push(m[1]);
-        }
+        for (var d = 1; d <= 9; d++) { var t = b[0] ? SCH.textOf(b[0][String(d)]) : ''; if (t) cat.push(t.split(' — ')[0].trim()); }
+        (b[1] || []).forEach(function (x) { for (var d = 1; d <= 9; d++) {
+          var u = SCH.textOf(x.list && x.list[String(d)]); var m = /^([a-z0-9-]+) — /.exec(u || ''); if (m && mine.indexOf(m[1]) < 0) mine.push(m[1]); } });
         shelves = { cat: cat, mine: mine };
       });
     }
@@ -2345,7 +2357,7 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
       plan = p; clear(svg); arrowDefs(svg);
       var g = E('g', null, svg);
       if (p === 'arcade') {
-        var sh = shelves || { cat: ['Ghost Wire', 'Bat Sky', 'Rat Alley'], mine: ['ghost-race', 'cairn', 'ghost-racer'] };
+        var sh = shelves || { cat: ['Ghost Wire', 'Bat Sky', 'Rat Alley'], mine: ['cairn', 'the-chain', 'ghost-racer'] };
         ink(E('rect', { x: 10, y: 30, width: 540, height: 250, rx: 8, 'class': 's-dim', 'stroke-width': 1.4, 'stroke-dasharray': '10 6' }, g), 0, 900);
         fade(T(g, 22, 22, 'THE ARCADE · ITS SCHEMATIC, TO DRAW', 'd-title d-dim', { 'font-size': 12.5 }), 100);
         fade(T(g, 538, 22, 'happyseaurchin.com/arcade ↗', 'd-mono d-proc', { 'text-anchor': 'end', 'font-size': 8.6 }), 150);
