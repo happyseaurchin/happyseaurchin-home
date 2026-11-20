@@ -1602,6 +1602,10 @@
      * 2026-10-18: "it should be in the go dropdown list under the user's handle in order
      * to navigate to the user's premieres") */
     ['premieres',    'premiere', 'carry'],
+    /* every proposal on one board, laid out by what it shares; the page finds whoever this device signs as for its
+     * own board, corkboard:<handle>, so it takes no handle in its path (David, 2026-11-20, review.1: "Add to personal
+     * list and site list"; "Can't find it on any list") */
+    ['corkboard',    'corkboard', 'bare'],
     /* the hand's record drawn as threads through the days, each turn's pull requests, pages, documents and
      * apps a link; /lanes/<hand>+<hand> lays several side by side (David, 2026-10-20: "a simple visual for
      * the lanes/sessions we are operating with; and allows others to attach theirs") */
@@ -1619,7 +1623,7 @@
     ['earth',            'earth',        'optional']
   ];
   /* off until chosen — every other door is what a newcomer meets */
-  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, lanes:1, 'https://mirror.onen.ai/':1 };
+  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, lanes:1, corkboard:1, 'https://mirror.onen.ai/':1 };
   /* a page renamed keeps the lists that named it */
   var DOOR_ALIAS = { shell:'passport', self:'passport' };
   /* who you do it with: the door in, and the live surface where people actually
@@ -1708,6 +1712,10 @@
    * fallback: the block is read when the site's list is first shown and kept on this device an hour (site:pages), and
    * only a list read whole and well formed takes the copy's place. */
   var SITE_BLOCK = 'site:happyseaurchin.com', SITE_KEEP = 'site:pages', SITE_HOUR = 3600e3, siteReading = null;
+  /* the copy's own pages, as a word: a list kept on this device beside another copy is read again at once, so a page
+   * added in the code and on the beach reaches every menu when the page is served, not an hour after (review.1,
+   * 2026-11-20: the corkboard missing from David's site tab, his list kept before it was added) */
+  var SITE_CODE = SITE.map(function(x){ return x[0]; }).join(' ');
   function siteFromBlock(b){
     var items = b && typeof b === 'object' ? chainToItems(b['1']) : [];
     var out = items.map(function(x){
@@ -1717,7 +1725,7 @@
     return out.length && out.every(Boolean) ? out : null;
   }
   function siteKept(){
-    try { var k = JSON.parse(localStorage.getItem(SITE_KEEP) || 'null'); return k && Date.now() - k.at < SITE_HOUR && Array.isArray(k.list) && k.list.length ? k.list : null; }
+    try { var k = JSON.parse(localStorage.getItem(SITE_KEEP) || 'null'); return k && k.code === SITE_CODE && Date.now() - k.at < SITE_HOUR && Array.isArray(k.list) && k.list.length ? k.list : null; }
     catch(e){ return null; }
   }
   function sitePages(){ return siteKept() || SITE; }
@@ -1726,7 +1734,7 @@
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(b){
         var list = siteFromBlock(b);
-        if (list) { try { localStorage.setItem(SITE_KEEP, JSON.stringify({ at: Date.now(), list: list })); } catch(e){} }
+        if (list) { try { localStorage.setItem(SITE_KEEP, JSON.stringify({ at: Date.now(), code: SITE_CODE, list: list })); } catch(e){} }
         return list;
       })
       .catch(function(){ return null; });
@@ -2302,6 +2310,9 @@
       }
       n = n['1'];
     }
+    /* a last rung written as a bare line (a point write leaves one) is still the list's last item: the chain is read
+     * to its end, never stopped one short (review.1, 2026-11-20: the corkboard, the site list's 32nd, written so) */
+    if (typeof n === 'string' && n.trim()) out.push({ name: n.trim(), line: '' });
     return out;
   }
   /* the names alone, in order */
