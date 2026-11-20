@@ -19,7 +19,7 @@
 :root {
   --paper: #eaf1f5; --panel: #ffffff; --panel-2: #f4f8fa; --ink: #0c2131; --ink-2: #405a6b; --rule: #c6d5de;
   --hull: #b2342a; --sea: #1d6b8a; --brass: #a8761c; --lamp: #c98a16; --mark: #0c2131; --ok: #1f7a55;
-  --foam: var(--ink); --vapour: var(--ink-2); --vapour-dim: var(--ink-2); --line: var(--rule); --line-strong: var(--ink-2); --liquid: var(--sea); --card: var(--panel); --solid: var(--brass);
+  --foam: var(--ink); --vapour: var(--ink-2); --vapour-dim: var(--ink-2); --line: var(--rule); --line-strong: var(--ink-2); --liquid: var(--sea); --card: var(--panel); --solid: var(--brass); --bud: var(--hull);
   --display: 'Alfa Slab One', 'Rockwell', Georgia, serif; --body: 'Karla', system-ui, sans-serif; --mono: 'Inconsolata', ui-monospace, monospace;
   /* the harbour at night: the band and every instrument keep it in either theme */
   --n-sky: #050c13; --n-sky-2: #0b1d2b; --n-sea: #0b3446; --n-ink: #e7eef2; --n-ink-2: #9fb5c2; --n-rule: #23435a;
@@ -213,9 +213,8 @@ section > h2, .sechead h2 { font-size: clamp(1.7rem, 3.6vw, 2.5rem); }
 .rtable table { font-size: 0.86rem; min-width: 26rem; }
 .rtable th, .rtable td { border-bottom: 1px solid var(--rule); padding: 0.3rem 0.45rem; text-align: left; vertical-align: top; }
 .rtable th { color: var(--ink-2); font-weight: 600; }
-.earlier { margin-top: 0.4rem; }
-.earlier .old { border-left: 3px solid var(--rule); padding-left: 0.7rem; margin: 0.5rem 0; }
 .empty { color: var(--ink-2); font-style: italic; }
+.pastedhead { font-family: var(--display); font-weight: 400; font-size: 1.15rem; margin: 0.6rem 0 0; }
 
 /* talk */
 .talk { list-style: none; padding: 0; margin: 0.6rem 0; display: grid; gap: 0.4rem; }
@@ -223,7 +222,6 @@ section > h2, .sechead h2 { font-size: clamp(1.7rem, 3.6vw, 2.5rem); }
 .talk .meta { font-size: 0.84rem; color: var(--ink-2); }
 
 .field textarea.say { min-height: 5rem; font: 400 1rem/1.5 var(--body); }
-.rdesc { color: var(--ink-2); font-size: 0.92rem; margin: 0.15rem 0 0; }
 .rhead2 b { font-weight: 700; }
 @media (max-width: 640px) {
   .bandcap { position: static; padding: 10px 12px 4px; text-shadow: none; max-width: none; background: var(--n-sky); }
@@ -455,9 +453,10 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
   <section id="record">
     <div class="sechead">
       <h2>The record</h2>
-      <p>Every runner's newest run, read live from the beach; tap to open its parts, and its earlier runs stand beneath it. Runs an AI kept itself come first by their runner; runs pasted here by a person are marked so.</p>
+      <p>The newest run, read live from the beach, with every earlier run a tap away and a chip for each runner's own series; runs a person pasted into the room stand beneath it, marked so.</p>
     </div>
     <p class="hint" id="recordNote">Reading the beach…</p>
+    <div id="mirrorRuns"></div>
     <div class="record" id="recordList"></div>
     <div class="card" style="margin-top:1.2rem">
       <h3>Your AI couldn't write to the beach? Paste its run here</h3>
@@ -494,6 +493,7 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
   <p>The health check is a family on the beach: its steps at <code>spine:health-check</code>, its law at <code>function:health-check</code>, each runner's record at <code>health-check:&lt;handle&gt;</code>, its room at <code>pool:health-check</code>. Drawn plainly at <a href="/proposal/health-check">/proposal/health-check</a> and as text, for any AI, at <a href="/text/health-check">/text/health-check</a>.</p>
   <p id="create-your-own"><a href="https://happyseaurchin.com/">happyseaurchin.com</a><a href="https://happyseaurchin.com/proposal">every proposal</a><a href="https://happyseaurchin.com/proposal/health-check">standard view</a></p>
 </footer>
+<script src="/runs.js"></script>
 <script src="/threads.js"></script>
 <script>
 (function () {
@@ -945,19 +945,6 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
     return out.sort(function (a, b) { return String(a['3'] || '').localeCompare(String(b['3'] || '')); });
   }
 
-  /* a run's chain in a runner's mirror: the first at 1.11111, each later one at the 1 beneath */
-  function chainOf(block) {
-    var out = [], addr = RUN_AT, n = nodeAt(block, addr);
-    while (n !== undefined && n !== null) {
-      var head = textOf(n); if (!head) break;
-      var parts = [];
-      if (typeof n === 'object') for (var k = 2; k <= 6; k++) { var t = textOf(n[String(k)]); if (t) parts.push(t); }
-      out.push({ addr: addr, head: head, parts: parts });
-      if (typeof n !== 'object' || !n['1']) break;
-      n = n['1']; addr += '1';
-    }
-    return out;
-  }
   /* text with its tables: a line 'Table — what it shows', then markdown rows, the first row its heads */
   function rich(t) {
     var lines = String(t || '').split('\n'), html = '', i = 0;
@@ -980,42 +967,26 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
     return '<div class="rtable"><table><thead><tr>' + head.map(function (h) { return '<th>' + esc(h) + '</th>'; }).join('') + '</tr></thead><tbody>' +
       cells.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + esc(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody></table></div>';
   }
-  function partHtml(t) {
-    var s = split(t), title = s.title ? caseTitle(s.title) : 'Part';
-    return '<details><summary>' + esc(title) + '</summary><div class="rbody">' + rich(s.title ? capFirst(s.body) : t) + '</div></details>';
-  }
   function headHtml(h) {
     h = String(h || '').replace(/^RUN\s*[\u2014\u2013-]\s*/, '');
     var i = h.indexOf(': ');
     return i > 0 && i < 170 ? '<b>' + esc(h.slice(0, i)) + '</b>: ' + esc(h.slice(i + 2)) : esc(h);
   }
-  function firstClause(t) { return String(t || '').split(/[:.](?:\s|$)/)[0].slice(0, 180); }
-  function runHtml(run, cls) {
-    return '<div class="' + (cls || '') + '"><p class="rhead2">' + headHtml(run.head) + ' <span class="addr">at ' + run.addr + '</span></p>' + run.parts.map(partHtml).join('') + '</div>';
-  }
+  /* the mirrors' runs are the shared reader's to draw (runs.js: the newest as a card, the rest a dropdown with a chip per
+     runner); the runs a person pasted into the room, field 2 the run step, stand beneath it, newest first, marked so */
   function paintRecord(mir, room) {
-    var cards = [];
-    Object.keys(mir.mirrors || {}).forEach(function (h) {
-      var ch = chainOf(mir.mirrors[h]); if (!ch.length) return;
-      var newest = ch[ch.length - 1], earlier = ch.slice(0, -1).reverse();
-      cards.push({ when: String((mir.touched || {})[h] || ''), html:
-        '<article class="rcard"><div class="rwho"><b>' + esc(h) + '</b><span>' + ch.length + (ch.length === 1 ? ' run' : ' runs') + ', kept in its own mirror</span><span class="addr">health-check:' + esc(h) + '</span></div>' +
-        (firstClause(textOf(mir.mirrors[h])) ? '<p class="rdesc">' + esc(firstClause(textOf(mir.mirrors[h]))) + '</p>' : '') +
-        runHtml(newest) +
-        (earlier.length ? '<details class="earlier"><summary>Earlier runs (' + earlier.length + ')</summary>' + earlier.map(function (r) { return runHtml(r, 'old'); }).join('') + '</details>' : '') +
-        '</article>' });
-    });
-    roomEntries(room).forEach(function (e) {
-      if (String(e['2'] || '') !== RUN_AT) return;
-      var text = textOf(e), first = text.split('\n')[0], rest = text.slice(first.length).trim();
-      var when = new Date(e['3']);
-      cards.push({ when: String(e['3'] || ''), html:
-        '<article class="rcard pasted"><div class="rwho"><b>' + esc(e['1']) + '</b><span>pasted into the room' + (isNaN(when) ? '' : ', ' + esc(when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))) + '</span></div>' +
-        '<p class="rhead2">' + headHtml(first) + '</p>' + (rest ? '<details><summary>The whole run</summary><div class="rbody">' + rich(rest) + '</div></details>' : '') + '</article>' });
-    });
-    cards.sort(function (a, b) { return b.when.localeCompare(a.when); });
-    $('recordList').innerHTML = cards.length ? cards.map(function (c) { return c.html; }).join('') : '<p class="empty">No runs yet. Be the first: copy the request above into your AI.</p>';
-    $('recordNote').textContent = cards.length ? cards.length + (cards.length === 1 ? ' runner' : ' runners') + ' so far, newest first.' : '';
+    var runs = window.beachRuns && SPINE ? beachRuns.of(mir.mirrors || {}, { spine: SPINE, touched: mir.touched || {} }).filter(function (r) { return r.at === RUN_AT; }) : [];
+    if (window.beachRuns) beachRuns.draw($('mirrorRuns'), runs, { label: 'Kept in each runner\u2019s own mirror' });
+    var pasted = roomEntries(room).filter(function (e) { return String(e['2'] || '') === RUN_AT; }).reverse();
+    var hands = {}; runs.forEach(function (r) { hands[r.who] = 1; }); pasted.forEach(function (e) { hands[e['1']] = 1; });
+    var nr = runs.length + pasted.length, nh = Object.keys(hands).length;
+    $('recordList').innerHTML = !nr ? '<p class="empty">No runs yet. Be the first: copy the request above into your AI.</p>' :
+      (pasted.length ? '<h3 class="pastedhead">Pasted into the room</h3>' : '') + pasted.map(function (e) {
+        var text = textOf(e), first = text.split('\n')[0], rest = text.slice(first.length).trim(), when = new Date(e['3']);
+        return '<article class="rcard pasted"><div class="rwho"><b>' + esc(e['1']) + '</b><span>pasted into the room' + (isNaN(when) ? '' : ', ' + esc(when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))) + '</span></div>' +
+          '<p class="rhead2">' + headHtml(first) + '</p>' + (rest ? '<details><summary>The whole run</summary><div class="rbody">' + rich(rest) + '</div></details>' : '') + '</article>';
+      }).join('');
+    $('recordNote').textContent = nr ? nr + (nr === 1 ? ' run' : ' runs') + ' by ' + nh + (nh === 1 ? ' runner' : ' runners') + ' so far, newest first.' : '';
   }
   function paintTalk(room) {
     var lines = roomEntries(room).filter(function (e) { return String(e['2'] || '') !== RUN_AT; }).slice(-6).reverse();
@@ -1024,12 +995,14 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
       return '<li><div class="meta">' + esc(e['1']) + (isNaN(when) ? '' : ', ' + esc(when.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }))) + '</div>' + esc(textOf(e)) + '</li>';
     }).join('') : '<li class="meta">Nothing said yet; the room stands open.</li>';
   }
-  var ROOMBLOCK = null, MIR = { mirrors: {}, touched: {} };
+  var ROOMBLOCK = null, MIR = { mirrors: {}, touched: {} }, SPINE = null;
   function readAll() {
     return Promise.all([
       readMirrors().catch(function () { return null; }),
-      readRoom().catch(function () { return null; })
+      readRoom().catch(function () { return null; }),
+      SPINE ? Promise.resolve(SPINE) : readBlock('spine:' + FAM).catch(function () { return null; })
     ]).then(function (got) {
+      if (got[2] && !SPINE) { SPINE = got[2]; paintSpine(SPINE); }
       if (got[0]) MIR = got[0];
       ROOMBLOCK = got[1];
       if (!got[0] && !got[1]) {
@@ -1088,9 +1061,8 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
   /* ── start ── */
   paintAsk(); paintLoad('before'); paintGrowth(7); paintWake('before'); paintStrata('before'); paintCuts(); paintChain();
   startBand();
-  if (PREVIEW) { paintSpine(SNAP.spine); paintRecord({ mirrors: SNAP.mirrors || {}, touched: SNAP.touched || {} }, SNAP.room || null); paintTalk(SNAP.room || null); }
+  if (PREVIEW) { SPINE = SNAP.spine || null; paintSpine(SNAP.spine); paintRecord({ mirrors: SNAP.mirrors || {}, touched: SNAP.touched || {} }, SNAP.room || null); paintTalk(SNAP.room || null); }
   else {
-    readBlock('spine:' + FAM).then(paintSpine, function () {});
     readAll();
     document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') readAll(); });
   }
