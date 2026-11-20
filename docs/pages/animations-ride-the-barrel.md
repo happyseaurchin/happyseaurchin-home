@@ -1,0 +1,3 @@
+# `animations/ride-the-barrel.html`
+
+Ride the Barrel (27 Oct 2026): the AI wave, and the people who want to ride inside it, Before It Breaks' other version in thirteen scenes at dusk: the same first ten, then the barrel in three (catch it, ride it all the way through, out into the light), the A state as line of sight, balance and courage. Wired as Before It Breaks is, into the same family `ai-wave` and the same pool `pool:ai-wave`; its last three scenes stand at the spine's 1.1111111111, 1.11111111111 and 1.111111111111, the first shared with Before It Breaks' tube, each film's own words for that scene in its side-rooms 2 and 3. Its still, `animations/ride-the-barrel.jpg`, is the scene Catch the barrel.

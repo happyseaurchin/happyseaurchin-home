@@ -1,0 +1,3 @@
+# `happening.html`
+
+the happening proposal (2 Nov 2026), at `/happening`, its snazzy view, which its law names at 6 (`/proposal/happening` is its standard view, drawn from its blocks in the same look): weft's proposal drawn in Matthew's look (`look:Phenomemental`) by a fresh mind from `function:look` 3 alone on 29 Oct (lane look.1), re-laid at the full width by weft at David's word of 2 Nov: the week's days as cords on paper, today's in crimson, each day's headline a dashed ring not yet tied, a drawing beside each step, its four decisions answered there. It reads the spine, law, mirrors and room live and marks where the spine has moved since it was drawn (`function:look` 4). Its still at `animations/happening.jpg`, made from `?share&still` at 1200 by 630.
