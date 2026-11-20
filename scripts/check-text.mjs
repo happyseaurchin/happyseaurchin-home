@@ -92,7 +92,9 @@ check('…and a query it does not take is dropped, the download kept', r.code ==
 r = await call({ family: '../etc' });
 check('a name that is not a family is refused', r.code === 400, r);
 r = await call({ family: 'lab' }, 'POST');
-check('GET only', r.code === 405, r);
+check('GET only, a POST refused', r.code === 405, r);
+r = await call({ family: 'lab' }, 'HEAD');
+check('…and a HEAD answered as a GET, as a link checker asks', r.code === 200 && r.headers['Content-Disposition'] === 'inline; filename="lab.md"', r);
 r = await call({ family: 'nothing-here' });
 check('a family with no spine on the beach says so, 404', r.code === 404 && /spine:nothing-here is not there/.test(r.body), r);
 

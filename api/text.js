@@ -232,9 +232,9 @@ function entries(n, out = []) {
 /* ── the door ── */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'GET') return res.status(405).send('GET only');
+  if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).send('GET only');   // a HEAD is answered as a GET, its body never sent
   const q = req.query || {}, given = String(q.family || ''), family = given.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(family)) return res.status(400).send('not a family name');
   const download = 'download' in q;
