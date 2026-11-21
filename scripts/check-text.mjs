@@ -20,12 +20,14 @@ const BLOCKS = {
       8: 'DECIDE — Run the lab? Asked of David.'
     },
     2: 'THE PAGE — https://example.org/lab',
-    3: 'WHERE IT CAME FROM — a chat on 19 November 2026.'
+    3: 'WHERE IT CAME FROM — a chat on 19 November 2026.',
+    4: { _: 'BESIDE THE STEPS — a measure laid beside them.', 1: 'ITS READING — what the measure reads.', 8: 'DECIDE — Is the measure the right one? Asked of anyone. HOLDS, TEST or NOT YET.' }
   },
   'function:lab': { _: 'THE LAW of lab.', 1: 'mode: document', 3: 'room: pool:lab-room, open', 6: 'page: https://example.org/lab.', 7: 'phase: proposal — the decisions are open' },
   'lab:ann': {
     _: 'MIRROR — ann',
-    1: { 8: 'GO — yes, run it', 1: { 2: { 1: { _: 'RUN 1 — on a small model', 1: 'EXACT — the same word at every spindle', 9: { _: 'APPARATUS — whole at 9.1', 1: SCRIPT } } } } }
+    1: { 8: 'GO — yes, run it', 1: { 2: { 1: { _: 'RUN 1 — on a small model', 1: 'EXACT — the same word at every spindle', 9: { _: 'APPARATUS — whole at 9.1', 1: SCRIPT } } } } },
+    4: { 8: 'HOLDS — it reads what it says' }
   },
   'lab:bob': { _: 'MIRROR — bob', 1: { 8: GRAY } },
   lab: { _: 'LAB — the FOLD', 1: { 8: 'THE SHARED READING — both said yes, one sealed.', 1: { 2: 'ACROSS THE RUNS — one run, laid out.\n\nTable 1 — the runs\n| | ann |\n|---|---|\n| Model | small |' } } },
@@ -77,6 +79,8 @@ check('a reader\'s run beneath a place the spine leaves open, its findings neste
 check('a file kept whole in a block is named where it stands, not poured out', /    - 1\.12191: \[a file of [\d,]+ characters, kept whole at lab:ann 1\.12191: https:\/\/beach\.happyseaurchin\.com\/\.well-known\/pscale-beach\?block=lab%3Aann\]/.test(t) && !t.includes('x = 1\nx = 1'), t.slice(t.indexOf('1.12191') - 10, t.indexOf('1.12191') + 200));
 check('the shared reading of a lane stands under its heading, tables and all', t.includes('**The shared reading here** (lab 1.12, which anyone may make again):\n\nACROSS THE RUNS — one run, laid out.\n\nTable 1 — the runs\n| | ann |'), '');
 check('a step\'s state is said', t.includes('*State · 1.19:* STATE: under way — the first run stands.'), '');
+check('a room beside the steps that asks a question is read whole, after the steps, its question a point with its answers', t.includes('\n## Beside the steps · 4\n\nA measure laid beside them.') && t.includes('\n### Its reading · 4.1\n') && /\*\*Decide · 4\.8\*\* — Is the measure the right one\?[^\n]*\n- \*\*ann\*\*: HOLDS — it reads what it says/.test(t) && t.indexOf('## Beside the steps · 4') > t.indexOf('## Why SALT and AI meet · 1.1') && t.indexOf('## Beside the steps · 4') < t.indexOf('## About this family'), t.slice(t.indexOf('## Beside'), t.indexOf('## Beside') + 400));
+check('…and is not said again among the root\'s other side-rooms', !/## About this family[\s\S]*BESIDE THE STEPS/.test(t), t.slice(t.indexOf('## About this family'), t.indexOf('## About this family') + 300));
 check('the root\'s side-rooms, its law line by line, and its room', t.includes('## About this family\n\nTHE PAGE — https://example.org/lab\n\nWHERE IT CAME FROM') && t.includes('## Its law · function:lab') && t.includes('- **7** phase: proposal — the decisions are open'), '');
 check('the room named by the law, its latest lines newest first, a sealed one said to be sealed', /## Its room · pool:lab-room\n\nThe room of the lab\.\n\nIts latest 3 lines, newest first:\n\n- cat · 2026-11-20 — newest line\n- bob · 2026-11-19 — \(sealed\)\n- ann · 2026-11-19 — first line/.test(t), t.slice(t.indexOf('## Its room')));
 check('the foot names the page, the plain view and the text itself', t.includes('Its page: https://example.org/lab; drawn plainly: https://happyseaurchin.com/proposal/lab; as text: https://happyseaurchin.com/text/lab.'), t.slice(-300));

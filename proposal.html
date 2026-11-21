@@ -522,12 +522,27 @@
     }
     return out;
   }
-  function decisionsOf(steps) {
+  /* the rooms around the proposal, the root's 2 to 7 (its 2 the page, its 3 where it came from), each read as a side-room
+     is; one that asks a question beside the steps rather than on one of them carries it at its 8, drawn as a card in that
+     room and counted with the rest (function:proposal 3; spine:determinacy 4.8, the two gains, at David's word on 21 Nov
+     2026) */
+  function roomsOf(spine) {
+    var out = [];
+    for (var k = 2; k <= 7; k++) {
+      var r = spine && spine[String(k)]; if (r == null) continue;
+      var s = split(textOf(r)), d8 = typeof r === 'object' ? textOf(r['8']) : '';
+      out.push({ at: String(k), title: s.title, rest: s.rest, points: pointsOf(r, 1, 7),
+        decision: /^DECIDE\b/i.test(d8) ? decisionOf(under(String(k), '8'), d8, s.title) : null });
+    }
+    return out;
+  }
+  function decisionsOf(steps, rooms) {
     var out = [];
     steps.forEach(function (s) {
       if (s.decision) out.push(s.decision);
       s.sides.forEach(function (r) { if (r.decision) out.push(r.decision); });
     });
+    (rooms || []).forEach(function (r) { if (r.decision) out.push(r.decision); });
     return out;
   }
   function lawOf(law, name) {
@@ -777,7 +792,7 @@
 
   /* ════════ one proposal, drawn from its blocks ════════ */
   function proposalPage() {
-    var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '', PAGE = '', ASKED = 'decision';
+    var FAM = NAME, SPINE = null, LAW = null, L = null, STEPS = [], ROOMS = [], DECS = [], MIRRORS = {}, FOLD = null, TOUCHED = {}, THREADS = [], PHASE = 'proposal', TITLE = '', PAGE = '', ASKED = 'decision';
     function asked(n) { return n === 1 ? ASKED : ASKED + 's'; }
     $('bar-name').textContent = FAM;
     Promise.all([readBlock('spine:' + FAM), readBlock('function:' + FAM), readBlock('proposals')]).then(function (four) {
@@ -794,7 +809,7 @@
       PAGE = snazzyAt(pageOf(L, SPINE, listed), !!listed);
       learnCase(JSON.stringify(SPINE).replace(/\\n/g, ' '));
       if (window.beachLook && (L.accent || L.look)) beachLook.wear(L);   /* its look, by function:look 2 (look.js) */
-      STEPS = stepsOf(SPINE); DECS = decisionsOf(STEPS);
+      STEPS = stepsOf(SPINE); ROOMS = roomsOf(SPINE); DECS = decisionsOf(STEPS, ROOMS);
       OWN_MEANS = ownMeansOf(LAW, DECS);   /* the family's own words, as its law's 2 says what each does */
       PHASE = L.phase || (STEPS.some(function (s) { return s.state; }) ? 'project' : 'proposal');
       /* an inquiry proposes nothing to build: its decisions are open questions (function:proposal 6), so the page
@@ -968,13 +983,20 @@
     function threadsHTML() {
       return '<section id="threads"><div class="addr">the threads · live from the beach</div><h2>Threads</h2><div id="threadsBody"></div></section>';
     }
+    /* the rooms around the proposal: each a fold, and one asking a question of its own drawn open with its card, as a
+       step's side-room with a decision is (function:proposal 3) */
     function besideHTML() {
-      var rooms = [];
-      for (var k = 2; k <= 7; k++) { var r = SPINE[String(k)]; if (r != null) { var s = split(textOf(r)); rooms.push({ at: String(k), title: s.title, rest: s.rest, points: pointsOf(r, 1, 7) }); } }
-      if (!rooms.length) return '';
-      return '<section id="beside"><div class="addr">around it, on the beach at the root</div><h2>Around the proposal</h2><div class="more">' + rooms.map(function (r) {
-        return '<details class="fold"><summary>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</summary><div class="in"><p>' + rich(cap(r.rest)) + '</p>' + pointsHTML(r.points) + '</div></details>';
-      }).join('') + '</div></section>';
+      if (!ROOMS.length) return '';
+      var folds = ROOMS.filter(function (r) { return !r.decision; }), open = ROOMS.filter(function (r) { return r.decision; });
+      return '<section id="beside"><div class="addr">around it, on the beach at the root</div><h2>Around the proposal</h2>' +
+        (folds.length ? '<div class="more">' + folds.map(function (r) {
+          return '<details class="fold"><summary>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</summary><div class="in"><p>' + rich(cap(r.rest)) + '</p>' + pointsHTML(r.points) + '</div></details>';
+        }).join('') + '</div>' : '') +
+        open.map(function (r) {
+          return '<div class="sideopen" data-at="' + esc(r.at) + '" id="' + esc(r.at) + '"><div class="addr">around it, at <b>' + esc(r.at) + '</b></div><h3>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</h3>' +
+            (r.rest ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + (r.points.length ? '<div class="more"><details class="fold"><summary>What to know</summary><div class="in">' + pointsHTML(r.points) + '</div></details></div>' : '') +
+            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') + '</div>';
+        }).join('') + '</section>';
     }
     function talkHTML() {
       return '<section id="talk"><div class="addr">the room · live from the beach</div><h2>Talk</h2>' +
@@ -1259,7 +1281,7 @@
         var spine = four[0], law = four[1], m = four[2], th = (four[3] && four[3].threads) || [];
         if (!spine) { place(i, 'unread', shelfCard(s, i, 'not yet on the beach', snazzyAt(s.page, true), false)); return; }
         learnCase(JSON.stringify(spine));
-        var steps = stepsOf(spine), decs = decisionsOf(steps), mirrors = m.mirrors || {};
+        var steps = stepsOf(spine), decs = decisionsOf(steps, roomsOf(spine)), mirrors = m.mirrors || {};
         var people = {}, answers = 0, latest = '', mine = 0;
         decs.forEach(function (d) {
           var got = answersAt(mirrors, d);

@@ -183,11 +183,16 @@ export function compose({ family, spine, law, mirrors = {}, fold = null, room = 
     push('', `Its parts are not a document (its law says ${mode ? 'mode: ' + mode : 'no mode'}), so they are read on its page${page ? ', ' + page : ''}.`);
   }
 
-  /* the root's own side-rooms: where it came from, its page, its provenance */
+  /* a room around the proposal that asks a question of its own at its 8 is read whole, beside the steps, its question a
+     point with everyone's answers (function:proposal 3; spine:determinacy 4.8, the two gains); the root's other
+     side-rooms are where it came from, its page, its provenance */
+  const asks = (d) => { const n = spine[d]; return !!n && typeof n === 'object' && /^DECIDE\b/.test(voiceOf(n['8'])); };
   const rootRooms = mode === 'frame' ? [] : kids(spine).filter((d) => !(document_ && d === '1'));
-  if (rootRooms.length) {
+  if (document_) for (const d of rootRooms) if (asks(d)) room_([d], 2);
+  const about = rootRooms.filter((d) => !(document_ && asks(d)));
+  if (about.length) {
     push('', '## About this family');
-    for (const d of rootRooms) {
+    for (const d of about) {
       const t = voiceOf(spine[d]);
       if (t) push('', t);
     }
