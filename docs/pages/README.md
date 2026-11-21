@@ -60,6 +60,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [mindflow](mindflow.md) | `mindflow/` | speech-to-structure tools (see below) |
 | [mistake-proofing](mistake-proofing.md) | `mistake-proofing.html` | the mistake-proofing proposal (2 Nov 2026), at `/mistake-proofing`, its snazzy view, which its law names at 6 (`/proposal/mistake-proofing` is its sta… |
 | [navigator](navigator.md) | `navigator.html` | the navigator proposal (16 Nov 2026), at `/navigator`, its snazzy view, which its law names at 6 (`/proposal/navigator` is its standard view, drawn fr… |
+| [negative-space](negative-space.md) | `negative-space.html` | the negative-space inquiry (21 Nov 2026), at `/negative-space`, its snazzy view, which its law names at 6 (`/proposal/negative-space` is its standard view… |
 | [nothing-between-us](nothing-between-us.md) | `nothing-between-us.html` | nothing between us is finished (15 Nov 2026), at `/nothing-between-us`, the crafted page of the document family nothing-between-us, once its law names… |
 | [o-page-unit](o-page-unit.md) | `o-page-unit.html` | the o‑page unit proposal (10 Nov 2026), at `/o-page-unit`, its snazzy view once its law names it at 6 (`/proposal/o-page-unit` is its standard view, d… |
 | [open-build](open-build.md) | `open-build.html` | the Open Build proposal (19 Nov 2026), at `/open-build`, its snazzy view once its law names it at 6 (`/proposal/open-build` is its standard view, draw… |
