@@ -69,6 +69,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [passing-it-on](passing-it-on.md) | `passing-it-on.html` | the passing-it-on proposal (21 Oct 2026), at `/passing-it-on`: |
 | [personal-history](personal-history.md) | `personal-history.html` | the personal-history proposal (9 Nov 2026), at `/personal-history`, its snazzy view, which its law names at 6 (`/proposal/personal-history` is its sta… |
 | [pocket-beach](pocket-beach.md) | `pocket-beach.html` | the pocket-beach proposal (28 Oct 2026), at `/pocket-beach`, its snazzy view once its law names it at 6 (`/proposal/pocket-beach` is its standard view… |
+| [power-with](power-with.md) | `power-with.html` | the Power-with inquiry (22 Nov 2026), at `/power-with`, its snazzy view, which its law names at 6 (`/proposal/power-with` is its standard view, d… |
 | [premiere](premiere.md) | `premiere.html` | keel's reader for the reflexive experience form (18 Oct 2026), at `/premiere/<name>` (a rewrite in `vercel.json`; |
 | [presentation](presentation.md) | `presentation.html` | David's talk for makers at the code-sharing evening (10 Nov 2026, from 7.30, twenty minutes), at `/presentation`, with a stage view for the projector … |
 | [proposal](proposal.md) | `proposal.html` | the proposal package's page (22 Oct 2026; |
