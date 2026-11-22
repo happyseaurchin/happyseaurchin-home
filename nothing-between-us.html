@@ -178,6 +178,13 @@ h1 { margin: 0; font-family: var(--display); font-weight: 500; font-size: clamp(
 .say input, .say textarea { width: 100%; font: 500 0.98rem/1.45 var(--body); color: var(--n-ink); background: rgba(255, 255, 255, 0.05); border: 1px solid var(--n-rule); border-radius: 10px; padding: 9px 11px; }
 .say textarea { min-height: 70px; resize: vertical; }
 .say input:focus, .say textarea:focus { outline: 2px solid var(--n-accent); outline-offset: 1px; }
+/* the site's dictation glyph (theme.js dictate), laid over the box's top-right corner, in this page's night */
+.dictate { position: absolute; z-index: 2; width: 26px; height: 26px; margin: 0; padding: 0; display: flex; align-items: center; justify-content: center; background: rgba(8, 13, 21, 0.8); border: 1px solid var(--n-rule); border-radius: 50%; color: var(--n-muted); cursor: pointer; }
+.dictate svg { width: 13px; height: 13px; fill: currentColor; display: block; }
+.dictate:hover, .dictate:focus-visible { color: var(--n-ink); border-color: var(--n-muted); outline: none; }
+.dictate.on { color: var(--n-accent); border-color: rgba(132, 227, 213, 0.6); animation: dictate-pulse 1.6s ease-in-out infinite; }
+.dictate[hidden] { display: none; }
+@keyframes dictate-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(132, 227, 213, 0.35); } 50% { box-shadow: 0 0 0 6px rgba(132, 227, 213, 0); } }
 .say .row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
 .send, .go { border: 0; border-radius: 999px; padding: 10px 18px; background: var(--n-accent); color: #062521; font: 700 0.86rem/1 var(--body); cursor: pointer; }
 .send[disabled] { opacity: 0.5; cursor: progress; }
@@ -336,7 +343,8 @@ footer .src { margin: 0; max-width: 82ch; }
     del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
   };
   function clean(v) { return window.cleanHandle ? window.cleanHandle(v) : String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 32); }
-  var ME = clean(store.get('render:who') || '');
+  function beachName() { try { return window.beachVoice && typeof window.beachVoice.name === 'function' ? clean(window.beachVoice.name() || '') : ''; } catch (e) { return ''; } }
+  var ME = clean(store.get('render:who') || '') || beachName();
   var MIRRORS = { keel: KEEL0 };
   var MODE = store.get('nbu:mode');
   if (!/^(keel|everyone|mine)$/.test(MODE || '')) MODE = 'keel';
@@ -613,7 +621,17 @@ footer .src { margin: 0; max-width: 82ch; }
       if (tt) tt.textContent = lineOf(a) + (v.v != null ? '  (' + (Math.round(v.v * 10) / 10) + ')' : '');
     });
     paintLegend();
-    if (STATE.dim != null) renderWalk(true);
+    if (STATE.dim != null) { if (writing()) refreshVals(); else renderWalk(true); }
+  }
+  /* while someone is writing a reading, a refresh only recolours: the form is never rebuilt under their hands */
+  function writing() { var a = document.activeElement; return !!STATE.pick || !!(a && walk.contains(a) && /^(INPUT|TEXTAREA)$/.test(a.tagName)); }
+  function refreshVals() {
+    walk.querySelectorAll('.card[data-at], .side[data-at]').forEach(function (n) {
+      var a = n.getAttribute('data-at'), v = valueAt(a), c = col(v.v);
+      n.classList.toggle('none', !c);
+      if (c) n.style.setProperty('--dew', c); else n.style.removeProperty('--dew');
+      var val = n.querySelector(':scope > .val'); if (val) val.innerHTML = valText(a, v);
+    });
   }
   function readersCount() { return Object.keys(MIRRORS).filter(function (h) { return h !== 'keel' && MIRRORS[h]; }).length; }
   function paintLegend() {
@@ -637,7 +655,6 @@ footer .src { margin: 0; max-width: 82ch; }
     walk.scrollTop = 0;
     scrollToCur();
     setTimeout(drawTether, was == null && !RM.matches ? 800 : 40);
-    if (G.narrow) setTimeout(function () { walk.scrollIntoView({ behavior: RM.matches ? 'auto' : 'smooth', block: 'start' }); }, 120);
   }
   function openAt(a) {
     var i = dimIndexOf(a), ch = chainOf(DIMS[i].key), k = ch.indexOf(a);
@@ -747,6 +764,8 @@ footer .src { margin: 0; max-width: 82ch; }
       }
       if (window.dictate) window.dictate(box);
     }
+    var nb = $('as-name');
+    if (nb && window.keepDraft) window.keepDraft(nb, FAM + ':as');
     if (!G.narrow) requestAnimationFrame(function () { var tp = $('tether'); if (tp && tp.getAttribute('d')) retether(); });
   }
   function retether() {
@@ -769,12 +788,14 @@ footer .src { margin: 0; max-width: 82ch; }
       var at = b.closest('.rate').getAttribute('data-at');
       STATE.pick = { at: at, v: +b.getAttribute('data-v'), filled: !!(STATE.pick && STATE.pick.at === at && STATE.pick.filled) }; STATE.said = null;
       renderWalk(true);
-      var focusTo = $('as-name') || $('say-words'); if (focusTo) try { focusTo.focus({ preventScroll: true }); } catch (x) {}
+      if (!G.narrow) { var focusTo = $('as-name') || $('say-words'); if (focusTo) try { focusTo.focus({ preventScroll: true }); } catch (x) {} }
       return;
     }
-    if ((b = e.target.closest('[data-act="notme"]'))) { ME = ''; store.del('render:who'); if (STATE.clear) STATE.clear(); if (STATE.pick) STATE.pick.filled = true; renderWalk(true); paintLegend(); return; }
+    if ((b = e.target.closest('[data-act="notme"]'))) { ME = ''; store.del('render:who'); if (STATE.clear) STATE.clear(); dropName(); if (STATE.pick) STATE.pick.filled = true; renderWalk(true); paintLegend(); return; }
     if ((b = e.target.closest('#say-send'))) { send(); return; }
   });
+  /* the name box's draft has done its work once a say lands, and is never handed to whoever says 'not you?' */
+  function dropName() { if (window.keepDraft) window.keepDraft(null, FAM + ':as')(); }
   function send() {
     var p = STATE.pick; if (!p) return;
     var hint = $('say-hint'), btn = $('say-send'), box = $('say-words'), typed = $('as-name');
@@ -788,6 +809,7 @@ footer .src { margin: 0; max-width: 82ch; }
       if (!r || !r.ok) { say(r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
       ME = clean(r.name || me); if (ME) store.set('render:who', ME);
       if (STATE.clear) STATE.clear();
+      dropName();
       STATE.pick = null; STATE.said = p.at;
       return readMirrors().then(paint);
     }, function (e) { say('err', 'Couldn’t reach the beach: ' + e.message); }).then(function () { var b2 = $('say-send'); if (b2) b2.disabled = false; });
@@ -845,15 +867,25 @@ footer .src { margin: 0; max-width: 82ch; }
     });
   });
   function selectText(n) { try { var r = document.createRange(); r.selectNodeContents(n); var s = getSelection(); s.removeAllRanges(); s.addRange(r); } catch (e) {} }
-  var rt = 0;
+  /* a phone's keyboard, or its toolbar sliding away, changes only the height: the web is redrawn only when the width
+     changes, and the thread's cards are kept as they are while a reading is being written */
+  var rt = 0, lastW = 0;
   window.addEventListener('resize', function () {
     clearTimeout(rt);
-    rt = setTimeout(function () { SPUN = true; build(); if (STATE.dim != null) { renderWalk(true); drawTether(); } }, 160);
+    rt = setTimeout(function () {
+      var w = stage.clientWidth || document.documentElement.clientWidth;
+      if (Math.abs(w - lastW) < 2 && G && G.narrow === NARROW.matches) return;
+      lastW = w; SPUN = true;
+      build();
+      if (STATE.dim != null) drawTether();
+    }, 160);
   });
 
   /* ── start: complete at rest, then the beach read live ───────────────── */
   $('whole').textContent = textOf(SPINE);
   build();
+  lastW = stage.clientWidth || document.documentElement.clientWidth;
+  if (window.beachVoice && typeof beachVoice.onButton === 'function') try { beachVoice.onButton(function () { if (ME) return; ME = beachName(); if (ME) { paintLegend(); if (STATE.dim != null && !writing()) renderWalk(true); } }); } catch (e) {}
   window.__nbuSpun = setTimeout(function () { SPUN = true; }, 3200);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { if (!SPUN) return; build(); });
   readSpine().then(function (changed) {
@@ -862,6 +894,7 @@ footer .src { margin: 0; max-width: 82ch; }
   }).then(function () { paint(); });
   if (!PREVIEW) setInterval(function () { if (document.visibilityState === 'visible') readMirrors().then(paint); }, 45000);
   window.nbuOpen = function (a) { openAt(a); };
+  window.nbuRefresh = function () { return readMirrors().then(paint); };
 })();
 </script>
 </body>
