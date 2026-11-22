@@ -38,6 +38,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [full-bandwidth](full-bandwidth.md) | `full-bandwidth.html` | the full-bandwidth walk (13 Nov 2026), at `/full-bandwidth`, its crafted page, which its law names at 6 (`/walk/full-bandwidth` draws the same family … |
 | [game-arcade](game-arcade.md) | `game-arcade.html` | the game arcade's proposal (21 Oct 2026), at `/game-arcade`: |
 | [game-ecology](game-ecology.md) | `game-ecology.html` | the game-ecology proposal (28 Oct 2026), at `/game-ecology`, its snazzy view, which its law names at 6 (`/proposal/game-ecology` is its standard view,… |
+| [game-experience](game-experience.md) | `game-experience.html` | the Game Experience proposal (22 Nov 2026), at `/game-experience`, its snazzy view, which its law names at 6 (`/proposal/game-experience` is its stan… |
 | [games](games.md) | `games/` | games played here (27 Oct 2026, lane plug.1), at `/games`: |
 | [games-the-chain](games-the-chain.md) | `games/the-chain/` | The Chain (20 Nov 2026, lane chain.1), at `/games/the-chain`: happyseaurchin's game, built by keel, hosted in the plug's frame without the plug's checks |
 | [garden](garden.md) | `garden.html` | the garden proposal (17 Nov 2026), at `/garden`, its snazzy view once its law names it at 6 (`/proposal/garden` is its standard view, drawn from its b… |
