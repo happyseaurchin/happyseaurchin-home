@@ -762,7 +762,7 @@ function drawCard(li, s, opts){
   } else {
     draw(li.querySelector('.body'), bodyHTML(s, opts.open));
   }
-  if (s.sealed) draw(li.querySelector('.thing'), ''); else setThing(li.querySelector('.thing'), s.url);
+  if (s.sealed) draw(li.querySelector('.thing'), ''); else setThing(li.querySelector('.thing'), s.url, s.by);
   draw(li.querySelector('.acts'), actsHTML(s, own, open));
   const row = li.querySelector('.ownrow');
   row.hidden = !(own && (OWNOPEN[s.a] || FLASH[s.a])) || !!EDITING[s.a];
@@ -804,17 +804,28 @@ function cardFor(url){
   return CARDS.get(url);
 }
 const OUT = 'target="_blank" rel="noopener noreferrer nofollow ugc"';
-function plainHTML(url, site){
-  const host = site || hostOf(url), path = pathOf(url);
-  return '<a class="t t-plain" href="' + esc(url) + '" ' + OUT + '><span class="t-tile" aria-hidden="true">' + esc(host.charAt(0).toUpperCase()) + '</span><span class="t-where"><span class="t-site">' + esc(host) + '</span>' + (path ? '<span class="t-path">' + esc(path) + '</span>' : '') + '</span></a>';
+/* THE QUICK WAY IN (function:string 6; lane share-string.1, 23 Nov 2026, David's GO at spine:o-page-unit 1.11111111118):
+   a card's link to one of this site's own pages carries who brought the reader there, ?from=<the card's sharer>, so the
+   page, and the who-brought-whom experience-points counts (spine:experience-points 1.1112), can name them. The line on
+   the beach is never changed: the tag is put on as the link is drawn. Never at a members' door, whose names are its own
+   beach's; never to another site; never over a from the link already carries (a race link's own); never on a card's
+   own address. A card passed on brings its reader through the one who passed it, so its inner card's link names them. */
+const OURS = /^https:\/\/(?:www\.)?happyseaurchin\.com(?:[\/?#]|$)/i;
+function outOf(url, by){
+  if (MEMBERS || !by || !OURS.test(url) || CARD_LINK.test(url)) return url;
+  try { const u = new URL(url); if (u.searchParams.has('from')) return url; u.searchParams.set('from', by); return u.href; } catch(e){ return url; }
 }
-function thingHTML(url, c){
+function plainHTML(url, site, by){
+  const host = site || hostOf(url), path = pathOf(url);
+  return '<a class="t t-plain" href="' + esc(outOf(url, by)) + '" ' + OUT + '><span class="t-tile" aria-hidden="true">' + esc(host.charAt(0).toUpperCase()) + '</span><span class="t-where"><span class="t-site">' + esc(host) + '</span>' + (path ? '<span class="t-path">' + esc(path) + '</span>' : '') + '</span></a>';
+}
+function thingHTML(url, c, by){
   if (c.x){
     return '<a class="t t-quote" href="' + esc(url) + '" ' + OUT + '><span class="t-by"><b>' + esc(c.author || c.handle || '') + '</b>' + (c.handle ? ' @' + esc(c.handle) : '') + '</span><span class="t-text">' + esc(c.text) + '</span>' +
       '<span class="t-site">' + (c.x.media ? 'with a picture or film · ' : '') + 'x.com' + (c.when ? ' · ' + esc(c.when) : '') + '</span></a>' + (c.x.media ? '<div class="xf"></div>' : '');
   }
-  if (!c.title && !c.text && !c.image) return plainHTML(url, c.site);
-  return '<a class="t" href="' + esc(url) + '" ' + OUT + '>' + (c.image ? '<img class="t-pic" src="' + esc(c.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : '') +
+  if (!c.title && !c.text && !c.image) return plainHTML(url, c.site, by);
+  return '<a class="t" href="' + esc(outOf(url, by)) + '" ' + OUT + '>' + (c.image ? '<img class="t-pic" src="' + esc(c.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : '') +
     '<span class="t-cap">' + (c.title ? '<span class="t-title">' + esc(c.title) + '</span>' : '') + (c.text ? '<span class="t-text">' + esc(c.text) + '</span>' : '') +
     '<span class="t-site">' + esc(c.author ? c.author + ' · ' : '') + esc(c.site || hostOf(url)) + '</span></span></a>';
 }
@@ -851,7 +862,7 @@ async function loadThing(el){
   const url = el._link, c = await cardFor(url);
   if (el._link !== url || !c) return;
   el.classList.remove('framed');
-  el.innerHTML = thingHTML(url, c);
+  el.innerHTML = thingHTML(url, c, el._by);
   el.querySelectorAll('img').forEach(i => { const gone = () => i.remove(); i.onerror = gone; i.onload = () => { if (i.naturalWidth < 160) gone(); else if (i.naturalWidth < 420) i.classList.add('small'); }; });
   if (c.x && c.x.media) frameX(el, c.x.id);
 }
@@ -867,15 +878,15 @@ function innerHTML(s){
   return '<div class="t-inner"><a class="t-innerwho" ' + page + '>' + ava(s.by, false) + '<span><b>' + esc(s.by) + '</b> · ' + esc(whenWords(ms)) + '</span></a>' +
     (s.why ? '<a class="t-innerwhy" ' + page + '>' + esc(s.why) + '</a>' : '') + '<div class="thing inner"></div></div>';
 }
-function setThing(el, url){
+function setThing(el, url, by){
   const nested = el.classList.contains('inner'), m = nested ? null : CARD_LINK.exec(url), inner = m ? READ.at.get(m[1]) : null;
-  const key = inner ? url + '|' + inner.by + '|' + inner.url + '|' + inner.why : m && READ.gone.has(m[1]) ? url + '|gone' : url;
+  const key = (inner ? url + '|' + inner.by + '|' + inner.url + '|' + inner.why : m && READ.gone.has(m[1]) ? url + '|gone' : url) + '|' + (by || '');
   if (el._key === key) return;
-  el._key = key; el._link = url;
+  el._key = key; el._link = url; el._by = by;
   el.classList.remove('framed');
-  if (inner){ el.innerHTML = innerHTML(inner); setThing(el.querySelector('.thing.inner'), inner.url); return; }
+  if (inner){ el.innerHTML = innerHTML(inner); setThing(el.querySelector('.thing.inner'), inner.url, by); return; }
   if (m && READ.gone.has(m[1])){ el.innerHTML = '<p class="none" style="margin:0 14px 8px">Withdrawn by its sharer.</p>'; return; }
-  el.innerHTML = plainHTML(url);
+  el.innerHTML = plainHTML(url, '', by);
   if (CARD_LINK.test(url)) return;
   if (NEAR) NEAR.observe(el); else loadThing(el);
 }

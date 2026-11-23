@@ -11,7 +11,17 @@
  * file kept whole in a block (a script, a picture) is named with the address it stands at, not poured out.
  * (lane pscale.lab, 20 November 2026, at David's word: 'link to downloadable readable text for LLM and
  * humans who still want to read docs'.)
+ *
+ *   GET /proposal/<name>           (vercel.json rewrites it to /api/text?proposal=<name>)
+ *       the proposal's page, proposal.html as it stands, its title and preview saying this proposal: the title its
+ *       spine's root gives, the line the proposals list gives it, and its crafted page's own share picture (else
+ *       the proposal card), so a link to it, sent anywhere or shared on the String, says what it is before anything
+ *       on the page has run (spine:o-page-unit 1.11111111112; lane share-string.1, 23 November 2026). The page is
+ *       always served: a name that is no proposal, or a beach that cannot be read in time, gets its plain preview,
+ *       and the page says the rest itself.
  */
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { mirrorsOf } from './mirrors.js';
 
 const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
@@ -234,12 +244,119 @@ function entries(n, out = []) {
   return out;
 }
 
+/* ── a proposal's page, saying what it is before it runs ── */
+const PROPOSAL_CARD = SITE + '/assets/proposal/card.png';
+const PLAIN = {
+  title: 'Proposals',
+  text: "A proposal kept on the beach grows into its project's page: its steps, decisions anyone can answer, a room, and threads that tie the work to it as it begins.",
+  image: PROPOSAL_CARD, url: ''
+};
+const KIND = { proposal: 'A proposal', project: 'A project', complete: 'A project, complete', 'set aside': 'A proposal, set aside', inquiry: 'An inquiry', walk: 'A walk', recipe: 'A recipe', explainer: 'An explainer', reference: 'A reference' };
+const clip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1).replace(/[\s,;:—–-]+\S*$/, '') + '…' : s; };
+const within = (ms, p) => Promise.race([p, new Promise((_, no) => setTimeout(() => no(new Error('the beach was slow')), ms))]);
+function strings(n, out = []) {
+  if (typeof n === 'string') out.push(n);
+  else if (n && typeof n === 'object') for (const k of Object.keys(n)) strings(n[k], out);
+  return out;
+}
+/* the proposals list's line for a name, '<name> — what · <its page>', read down to the list's floor as /proposal reads it */
+export function listLine(list, name) {
+  let floor = 1, n = list;
+  while (n && typeof n === 'object' && n._ && typeof n._ === 'object') { floor++; n = n._; }
+  let found = null;
+  (function walk(n, depth) {
+    if (found) return;
+    if (depth === floor) {
+      const m = /^\s*([a-z0-9][a-z0-9-]*)\s*—\s*([\s\S]*?)(?:\s*·\s*(\S+))?\s*$/i.exec(voiceOf(n) || (typeof n === 'string' ? n : ''));
+      if (m && m[1].toLowerCase() === name) found = { what: m[2].trim(), page: m[3] ? (/^https?:/.test(m[3]) ? m[3] : 'https://' + m[3]) : '' };
+      return;
+    }
+    if (!n || typeof n !== 'object') return;
+    if (n._ && typeof n._ === 'object') walk(n._, depth + 1);
+    for (const d of DIGITS) if (n[d] != null) walk(n[d], depth + 1);
+  })(list, 0);
+  return found;
+}
+/* what a proposal says of itself, from its spine, its law and its line on the list; null where it is no proposal */
+export function proposalCard(name, spine, law, list) {
+  if (!spine || typeof spine !== 'object') return null;
+  const listed = listLine(list, name);
+  const phase = ((voiceOf(at(law, ['7'])).match(/^phase:\s*(set aside|[a-z]+)/i) || [])[1] || '').toLowerCase();
+  /* only what /proposal draws: one on the list, or one whose law names a phase of the form's own (function:proposal 6);
+     any other name the page says plainly is not one, so its preview is the plain one */
+  if (!listed && !/^(proposal|project|complete|set aside|inquiry)$/.test(phase)) return null;
+  const root = split(voiceOf(spine));
+  const title = clip(root.title ? titleOf(root.title, learn(strings(spine))) : name, 110);
+  const own = (listed && listed.what.split(/;\s/)[0]) || root.body;
+  const label = KIND[phase] || 'A proposal';
+  const text = clip(label + ': ' + capFirst(own), 300);
+  const lawPage = ((voiceOf(at(law, ['6'])).match(/page:\s*(https?:\/\/[^\s,;)]+)/i) || [])[1] || '').replace(/[.]$/, '');
+  const root2 = voiceOf(at(spine, ['2']));
+  const page = lawPage || (/^THE PAGE\b/i.test(root2) ? ((root2.match(/https?:\/\/[^\s,;)]+/) || [''])[0].replace(/[.]$/, '')) : '') || (listed && listed.page) || '';
+  return { title, text, page, url: SITE + '/proposal/' + name };
+}
+/* the title and share picture a page of this site gives, read from its head as a crawler reads it; another site's page is
+   never read */
+export async function headOf(page) {
+  let u;
+  try { u = new URL(page); } catch (e) { return {}; }
+  if (!/^(www\.)?happyseaurchin\.com$/i.test(u.hostname) || /^\/proposals?(\/|$)/.test(u.pathname)) return {};
+  const r = await fetch(SITE + u.pathname, { headers: { Accept: 'text/html' } });
+  if (!r.ok) return {};
+  const head = (await r.text()).slice(0, 400000).split(/<\/head>/i)[0];
+  const meta = {};
+  for (const tag of head.match(/<meta\b[^>]*>/gi) || []) {
+    const a = {};
+    for (const m of tag.matchAll(/([a-z:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) a[m[1].toLowerCase()] = m[2] != null ? m[2] : m[3];
+    const k = (a.property || a.name || '').toLowerCase();
+    if (k && a.content && !(k in meta)) meta[k] = a.content;
+  }
+  const ent = (t) => String(t || '').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+  const src = meta['og:image:secure_url'] || meta['og:image'] || meta['twitter:image'] || meta['twitter:image:src'] || '';
+  let image = '';
+  try { const img = new URL(ent(src), SITE + u.pathname); if (src && img.protocol === 'https:') image = img.href; } catch (e) {}
+  return { title: clip(ent(meta['og:title'] || meta['twitter:title'] || ''), 110), image };
+}
+export function withProposalPreview(html, p) {
+  const q = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const set = (attr, key, value) => { html = html.replace(new RegExp('<meta ' + attr + '="' + key + '" content="[^"]*">'), () => '<meta ' + attr + '="' + key + '" content="' + q(value) + '">'); };
+  html = html.replace(/<title>[\s\S]*?<\/title>/, () => '<title>' + q(p.title) + '</title>');
+  set('name', 'description', p.text);
+  set('property', 'og:title', p.title);
+  set('property', 'og:description', p.text);
+  set('property', 'og:image', p.image);
+  /* its own address only where the preview is its own: the door and the code card take og:url as the page's address, so
+     the plain preview, served for any name, names none, and they read the address the page was opened at */
+  if (p.url) html = html.replace(/<meta property="og:image" content="[^"]*">/, (m) => m + '\n<meta property="og:url" content="' + q(p.url) + '">');
+  return html;
+}
+async function proposalPage(res, given) {
+  let html;
+  try { html = readFileSync(join(process.cwd(), 'proposal.html'), 'utf8'); }
+  catch (e) { return res.status(500).send('the page could not be read'); }
+  const name = given.trim().toLowerCase();
+  let p = null, cached = 'max-age=600, stale-while-revalidate=86400';
+  if (/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) {
+    try {
+      const [spine, law, list] = await within(3500, Promise.all([readBlock('spine:' + name), readBlock('function:' + name), readBlock('proposals').catch(() => null)]));
+      const c = proposalCard(name, spine, law, list);
+      /* its crafted page's own title and picture where it has one: the name its maker gave it, and its share still */
+      const h = c && c.page ? await within(2500, headOf(c.page)).catch(() => ({})) : {};
+      if (c) p = Object.assign(c, { title: h.title || c.title, image: h.image || PROPOSAL_CARD });
+    } catch (e) { cached = 'max-age=30'; }
+  }
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Vercel-CDN-Cache-Control', cached);
+  return res.status(200).send(withProposalPreview(html, p || PLAIN));
+}
+
 /* ── the door ── */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).send('GET only');   // a HEAD is answered as a GET, its body never sent
+  if ((req.query || {}).proposal != null) return proposalPage(res, String(req.query.proposal));
   const q = req.query || {}, given = String(q.family || ''), family = given.trim().toLowerCase();
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(family)) return res.status(400).send('not a family name');
   const download = 'download' in q;
