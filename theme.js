@@ -1783,6 +1783,8 @@
       'cursor:pointer;font-family:var(--mono);font-size:11.5px;letter-spacing:0.06em;color:var(--vapour-dim)}' +
     '.dd__menu button.dd__tab:hover{color:var(--foam)}' +
     '.dd__menu button.dd__tab[aria-selected="true"]{color:var(--liquid);border-bottom-color:var(--liquid)}' +
+    /* the colour key at the tabs' end, while no colour's list is shown (the coloured dashboards' step 3) */
+    '.dd__menu button.dd__tab.dd__key{margin-left:auto}' +
     /* first in a hand's list: another name, and the way back to your own */
     '.dd__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;margin:2px 0}' +
     '.dd__menu button.dd__switch{width:auto;background:none;border:none;border-radius:4px;margin:0;padding:3px 8px 4px;' +
@@ -3077,6 +3079,11 @@
     var TIP = { hand: HAND ? HAND + '’s places' : 'a person’s places — say whose',
                 site: 'happyseaurchin.com — the ways in, and the places to look around',
                 tables: 'the open tables, and how the game plays', table: 'this table, and who is at it' };
+    /* A COLOUR'S OWN PLACES (the coloured dashboards' step 3, 23 Nov 2026): a colour keeps its list as a hand keeps
+     * its own, at lists:colour:<name> 2, and the menu shows it as a tab of its own to a reader whose device holds the
+     * colour (the voice's colours: each colour's copy opened with the key this device keeps) and to nobody else, read
+     * once, when the menu first opens. The one so far is admin, David's and weft's. */
+    var HELD = null, COLOUR_LISTS = {};
 
     function tabRow(){
       var row = document.createElement('div');
@@ -3096,6 +3103,25 @@
         });
         row.appendChild(b);
       });
+      /* the colour key, at the tabs' end while no colour's list shows here: one tap puts the reader's key on (the
+         voice's wear: asked once, proved against their passport, kept wrapped) and their colours' lists join the tabs */
+      if (window.siteVoice && !Object.keys(COLOUR_LISTS).length){
+        var k = document.createElement('button');
+        k.type = 'button'; k.className = 'dd__tab dd__key'; k.setAttribute('data-keep-open', '');
+        k.textContent = '◐'; k.title = 'your colour key: a list a colour keeps shows here to its holders';
+        k.setAttribute('aria-label', 'colour key: put your key on to see the lists your colours keep');
+        k.addEventListener('click', function(e){
+          e.stopPropagation();
+          var name = knownName() || HAND || window.cleanHandle(window.prompt('Your handle, to put your colour key on:') || '');
+          if (!name){ k.title = 'a colour key is put on under your handle: none given'; return; }
+          k.textContent = '◐ …';
+          window.siteVoice().then(function(v){ return v.wear({ name: name }); }).then(function(r){
+            if (r && r.ok){ HELD = null; readColours(true); }
+            else { k.textContent = '◐'; k.title = (r && !r.quiet && r.error) || 'not opened'; }
+          }).catch(function(){ k.textContent = '◐'; });
+        });
+        row.appendChild(k);
+      }
       menu.appendChild(row);
     }
 
@@ -3263,6 +3289,7 @@
       if (TAB === 'hand') paintHand();
       else if (TAB === 'site') paintSite();
       else if (TAB === 'tables') paintRpg();
+      else if (TAB.indexOf('colour:') === 0) paintColour(TAB.slice(7));
       else paintWorld();
     }
 
@@ -3425,6 +3452,34 @@
         }
       });
     }
+    /* the colours this device holds, and the places each keeps: no key on the device, no read beyond the voice */
+    function readColours(fresh){
+      if (HELD !== null || !window.siteVoice) return;
+      HELD = [];
+      window.siteVoice().then(function(v){
+        var name = knownName() || HAND;
+        return v.colours(name ? { name: name } : {});   /* no name here: the voice reads as the name it last wore */
+      }).then(function(list){
+        HELD = (list || []).map(function(c){ return c.name; });
+        return Promise.all(HELD.map(function(c){
+          return readItems(APEX, 'colour:' + c, 2, fresh).then(function(items){ if (items && items.length) COLOUR_LISTS[c] = items; });
+        }));
+      }).then(function(){
+        Object.keys(COLOUR_LISTS).forEach(function(c){
+          var t = 'colour:' + c;
+          if (TABS.indexOf(t) < 0){ TABS.push(t); LABEL[t] = c; TIP[t] = c + ': the places colour:' + c + ' keeps, shown to its holders'; }
+        });
+        if (d.open && !menu.querySelector('.dd__item') && !menu.querySelector('.dd__ask')) paint();
+      }).catch(function(){});
+    }
+    /* a colour's places, each '<address> — <its name>': an address on this site, or a full https:// one */
+    function paintColour(c){
+      (COLOUR_LISTS[c] || []).forEach(function(it){
+        var m = /^\s*(\S+)\s+—\s+(.+)$/.exec(it.name); if (!m) return;
+        var full = /^https?:\/\//.test(m[1]);
+        door(m[2], full ? m[1] : carry('/' + m[1].replace(/^\/+/, '')), !full && hereIs(m[1]));
+      });
+    }
 
     paint();
     if (HOME === 'hand') readStated();
@@ -3446,7 +3501,7 @@
     function fit(){ menu.style.maxHeight = Math.max(180, window.innerHeight - menu.getBoundingClientRect().top - 12) + 'px'; }
     window.addEventListener('resize', function(){ if (d.open) fit(); });
     d.addEventListener('toggle', function(){
-      if (d.open){ fit(); return; }
+      if (d.open){ fit(); readColours(); return; }
       if (menu.querySelector('.dd__item')) return;
       if (TAB !== HOME || menu.querySelector('.dd__ask')){ TAB = HOME; paint(); }
     });
