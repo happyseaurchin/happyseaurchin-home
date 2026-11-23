@@ -3756,7 +3756,7 @@
    * me', and the link they send is that share's own: its preview says who shared what and why (function:string 1, 5.1),
    * and whoever opens it meets the sharer's card, then the page, one tap on. Nothing is written anywhere but the String
    * and nothing new is kept. The address is the page's own on happyseaurchin.com, whatever host serves it (a preview,
-   * a dev server), without the ?from= it may have arrived with, since the share is the sharer's, nor the ?still and
+   * a dev server), without the ?via= or ?from= it may have arrived with, since the share is the sharer's, nor the ?still and
    * ?share that draw a page's share picture; the String opens on the host serving this page. It stands beside the
    * corner door and moves with it; where a page's own buttons open the door and the corner stands aside, it takes the
    * corner itself. Never at a members' door (data-door on <html>): a member's share goes on their own beach's string,
@@ -3767,7 +3767,7 @@
   function pageToShare(){
     var q = null;
     try { q = new URLSearchParams(location.search); } catch(e){}
-    if (q) ['from', 'still', 'share'].forEach(function(k){ q.delete(k); });
+    if (q) ['via', 'from', 'still', 'share'].forEach(function(k){ q.delete(k); });
     var path = location.pathname.replace(/\.html$/, '').replace(/(.)\/+$/, '$1'), rest = q ? q.toString() : '';
     return SITE + path + (rest ? '?' + rest : '');
   }

@@ -115,6 +115,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [vault-js](vault-js.md) | `vault.js` | the vault in the page, two keys (5 Nov 2026, the doors' battery §8 item 21; |
 | [verso](verso.md) | `verso.html` | verso (5 Nov 2026, lane verso.1), at `/verso`: |
 | [verso-schematic](verso-schematic.md) | `verso-schematic.html` | verso's schematic's crafted page (9 Nov 2026, lane verso.2), at `/verso-schematic`, its Snazzy view once its law names it at 6 (`/schematic/verso` is … |
+| [visual-consistency](visual-consistency.md) | `visual-consistency.html` | the visual-consistency proposal's crafted page, at `/visual-consistency` (in the repository since 17 Nov 2026, #724; `/proposal/visual-consistency` is its standard view… |
 | [water-geometry](water-geometry.md) | `water-geometry.html` | the geometry of water (15 Nov 2026), at `/water-geometry`, its snazzy view, which its law names at 6 (`/proposal/water-geometry` is its standard view,… |
 | [waterline](waterline.md) | `waterline.html` | the waterline proposal (13 Nov 2026), at `/waterline`, its snazzy view, which its law names at 6 (`/proposal/waterline` is its standard view, drawn fr… |
 | [web-llm](web-llm.md) | `web-llm.html` | the web-llm proposal (9 Nov 2026, lane web-llm.1), at `/web-llm`, its snazzy view, which its law names at 6 (`/proposal/web-llm` is its standard view,… |
