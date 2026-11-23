@@ -74,6 +74,14 @@ select, input { font: inherit; color: var(--ink); background: #061020; border: 1
 .line-box { font-family: var(--mono); font-size: 0.9rem; background: #061020; border: 1px solid var(--rule-2); border-radius: 6px; padding: 10px 12px; margin: 8px 0; word-break: break-word; user-select: all; -webkit-user-select: all; }
 .hint { font-size: 0.8rem; color: var(--muted); min-height: 1.2em; margin-top: 6px; }
 .foot { font-size: 0.74rem; color: var(--muted); margin-top: 14px; }
+/* online: the room plug's anteroom (<beach-here>), in the grid's own night */
+#lobby { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule); }
+#lobby[hidden] { display: none; }
+#lobby beach-here { color: var(--ink); font-size: 0.86rem; }
+#lobby beach-here button { font: 700 0.78rem var(--display); letter-spacing: 0.08em; border-color: var(--rule-2); padding: 10px 18px; }
+#lobby beach-here .bh-go { background: #36c9ff; color: #04070d; border-color: #36c9ff; }
+#lobby beach-here .bh-count { font-family: var(--display); color: #36c9ff; }
+#lobby beach-here .bh-link { color: var(--muted); }
 .foot a { color: var(--muted); }
 @media (max-width: 480px) { .row { grid-template-columns: 1fr; } #top .score { font-size: 1.1rem; } }
 </style>
@@ -105,6 +113,11 @@ select, input { font: inherit; color: var(--ink); background: #061020; border: 1
     </div>
     <p class="keys" id="keys"></p>
     <button type="button" class="btn" id="go">PLAY</button>
+    <button type="button" class="btn line" id="online">PLAY ONLINE</button>
+    <div id="lobby" hidden>
+      <p class="hint" id="lobbyNote">Everyone here plays in one match, teams by arrival (blue, gold, blue…), bots in the empty seats. Anyone can start it.</p>
+      <beach-here id="here" label="START THE MATCH"></beach-here>
+    </div>
     <p class="foot">Bots fill the other seats. The match ends at 100. The spec and its decisions: <a href="/tronic-glass#fotronic">TRONIC Glass</a>.</p>
   </div>
 </section>
@@ -121,6 +134,7 @@ select, input { font: inherit; color: var(--ink); background: #061020; border: 1
   </div>
 </section>
 
+<script src="https://beach.happyseaurchin.com/button/room.js" data-game="fotronic"></script>
 <script type="module">
 import * as sim from './fotronic/sim.js';
 
@@ -138,6 +152,19 @@ const transport = {
 
 let state = null, humans = { blue: null, gold: null }, law = sim.LAW, running = false;
 transport.onEvent(event => { if (state) sim.apply(state, event); });
+
+/* ── online: lockstep over the beach's room plug (button/room.js; anteroom.1, 23 Nov 2026, David: 'Build the quick
+ * path first'). Every phone runs the same world from the same match: the bots are computed alike on each from the
+ * state, so they cross no wire; a person's press is stamped DELAY ticks ahead and sent to the others; and a phone
+ * steps a tick only once every other player has said they have sent everything up to it. A press waits in the
+ * page's own queue until its tick, never in the world's inbox, which a new round clears. ── */
+const DELAY = 15;   // ticks (an eighth of a second) between a press and the tick it acts on, online
+const NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false };
+function input(seat, action) {   // a person's press: now, at home; DELAY ticks on, online, the others told
+  if (!NET.on) { transport.send({ tick: state.tick, seat, action }); return; }
+  const ev = { tick: state.tick + DELAY, seat, action };
+  NET.pending.push(ev); NET.out.push(ev);
+}
 
 /* ── the start screen ── */
 function fillSeats(sel, size, chosen) {
@@ -211,15 +238,15 @@ window.addEventListener('keydown', e => {
   const k = keySeat(e.code);
   if (!k || k.seat === null) return;
   e.preventDefault();
-  if (k.action === 'BRAKE') { if (!held.has(e.code)) { held.add(e.code); transport.send({ tick: state.tick, seat: k.seat, action: 'BRAKE_ON' }); } }
-  else transport.send({ tick: state.tick, seat: k.seat, action: k.action });
+  if (k.action === 'BRAKE') { if (!held.has(e.code)) { held.add(e.code); input(k.seat, 'BRAKE_ON'); } }
+  else input(k.seat, k.action);
 });
 window.addEventListener('keyup', e => {
   if (!state) return;
   const k = keySeat(e.code);
-  if (k && k.action === 'BRAKE' && held.has(e.code)) { held.delete(e.code); if (k.seat !== null) transport.send({ tick: state.tick, seat: k.seat, action: 'BRAKE_OFF' }); }
+  if (k && k.action === 'BRAKE' && held.has(e.code)) { held.delete(e.code); if (k.seat !== null) input(k.seat, 'BRAKE_OFF'); }
 });
-window.addEventListener('blur', () => { if (!state) return; for (const code of Array.from(held)) { const k = keySeat(code); held.delete(code); if (k && k.seat !== null) transport.send({ tick: state.tick, seat: k.seat, action: 'BRAKE_OFF' }); } });
+window.addEventListener('blur', () => { if (!state) return; for (const code of Array.from(held)) { const k = keySeat(code); held.delete(code); if (k && k.seat !== null) input(k.seat, 'BRAKE_OFF'); } });
 
 /* ── taps: either half of the arena turns the human's cycle; the brake is a button held ── */
 function tapSeat() { return humans.blue !== null ? humans.blue : humans.gold; }
@@ -228,7 +255,7 @@ for (const side of ['l', 'r']) {
     if (!running || !state) return;
     e.preventDefault();
     const seat = tapSeat();
-    if (seat !== null) transport.send({ tick: state.tick, seat, action: side === 'l' ? 'L' : 'R' });
+    if (seat !== null) input(seat, side === 'l' ? 'L' : 'R');
   });
 }
 const brakeBtn = $('brake');
@@ -236,7 +263,7 @@ function brake(on) {
   const seat = tapSeat();
   if (!running || !state || seat === null) return;
   brakeBtn.classList.toggle('held', on);
-  transport.send({ tick: state.tick, seat, action: on ? 'BRAKE_ON' : 'BRAKE_OFF' });
+  input(seat, on ? 'BRAKE_ON' : 'BRAKE_OFF');
 }
 brakeBtn.addEventListener('pointerdown', e => { e.preventDefault(); brake(true); });
 for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) brakeBtn.addEventListener(ev, () => brake(false));
@@ -252,14 +279,19 @@ function frame(now) {
     acc += Math.min(now - last, 250);
     last = now;
     while (acc >= TICK_MS) {
+      if (NET.on && !NET.remote.every(id => NET.upTo[id] >= state.tick)) { NET.waiting += TICK_MS; acc = Math.min(acc, TICK_MS * 4); break; }   // everyone's word for this tick first
+      NET.waiting = 0;
+      if (NET.on) while (NET.pending.length && NET.pending[0].tick <= state.tick) sim.apply(state, NET.pending.shift());   // the presses due, at their tick
       for (const e of sim.botEvents(state)) transport.send(e);
       sim.step(state);
+      if (NET.on && state.tick % 240 === 0) checkStep(state.tick, hashOf(state), null);
       for (const n of state.news) {
         if (n.kind === 'death') effects.push({ x: n.x, y: n.y, at: state.tick, team: state.cycles[n.seat].team });
         if (n.kind === 'over') finish();
       }
       acc -= TICK_MS;
     }
+    if (NET.on) flush(false);
   } else last = now;
   draw();
   hud();
@@ -267,9 +299,96 @@ function frame(now) {
 document.addEventListener('visibilitychange', () => { last = performance.now(); acc = 0; });
 requestAnimationFrame(frame);
 
+/* ── online: the room, the seating, the start, and the wire ── */
+const room = window.beachRoom || null;
+function handle() { return $('handle').value.replace(/[^A-Za-z0-9_\s-]/g, '').trim().slice(0, 32); }
+$('online').addEventListener('click', () => {
+  $('lobby').hidden = false;
+  if (!room) { $('lobbyNote').textContent = 'The beach\'s room plug did not load, so there is nobody to play with here. PLAY still plays against bots.'; return; }
+  $('online').hidden = true;
+  room.join({ name: handle() || undefined }).then(r => {
+    if (!r.ok) { $('lobbyNote').textContent = 'The room would not open: ' + r.error; $('online').hidden = false; return; }
+    if (!handle()) $('handle').value = r.name;
+  });
+});
+/* the seating the caller of a start hands every page: everyone here sorted by id, blue, gold, blue… by turn */
+function plan() {
+  const me = room.me(); if (!me) return null;
+  const all = [{ id: me.id, name: me.name }].concat(room.peers().map(p => ({ id: p.id, name: p.name }))).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const size = Math.min(law.TEAM_MAX_PLAYERS || 6, Math.max(parseInt($('size').value, 10) || 1, Math.ceil(all.length / 2)));
+  return { size, match: 'online-' + Date.now().toString(36) + '-' + me.id.slice(0, 4), players: all.slice(0, size * 2).map((p, i) => ({ id: p.id, name: String(p.name || 'player').slice(0, 32), team: i % 2 ? 'gold' : 'blue', seat: Math.floor(i / 2) + 1 })) };
+}
+$('here').body = plan;
+if (room) {
+  /* two starts called at once: on every page the call of the lower id wins, as the host does, so all start one world */
+  let called = null, calledTimer = 0;
+  room.on('start', x => {
+    const p = x.body; if (!p || !Array.isArray(p.players)) return;
+    if (called && called.from < x.from && Date.now() < called.at + 1000) return;
+    called = x; clearTimeout(calledTimer);
+    calledTimer = setTimeout(() => startOnline(p), Math.max(0, x.at - Date.now()));
+  });
+  room.on('message', onNet);
+  room.on('gone', g => { NET.remote = NET.remote.filter(id => id !== g.id); });   // a player gone: the match goes on without waiting for them
+}
+function startOnline(p) {
+  const me = room.me(); if (!me) return;
+  const mine = p.players.find(q => q.id === me.id);
+  if (!mine) { $('lobbyNote').textContent = 'A match started before you came in. The next one has you.'; return; }
+  const seats = [];
+  for (const team of ['blue', 'gold']) for (let n = 1; n <= p.size; n++) {
+    const q = p.players.find(x => x.team === team && x.seat === n);
+    seats.push({ team, seat: n, bot: !q, handle: q ? q.name : team + n });
+  }
+  state = sim.createMatch(law, seats, String(p.match).slice(0, 60));
+  Object.assign(NET, { on: true, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false });
+  for (const q of p.players) {
+    NET.seatOf[q.id] = state.seats.find(s => s.team === q.team && s.seat === q.seat).index; NET.names[q.id] = q.name;
+    if (q.id !== me.id) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
+  }
+  humans = { blue: null, gold: null }; humans[mine.team] = NET.seatOf[me.id];
+  effects.length = 0;
+  $('start').classList.add('hidden');
+  $('end').classList.add('hidden');
+  $('touch').classList.toggle('on', touch);
+  bottomGauges();
+  running = true; last = performance.now(); acc = 0;
+  window.fotronic = { state, law, transport, net: NET };
+  flush(true);
+}
+/* everything I have said up to a tick, sent: my presses since the last send, and the tick I have spoken for */
+function flush(force) {
+  if (!NET.on || !room) return;
+  const t = performance.now();
+  if (!force && !NET.out.length && t - NET.sentAt < 33) return;   // at most thirty a second when there is nothing new
+  room.send('fx', { upTo: state.tick + DELAY - 1, ev: NET.out }, { reliable: true });
+  NET.out = []; NET.sentAt = t;
+}
+function onNet(m) {
+  if (!NET.on || !(m.from in NET.seatOf) || !m.body) return;
+  if (m.kind === 'fx') {
+    const seat = NET.seatOf[m.from];
+    for (const ev of m.body.ev || []) if (ev && ev.seat === seat && sim.ACTIONS.indexOf(ev.action) >= 0) NET.pending.push({ tick: ev.tick | 0, seat, action: ev.action });
+    NET.pending.sort((a, b) => a.tick - b.tick);
+    NET.upTo[m.from] = Math.max(NET.upTo[m.from], m.body.upTo | 0);
+  } else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
+}
+/* every two seconds each phone says what its world is at a tick; a world that differs is said so on the screen */
+function hashOf(st) {
+  let h = st.score.blue * 7919 + st.score.gold * 104729;
+  for (const c of st.cycles) h = (Math.imul(h, 31) + Math.round(c.x * 1000) * 3 + Math.round(c.y * 1000) * 5 + c.dir * 7 + (c.alive ? 11 : 13)) | 0;
+  return h;
+}
+function checkStep(tick, h, from) {
+  if (from === null) { NET.mine[tick] = h; room.send('fh', { tick, h }, { reliable: true }); for (const id in NET.theirs) if (NET.theirs[id][tick] != null && NET.theirs[id][tick] !== h) NET.desync = true; return; }
+  (NET.theirs[from] = NET.theirs[from] || {})[tick] = h;
+  if (NET.mine[tick] != null && NET.mine[tick] !== h) NET.desync = true;
+}
+
 /* ── the end: the result line (1.172) ── */
 function finish() {
   running = false;
+  if (NET.on) { flush(true); NET.on = false; }
   const who = state.seats.filter(s => !s.bot);
   const lines = (who.length ? who : [state.seats[0]]).map(s => sim.resultLine(state, s.index));
   const winner = state.score.blue === state.score.gold ? null : (state.score.blue > state.score.gold ? 'BLUE' : 'GOLD');
@@ -320,6 +439,8 @@ function hud() {
     const zb = state.zones.blue, zg = state.zones.gold;
     mid = 'round ' + state.round + (zb.conquest > 0 ? ' · blue zone ' + Math.round(zb.conquest * 100) + '%' : '') + (zg.conquest > 0 ? ' · gold zone ' + Math.round(zg.conquest * 100) + '%' : '');
   }
+  if (NET.on && NET.waiting > 800) centre += '<div class="small">waiting for ' + esc(NET.remote.filter(id => !(NET.upTo[id] >= state.tick)).map(id => NET.names[id] || 'a player').join(', ')) + '…</div>';
+  if (NET.desync) centre += '<div class="small">out of step with the others: this match is no longer the same world</div>';
   $('mid').textContent = mid;
   if ($('centre').innerHTML !== centre) $('centre').innerHTML = centre;
   for (const g of gauges) {
