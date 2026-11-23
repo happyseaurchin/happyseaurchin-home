@@ -2,9 +2,11 @@
  * /games/<game>/game in an opaque origin, where the browser's own localStorage throws; the service adds this one line
  * at the top of the game's head, so it stands in before anything else on the page runs: what the frame page handed in
  * (window.name, which /games/frame.js fills) to read at once, every change sent back to that page, which keeps it
- * under the game's own name. The beach's voice keeps a player's key here, so a newcomer's name and key last from one
- * visit to the next. A page that has its own storage (a maker's copy on their own site) is left as it is; one opened
- * alone, outside its frame, keeps what it is given for the visit only. */
+ * under the game's own name. The beach's voice keeps a player's name here, so a newcomer's name lasts from one visit
+ * to the next; their key it keeps only wrapped, under a device key in IndexedDB, which this origin is refused, so the
+ * key lasts the visit and is said once by beachGame.made() (scripts/smoke-games.mjs, 23 Nov 2026). A page that has
+ * its own storage (a maker's copy on their own site) is left as it is; one opened alone, outside its frame, keeps what
+ * it is given for the visit only. */
 (function () {
   'use strict';
   var HEAD = 'games-bridge:', handed = null;

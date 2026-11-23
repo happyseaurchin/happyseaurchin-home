@@ -151,7 +151,13 @@ try {
     assert(!thrown.length, thrown.join(' | '));
     return '65 s of the game\'s clock';
   });
-  await check('a newcomer keeps a run in one tap, its name and key made and kept through the frame (writes held back)', async () => {
+  /* a newcomer as the beach's voice keeps one now (lane smoke-games.1, 23 Nov 2026): its key made as the voice makes one,
+   * two digits then three words (voice.js makeKey; three words by David's decision of 9 November 2026), and said once by
+   * made(). The voice keeps a key only wrapped, under a device key in its origin's IndexedDB (beach-key:<block>, and
+   * beach-made:<block> until it is said), and a sandboxed frame's opaque origin is refused IndexedDB, so inside the frame
+   * the key is kept nowhere and lasts the visit, while the name (render:who) is kept through the frame. Whatever is kept,
+   * no key ever stands plain under games:<game>:. */
+  await check('a newcomer keeps a run in one tap, its key said once and never kept plain, its name kept through the frame (writes held back)', async () => {
     const law = await f.evaluate(() => window.beachGame.law());
     if (!law || law.ok === false) return 'skipped: no law for ' + GAME + ' on the beach yet, so its family is not founded';
     if (!(await f.evaluate(() => window.ENGINE && typeof window.ENGINE.level === 'function' && typeof window.ENGINE.bot === 'function')))
@@ -167,14 +173,24 @@ try {
     const held = writes - before;
     assert(kept.out && kept.out.ok, 'result: ' + JSON.stringify(kept.out));
     assert(kept.out.made && kept.out.said, 'not made and said: ' + JSON.stringify(kept.out));
-    assert(kept.made && kept.made.name === kept.out.name && /^[a-z]+-[a-z]+-[a-z]+-\d\d$/.test(kept.made.key || ''), 'made() gave ' + JSON.stringify(kept.made));
+    const key = (kept.made && kept.made.key) || '';
+    assert(kept.made && kept.made.name === kept.out.name && /^[1-9]\d(-[a-z]+){3}$/.test(key), 'made() gave ' + (kept.made ? kept.made.name + ' and a key shaped ' + key.replace(/[a-z]+/g, 'word') : 'nothing'));
     assert(kept.again === null, 'made() said the key twice');
     assert(kept.name === kept.out.name, 'the device signs as ' + kept.name);
     await page.clock.runFor(200);
-    const outside = await page.evaluate(([g, n]) => ({ who: localStorage.getItem('games:' + g + ':render:who'), key: !!localStorage.getItem('games:' + g + ':next-latch:' + g + ':' + n), site: localStorage.getItem('render:who') }), [GAME, kept.out.name]);
-    assert(outside.who === kept.out.name && outside.key, 'the frame page kept ' + JSON.stringify(outside));
+    const outside = await page.evaluate(([g, key]) => {
+      const pre = 'games:' + g + ':', mine = {};
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k.indexOf(pre) === 0) mine[k.slice(pre.length)] = localStorage.getItem(k); }
+      const keys = Object.keys(mine).filter((k) => /^(beach-key|beach-made):/.test(k));
+      const plain = Object.keys(mine).filter((k) => mine[k].indexOf(key) >= 0 || (keys.includes(k) && !/^w1\./.test(mine[k])));
+      return { who: mine['render:who'] || null, keys, plain, site: localStorage.getItem('render:who') };
+    }, [GAME, key]);
+    assert(outside.who === kept.out.name, 'the frame page kept the name as ' + outside.who);
+    assert(!outside.plain.length, 'a key kept plain under games:' + GAME + ': at ' + outside.plain.join(', '));
     assert(outside.site === 'site-name', 'the site\'s own name changed to ' + outside.site);
-    return kept.out.name + ' made and keyed in one tap, the run in the room and the line said (' + held + ' writes held back); the name and key kept under games:' + GAME + ':, the site\'s own name untouched';
+    return kept.out.name + ' made and keyed in one tap, the run in the room and the line said (' + held + ' writes held back); its key said once by made() and kept '
+      + (outside.keys.length ? 'wrapped, at ' + outside.keys.join(', ') : 'nowhere, the frame\'s opaque origin having no IndexedDB to wrap it under')
+      + '; the name kept under games:' + GAME + ':render:who, the site\'s own name untouched';
   });
   await check('the board and the room draw', async () => {
     const drawn = await f.evaluate(() => {

@@ -2,9 +2,11 @@
  * by the service is served at /games/<game>/game sandboxed (vercel.json: its own opaque origin, its only connections
  * the beach and this site's reads), and played here, at /games/<game>, inside an iframe sandboxed the same way, so
  * nothing it runs can read what this site keeps in the browser: the names and keys other pages keep, the vault's
- * cookies. What the game keeps for itself (its player's name and key, which the beach's voice keeps, its switches)
+ * cookies. What the game keeps for itself (its player's name, which the beach's voice keeps, and its switches)
  * is kept here on its behalf, under games:<game>:, handed to the frame as it opens (its window.name, read once by
- * /games/bridge.js inside) and taken back from that frame alone, a change at a time, within a game's share.
+ * /games/bridge.js inside) and taken back from that frame alone, a change at a time, within a game's share. Not its
+ * player's key: the voice keeps a key only wrapped, under a device key in IndexedDB, which the game's opaque origin
+ * is refused, so the key lasts the visit (scripts/smoke-games.mjs, 23 Nov 2026).
  *
  *   <iframe id="game" sandbox="allow-scripts …"></iframe>
  *   <script src="/games/frame.js" data-game="<game>"></script>                                                   */
