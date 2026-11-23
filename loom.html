@@ -95,6 +95,11 @@
   .now .ago{font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);white-space:nowrap}
   .now li.live .ago{color:var(--live)}
   .now .none{margin:0;color:var(--vapour-dim);font-style:italic}
+  /* admin: today's lines sealed in colour:admin — a line its reader cannot open stands as its grey line */
+  .now li.sealed .said{color:var(--vapour-dim);font-family:var(--mono);font-size:12.5px}
+  .admin-key{margin:10px 0 0;font-size:13px;color:var(--vapour-dim)}
+  .admin-key button{font:inherit;font-weight:600;color:var(--foam);background:transparent;border:1px solid rgba(var(--live-rgb),0.45);border-radius:8px;padding:5px 10px;margin-right:8px;cursor:pointer}
+  .admin-key button:hover{border-color:var(--live)}
   @media (max-width:620px){ .now li{grid-template-columns:1fr auto} .now .said{grid-column:1/-1;order:3} }
 
   /* ── the key ── */
@@ -308,6 +313,12 @@
       <div class="now" id="now"><p class="none">reading…</p></div>
     </section>
 
+    <section id="admin-sec" hidden>
+      <h2>Admin</h2>
+      <p class="sub" id="admin-sub">today's admin lines, sealed in colour:admin: its holders read the words, anyone else a grey line</p>
+      <div class="now" id="admin"><p class="none">reading…</p></div>
+    </section>
+
     <section id="key-sec">
       <h2>The key</h2>
       <ul class="key">
@@ -455,6 +466,51 @@ function listed(b){
     for (let d = 1; d <= 9; d++) if (n[String(d)] != null) walk(n[String(d)], depth + 1);
   })(b, 0);
   return out;
+}
+
+/* ---------- admin: today's line in each admin:<hand> mirror, sealed in colour:admin by function:admin's law (the
+   coloured dashboards' step 2, 23 Nov 2026; bsp-mcp #640). A clock mirror keeps a day's line at the day's full-width
+   address, each digit a branch and a 0 the underscore, the line the node's own underscore. ---------- */
+function lineAtAddr(b, addr){
+  let n = b;
+  for (const d of String(addr).replace(/0+$/, '')){ n = n && typeof n === 'object' ? n[d === '0' ? '_' : d] : null; if (n == null) return null; }
+  return n && typeof n === 'object' ? n._ : n;
+}
+async function readAdmin(ix){
+  const now = ix && ix.now && ix.now.address;
+  if (!now || !/^\d{10}$/.test(now)) throw new Error('the beach gave no clock');
+  const today = now.slice(0, 8) + '00';
+  const names = (ix.blocks || []).map(b => typeof b === 'string' ? b : b && b.name).filter(n => n && /^admin:[^:]+$/.test(n));
+  const rows = await pool(names, 6, async name => ({ hand: name.slice(6), line: lineAtAddr(await beach({ block: name }), today) }));
+  return { today, founded: names.length > 0, rows: rows.filter(r => r && !r.error && r.line != null) };
+}
+/* each line opened through the voice where this reader holds the colour, else its grey line; one button puts the
+   reader's key on (the voice's wear: asked once, proved against their passport, kept wrapped), and the band opens again */
+async function drawAdmin(){
+  const a = S.adminState, box = $('admin');
+  if (!a || (!a.error && !a.founded)) return;
+  $('admin-sec').hidden = false;
+  if (a.error){ box.innerHTML = '<p class="none">The admin family could not be read just now (' + esc(a.error) + ').</p>'; return; }
+  if (!a.rows.length){ box.innerHTML = '<p class="none">Nobody has said the admin state today yet.</p>'; return; }
+  const v = window.siteVoice ? await window.siteVoice().catch(() => null) : null;
+  const lines = await Promise.all(a.rows.map(async r => {
+    if (typeof r.line === 'string') return { hand: r.hand, text: r.line, shut: false };
+    const t = v ? await v.open(r.line, { name: ME }).catch(() => null) : null;
+    return { hand: r.hand, text: t != null ? t : (v ? v.grey(r.line) : 'a sealed line'), shut: t == null };
+  }));
+  const shut = lines.filter(l => l.shut).length;
+  box.innerHTML = '<ol>' + lines.map(l => '<li class="' + (l.shut ? 'sealed' : '') + '"><span class="lane">' + esc(l.hand) + '</span>' +
+    '<span class="said">' + esc(l.text) + '</span><span class="ago">today</span></li>').join('') + '</ol>' +
+    (shut ? '<p class="admin-key"><button type="button" id="admin-open">Open with your key</button><span id="admin-note">' + shut + (shut === 1 ? ' line stands' : ' lines stand') +
+      ' sealed: if colour:admin holds a copy for ' + esc(ME) + ', your key opens ' + (shut === 1 ? 'it' : 'them') + ' here, and this device keeps it wrapped</span></p>' : '');
+  const btn = $('admin-open');
+  if (btn) btn.onclick = async () => {
+    const note = $('admin-note');
+    note.textContent = 'opening…';
+    const r = v ? await v.wear({ name: ME }).catch(e => ({ ok: false, error: e.message || String(e) })) : { ok: false, error: 'the beach’s voice did not load' };
+    if (r && r.ok) drawAdmin();
+    else note.textContent = r && r.quiet ? 'not opened' : (r && r.error) || 'not opened';
+  };
 }
 
 /* ---------- now: every hand's lines at this gathering of the clock ---------- */
@@ -1211,7 +1267,7 @@ function setView(v, push){
 document.querySelectorAll('.views button').forEach(b => b.addEventListener('click', () => setView(b.dataset.view, true)));
 window.addEventListener('hashchange', () => setView(location.hash === '#layers' ? 'layers' : 'first'));
 
-function draw(){ drawNow(); drawBands(); if (S.view === 'layers') drawLayers(); }
+function draw(){ drawNow(); drawAdmin(); drawBands(); if (S.view === 'layers') drawLayers(); }
 
 /* ---------- one read of everything ---------- */
 let RUN = 0;
@@ -1220,14 +1276,15 @@ async function read(){
   $('stamp').textContent = 'reading the beach…';
   let ix = null;
   try { ix = await beach(null); } catch(e){}
-  const [nowR, lanesR, pileR, listR, aheadR, beeR, loomR] = await Promise.all([
+  const [nowR, lanesR, pileR, listR, aheadR, beeR, loomR, adminR] = await Promise.all([
     ix ? readNow(ix).catch(e => ({ error: e.message || String(e) })) : Promise.resolve({ error: 'the beach’s index did not answer' }),
     beach({ block: 'lanes:weft' }).catch(e => ({ error: e })),
     readPile(6).catch(() => null),
     beach({ block: 'proposals' }).catch(e => ({ error: e })),
     beach({ block: 'ahead:' + ME }).catch(e => ({ error: e })),
     beach({ block: 'bee:' + ME }).catch(() => null),
-    beach({ block: 'loom:' + ME }).catch(() => null)
+    beach({ block: 'loom:' + ME }).catch(() => null),
+    ix ? readAdmin(ix).catch(e => ({ error: e.message || String(e) })) : Promise.resolve(null)
   ]);
   /* every thread whose live end waits on you, read from the registry (threads.js) */
   const threadsR = window.beachThreads ? await window.beachThreads.waiting(ME, true).catch(() => null) : null;
@@ -1240,6 +1297,7 @@ async function read(){
   const got = await pool(shelf, 6, readProposal);
   if (run !== RUN) return;
   S.src = { ix, nowR, lanesR, pileR, listR, aheadR, beeR, loomR, shelf, got, threadsR };
+  S.adminState = adminR;
   S.read = Date.now();
   build();
 }
