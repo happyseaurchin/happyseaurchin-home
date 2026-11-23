@@ -30,6 +30,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [determinacy](determinacy.md) | `determinacy.html` | the determinacy inquiry (15 Nov 2026), at `/determinacy`, its snazzy view, which its law names at 6 (`/proposal/determinacy` is its standard view, dra… |
 | [door-js](door-js.md) | `door.js` | the door, ‘with your AI’ (15 Nov 2026, lane o-page-unit.3; |
 | [experience-first](experience-first.md) | `experience-first.html` | Experience first (20 Nov 2026, lane experience.1), at `/experience-first`, its snazzy view, which its law names at 6 (`/proposal/experience-first` is … |
+| [experience-points](experience-points.md) | `experience-points.html` | the Experience Points proposal (23 Nov 2026), at `/experience-points`, its snazzy view, which its law names at 6 (`/proposal/experience-points` is its stan… |
 | [experiments](experiments.md) | `experiments/` | standalone math/visualization artifacts + generated `pscale-inventory.html` |
 | [eye](eye.md) | `eye.html` | Iris and Magic Eye (16 Nov 2026, lane eye.1), at `/eye`: |
 | [families](families.md) | `families.html` | Families on the Beach (17 Nov 2026, lane proposals-tidy.2, at David's word: |
