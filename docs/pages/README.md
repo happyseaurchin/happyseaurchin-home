@@ -87,7 +87,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [runs-js](runs-js.md) | `runs.js` | a family's runs, drawn where a page asks (20 Nov 2026, lane pscale.lab; |
 | [salt-app](salt-app.md) | `salt-app.html` | the SALT app proposal (4 Nov 2026), at `/salt-app`, its snazzy view, which its law names at 6 (since 19 Nov 2026, lane salt.app.2, at David's word: |
 | [sam-6-nov](sam-6-nov.md) | `sam-6-nov.html` | the crafted page of the meeting sam-6-nov (9 Nov 2026, lane meeting.link), at `/sam-6-nov`; |
-| [salt-demo](salt-demo.md) | `salt-demo.html` | the Demo proposal (23 Nov 2026), at `/salt-demo`, its snazzy view (`/proposal/salt-demo` is its standard view): the path to David's demo of verso speaking once in a room on his phone, and SALT's experiences and access after it, in the world of an opening night in a small theatre |
+| [salt-demo](salt-demo.md) | `salt-demo.html` | the Demo proposal (23 Nov 2026), an adjunct to the magic mirror, at `/salt-demo`, its snazzy view (`/proposal/salt-demo` is its standard view): the inside of the magic mirror's sixth stone, the path to David's demo of verso speaking once in a room on his phone, and SALT's experiences and access after it, in the world of an opening night in a small theatre |
 | [says-js](says-js.md) | `says.js` | comments on a page's parts, as a kit any page carries (24 Oct 2026; |
 | [schematic](schematic.md) | `schematic.html` | the schematic form's plain page (29 Oct 2026; |
 | [schematics-proposal](schematics-proposal.md) | `schematics-proposal.html` | the schematics proposal (28 Oct 2026), at `/schematics-proposal` (since 29 Oct 2026, when `/schematics` became the map of maps, a redirect in `vercel.… |
