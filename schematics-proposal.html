@@ -1361,6 +1361,24 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
   /* every maker's own list of games, games:<handle>, the earliest list first, as the arcade's door reads them: the
      mimic's 'on the door' and the arcade's key plan read it (until 20 Nov 2026 they read weft's list alone, and Ghost
      Racer moved that day to David's own, lane chain.1) */
+  /* every line a maker's list holds, in order, as many as it has grown to (23 Nov 2026, lane games.1: a games list is an
+     accumulator, at David's word): past nine the beach nests a list, its earlier lines beneath its underscore and each
+     later nine in a container whose own voicing is a summary, so an underscore that is a node is read first and a
+     container read through; an entry with notes beneath it gives its own line */
+  function listLines(n, out) {
+    out = out || [];
+    if (!n || typeof n !== 'object') return out;
+    if (n._ && typeof n._ === 'object') listLines(n._, out);
+    for (var d = 1; d <= 9; d++) {
+      var v = n[String(d)];
+      if (typeof v === 'string') { if (v.trim()) out.push(v.trim()); }
+      else if (v && typeof v === 'object') {
+        var own = textOf(v), kids = Object.keys(v).some(function (k) { return /^[1-9]$/.test(k) && typeof v[k] === 'object'; });
+        if (/^[a-z0-9][a-z0-9-]* — /i.test(own) && !kids) out.push(own); else listLines(v, out);
+      }
+    }
+    return out;
+  }
   var LISTS = null;
   function makersLists() {
     if (!LISTS) LISTS = Family('games').read().then(function (f) {
@@ -1371,7 +1389,7 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
     return LISTS;
   }
   window.SCH = {
-    preview: PREVIEW, readBlock: readBlock, nodeAt: nodeAt, textOf: textOf, voiceOf: voiceOf, entries: entries, games: makersLists,
+    preview: PREVIEW, readBlock: readBlock, nodeAt: nodeAt, textOf: textOf, voiceOf: voiceOf, entries: entries, games: makersLists, lines: listLines,
     gs: function () { return GS; }, part: partAt, child: child, title: titleCase,
     count: function (addr) { return G.at(addr).length; },
     counts: function () { var out = {}; Object.keys(G.mirrors).forEach(function (h) { (function walk(n, addr) { if (!n || typeof n !== 'object') return; for (var d = 1; d <= 9; d++) { var k = n[String(d)]; if (k == null) continue; var a = addr ? child(addr, d) : String(d); if (textOf(k) && /^1/.test(a)) out[a] = (out[a] || 0) + 1; walk(k, a); } })(G.mirrors[h], ''); }); return out; },
@@ -1764,7 +1782,7 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
       var st = /state:\s*([A-Z][A-Z ]+?)\b(?:\s+—|$)/.exec(SCH.textOf(plug && plug['3']) || '');
       L[6] = st ? { v: 'its thread says ' + st[1], lamp: /LIVE/.test(st[1]) ? 'live' : 'inst' } : { v: 'thread not read', lamp: 'dim' };
       var listedBy = '';   // the hand whose own list holds it, the earliest list first, as the door shows a game once
-      lists.forEach(function (x) { for (var d = 1; d <= 9 && !listedBy; d++) { var t = SCH.textOf(x.list && x.list[String(d)]); if (/^ghost-racer\b/.test(t || '')) listedBy = x.by; } });
+      lists.forEach(function (x) { if (!listedBy && SCH.lines(x.list).some(function (t) { return /^ghost-racer\b/.test(t); })) listedBy = x.by; });
       L[7] = listedBy ? { v: 'on the door, listed by ' + listedBy, lamp: 'live' } : { v: 'not on the door', lamp: 'dim' };
       live = L;
       var d2 = new Date(); liveAt = ('0' + d2.getHours()).slice(-2) + ':' + ('0' + d2.getMinutes()).slice(-2);
@@ -2342,8 +2360,8 @@ window.GR = {"v":"grc4","tracks":[{"name":"Promenade","challenge":"Gentle","corn
       return Promise.all([SCH.readBlock('spine:arcade').catch(function () { return null; }), SCH.games ? SCH.games().catch(function () { return []; }) : []]).then(function (b) {
         var cat = [], mine = [];
         for (var d = 1; d <= 9; d++) { var t = b[0] ? SCH.textOf(b[0][String(d)]) : ''; if (t) cat.push(t.split(' — ')[0].trim()); }
-        (b[1] || []).forEach(function (x) { for (var d = 1; d <= 9; d++) {
-          var u = SCH.textOf(x.list && x.list[String(d)]); var m = /^([a-z0-9-]+) — /.exec(u || ''); if (m && mine.indexOf(m[1]) < 0) mine.push(m[1]); } });
+        (b[1] || []).forEach(function (x) { SCH.lines(x.list).forEach(function (u) {
+          var m = /^([a-z0-9-]+) — /.exec(u || ''); if (m && mine.indexOf(m[1]) < 0) mine.push(m[1]); }); });
         shelves = { cat: cat, mine: mine };
       });
     }
