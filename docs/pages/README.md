@@ -53,6 +53,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [lanes](lanes.md) | `lanes.html` | `/lanes/<hand>[+<hand>…]` (20 Oct 2026): |
 | [leros-phase-three](leros-phase-three.md) | `/leros-phase-three` | a redirect (vercel.json) to Matthew's own crafted page for phase three, https://phenomemental.github.io/happyseaurchin-beach/leros-phase-three.html, s… |
 | [leros-phase-two](leros-phase-two.md) | `leros-phase-two.html` | the leros-phase-two proposal (28 Oct 2026), at `/leros-phase-two`, its snazzy view, once its law names it at 6 (`/proposal/leros-phase-two` is its sta… |
+| [listed-js](listed-js.md) | `listed.js` | the proposals on the beach read as one list (23 Nov 2026, lane arcade-credits.1, at David's word: "Go with the non-permission method; the listing on proposals page should go thr… |
 | [look-js](look-js.md) | `look.js` | a maker's look, worn by any page that draws a family (29 Oct 2026, lane look.1; |
 | [loom](loom.md) | `loom.html` | the loom (27 Oct 2026), at `/loom`: |
 | [magic-mirror](magic-mirror.md) | `magic-mirror.html` | the magic-mirror proposal (16 Nov 2026), at `/magic-mirror`, its snazzy view, which its law names at 6 (`/proposal/magic-mirror` is its standard view,… |
