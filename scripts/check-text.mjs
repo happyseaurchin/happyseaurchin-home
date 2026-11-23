@@ -40,11 +40,23 @@ const BLOCKS = {
   'spine:kern': { _: 'A kernel of regions.', 1: 'THE PERSON — who one is.', 2: { _: 'BETWEEN PEOPLE — what passes.', 1: 'TRUST — how it grows.' } },
   'function:kern': { _: 'THE LAW of kern.', 1: 'mode: frame — regions side by side', 7: 'phase: reference' },
   'spine:wire': { _: 'SPINE — a game on the clock.' },
+  'spine:sea': { _: 'THE SEA — the open meeting extended to a city, in the words SALT uses.', 1: { _: 'DIVE — a person dives in.', 8: 'DECIDE — Dive? Asked of David.' } },
+  'function:sea': { _: 'THE LAW of sea.', 1: 'mode: document' },
+  proposals: { _: { _: 'PROPOSALS — one line each, the first nine kept whole beneath the supernest.', 1: 'sea — the open meeting extended to a city: a person dives into the crowd; its band is a night sea · happyseaurchin.com/the-sea' }, 1: { _: 'the next nine', 1: 'lab — what an address can do · example.org/lab' } },
   'function:wire': { _: 'THE LAW of wire.', 1: 'mode: game', 6: 'page: https://example.org/wire.html' }
 };
 let reads = [], down = false;
+const SITE_PAGES = {
+  '/the-sea': '<!doctype html><html><head><title>The Sea · a night sea</title><meta property="og:title" content="The Sea — the open meeting, extended to a city"><meta content="/animations/the-sea.jpg" property="og:image"></head><body>…</body></html>'
+};
+let siteReads = [];
 globalThis.fetch = async (url) => {
   const u = new URL(url), name = u.searchParams.get('block');
+  if (u.hostname === 'happyseaurchin.com') {
+    siteReads.push(u.pathname);
+    const html = SITE_PAGES[u.pathname];
+    return { status: html ? 200 : 404, ok: !!html, text: async () => html || 'not found' };
+  }
   reads.push(name || 'index');
   const body = (status, d) => ({ status, ok: status < 400, json: async () => d });
   if (down) return body(503, { error: 'down' });
@@ -107,7 +119,33 @@ r = await call({ family: 'kern' });
 check('a frame\'s regions stand side by side at the root, drawn plainly at /walk', r.code === 200 && r.body.includes('\n## The person · 1\n') && r.body.includes('\n## Between people · 2\n') && r.body.includes('\n### Trust · 2.1\n') && r.body.includes('Drawn plainly: https://happyseaurchin.com/walk/kern') && !r.body.includes('## About this family'), r.body.slice(0, 900));
 r = await call({ family: 'wire' });
 check('a game is not a document: it is read on its page', r.code === 200 && r.body.includes('Its parts are not a document (its law says mode: game), so they are read on its page, https://example.org/wire.html.'), r.body.slice(0, 900));
+console.log('\n/proposal/<name>: the page, saying what it is before it runs');
+const head = (b) => String(b || '').split('</head>')[0];
+const meta = (b, k) => (new RegExp('<meta (?:property|name)="' + k + '" content="([^"]*)">').exec(head(b)) || [])[1];
+const titleIn = (b) => (/<title>([^<]*)<\/title>/.exec(head(b)) || [])[1];
+siteReads = [];
+r = await call({ proposal: 'sea', x: '1' });
+check('a listed proposal: the page itself, as html, kept ten minutes at the CDN and served stale for a day while it is read again', r.code === 200 && /^text\/html/.test(r.headers['Content-Type']) && /max-age=600, stale-while-revalidate=86400/.test(r.headers['Vercel-CDN-Cache-Control']) && String(r.body).includes('</html>') && String(r.body).includes('function shelfOf'), r.headers);
+check('…titled with its crafted page\'s own title, its og:title the same', titleIn(r.body) === 'The Sea — the open meeting, extended to a city' && meta(r.body, 'og:title') === 'The Sea — the open meeting, extended to a city', [titleIn(r.body), meta(r.body, 'og:title')]);
+check('…its line the list\'s, before the band\'s clause, said as a proposal', meta(r.body, 'og:description') === 'A proposal: The open meeting extended to a city: a person dives into the crowd' && meta(r.body, 'description') === meta(r.body, 'og:description'), meta(r.body, 'og:description'));
+check('…its picture its crafted page\'s share still, made whole on this site', meta(r.body, 'og:image') === 'https://happyseaurchin.com/animations/the-sea.jpg', meta(r.body, 'og:image'));
+check('…its address its own, and the crafted page read once, at its path on this site', meta(r.body, 'og:url') === 'https://happyseaurchin.com/proposal/sea' && siteReads.length === 1 && siteReads[0] === '/the-sea', [meta(r.body, 'og:url'), siteReads]);
+siteReads = [];
+r = await call({ proposal: 'lab' });
+check('a proposal whose page is another site\'s: titled from its spine as the text writes it, the proposal card its picture, and the other site never read', titleIn(r.body) === 'The lab' && meta(r.body, 'og:image') === 'https://happyseaurchin.com/assets/proposal/card.png' && meta(r.body, 'og:description') === 'A proposal: What an address can do' && siteReads.length === 0, [titleIn(r.body), meta(r.body, 'og:description'), meta(r.body, 'og:image'), siteReads]);
+const PLAIN_TITLE = 'Proposals';
+r = await call({ proposal: 'kern' });
+check('a family that is not a proposal (unlisted, its phase another kind\'s): the page with its plain preview, which says the rest itself', r.code === 200 && titleIn(r.body) === PLAIN_TITLE && meta(r.body, 'og:url') === 'https://happyseaurchin.com/proposal', [titleIn(r.body), meta(r.body, 'og:url')]);
+r = await call({ proposal: 'nothing-here' });
+check('…and a name with no spine the same', r.code === 200 && titleIn(r.body) === PLAIN_TITLE, titleIn(r.body));
+r = await call({ proposal: '../etc' });
+check('…and a name that is no name the same, the beach never asked', r.code === 200 && titleIn(r.body) === PLAIN_TITLE, titleIn(r.body));
+r = await call({ proposal: 'sea' }, 'HEAD');
+check('a HEAD answered as a GET', r.code === 200 && /^text\/html/.test(r.headers['Content-Type']), r.headers);
+
 down = true;
+r = await call({ proposal: 'sea' });
+check('a beach that cannot be read still serves the page, its plain preview kept only thirty seconds', r.code === 200 && titleIn(r.body) === PLAIN_TITLE && /max-age=30/.test(r.headers['Vercel-CDN-Cache-Control']) && String(r.body).includes('</html>'), r.headers);
 r = await call({ family: 'lab' });
 check('a beach that cannot be read is said plainly, 502', r.code === 502 && /could not be read/.test(r.body), r);
 

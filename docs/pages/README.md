@@ -98,6 +98,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [the-ai-wave](the-ai-wave.md) | `the-ai-wave.html` | The AI wave (19 Nov 2026), at `/the-ai-wave`, its snazzy view once its law names it at 6 (`/proposal/the-ai-wave` is its standard view, drawn from its… |
 | [the-sea](the-sea.md) | `the-sea.html` | the sea proposal (12 Nov 2026), at `/the-sea`, its snazzy view, which its law names at 6, live from the same afternoon at David's word ('Pr and merge'… |
 | [theme-js-members-doors](theme-js-members-doors.md) | `theme.js` members' doors | a page served at a door of a members' beach (19 Nov 2026, lane salt.app.2; |
+| [theme-js-share](theme-js-share.md) | `theme.js` Share | Share, beside the door (23 Nov 2026, lane share-string.1; |
 | [theme-js-site-pages](theme-js-site-pages.md) | `theme.js` site pages | the site's own pages on the beach (19 Nov 2026, lane eye.15, at David's 'Yes, go ahead' to weft's reading of his 'the go menu for the site and the per… |
 | [theme-js-sitehand](theme-js-sitehand.md) | `theme.js` siteHand | the code card, handing a page on in person (17 Nov 2026, lane kernel-tidy.1, thread 49; |
 | [theme-js-sitekeys](theme-js-sitekeys.md) | `theme.js` siteKeys | the keys this device keeps, never in plain text (5 Nov 2026, the doors' battery §8 item 20; |

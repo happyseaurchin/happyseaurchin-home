@@ -130,6 +130,15 @@ ok('theme.js lays neither ＋card nor share forward at a members’ door, and it
   /function shareAct\(mount\)\{[\s\S]{0,400}hasAttribute\('data-door'\)\) return;/.test(THEME)
   && /function mintAct\(\)\{[\s\S]{0,600}hasAttribute\('data-door'\)\) return;/.test(THEME)
   && /if \(cfg\.door\)\{[\s\S]{0,6000}\?block=lighthouse/.test(THEME));
+/* nor Share beside the door (lane share-string.1, 23 Nov 2026): a member's share goes on their own beach's string */
+ok('theme.js lays no Share at a members’ door, and Share opens this String’s box with the page’s own address',
+  /function sharePill\(\)\{[\s\S]{0,300}hasAttribute\('data-door'\)\) return null;/.test(THEME)
+  && /a\.href = '\/string\?add=' \+ encodeURIComponent\(pageToShare\(\)\)/.test(THEME));
+/* the quick way in: a card's link to this site carries its sharer, and never at a members' door */
+const STRING_PAGE = (await import('node:fs')).readFileSync(new URL('../string.html', import.meta.url), 'utf8');
+ok('a card’s link to this site carries ?from=<its sharer>, never at a members’ door, never to another site, never over a from',
+  /function outOf\(url, by\)\{\s*if \(MEMBERS \|\| !by \|\| !OURS\.test\(url\) \|\| CARD_LINK\.test\(url\)\) return url;[\s\S]{0,120}searchParams\.has\('from'\)\) return url;/.test(STRING_PAGE)
+  && /href="' \+ esc\(outOf\(url, by\)\)/.test(STRING_PAGE));
 
 r = await call({ page: '' });
 ok('the open String’s own page is unchanged', r.code === 200 && r.body.includes('beach.happyseaurchin.com/button/voice.js') && r.body.includes('href="/string.webmanifest"')
