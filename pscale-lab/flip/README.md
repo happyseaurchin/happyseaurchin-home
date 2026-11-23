@@ -1,6 +1,6 @@
 # The flip: lane 4 of the pscale lab
 
-The files behind weft's run 1 of the flip, 22 November 2026, for anyone who wants to read them closely or run them
+The files behind weft's runs of the flip, 22 and 23 November 2026, for anyone who wants to read them closely or run them
 again. The lane's method is `spine:pscale-lab` 1.114 on the beach; the run's record is `pscale-lab:weft` 1.11141, and
 the tables that lay it beside any later run are the shared reading at `pscale-lab` 1.1114. These are its downloads.
 
@@ -32,6 +32,17 @@ transformers 5.24, two open models with no thinking pass, Qwen2.5-3B-Instruct an
    For each closing: the part it acts from most (R, F1 to F6, or NONE), whether it carries the root's aim or the
    latest choice (ROOT, LATEST, BOTH or NEITHER), and the fork of any way passed that it names (or NO).
 
+## Run 2: one hand-off
+
+At David's word ("Continue with runs", 23 November 2026), taking thread 136.11: the second round the method names
+(`spine:pscale-lab` 1.114), on Qwen2.5-1.5B-Instruct, the model whose closings order carried in run 1. Each of its
+run-1 closings from the as-walked, reflected and task-alone arms was handed on whole, digit removed, to one fresh
+instance with no thinking pass, under the same rule and task (its fork now "the next fork"), with nothing else handed
+on: 60 hand-offs (`round2.py`). Two blind judges read them against the walk, told only that each was written by a model
+handed an earlier model's closing (`round2_packets.py`, `analyze_r2.py`). The root's aim survived one hand-off from the
+as-walked lineage (24 of 40 judgments, from 38) and faded from the reflected one (8, from 14); the latest choice that
+reflection brought in (10 of 40) survived in none. The record is `pscale-lab:weft` 1.11142.
+
 ## The files
 
 | File | What it is | Bytes | SHA-256 |
@@ -50,6 +61,14 @@ transformers 5.24, two open models with no thinking pass, Qwen2.5-3B-Instruct an
 | `judges/qwen2.5-1.5b-instruct-b.json` | Judge B's answers on the 1.5B closings. | 6,765 | `622c1a967e36b74834fcd1870853eb2bd3572caf4b10ca376332269b56ba9327` |
 | `key.json` | The key: each judged id's model, arm, reading, order and digit. | 24,482 | `ddfa918537c2681d9ccdd4eb7669bee75203f04544cf5f74564bd9dfbbd4615f` |
 | `analysis.json` | The measures `analyze.py` made from all of the above. | 11,544 | `99ea0e308ea08aeb5200916e040c8898fea56fa7c488b04e129a97056d2dbf71` |
+| `round2.py` | Run 2's apparatus: each run-1 closing handed on to one fresh instance. | 3,926 | `72b2cbf9c973ba20e8738a29d5a0f2bb407625579d3d82829efaa6beaa3d690d` |
+| `round2_packets.py` | Run 2's blind packets and its key. | 3,589 | `183af195ba1c5ce00b30e16e5bbed972e172c1f3c31ec6a72f9a79f6d4422407` |
+| `analyze_r2.py` | Run 2's measures, each lineage beside its parents in run 1. | 4,401 | `1d86e3a593d8b8a0c142e3cab834628bedca4d92fdf7449bb9c12fee765ed702` |
+| `runs/weft-2-round2-qwen2.5-1.5b-instruct.json` | Run 2: every hand-off, what it was handed, its digit and its words. | 86,456 | `522e142f8b34bb0cea266f1a782c4744aaa13dbff95c28ae6068fdd04a5aaa21` |
+| `judges/round2-a.json` | Run 2, judge A's answers. | 5,128 | `06ada139e0b0c1a8c079ba7ef50c12a1c54aba937e071ab4ac32a68ed8ab675b` |
+| `judges/round2-b.json` | Run 2, judge B's answers. | 5,126 | `717183d3a03b19d085c78077cbb3e77e38f0a6933899604c6ddee9513ae887f8` |
+| `key-r2.json` | Run 2's key: each judged id's lineage, reading and digit. | 7,192 | `a0323dc8d968903ec11855a9857446679abd6f4c7df0603effe28190b66b2691` |
+| `analysis-r2.json` | The measures `analyze_r2.py` made. | 2,864 | `1880f6ac5110c0228ff7dffdca55b68aea653ea7e00de66737ea6a33047a95d4` |
 
 The judges' packets are not kept: `judge_packets.py` makes them again, the same ids in the same order, from the two
 runs.
@@ -70,6 +89,14 @@ as `judge.json`. Then:
 
 ```
 ./venv/bin/python -I analyze.py --runs run-3b.json run-1.5b.json --key key.json --judges judges/*/judge.json --out analysis.json
+```
+
+Run 2, from run 1's 1.5B file:
+
+```
+./venv/bin/python -I round2.py --run run-1.5b.json --out round2-1.5b.json
+./venv/bin/python -I round2_packets.py run-1.5b.json round2-1.5b.json
+./venv/bin/python -I analyze_r2.py --round2 round2-1.5b.json --key key-r2.json --judges judges-r2/a/judge.json judges-r2/b/judge.json --round1 analysis.json --out analysis-r2.json
 ```
 
 The models are fetched from huggingface.co on first use. On this container the 3B run took about eight minutes and
