@@ -762,7 +762,7 @@ function drawCard(li, s, opts){
   } else {
     draw(li.querySelector('.body'), bodyHTML(s, opts.open));
   }
-  if (s.sealed) draw(li.querySelector('.thing'), ''); else setThing(li.querySelector('.thing'), s.url, s.by);
+  if (s.sealed) draw(li.querySelector('.thing'), ''); else setThing(li.querySelector('.thing'), s.url, s.a);
   draw(li.querySelector('.acts'), actsHTML(s, own, open));
   const row = li.querySelector('.ownrow');
   row.hidden = !(own && (OWNOPEN[s.a] || FLASH[s.a])) || !!EDITING[s.a];
@@ -804,28 +804,31 @@ function cardFor(url){
   return CARDS.get(url);
 }
 const OUT = 'target="_blank" rel="noopener noreferrer nofollow ugc"';
-/* THE QUICK WAY IN (function:string 6; lane share-string.1, 23 Nov 2026, David's GO at spine:o-page-unit 1.11111111118):
-   a card's link to one of this site's own pages carries who brought the reader there, ?from=<the card's sharer>, so the
-   page, and the who-brought-whom experience-points counts (spine:experience-points 1.1112), can name them. The line on
-   the beach is never changed: the tag is put on as the link is drawn. Never at a members' door, whose names are its own
-   beach's; never to another site; never over a from the link already carries (a race link's own); never on a card's
-   own address. A card passed on brings its reader through the one who passed it, so its inner card's link names them. */
+/* THE WAY ON (function:string 5.4; lane share-string.1, 23 Nov 2026, David's GO at spine:o-page-unit 1.11111111118): a card's
+   link to one of this site's own pages carries the share it came through, ?via=<the card's own address>, a number and no
+   name. The share stands in its sharer's own mirror under their key, so whoever reads the String at that address learns
+   who brought the reader, and the address can name nobody who did not share; a name in a link is a claim anyone can type
+   (David, 23 Nov 2026: 'a link should just involve a unique number which provides the right key for the share to
+   operate'). The line on the beach is never changed: the number is put on as the link is drawn. Never at a members'
+   door, whose shares are its own beach's; never to another site; never over a via the link already carries; never on a
+   card's own address. A card passed on brings its reader through the one who passed it, so its inner card's link
+   carries the passing card's address. */
 const OURS = /^https:\/\/(?:www\.)?happyseaurchin\.com(?:[\/?#]|$)/i;
-function outOf(url, by){
-  if (MEMBERS || !by || !OURS.test(url) || CARD_LINK.test(url)) return url;
-  try { const u = new URL(url); if (u.searchParams.has('from')) return url; u.searchParams.set('from', by); return u.href; } catch(e){ return url; }
+function outOf(url, via){
+  if (MEMBERS || !via || !OURS.test(url) || CARD_LINK.test(url)) return url;
+  try { const u = new URL(url); if (u.searchParams.has('via')) return url; u.searchParams.set('via', via); return u.href; } catch(e){ return url; }
 }
-function plainHTML(url, site, by){
+function plainHTML(url, site, via){
   const host = site || hostOf(url), path = pathOf(url);
-  return '<a class="t t-plain" href="' + esc(outOf(url, by)) + '" ' + OUT + '><span class="t-tile" aria-hidden="true">' + esc(host.charAt(0).toUpperCase()) + '</span><span class="t-where"><span class="t-site">' + esc(host) + '</span>' + (path ? '<span class="t-path">' + esc(path) + '</span>' : '') + '</span></a>';
+  return '<a class="t t-plain" href="' + esc(outOf(url, via)) + '" ' + OUT + '><span class="t-tile" aria-hidden="true">' + esc(host.charAt(0).toUpperCase()) + '</span><span class="t-where"><span class="t-site">' + esc(host) + '</span>' + (path ? '<span class="t-path">' + esc(path) + '</span>' : '') + '</span></a>';
 }
-function thingHTML(url, c, by){
+function thingHTML(url, c, via){
   if (c.x){
     return '<a class="t t-quote" href="' + esc(url) + '" ' + OUT + '><span class="t-by"><b>' + esc(c.author || c.handle || '') + '</b>' + (c.handle ? ' @' + esc(c.handle) : '') + '</span><span class="t-text">' + esc(c.text) + '</span>' +
       '<span class="t-site">' + (c.x.media ? 'with a picture or film · ' : '') + 'x.com' + (c.when ? ' · ' + esc(c.when) : '') + '</span></a>' + (c.x.media ? '<div class="xf"></div>' : '');
   }
-  if (!c.title && !c.text && !c.image) return plainHTML(url, c.site, by);
-  return '<a class="t" href="' + esc(outOf(url, by)) + '" ' + OUT + '>' + (c.image ? '<img class="t-pic" src="' + esc(c.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : '') +
+  if (!c.title && !c.text && !c.image) return plainHTML(url, c.site, via);
+  return '<a class="t" href="' + esc(outOf(url, via)) + '" ' + OUT + '>' + (c.image ? '<img class="t-pic" src="' + esc(c.image) + '" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">' : '') +
     '<span class="t-cap">' + (c.title ? '<span class="t-title">' + esc(c.title) + '</span>' : '') + (c.text ? '<span class="t-text">' + esc(c.text) + '</span>' : '') +
     '<span class="t-site">' + esc(c.author ? c.author + ' · ' : '') + esc(c.site || hostOf(url)) + '</span></span></a>';
 }
@@ -862,7 +865,7 @@ async function loadThing(el){
   const url = el._link, c = await cardFor(url);
   if (el._link !== url || !c) return;
   el.classList.remove('framed');
-  el.innerHTML = thingHTML(url, c, el._by);
+  el.innerHTML = thingHTML(url, c, el._via);
   el.querySelectorAll('img').forEach(i => { const gone = () => i.remove(); i.onerror = gone; i.onload = () => { if (i.naturalWidth < 160) gone(); else if (i.naturalWidth < 420) i.classList.add('small'); }; });
   if (c.x && c.x.media) frameX(el, c.x.id);
 }
@@ -878,15 +881,15 @@ function innerHTML(s){
   return '<div class="t-inner"><a class="t-innerwho" ' + page + '>' + ava(s.by, false) + '<span><b>' + esc(s.by) + '</b> · ' + esc(whenWords(ms)) + '</span></a>' +
     (s.why ? '<a class="t-innerwhy" ' + page + '>' + esc(s.why) + '</a>' : '') + '<div class="thing inner"></div></div>';
 }
-function setThing(el, url, by){
+function setThing(el, url, via){
   const nested = el.classList.contains('inner'), m = nested ? null : CARD_LINK.exec(url), inner = m ? READ.at.get(m[1]) : null;
-  const key = (inner ? url + '|' + inner.by + '|' + inner.url + '|' + inner.why : m && READ.gone.has(m[1]) ? url + '|gone' : url) + '|' + (by || '');
+  const key = (inner ? url + '|' + inner.by + '|' + inner.url + '|' + inner.why : m && READ.gone.has(m[1]) ? url + '|gone' : url) + '|' + (via || '');
   if (el._key === key) return;
-  el._key = key; el._link = url; el._by = by;
+  el._key = key; el._link = url; el._via = via;
   el.classList.remove('framed');
-  if (inner){ el.innerHTML = innerHTML(inner); setThing(el.querySelector('.thing.inner'), inner.url, by); return; }
+  if (inner){ el.innerHTML = innerHTML(inner); setThing(el.querySelector('.thing.inner'), inner.url, via); return; }
   if (m && READ.gone.has(m[1])){ el.innerHTML = '<p class="none" style="margin:0 14px 8px">Withdrawn by its sharer.</p>'; return; }
-  el.innerHTML = plainHTML(url, '', by);
+  el.innerHTML = plainHTML(url, '', via);
   if (CARD_LINK.test(url)) return;
   if (NEAR) NEAR.observe(el); else loadThing(el);
 }

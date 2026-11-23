@@ -41,6 +41,8 @@ Each note is what a session needs before it touches that file: what the page is,
 | [game-ecology](game-ecology.md) | `game-ecology.html` | the game-ecology proposal (28 Oct 2026), at `/game-ecology`, its snazzy view, which its law names at 6 (`/proposal/game-ecology` is its standard view,… |
 | [game-experience](game-experience.md) | `game-experience.html` | the Game Experience proposal (22 Nov 2026), at `/game-experience`, its snazzy view, which its law names at 6 (`/proposal/game-experience` is its stan… |
 | [games](games.md) | `games/` | games played here (27 Oct 2026, lane plug.1), at `/games`: |
+| [games-forage](games-forage.md) | `games/forage/` | Forage (23 Nov 2026, lane games.1), at `/games/forage`: happyseaurchin's game, built by keel, its family founded on the beach and plugged, its engine checked on its own terms |
+| [games-migration](games-migration.md) | `games/migration/` | Migration (23 Nov 2026, lane games.1), at `/games/migration`: happyseaurchin's game from keel's brief, its family founded on the beach, hosted with six changes so it fits the plugs and the sandbox |
 | [games-the-chain](games-the-chain.md) | `games/the-chain/` | The Chain (20 Nov 2026, lane chain.1), at `/games/the-chain`: happyseaurchin's game, built by keel, hosted in the plug's frame without the plug's checks |
 | [garden](garden.md) | `garden.html` | the garden proposal (17 Nov 2026), at `/garden`, its snazzy view once its law names it at 6 (`/proposal/garden` is its standard view, drawn from its b… |
 | [ghost-race](ghost-race.md) | `ghost-race.html` + `ghost-race/` | Ghost Race (27 Oct 2026, lane ghost-race.1), at `/ghost-race`: |
@@ -99,6 +101,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [talk-index](talk-index.md) | `talk-index.html` | the talk-index proposal (29 Oct 2026), at `/talk-index`, its snazzy view once its law names it at 6 (`/proposal/talk-index` is its standard view, draw… |
 | [the-ai-wave](the-ai-wave.md) | `the-ai-wave.html` | The AI wave (19 Nov 2026), at `/the-ai-wave`, its snazzy view once its law names it at 6 (`/proposal/the-ai-wave` is its standard view, drawn from its… |
 | [the-sea](the-sea.md) | `the-sea.html` | the sea proposal (12 Nov 2026), at `/the-sea`, its snazzy view, which its law names at 6, live from the same afternoon at David's word ('Pr and merge'… |
+| [theme-js-colour-tabs](theme-js-colour-tabs.md) | `theme.js` colour tabs | a colour's own places in the go menu (23 Nov 2026, lane colour-key.1, the coloured dashboards' step 3; |
 | [theme-js-members-doors](theme-js-members-doors.md) | `theme.js` members' doors | a page served at a door of a members' beach (19 Nov 2026, lane salt.app.2; |
 | [theme-js-share](theme-js-share.md) | `theme.js` Share | Share, beside the door (23 Nov 2026, lane share-string.1; |
 | [theme-js-site-pages](theme-js-site-pages.md) | `theme.js` site pages | the site's own pages on the beach (19 Nov 2026, lane eye.15, at David's 'Yes, go ahead' to weft's reading of his 'the go menu for the site and the per… |
@@ -115,6 +118,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [vault-js](vault-js.md) | `vault.js` | the vault in the page, two keys (5 Nov 2026, the doors' battery §8 item 21; |
 | [verso](verso.md) | `verso.html` | verso (5 Nov 2026, lane verso.1), at `/verso`: |
 | [verso-schematic](verso-schematic.md) | `verso-schematic.html` | verso's schematic's crafted page (9 Nov 2026, lane verso.2), at `/verso-schematic`, its Snazzy view once its law names it at 6 (`/schematic/verso` is … |
+| [visual-consistency](visual-consistency.md) | `visual-consistency.html` | the visual-consistency proposal's crafted page, at `/visual-consistency` (in the repository since 17 Nov 2026, #724; `/proposal/visual-consistency` is its standard view… |
 | [water-geometry](water-geometry.md) | `water-geometry.html` | the geometry of water (15 Nov 2026), at `/water-geometry`, its snazzy view, which its law names at 6 (`/proposal/water-geometry` is its standard view,… |
 | [waterline](waterline.md) | `waterline.html` | the waterline proposal (13 Nov 2026), at `/waterline`, its snazzy view, which its law names at 6 (`/proposal/waterline` is its standard view, drawn fr… |
 | [web-llm](web-llm.md) | `web-llm.html` | the web-llm proposal (9 Nov 2026, lane web-llm.1), at `/web-llm`, its snazzy view, which its law names at 6 (`/proposal/web-llm` is its standard view,… |

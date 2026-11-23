@@ -456,12 +456,18 @@ if (window.beachVoice && beachVoice.setting) beachVoice.setting(SKIN_AT).then(v 
 const GAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const URL_IN = /https?:\/\/[^\s'")\]]+/;
 const slug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-/* the lines at 1 to 9, and on down where an accumulator has nested them (a node's own voicing is its summary) */
-function linesOf(node, out = []){
+/* the lines at 1 to 9, and on down where an accumulator has nested them, so a list holds as many lines as its maker
+ * appends (David, 23 Nov 2026: 'it should be an accumulating block so that i can add thousands of games'). Past nine the
+ * beach nests a list: its earlier lines stand beneath its underscore, which is then a node and is read first, and each
+ * later nine in a container whose own voicing is a summary, which is read through. A node whose own voicing is a line
+ * (isLine: a link in it, as the keeper's catalogue has always been read; a maker's line for the makers' lists) with only
+ * notes beneath it gives that line. */
+function linesOf(node, out = [], isLine = s => URL_IN.test(s)){
   if (!node || typeof node !== 'object') return out;
+  if (node._ && typeof node._ === 'object') linesOf(node._, out, isLine);
   for (let d = 1; d <= 9; d++){ const v = node[String(d)];
     if (typeof v === 'string'){ if (v.trim()) out.push(v); }
-    else if (v && typeof v === 'object'){ const own = voice(v); if (URL_IN.test(own) && !Object.keys(v).some(k => /^[1-9]$/.test(k) && typeof v[k] === 'object')) out.push(own); else linesOf(v, out); } }
+    else if (v && typeof v === 'object'){ const own = voice(v); if (isLine(own) && !Object.keys(v).some(k => /^[1-9]$/.test(k) && typeof v[k] === 'object')) out.push(own); else linesOf(v, out, isLine); } }
   return out;
 }
 /* the keeper's catalogue: 'Ghost Wire — what it is. https://… [law game:ghost-wire; room pool:ghost-wire; joined …]' */
@@ -481,7 +487,8 @@ async function keeperShelf(){
   if (make) { const m = $('make'); m.innerHTML = 'Make the next one: <a href="' + esc(make) + '">the Arcade’s own guide</a>, or with your own AI, <a href="/game-arcade">the beach’s recipe</a> (<code>ways:arcade</code>).'; m.hidden = false; }
   return linesOf(b).map(keeperLine).filter(Boolean).map(g => Object.assign(g, { by: 'Phenomemental', shelf: 'the keeper’s catalogue, spine:arcade' }));
 }
-/* each maker's own list: '<game> — what it is · <its page>' at 1 to 9 of games:<handle>, the earliest list first */
+/* each maker's own list: '<game> — what it is · <its page>', one line a game appended to games:<handle>, as many as its
+ * maker makes (an accumulator, read through linesOf), the earliest list first */
 function makerLine(line){
   const m = /^\s*([a-z0-9][a-z0-9-]*)\s*[—–]\s*(.+)$/i.exec(line || ''), url = m && (URL_IN.exec(m[2]) || [''])[0].replace(/[;,.]+$/, '');
   if (!m || !url) return null;
@@ -493,7 +500,7 @@ async function makersShelf(){
   const mirrors = (lists && lists.mirrors) || {}, born = (lists && lists.born) || {};
   const hands = Object.keys(mirrors).sort((a, b) => (Date.parse(born[a] || '') || Infinity) - (Date.parse(born[b] || '') || Infinity) || (a < b ? -1 : 1)).slice(0, 27);
   const out = [];
-  hands.forEach(h => linesOf(mirrors[h]).map(makerLine).filter(Boolean).forEach(g => out.push(Object.assign(g, { by: h, shelf: h + '’s own list, games:' + h }))));
+  hands.forEach(h => linesOf(mirrors[h], [], s => !!makerLine(s)).map(makerLine).filter(Boolean).forEach(g => out.push(Object.assign(g, { by: h, shelf: h + '’s own list, games:' + h }))));
   return out;
 }
 const SHELVES = [keeperShelf, makersShelf];
@@ -508,7 +515,8 @@ async function shelf(){
 /* ── a game: its board cut to three, the day's count, its room's last three lines and a box to leave one ── */
 const ago = iso => { const t = Date.parse(iso || ''); if (isNaN(t)) return ''; const m = Math.round((Date.now() - t) / 60000);
   return m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + (m < 2880 ? ' day ago' : ' days ago'); };
-const scoreWords = r => /\d\s*s\b/.test(r.line || '') ? fmt(r.score) : String(r.score);
+const unitOf = line => { const m = /^\s*[A-Za-z][A-Za-z0-9_-]*\s+-?\d+(?:\.\d+)?\s*([a-z]{1,12})\b/.exec(line || ''); return m ? ' ' + m[1] : ''; };   // the word after a board's number, as its line says it ('FLEW 2.9 km' reads 2.9 km)
+const scoreWords = r => /\d\s*s\b/.test(r.line || '') ? fmt(r.score) : String(r.score) + unitOf(r.line);
 const tries = n => n ? '<span class="tries">' + (String(n) === '1' ? '1st try' : esc(n) + ' tries') + '</span>' : '';
 const cleanName = s => String(s || '').replace(/[^a-z0-9_\s-]/gi, '').replace(/\s+/g, ' ').trim().slice(0, 32);
 let NAME = '';   // the name this visit's lines go under, shared by every box on the page

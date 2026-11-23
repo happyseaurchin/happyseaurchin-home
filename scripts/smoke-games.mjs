@@ -154,6 +154,8 @@ try {
   await check('a newcomer keeps a run in one tap, its name and key made and kept through the frame (writes held back)', async () => {
     const law = await f.evaluate(() => window.beachGame.law());
     if (!law || law.ok === false) return 'skipped: no law for ' + GAME + ' on the beach yet, so its family is not founded';
+    if (!(await f.evaluate(() => window.ENGINE && typeof window.ENGINE.level === 'function' && typeof window.ENGINE.bot === 'function')))
+      return 'skipped: its engine offers no level and bot (not the Arcade\'s shape), so no run can be played for it here; its own flight proves the keep (Forage, games-forage.md)';
     const before = writes;
     const kept = await f.evaluate(async () => {
       const g = window.beachGame, E = window.ENGINE, day = g.today(), L = await g.law();
