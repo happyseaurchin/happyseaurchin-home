@@ -249,7 +249,7 @@ const PROPOSAL_CARD = SITE + '/assets/proposal/card.png';
 const PLAIN = {
   title: 'Proposals',
   text: "A proposal kept on the beach grows into its project's page: its steps, decisions anyone can answer, a room, and threads that tie the work to it as it begins.",
-  image: PROPOSAL_CARD, url: SITE + '/proposal'
+  image: PROPOSAL_CARD, url: ''
 };
 const KIND = { proposal: 'A proposal', project: 'A project', complete: 'A project, complete', 'set aside': 'A proposal, set aside', inquiry: 'An inquiry', walk: 'A walk', recipe: 'A recipe', explainer: 'An explainer', reference: 'A reference' };
 const clip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1).replace(/[\s,;:—–-]+\S*$/, '') + '…' : s; };
@@ -325,7 +325,9 @@ export function withProposalPreview(html, p) {
   set('property', 'og:title', p.title);
   set('property', 'og:description', p.text);
   set('property', 'og:image', p.image);
-  set('property', 'og:url', p.url);
+  /* its own address only where the preview is its own: the door and the code card take og:url as the page's address, so
+     the plain preview, served for any name, names none, and they read the address the page was opened at */
+  if (p.url) html = html.replace(/<meta property="og:image" content="[^"]*">/, (m) => m + '\n<meta property="og:url" content="' + q(p.url) + '">');
   return html;
 }
 async function proposalPage(res, given) {

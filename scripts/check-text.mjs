@@ -129,13 +129,13 @@ check('a listed proposal: the page itself, as html, kept ten minutes at the CDN 
 check('…titled with its crafted page\'s own title, its og:title the same', titleIn(r.body) === 'The Sea — the open meeting, extended to a city' && meta(r.body, 'og:title') === 'The Sea — the open meeting, extended to a city', [titleIn(r.body), meta(r.body, 'og:title')]);
 check('…its line the list\'s, before the band\'s clause, said as a proposal', meta(r.body, 'og:description') === 'A proposal: The open meeting extended to a city: a person dives into the crowd' && meta(r.body, 'description') === meta(r.body, 'og:description'), meta(r.body, 'og:description'));
 check('…its picture its crafted page\'s share still, made whole on this site', meta(r.body, 'og:image') === 'https://happyseaurchin.com/animations/the-sea.jpg', meta(r.body, 'og:image'));
-check('…its address its own, and the crafted page read once, at its path on this site', meta(r.body, 'og:url') === 'https://happyseaurchin.com/proposal/sea' && siteReads.length === 1 && siteReads[0] === '/the-sea', [meta(r.body, 'og:url'), siteReads]);
+check('…its address its own, written once, and the crafted page read once, at its path on this site', meta(r.body, 'og:url') === 'https://happyseaurchin.com/proposal/sea' && (head(r.body).match(/og:url/g) || []).length === 1 && siteReads.length === 1 && siteReads[0] === '/the-sea', [meta(r.body, 'og:url'), siteReads]);
 siteReads = [];
 r = await call({ proposal: 'lab' });
 check('a proposal whose page is another site\'s: titled from its spine as the text writes it, the proposal card its picture, and the other site never read', titleIn(r.body) === 'The lab' && meta(r.body, 'og:image') === 'https://happyseaurchin.com/assets/proposal/card.png' && meta(r.body, 'og:description') === 'A proposal: What an address can do' && siteReads.length === 0, [titleIn(r.body), meta(r.body, 'og:description'), meta(r.body, 'og:image'), siteReads]);
 const PLAIN_TITLE = 'Proposals';
 r = await call({ proposal: 'kern' });
-check('a family that is not a proposal (unlisted, its phase another kind\'s): the page with its plain preview, which says the rest itself', r.code === 200 && titleIn(r.body) === PLAIN_TITLE && meta(r.body, 'og:url') === 'https://happyseaurchin.com/proposal', [titleIn(r.body), meta(r.body, 'og:url')]);
+check('a family that is not a proposal (unlisted, its phase another kind\'s): the page with its plain preview, which says the rest itself, and names no address of its own, so the door and the code card name the one it was opened at', r.code === 200 && titleIn(r.body) === PLAIN_TITLE && meta(r.body, 'og:url') === undefined, [titleIn(r.body), meta(r.body, 'og:url')]);
 r = await call({ proposal: 'nothing-here' });
 check('…and a name with no spine the same', r.code === 200 && titleIn(r.body) === PLAIN_TITLE, titleIn(r.body));
 r = await call({ proposal: '../etc' });
