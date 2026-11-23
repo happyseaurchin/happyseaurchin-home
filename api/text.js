@@ -283,10 +283,20 @@ export function listLine(list, name) {
   })(list, 0);
   return found;
 }
-/* what a proposal says of itself, from its spine, its law and its line on the list; null where it is no proposal */
-export function proposalCard(name, spine, law, list) {
+/* a maker's own line for a name, in the order listed.js reads the lists, the earliest made first: a line in any
+   proposed:<handle> lists a proposal as the keeper's list does (function:proposal 7 and 8, 23 Nov 2026) */
+async function makersLine(name) {
+  const got = await mirrorsOf('proposed');
+  const lists = (got && got.mirrors) || {}, born = (got && got.born) || {};
+  const hands = Object.keys(lists).sort((a, b) => { const x = String(born[a] || ''), y = String(born[b] || ''); return x < y ? -1 : x > y ? 1 : a.localeCompare(b); });
+  for (const h of hands) { const l = listLine(lists[h], name); if (l) return Object.assign(l, { by: h }); }
+  return null;
+}
+/* what a proposal says of itself, from its spine, its law and its line on the list (the keeper's, else the one given
+   from a maker's own); null where it is no proposal */
+export function proposalCard(name, spine, law, list, line) {
   if (!spine || typeof spine !== 'object') return null;
-  const listed = listLine(list, name);
+  const listed = listLine(list, name) || line || null;
   const phase = ((voiceOf(at(law, ['7'])).match(/^phase:\s*(set aside|[a-z]+)/i) || [])[1] || '').toLowerCase();
   /* only what /proposal draws: one on the list, or one whose law names a phase of the form's own (function:proposal 6);
      any other name the page says plainly is not one, so its preview is the plain one */
@@ -524,7 +534,8 @@ async function proposalPage(res, given) {
   if (/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) {
     try {
       const [spine, law, list] = await within(3500, Promise.all([readBlock('spine:' + name), readBlock('function:' + name), readBlock('proposals').catch(() => null)]));
-      const c = proposalCard(name, spine, law, list);
+      const line = spine && !listLine(list, name) ? await within(2000, makersLine(name)).catch(() => null) : null;
+      const c = proposalCard(name, spine, law, list, line);
       /* its crafted page's own title and picture where it has one: the name its maker gave it, and its share still; else
          its own knots, where it has a step to hang them on; else no picture, its title and line alone */
       const h = c && c.page ? await within(2500, headOf(c.page)).catch(() => ({})) : {};
