@@ -40,11 +40,23 @@ const BLOCKS = {
   'spine:kern': { _: 'A kernel of regions.', 1: 'THE PERSON — who one is.', 2: { _: 'BETWEEN PEOPLE — what passes.', 1: 'TRUST — how it grows.' } },
   'function:kern': { _: 'THE LAW of kern.', 1: 'mode: frame — regions side by side', 7: 'phase: reference' },
   'spine:wire': { _: 'SPINE — a game on the clock.' },
+  'spine:sea': { _: 'THE SEA — the open meeting extended to a city, in the words SALT uses.', 1: { _: 'DIVE — a person dives in.', 8: 'DECIDE — Dive? Asked of David.' } },
+  'function:sea': { _: 'THE LAW of sea.', 1: 'mode: document' },
+  proposals: { _: { _: 'PROPOSALS — one line each, the first nine kept whole beneath the supernest.', 1: 'sea — the open meeting extended to a city: a person dives into the crowd; its band is a night sea · happyseaurchin.com/the-sea' }, 1: { _: 'the next nine', 1: 'lab — what an address can do · example.org/lab' } },
   'function:wire': { _: 'THE LAW of wire.', 1: 'mode: game', 6: 'page: https://example.org/wire.html' }
 };
 let reads = [], down = false;
+const SITE_PAGES = {
+  '/the-sea': '<!doctype html><html><head><title>The Sea · a night sea</title><meta property="og:title" content="The Sea — the open meeting, extended to a city"><meta content="/animations/the-sea.jpg" property="og:image"></head><body>…</body></html>'
+};
+let siteReads = [];
 globalThis.fetch = async (url) => {
   const u = new URL(url), name = u.searchParams.get('block');
+  if (u.hostname === 'happyseaurchin.com') {
+    siteReads.push(u.pathname);
+    const html = SITE_PAGES[u.pathname];
+    return { status: html ? 200 : 404, ok: !!html, text: async () => html || 'not found' };
+  }
   reads.push(name || 'index');
   const body = (status, d) => ({ status, ok: status < 400, json: async () => d });
   if (down) return body(503, { error: 'down' });
@@ -107,7 +119,59 @@ r = await call({ family: 'kern' });
 check('a frame\'s regions stand side by side at the root, drawn plainly at /walk', r.code === 200 && r.body.includes('\n## The person · 1\n') && r.body.includes('\n## Between people · 2\n') && r.body.includes('\n### Trust · 2.1\n') && r.body.includes('Drawn plainly: https://happyseaurchin.com/walk/kern') && !r.body.includes('## About this family'), r.body.slice(0, 900));
 r = await call({ family: 'wire' });
 check('a game is not a document: it is read on its page', r.code === 200 && r.body.includes('Its parts are not a document (its law says mode: game), so they are read on its page, https://example.org/wire.html.'), r.body.slice(0, 900));
+console.log('\n/proposal/<name>: the page, saying what it is before it runs');
+const head = (b) => String(b || '').split('</head>')[0];
+const meta = (b, k) => (new RegExp('<meta (?:property|name)="' + k + '" content="([^"]*)">').exec(head(b)) || [])[1];
+const titleIn = (b) => (/<title>([^<]*)<\/title>/.exec(head(b)) || [])[1];
+siteReads = [];
+r = await call({ proposal: 'sea', x: '1' });
+check('a listed proposal: the page itself, as html, kept ten minutes at the CDN and served stale for a day while it is read again', r.code === 200 && /^text\/html/.test(r.headers['Content-Type']) && /max-age=600, stale-while-revalidate=86400/.test(r.headers['Vercel-CDN-Cache-Control']) && String(r.body).includes('</html>') && String(r.body).includes('function shelfOf'), r.headers);
+check('…titled with its crafted page\'s own title, its og:title the same', titleIn(r.body) === 'The Sea — the open meeting, extended to a city' && meta(r.body, 'og:title') === 'The Sea — the open meeting, extended to a city', [titleIn(r.body), meta(r.body, 'og:title')]);
+check('…its line the list\'s, before the band\'s clause, said as a proposal', meta(r.body, 'og:description') === 'A proposal: The open meeting extended to a city: a person dives into the crowd' && meta(r.body, 'description') === meta(r.body, 'og:description'), meta(r.body, 'og:description'));
+check('…its picture its crafted page\'s share still, made whole on this site, shown large', meta(r.body, 'og:image') === 'https://happyseaurchin.com/animations/the-sea.jpg' && meta(r.body, 'twitter:card') === 'summary_large_image', [meta(r.body, 'og:image'), meta(r.body, 'twitter:card')]);
+check('…its address its own, written once, and the crafted page read once, at its path on this site', meta(r.body, 'og:url') === 'https://happyseaurchin.com/proposal/sea' && (head(r.body).match(/og:url/g) || []).length === 1 && siteReads.length === 1 && siteReads[0] === '/the-sea', [meta(r.body, 'og:url'), siteReads]);
+siteReads = [];
+r = await call({ proposal: 'lab' });
+check('a proposal whose page is another site\'s: titled from its spine as the text writes it, its own knots its picture, and the other site never read', titleIn(r.body) === 'The lab' && meta(r.body, 'og:image') === 'https://happyseaurchin.com/proposal/lab/knots' && meta(r.body, 'og:description') === 'A proposal: What an address can do' && siteReads.length === 0, [titleIn(r.body), meta(r.body, 'og:description'), meta(r.body, 'og:image'), siteReads]);
+BLOCKS['spine:bare'] = { _: 'THE BARE ONE — a proposal with no steps yet.' };
+BLOCKS['function:bare'] = { _: 'THE LAW of bare.', 1: 'mode: document', 7: 'phase: proposal' };
+r = await call({ proposal: 'bare' });
+check('a proposal with no step to hang knots on and no crafted page: its title and line alone, as a small card', titleIn(r.body) === 'The bare one' && meta(r.body, 'og:image') === undefined && meta(r.body, 'twitter:card') === 'summary' && meta(r.body, 'og:url') === 'https://happyseaurchin.com/proposal/bare', [titleIn(r.body), meta(r.body, 'og:image'), meta(r.body, 'twitter:card')]);
+const PLAIN_TITLE = 'Proposals';
+r = await call({ proposal: 'kern' });
+check('a family that is not a proposal (unlisted, its phase another kind\'s): the page with its plain preview, which says the rest itself, no picture but its title and line as a small card, and no address of its own, so the door and the code card name the one it was opened at', r.code === 200 && titleIn(r.body) === PLAIN_TITLE && meta(r.body, 'og:image') === undefined && meta(r.body, 'twitter:card') === 'summary' && meta(r.body, 'og:url') === undefined, [titleIn(r.body), meta(r.body, 'og:image'), meta(r.body, 'twitter:card'), meta(r.body, 'og:url')]);
+r = await call({ proposal: 'nothing-here' });
+check('…and a name with no spine the same', r.code === 200 && titleIn(r.body) === PLAIN_TITLE, titleIn(r.body));
+r = await call({ proposal: '../etc' });
+check('…and a name that is no name the same, the beach never asked', r.code === 200 && titleIn(r.body) === PLAIN_TITLE, titleIn(r.body));
+r = await call({ proposal: 'sea' }, 'HEAD');
+check('a HEAD answered as a GET', r.code === 200 && /^text\/html/.test(r.headers['Content-Type']), r.headers);
+
+console.log('\n/proposal/<name>/knots: its knots as a picture');
+const { inflateSync } = await import('node:zlib');
+/* the picture read back: its size, and its pixels, the Sub filter undone */
+function pixelsOf(buf) {
+  const W = buf.readUInt32BE(16), H = buf.readUInt32BE(20), parts = [];
+  for (let o = 8; o < buf.length;) { const n = buf.readUInt32BE(o), type = buf.toString('ascii', o + 4, o + 8); if (type === 'IDAT') parts.push(buf.slice(o + 8, o + 8 + n)); o += 12 + n; }
+  const raw = inflateSync(Buffer.concat(parts)), px = Buffer.alloc(W * H * 3), row = W * 3 + 1;
+  for (let y = 0; y < H; y++) for (let i = 0; i < W * 3; i++) { const v = raw[y * row + 1 + i], left = i >= 3 ? px[y * W * 3 + i - 3] : 0; px[y * W * 3 + i] = raw[y * row] === 1 ? (v + left) & 255 : v; }
+  return { W, H, px };
+}
+const count = (pic, rgb) => { let n = 0; for (let i = 0; i < pic.px.length; i += 3) if (Math.abs(pic.px[i] - rgb[0]) < 6 && Math.abs(pic.px[i + 1] - rgb[1]) < 6 && Math.abs(pic.px[i + 2] - rgb[2]) < 6) n++; return n; };
+r = await call({ knots: 'lab' });
+const isPng = Buffer.isBuffer(r.body) && r.body.slice(0, 8).equals(Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]));
+check('a PNG, 1200 by 630, kept ten minutes at the CDN and served stale for a day', r.code === 200 && r.headers['Content-Type'] === 'image/png' && isPng && r.body.readUInt32BE(16) === 1200 && r.body.readUInt32BE(20) === 630 && /max-age=600, stale-while-revalidate=86400/.test(r.headers['Vercel-CDN-Cache-Control']), [r.code, r.headers]);
+const pic = isPng ? pixelsOf(r.body) : null;
+check('ann\'s GO at 1.8 is a green knot, and the HOLDS at 4.8 is beside the steps so draws none', pic && count(pic, [0x7F, 0xCB, 0x86]) > 300, pic && count(pic, [0x7F, 0xCB, 0x86]));
+check('…bob\'s sealed answer is a knot in the plain grey, its words never read', pic && count(pic, [0x82, 0xA0, 0xA8]) > 300, '');
+r = await call({ knots: 'wire' });
+check('a family with no step down 1 has no knots: 404, so a crawler shows the title and line alone', r.code === 404, r.code);
+r = await call({ knots: '../x' });
+check('a name that is no name is refused', r.code === 400, r.code);
+
 down = true;
+r = await call({ proposal: 'sea' });
+check('a beach that cannot be read still serves the page, its plain preview kept only thirty seconds', r.code === 200 && titleIn(r.body) === PLAIN_TITLE && /max-age=30/.test(r.headers['Vercel-CDN-Cache-Control']) && String(r.body).includes('</html>'), r.headers);
 r = await call({ family: 'lab' });
 check('a beach that cannot be read is said plainly, 502', r.code === 502 && /could not be read/.test(r.body), r);
 

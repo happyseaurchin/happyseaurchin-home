@@ -40,7 +40,10 @@ if (SHOTS) mkdirSync(SHOTS, { recursive: true });
 
 /* ── the site, as Vercel serves it ── */
 const vercel = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf8'));
-const REWRITES = (vercel.rewrites || []).filter((r) => !/^\/api\//.test(r.destination)).map((r) => ({
+/* /proposal/<name> is served through /api/text, the proposal's own preview written into the page's head
+   (lane share-string.1, 23 Nov 2026); here it is the page as it stands, its head aside */
+const REWRITES = (vercel.rewrites || []).map((r) => (/^\/api\/text\?proposal=/.test(r.destination) ? { ...r, destination: '/proposal' } : r))
+  .filter((r) => !/^\/api\//.test(r.destination)).map((r) => ({
   re: new RegExp('^' + r.source.replace(/:[a-z]+/gi, '[^/]+') + '/?$'),
   to: r.destination,
 }));

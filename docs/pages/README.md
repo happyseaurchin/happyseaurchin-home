@@ -30,6 +30,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [determinacy](determinacy.md) | `determinacy.html` | the determinacy inquiry (15 Nov 2026), at `/determinacy`, its snazzy view, which its law names at 6 (`/proposal/determinacy` is its standard view, dra… |
 | [door-js](door-js.md) | `door.js` | the door, ‘with your AI’ (15 Nov 2026, lane o-page-unit.3; |
 | [experience-first](experience-first.md) | `experience-first.html` | Experience first (20 Nov 2026, lane experience.1), at `/experience-first`, its snazzy view, which its law names at 6 (`/proposal/experience-first` is … |
+| [experience-points](experience-points.md) | `experience-points.html` | the Experience Points proposal (23 Nov 2026), at `/experience-points`, its snazzy view, which its law names at 6 (`/proposal/experience-points` is its stan… |
 | [experiments](experiments.md) | `experiments/` | standalone math/visualization artifacts + generated `pscale-inventory.html` |
 | [eye](eye.md) | `eye.html` | Iris and Magic Eye (16 Nov 2026, lane eye.1), at `/eye`: |
 | [families](families.md) | `families.html` | Families on the Beach (17 Nov 2026, lane proposals-tidy.2, at David's word: |
@@ -38,6 +39,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [full-bandwidth](full-bandwidth.md) | `full-bandwidth.html` | the full-bandwidth walk (13 Nov 2026), at `/full-bandwidth`, its crafted page, which its law names at 6 (`/walk/full-bandwidth` draws the same family … |
 | [game-arcade](game-arcade.md) | `game-arcade.html` | the game arcade's proposal (21 Oct 2026), at `/game-arcade`: |
 | [game-ecology](game-ecology.md) | `game-ecology.html` | the game-ecology proposal (28 Oct 2026), at `/game-ecology`, its snazzy view, which its law names at 6 (`/proposal/game-ecology` is its standard view,… |
+| [game-experience](game-experience.md) | `game-experience.html` | the Game Experience proposal (22 Nov 2026), at `/game-experience`, its snazzy view, which its law names at 6 (`/proposal/game-experience` is its stan… |
 | [games](games.md) | `games/` | games played here (27 Oct 2026, lane plug.1), at `/games`: |
 | [games-the-chain](games-the-chain.md) | `games/the-chain/` | The Chain (20 Nov 2026, lane chain.1), at `/games/the-chain`: happyseaurchin's game, built by keel, hosted in the plug's frame without the plug's checks |
 | [garden](garden.md) | `garden.html` | the garden proposal (17 Nov 2026), at `/garden`, its snazzy view once its law names it at 6 (`/proposal/garden` is its standard view, drawn from its b… |
@@ -51,6 +53,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [lanes](lanes.md) | `lanes.html` | `/lanes/<hand>[+<hand>…]` (20 Oct 2026): |
 | [leros-phase-three](leros-phase-three.md) | `/leros-phase-three` | a redirect (vercel.json) to Matthew's own crafted page for phase three, https://phenomemental.github.io/happyseaurchin-beach/leros-phase-three.html, s… |
 | [leros-phase-two](leros-phase-two.md) | `leros-phase-two.html` | the leros-phase-two proposal (28 Oct 2026), at `/leros-phase-two`, its snazzy view, once its law names it at 6 (`/proposal/leros-phase-two` is its sta… |
+| [listed-js](listed-js.md) | `listed.js` | the proposals on the beach read as one list (23 Nov 2026, lane arcade-credits.1, at David's word: "Go with the non-permission method; the listing on proposals page should go thr… |
 | [look-js](look-js.md) | `look.js` | a maker's look, worn by any page that draws a family (29 Oct 2026, lane look.1; |
 | [loom](loom.md) | `loom.html` | the loom (27 Oct 2026), at `/loom`: |
 | [magic-mirror](magic-mirror.md) | `magic-mirror.html` | the magic-mirror proposal (16 Nov 2026), at `/magic-mirror`, its snazzy view, which its law names at 6 (`/proposal/magic-mirror` is its standard view,… |
@@ -61,13 +64,14 @@ Each note is what a session needs before it touches that file: what the page is,
 | [mistake-proofing](mistake-proofing.md) | `mistake-proofing.html` | the mistake-proofing proposal (2 Nov 2026), at `/mistake-proofing`, its snazzy view, which its law names at 6 (`/proposal/mistake-proofing` is its sta… |
 | [navigator](navigator.md) | `navigator.html` | the navigator proposal (16 Nov 2026), at `/navigator`, its snazzy view, which its law names at 6 (`/proposal/navigator` is its standard view, drawn fr… |
 | [negative-space](negative-space.md) | `negative-space.html` | the negative-space inquiry (21 Nov 2026), at `/negative-space`, its snazzy view, which its law names at 6 (`/proposal/negative-space` is its standard view… |
-| [nothing-between-us](nothing-between-us.md) | `nothing-between-us.html` | nothing between us is finished (15 Nov 2026), at `/nothing-between-us`, the crafted page of the document family nothing-between-us, once its law names… |
+| [nothing-between-us](nothing-between-us.md) | `nothing-between-us.html` | nothing between us is finished (15 Nov 2026), at `/nothing-between-us`, the crafted page of the document family nothing-between-us, which its law names… |
 | [o-page-unit](o-page-unit.md) | `o-page-unit.html` | the o‑page unit proposal (10 Nov 2026), at `/o-page-unit`, its snazzy view once its law names it at 6 (`/proposal/o-page-unit` is its standard view, d… |
 | [open-build](open-build.md) | `open-build.html` | the Open Build proposal (19 Nov 2026), at `/open-build`, its snazzy view once its law names it at 6 (`/proposal/open-build` is its standard view, draw… |
 | [packages](packages.md) | `packages/`, `real-organic-human/`, `virtual-ai-agents/` | static site sections |
 | [passing-it-on](passing-it-on.md) | `passing-it-on.html` | the passing-it-on proposal (21 Oct 2026), at `/passing-it-on`: |
 | [personal-history](personal-history.md) | `personal-history.html` | the personal-history proposal (9 Nov 2026), at `/personal-history`, its snazzy view, which its law names at 6 (`/proposal/personal-history` is its sta… |
 | [pocket-beach](pocket-beach.md) | `pocket-beach.html` | the pocket-beach proposal (28 Oct 2026), at `/pocket-beach`, its snazzy view once its law names it at 6 (`/proposal/pocket-beach` is its standard view… |
+| [power-with](power-with.md) | `power-with.html` | the Power-with inquiry (22 Nov 2026), at `/power-with`, its snazzy view, which its law names at 6 (`/proposal/power-with` is its standard view, d… |
 | [premiere](premiere.md) | `premiere.html` | keel's reader for the reflexive experience form (18 Oct 2026), at `/premiere/<name>` (a rewrite in `vercel.json`; |
 | [presentation](presentation.md) | `presentation.html` | David's talk for makers at the code-sharing evening (10 Nov 2026, from 7.30, twenty minutes), at `/presentation`, with a stage view for the projector … |
 | [proposal](proposal.md) | `proposal.html` | the proposal package's page (22 Oct 2026; |
@@ -96,6 +100,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [the-ai-wave](the-ai-wave.md) | `the-ai-wave.html` | The AI wave (19 Nov 2026), at `/the-ai-wave`, its snazzy view once its law names it at 6 (`/proposal/the-ai-wave` is its standard view, drawn from its… |
 | [the-sea](the-sea.md) | `the-sea.html` | the sea proposal (12 Nov 2026), at `/the-sea`, its snazzy view, which its law names at 6, live from the same afternoon at David's word ('Pr and merge'… |
 | [theme-js-members-doors](theme-js-members-doors.md) | `theme.js` members' doors | a page served at a door of a members' beach (19 Nov 2026, lane salt.app.2; |
+| [theme-js-share](theme-js-share.md) | `theme.js` Share | Share, beside the door (23 Nov 2026, lane share-string.1; |
 | [theme-js-site-pages](theme-js-site-pages.md) | `theme.js` site pages | the site's own pages on the beach (19 Nov 2026, lane eye.15, at David's 'Yes, go ahead' to weft's reading of his 'the go menu for the site and the per… |
 | [theme-js-sitehand](theme-js-sitehand.md) | `theme.js` siteHand | the code card, handing a page on in person (17 Nov 2026, lane kernel-tidy.1, thread 49; |
 | [theme-js-sitekeys](theme-js-sitekeys.md) | `theme.js` siteKeys | the keys this device keeps, never in plain text (5 Nov 2026, the doors' battery §8 item 20; |
@@ -110,6 +115,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [vault-js](vault-js.md) | `vault.js` | the vault in the page, two keys (5 Nov 2026, the doors' battery §8 item 21; |
 | [verso](verso.md) | `verso.html` | verso (5 Nov 2026, lane verso.1), at `/verso`: |
 | [verso-schematic](verso-schematic.md) | `verso-schematic.html` | verso's schematic's crafted page (9 Nov 2026, lane verso.2), at `/verso-schematic`, its Snazzy view once its law names it at 6 (`/schematic/verso` is … |
+| [visual-consistency](visual-consistency.md) | `visual-consistency.html` | the visual-consistency proposal's crafted page, at `/visual-consistency` (in the repository since 17 Nov 2026, #724; `/proposal/visual-consistency` is its standard view… |
 | [water-geometry](water-geometry.md) | `water-geometry.html` | the geometry of water (15 Nov 2026), at `/water-geometry`, its snazzy view, which its law names at 6 (`/proposal/water-geometry` is its standard view,… |
 | [waterline](waterline.md) | `waterline.html` | the waterline proposal (13 Nov 2026), at `/waterline`, its snazzy view, which its law names at 6 (`/proposal/waterline` is its standard view, drawn fr… |
 | [web-llm](web-llm.md) | `web-llm.html` | the web-llm proposal (9 Nov 2026, lane web-llm.1), at `/web-llm`, its snazzy view, which its law names at 6 (`/proposal/web-llm` is its standard view,… |

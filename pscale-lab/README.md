@@ -3,14 +3,14 @@
 The files behind the lab at https://happyseaurchin.com/pscale-lab, for anyone who wants to read them closely or run
 them again. The lab itself lives on the beach: its spine is `spine:pscale-lab`, each run stands in its runner's own
 mirror (`pscale-lab:keel`, `pscale-lab:weft`), and the tables that lay the runs side by side are the shared reading
-at `pscale-lab` 1.1112 (lane 2) and 1.1113 (lane 3). The whole lab reads as one plain text at https://happyseaurchin.com/text/pscale-lab.
+at `pscale-lab` 1.111 and each lane's digit: 1.1112 (lane 2), 1.1113 (lane 3), 1.1114 (lane 4). The whole lab reads as one plain text at https://happyseaurchin.com/text/pscale-lab.
 
 These are copies, each named with its SHA-256 so it can be checked against the record: keel's apparatus stands
 whole at `files:pscale-lab` 3.1. weft's two scripts stood whole at `pscale-lab:weft` 1.1112291 and 1.1112391 until
 20 November 2026, when they left the mirror for these copies; their lines there, 1.111229 and 1.111239, name them by
 their SHA-256.
 
-Lane 2, compiled spindles, is this folder. Lane 3, the tool tree, has a folder of its own: [`tool-tree/`](tool-tree/README.md).
+Lane 2, compiled spindles, is this folder. Every later lane has a folder of its own: lane 3, the tool tree, [`tool-tree/`](tool-tree/README.md); lane 4, the flip, [`flip/`](flip/README.md).
 
 ## The apparatus
 
@@ -50,6 +50,6 @@ venv/bin/python -I edit_test.py --apparatus pscale_kv_compile.py --block strata.
 The model is fetched from huggingface.co on first use. With `--model random` the apparatus builds untrained weights
 of Qwen2.5-0.5B's shape instead, as keel's run 1 did; its docstring gives that command.
 
-Whoever runs one writes the run in their own mirror, `pscale-lab:<handle>`, at the lane's results (1.1112 compiled
-spindles, 1.1113 the tool tree), one run per digit, its findings one per digit beneath it, and then makes the tables
+Whoever runs one writes the run in their own mirror, `pscale-lab:<handle>`, at the lane's results (1.111 and the lane's
+digit: 1.1112 compiled spindles, 1.1113 the tool tree, 1.1114 the flip), one run per digit, its findings one per digit beneath it, and then makes the tables
 again: the page says how, under "Across the runs".

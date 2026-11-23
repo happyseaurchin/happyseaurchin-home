@@ -3695,28 +3695,48 @@
   };
 
   var CSS =
-    '.aid-pill{position:fixed;left:max(14px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));z-index:45;' +
+    '.aid-pill,.aid-share{position:fixed;left:max(14px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));z-index:45;' +
       'display:inline-flex;align-items:center;gap:7px;margin:0;padding:8px 14px 8px 11px;border-radius:999px;' +
       'border:1px solid rgba(91,63,207,.42);background:#fbfaf7;color:#3d2a96;' +
       'font:600 13px/1.1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.01em;' +
       'box-shadow:0 4px 18px rgba(20,10,60,.18);cursor:pointer;-webkit-tap-highlight-color:transparent;' +
       'transition:opacity .2s ease,transform .2s ease}' +
     '.aid-pill:hover{border-color:#5b3fcf}' +
-    '.aid-pill:focus-visible{outline:2px solid #5b3fcf;outline-offset:3px}' +
+    '.aid-pill:focus-visible,.aid-share:focus-visible{outline:2px solid #5b3fcf;outline-offset:3px}' +
     'html[data-theme="dark"] .aid-pill{background:#201d29;color:#cdbfff;border-color:rgba(171,152,255,.5);box-shadow:0 4px 18px rgba(0,0,0,.45)}' +
     'html[data-theme="dark"] .aid-pill:hover{border-color:#ab98ff}' +
-    '.aid-pill svg{width:16px;height:16px;flex:none}' +
-    '.aid-pill.aid-away{opacity:0;pointer-events:none;transform:translateY(10px)}' +
+    /* Share, the door's neighbour: the same pill filled, the one act a reader is most likely to want */
+    '.aid-share,.aid-share:visited{background:#5b3fcf;border-color:#5b3fcf;color:#fff;text-decoration:none}' +
+    '.aid-share:hover{background:#4a30b8;border-color:#4a30b8;color:#fff}' +
+    'html[data-theme="dark"] .aid-share,html[data-theme="dark"] .aid-share:visited{background:#ab98ff;border-color:#ab98ff;color:#17121f;box-shadow:0 4px 18px rgba(0,0,0,.45)}' +
+    'html[data-theme="dark"] .aid-share:hover{background:#c3b5ff;border-color:#c3b5ff;color:#17121f}' +
+    'html[data-theme="dark"] .aid-share:focus-visible{outline-color:#ab98ff}' +
+    '.aid-pill svg,.aid-share svg{width:16px;height:16px;flex:none}' +
+    '.aid-pill.aid-away,.aid-share.aid-away{opacity:0;pointer-events:none;transform:translateY(10px)}' +
     'html.aid-open .aid-pill,body:has(dialog[open]) .aid-pill,body:has(.pop-back:not([hidden]):not(.hidden)) .aid-pill,' +
-      'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-pill{display:none}' +
-    '@media print{.aid-pill{display:none}}';
+      'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-pill,' +
+      'html.aid-open .aid-share,body:has(dialog[open]) .aid-share,body:has(.pop-back:not([hidden]):not(.hidden)) .aid-share,' +
+      'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-share{display:none}' +
+    '@media print{.aid-pill,.aid-share{display:none}}';
   var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M3.5 21h17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="14.6" cy="12.4" r="1.3" fill="currentColor"/></svg>';
 
-  function pill(){
-    if (document.querySelector('.aid-pill')) return;
+  var styled = false;
+  function style(){
+    if (styled) return;
+    styled = true;
     var st = document.createElement('style');
     st.textContent = CSS;
     document.head.appendChild(st);
+  }
+  /* a phone's keyboard: the corner's buttons step away while words are being typed */
+  function stepAway(els){
+    function typing(el){ return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|submit|checkbox|radio|range|color|file|reset)$/i.test(el.type)) || el.isContentEditable); }
+    document.addEventListener('focusin', function(e){ if (window.innerWidth < 700 && typing(e.target)) els.forEach(function(el){ el.classList.add('aid-away'); }); });
+    document.addEventListener('focusout', function(){ els.forEach(function(el){ el.classList.remove('aid-away'); }); });
+  }
+  function pill(){
+    if (document.querySelector('.aid-pill')) return;
+    style();
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'aid-pill';
@@ -3725,11 +3745,54 @@
     b.innerHTML = ICON + '<span>with your AI</span>';
     b.addEventListener('click', function(){ window.siteDoorOpen(b); });
     document.body.appendChild(b);
-    keepClear(b);
-    /* a phone's keyboard: the corner button steps away while words are being typed */
-    function typing(el){ return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !/^(button|submit|checkbox|radio|range|color|file|reset)$/i.test(el.type)) || el.isContentEditable); }
-    document.addEventListener('focusin', function(e){ if (window.innerWidth < 700 && typing(e.target)) b.classList.add('aid-away'); });
-    document.addEventListener('focusout', function(){ b.classList.remove('aid-away'); });
+    var s = sharePill();
+    keepClear(b, s);
+    stepAway(s ? [b, s] : [b]);
+  }
+
+  /* SHARE, beside the door — the share wall (spine:o-page-unit 1.11111111112; David's GO at 1.11111111118, 23 November
+   * 2026, lane share-string.1). One link, 'Share', opening the String's box with this page's address already in it
+   * (/string?add=), so the page is passed on as a line in the sharer's own string, 'SHARE <the page> — why it caught
+   * me', and the link they send is that share's own: its preview says who shared what and why (function:string 1, 5.1),
+   * and whoever opens it meets the sharer's card, then the page, one tap on. Nothing is written anywhere but the String
+   * and nothing new is kept. The address is the page's own on happyseaurchin.com, whatever host serves it (a preview,
+   * a dev server), without the ?via= or ?from= it may have arrived with, since the share is the sharer's, nor the ?still and
+   * ?share that draw a page's share picture; the String opens on the host serving this page. It stands beside the
+   * corner door and moves with it; where a page's own buttons open the door and the corner stands aside, it takes the
+   * corner itself. Never at a members' door (data-door on <html>): a member's share goes on their own beach's string,
+   * never this one; and never where the html or the body says data-share="off".
+   * ───────────────────────────────────────────────────────────────────────────── */
+  var SITE = 'https://happyseaurchin.com';
+  var SHARE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.8M7.6 8 12 3.6 16.4 8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 11.5V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function pageToShare(){
+    var q = null;
+    try { q = new URLSearchParams(location.search); } catch(e){}
+    if (q) ['via', 'from', 'still', 'share'].forEach(function(k){ q.delete(k); });
+    var path = location.pathname.replace(/\.html$/, '').replace(/(.)\/+$/, '$1'), rest = q ? q.toString() : '';
+    return SITE + path + (rest ? '?' + rest : '');
+  }
+  window.siteShareUrl = pageToShare;
+  function sharePill(){
+    var h = document.documentElement, body = document.body;
+    if (document.querySelector('.aid-share') || h.hasAttribute('data-door')) return null;
+    if (h.getAttribute('data-share') === 'off' || body.getAttribute('data-share') === 'off') return null;
+    style();
+    var a = document.createElement('a');
+    a.className = 'aid-share';
+    a.href = '/string?add=' + encodeURIComponent(pageToShare());
+    a.title = 'Share this page on the String: a link of your own, with a line of why it caught you';
+    a.setAttribute('aria-label', 'Share this page on the String, with a line of why it caught you');
+    a.innerHTML = SHARE_ICON + '<span>Share</span>';
+    /* the address as it stands when tapped, should the page have moved its own query since it drew */
+    a.addEventListener('click', function(){ a.href = '/string?add=' + encodeURIComponent(pageToShare()); });
+    body.appendChild(a);
+    return a;
+  }
+  function shareAlone(){
+    var s = sharePill();
+    if (!s) return;
+    keepClear(s);
+    stepAway([s]);
   }
 
   /* THE CORNER IS SHARED: a page's own fixed control, or a sticky one while it stands stuck (a
@@ -3743,39 +3806,54 @@
     var t = parseFloat(cs.top), bt = parseFloat(cs.bottom), l = parseFloat(cs.left);
     return (!isNaN(t) && Math.abs(r.top - t) < 2) || (!isNaN(bt) && Math.abs(window.innerHeight - r.bottom - bt) < 2) || (!isNaN(l) && Math.abs(r.left - l) < 2);
   }
-  function keepClear(b){
+  /* b keeps clear; f, where there is one (Share beside the door), stands just right of b wherever b goes, so the two
+   * read as one pair and neither ever counts the other as a neighbour to step away from */
+  function keepClear(b, f){
     var held = [], ticking = false;
+    function ours(el){ return el === b || b.contains(el) || (f && (el === f || f.contains(el))) || (el.closest && el.closest('.aid-back')); }
     function scan(){
       held = [];
       var all = document.body.getElementsByTagName('*');
       for (var i = 0; i < all.length; i++){
         var el = all[i];
-        if (el === b || b.contains(el) || (el.closest && el.closest('.aid-back'))) continue;
+        if (ours(el)) continue;
         var cs = window.getComputedStyle(el);
         if (cs.position === 'fixed' || cs.position === 'sticky') held.push({ el: el, cs: cs });
       }
       place();
     }
+    function follow(){
+      if (!f) return;
+      var r = b.getBoundingClientRect();
+      if (!r.width) return;                                   /* b hidden (a sheet open): f is hidden with it */
+      f.style.left = Math.round(r.right + 8) + 'px';
+      f.style.bottom = Math.round(window.innerHeight - r.bottom) + 'px';
+    }
     function place(){
       ticking = false;
       b.style.left = ''; b.style.bottom = '';
-      if (!held.length) return;
-      var p = b.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, left = null, bottom = null;
-      held.forEach(function(o){
-        if (o.cs.display === 'none' || o.cs.visibility === 'hidden') return;
-        var r = o.el.getBoundingClientRect();
-        if (!r.width || !r.height || (r.width > W * 0.6 && r.height > H * 0.6)) return;   /* a whole-screen layer is no neighbour */
-        if (!(r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top)) return;
-        if (!stuck(o.el, o.cs, r)) return;
-        if (r.width >= r.height) bottom = Math.max(bottom || 0, H - r.top + 10);           /* a bar: stand above it */
-        else left = Math.max(left || 0, r.right + 12);                                       /* a rail: stand beside it */
-      });
-      if (bottom !== null) b.style.bottom = bottom + 'px';
-      if (left !== null) b.style.left = left + 'px';
+      if (held.length){
+        var p = b.getBoundingClientRect(), W = window.innerWidth, H = window.innerHeight, left = null, bottom = null;
+        held.forEach(function(o){
+          if (o.cs.display === 'none' || o.cs.visibility === 'hidden') return;
+          var r = o.el.getBoundingClientRect();
+          if (!r.width || !r.height || (r.width > W * 0.6 && r.height > H * 0.6)) return;   /* a whole-screen layer is no neighbour */
+          if (!(r.left < p.right && r.right > p.left && r.top < p.bottom && r.bottom > p.top)) return;
+          if (!stuck(o.el, o.cs, r)) return;
+          if (r.width >= r.height) bottom = Math.max(bottom || 0, H - r.top + 10);           /* a bar: stand above it */
+          else left = Math.max(left || 0, r.right + 12);                                       /* a rail: stand beside it */
+        });
+        if (bottom !== null) b.style.bottom = bottom + 'px';
+        if (left !== null) b.style.left = left + 'px';
+      }
+      follow();
     }
     function soon(){ if (!ticking){ ticking = true; window.requestAnimationFrame(place); } }
     window.addEventListener('scroll', soon, { passive: true });
     window.addEventListener('resize', function(){ setTimeout(scan, 150); });
+    /* a sheet closing shows b again where it stood: f takes its place beside it as soon as it does */
+    if (f) document.addEventListener('click', function(){ setTimeout(soon, 50); }, true);
+    place();
     setTimeout(scan, 300); setTimeout(scan, 1500); setTimeout(scan, 4000);
   }
 
@@ -3790,8 +3868,10 @@
       e.preventDefault();
       window.siteDoorOpen(t, { family: t.getAttribute('data-ai-door') || undefined });
     });
-    if (document.querySelector('[data-ai-door]:not([data-ai-door="off"])')) return;   /* set in the page's own header */
-    if (!familyOf()) return;
+    if (document.querySelector('[data-ai-door]:not([data-ai-door="off"])')) return shareAlone();   /* the door set in the page's own header: Share takes the corner */
+    /* a page that is no family's face has no door; one that asks for Share (data-share="on", as /arcade and /games do)
+       has Share alone in the corner */
+    if (!familyOf()) return (h.getAttribute('data-share') === 'on' || body.getAttribute('data-share') === 'on') ? shareAlone() : undefined;
     pill();
   }
   /* after the page's own scripts, which is where a page defines a door of its own */
