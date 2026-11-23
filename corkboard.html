@@ -197,6 +197,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="/listed.js"></script>
 <script>
 /* corkboard — every proposal on one board, laid out by what it shares (docs/pages/corkboard.md).
  * The shared board is the block `corkboard`: a mirror of `proposals`, each card at its proposal's own number, its
@@ -255,7 +256,7 @@
   let cards = [], byId = new Map(), edges = [], strands = [], nodes = [], N = new Map(), registry = null, groups = [];
   let viewer = '';
 
-  function build(proposals, shared) {
+  function build(proposals, shared, makers) {
     const snap = new Map();
     if (shared && typeof shared === 'object') {
       for (const [, node] of entries(shared)) {
@@ -277,6 +278,17 @@
         quiet: !s || !threads.length || threads.every(t => !t.waits.length && t.done),
         std: 'https://happyseaurchin.com/proposal/' + id });
     }
+    /* each proposal a maker listed in their own block, proposed:<handle>, with nobody's permission (function:proposal 8),
+       once its family passes the check: after the keeper's, so it lands as the newest, and newer than the reading until
+       the board's next one gives it a card of its own */
+    (makers || []).forEach((m, k) => {
+      if (cards.some(c => c.id === m.name)) return;
+      const s = snap.get(m.name), threads = s ? s.threads : [];
+      cards.push({ id: m.name, n: 1000 + k, label: label(m.name), line: m.what + ' (listed by ' + m.by + ')', kind: kindOf(m.what), threads,
+        page: s ? s.page : (m.page || null), still: s ? s.still : null, read: !!s, group: s ? s.group : '',
+        quiet: !s || !threads.length || threads.every(t => !t.waits.length && t.done),
+        std: 'https://happyseaurchin.com/proposal/' + m.name });
+    });
     byId = new Map(cards.map(c => [c.id, c]));
     /* every string the shared board names, then only each card's strongest few: a web of weak ties lands as one clump */
     const all = [];
@@ -708,9 +720,14 @@
   }
 
   /* ---------- first frame ---------- */
-  Promise.all([getBlock('proposals'), getBlock('corkboard')]).then(([proposals, shared]) => {
+  /* the keeper's list, the shared board, and every maker's own list (listed.js), its passing proposals only; makers'
+     lists that take longer than three seconds are left for the next look, so the board never waits */
+  Promise.all([getBlock('proposals'), getBlock('corkboard')]).then(([proposals, shared]) =>
+    (window.beachListed && proposals ? Promise.race([beachListed.read(proposals).catch(() => null), new Promise(r => setTimeout(() => r(null), 3000))]) : Promise.resolve(null))
+      .then(got => [proposals, shared, got ? got.makers.filter(m => m.ok) : []])
+  ).then(([proposals, shared, makers]) => {
     if (!proposals) { $('loading').textContent = 'The beach cannot be read just now. Try again in a moment.'; return; }
-    build(proposals, shared);
+    build(proposals, shared, makers);
     const added = ensureBoard();
     LS.set('corkboard:board', mine);
     paint(); chips(); settleTo(false); refresh();
