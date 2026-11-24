@@ -73,6 +73,9 @@ select, input { font: inherit; color: var(--ink); background: #061020; border: 1
 .btn:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #36c9ff; outline-offset: 2px; }
 .line-box { font-family: var(--mono); font-size: 0.9rem; background: #061020; border: 1px solid var(--rule-2); border-radius: 6px; padding: 10px 12px; margin: 8px 0; word-break: break-word; user-select: all; -webkit-user-select: all; }
 .hint { font-size: 0.8rem; color: var(--muted); min-height: 1.2em; margin-top: 6px; }
+#menu { position: absolute; top: 8px; right: 8px; z-index: 4; display: none; font: 700 0.78rem var(--display); letter-spacing: 0.1em; color: var(--ink); background: rgba(4,7,13,0.66); border: 1px solid var(--rule-2); border-radius: 999px; padding: 9px 14px; cursor: pointer; }
+#menu.on { display: block; }
+#menu:hover, #menu:focus-visible { border-color: #36c9ff; outline: none; }
 .foot { font-size: 0.74rem; color: var(--muted); margin-top: 14px; }
 /* online: the room plug's anteroom (<beach-here>), in the grid's own night */
 #lobby { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule); }
@@ -97,6 +100,7 @@ select, input { font: inherit; color: var(--ink); background: #061020; border: 1
     <canvas id="arena" width="300" height="300" role="img" aria-label="A Fortress arena seen from above: a square grid with a blue zone at the bottom and a gold zone at the top, light cycles leaving walls of their own colour."></canvas>
     <div id="centre" aria-live="polite"></div>
     <div id="touch"><div class="half l" aria-hidden="true"></div><div class="half r" aria-hidden="true"></div><button type="button" id="brake">BRAKE</button></div>
+    <button type="button" id="menu" aria-label="Leave the match and go back to the menu">✕ MENU</button>
   </div>
   <div id="bottom"></div>
 </div>
@@ -117,6 +121,7 @@ select, input { font: inherit; color: var(--ink); background: #061020; border: 1
     <div id="lobby" hidden>
       <p class="hint" id="lobbyNote">Everyone here plays in one match, teams by arrival (blue, gold, blue…), bots in the empty seats. Anyone can start it.</p>
       <beach-here id="here" label="START THE MATCH"></beach-here>
+      <button type="button" class="btn line" id="leaveRoom">LEAVE THE ROOM</button>
     </div>
     <p class="foot">Bots fill the other seats. The match ends at 100. The spec and its decisions: <a href="/tronic-glass#fotronic">TRONIC Glass</a>.</p>
   </div>
@@ -130,7 +135,18 @@ select, input { font: inherit; color: var(--ink); background: #061020; border: 1
     <div class="hint" id="copied"></div>
     <button type="button" class="btn" id="copy">COPY THE LINE</button>
     <button type="button" class="btn line" id="again">PLAY AGAIN</button>
+    <button type="button" class="btn line" id="toMenu">MENU</button>
     <p class="foot">The line is the match's result, for the beach's voice to write into each player's own mirror at the match's address, where boards and cups read it (spine:tronic-glass 1.172).</p>
+  </div>
+</section>
+
+<section id="leave" class="sheet hidden" role="dialog" aria-modal="true" aria-label="Leave the match?">
+  <div class="card">
+    <h1>LEAVE THE MATCH?</h1>
+    <p class="lede" id="leaveLede">The match is paused while you choose.</p>
+    <button type="button" class="btn" id="stay">KEEP PLAYING</button>
+    <button type="button" class="btn line" id="quit">LEAVE</button>
+    <p class="foot">Esc asks this too; Esc again keeps playing.</p>
   </div>
 </section>
 
@@ -159,7 +175,9 @@ transport.onEvent(event => { if (state) sim.apply(state, event); });
  * steps a tick only once every other player has said they have sent everything up to it. A press waits in the
  * page's own queue until its tick, never in the world's inbox, which a new round clears. ── */
 const DELAY = 15;   // ticks (an eighth of a second) between a press and the tick it acts on, online
-const NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false };
+const NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: '' };
+let wasOnline = false, paused = false;
+const asking = () => !$('leave').classList.contains('hidden');
 function input(seat, action) {   // a person's press: now, at home; DELAY ticks on, online, the others told
   if (!NET.on) { transport.send({ tick: state.tick, seat, action }); return; }
   const ev = { tick: state.tick + DELAY, seat, action };
@@ -195,7 +213,38 @@ $('seatGold').addEventListener('change', keysHint);
 preset();
 
 $('go').addEventListener('click', start);
-$('again').addEventListener('click', () => { $('end').classList.add('hidden'); $('start').classList.remove('hidden'); running = false; });
+/* ── every screen has a way back (24 Nov 2026, David: 'all the choices allow the user to exit and go back'): ✕ MENU or Esc
+ * in a match asks to leave, the match paused at home and going on online; the end card plays again or goes back;
+ * the waiting room can be left. Back from an online match is the waiting room, and from there LEAVE THE ROOM is the menu. ── */
+function showMenu() { running = false; paused = false; $('end').classList.add('hidden'); $('leave').classList.add('hidden'); $('menu').classList.remove('on'); $('touch').classList.remove('on'); $('start').classList.remove('hidden'); }
+function askLeave() {
+  if (!state || !running) return;
+  paused = !NET.on;   // at home the match waits for the answer; online the others play on
+  $('leaveLede').textContent = NET.on ? 'The match goes on for the others while you choose. If you leave, a bot takes your seat, and you go back to the waiting room.' : 'The match is paused while you choose.';
+  $('leave').classList.remove('hidden'); $('stay').focus();
+}
+function keepPlaying() { $('leave').classList.add('hidden'); paused = false; last = performance.now(); acc = 0; }
+function leaveMatch() {
+  if (NET.on) {   /* everything I said, sent; then the tick from which my seat is a bot, which no phone has passed yet */
+    flush(true);
+    if (room) room.send('quit', { m: NET.match, at: state.tick + DELAY }, { reliable: true });
+    NET.on = false;
+    $('lobbyNote').textContent = 'You left the match: a bot has your seat and the others play on. A start here seats whoever is not mid-match.';
+  }
+  for (const code of Array.from(held)) held.delete(code);
+  showMenu();
+}
+$('menu').addEventListener('click', askLeave);
+$('stay').addEventListener('click', keepPlaying);
+$('quit').addEventListener('click', leaveMatch);
+$('again').addEventListener('click', () => { if (wasOnline) showMenu(); else start(); });   // at home the same match again; online, back to the room
+$('toMenu').addEventListener('click', () => { if (wasOnline) leaveRoom(); showMenu(); });
+window.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (!$('leave').classList.contains('hidden')) { e.preventDefault(); keepPlaying(); return; }
+  if (state && running) { e.preventDefault(); askLeave(); return; }
+  if (!$('end').classList.contains('hidden')) { e.preventDefault(); $('toMenu').click(); }
+});
 
 function start() {
   const size = parseInt($('size').value, 10);
@@ -214,6 +263,7 @@ function start() {
   $('end').classList.add('hidden');
   $('touch').classList.toggle('on', touch && (humans.blue !== null || humans.gold !== null));
   bottomGauges();
+  wasOnline = false; paused = false; $('leave').classList.add('hidden'); $('menu').classList.add('on');
   running = true; last = performance.now(); acc = 0;
   window.fotronic = { state, law, transport };   // for a look under the hood; nothing here writes the state
 }
@@ -234,7 +284,7 @@ function keySeat(code) {
   return null;
 }
 window.addEventListener('keydown', e => {
-  if (!running || !state || e.repeat) return;
+  if (!running || !state || e.repeat || asking()) return;
   const k = keySeat(e.code);
   if (!k || k.seat === null) return;
   e.preventDefault();
@@ -275,13 +325,14 @@ const effects = [];   // flashes where a cycle died: page-side only
 function frame(now) {
   requestAnimationFrame(frame);
   if (!state) return;
-  if (running) {
+  if (running && !paused) {
     acc += Math.min(now - last, 250);
     last = now;
     while (acc >= TICK_MS) {
       if (NET.on && !NET.remote.every(id => NET.upTo[id] >= state.tick)) { NET.waiting += TICK_MS; acc = Math.min(acc, TICK_MS * 4); break; }   // everyone's word for this tick first
       NET.waiting = 0;
       if (NET.on) while (NET.pending.length && NET.pending[0].tick <= state.tick) sim.apply(state, NET.pending.shift());   // the presses due, at their tick
+      if (NET.on) while (NET.botAt.length && NET.botAt[0].tick <= state.tick) state.seats[NET.botAt.shift().seat].bot = true;   // a seat whose player left, a bot from its tick on every phone
       for (const e of sim.botEvents(state)) transport.send(e);
       sim.step(state);
       if (NET.on && state.tick % 240 === 0) checkStep(state.tick, hashOf(state), null);
@@ -311,10 +362,17 @@ $('online').addEventListener('click', () => {
     if (!handle()) $('handle').value = r.name;
   });
 });
+function leaveRoom() {
+  if (room && room.joined && room.joined()) room.leave();
+  $('lobby').hidden = true; $('online').hidden = false;
+  $('lobbyNote').textContent = 'Everyone here plays in one match, teams by arrival (blue, gold, blue…), bots in the empty seats. Anyone can start it.';
+}
+$('leaveRoom').addEventListener('click', leaveRoom);
 /* the seating the caller of a start hands every page: everyone here sorted by id, blue, gold, blue… by turn */
 function plan() {
   const me = room.me(); if (!me) return null;
-  const all = [{ id: me.id, name: me.name }].concat(room.peers().map(p => ({ id: p.id, name: p.name }))).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const free = p => !(busy[p.id] > Date.now() - 2500);   // a player heard playing another match is left out of this one
+  const all = [{ id: me.id, name: me.name }].concat(room.peers().filter(free).map(p => ({ id: p.id, name: p.name }))).sort((a, b) => (a.id < b.id ? -1 : 1));
   const size = Math.min(law.TEAM_MAX_PLAYERS || 6, Math.max(parseInt($('size').value, 10) || 1, Math.ceil(all.length / 2)));
   return { size, match: 'online-' + Date.now().toString(36) + '-' + me.id.slice(0, 4), players: all.slice(0, size * 2).map((p, i) => ({ id: p.id, name: String(p.name || 'player').slice(0, 32), team: i % 2 ? 'gold' : 'blue', seat: Math.floor(i / 2) + 1 })) };
 }
@@ -324,6 +382,11 @@ if (room) {
   let called = null, calledTimer = 0;
   room.on('start', x => {
     const p = x.body; if (!p || !Array.isArray(p.players)) return;
+    if (running) {   // mid-match here: a seat given me in another match is given up at once, and this match goes on
+      const me = room.me();
+      if (me && p.players.some(q => q.id === me.id)) room.send('quit', { m: matchOf(p), at: 0 }, { reliable: true });
+      return;
+    }
     if (called && called.from < x.from && Date.now() < called.at + 1000) return;
     called = x; clearTimeout(calledTimer);
     calledTimer = setTimeout(() => startOnline(p), Math.max(0, x.at - Date.now()));
@@ -331,20 +394,22 @@ if (room) {
   room.on('message', onNet);
   room.on('gone', g => { NET.remote = NET.remote.filter(id => id !== g.id); });   // a player gone: the match goes on without waiting for them
 }
+const matchOf = p => String(p.match).slice(0, 60);
 function startOnline(p) {
   const me = room.me(); if (!me) return;
   const mine = p.players.find(q => q.id === me.id);
   if (!mine) { $('lobbyNote').textContent = 'A match started before you came in. The next one has you.'; return; }
+  const gave = new Set(declined[matchOf(p)] || []); delete declined[matchOf(p)];   // seats given up before it began here
   const seats = [];
   for (const team of ['blue', 'gold']) for (let n = 1; n <= p.size; n++) {
     const q = p.players.find(x => x.team === team && x.seat === n);
-    seats.push({ team, seat: n, bot: !q, handle: q ? q.name : team + n });
+    seats.push({ team, seat: n, bot: !q || gave.has(q.id), handle: q ? q.name : team + n });
   }
-  state = sim.createMatch(law, seats, String(p.match).slice(0, 60));
-  Object.assign(NET, { on: true, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false });
+  state = sim.createMatch(law, seats, matchOf(p));
+  Object.assign(NET, { on: true, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: matchOf(p) });
   for (const q of p.players) {
     NET.seatOf[q.id] = state.seats.find(s => s.team === q.team && s.seat === q.seat).index; NET.names[q.id] = q.name;
-    if (q.id !== me.id) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
+    if (q.id !== me.id && !gave.has(q.id)) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
   }
   humans = { blue: null, gold: null }; humans[mine.team] = NET.seatOf[me.id];
   effects.length = 0;
@@ -352,6 +417,7 @@ function startOnline(p) {
   $('end').classList.add('hidden');
   $('touch').classList.toggle('on', touch);
   bottomGauges();
+  wasOnline = true; paused = false; $('leave').classList.add('hidden'); $('menu').classList.add('on');
   running = true; last = performance.now(); acc = 0;
   window.fotronic = { state, law, transport, net: NET };
   flush(true);
@@ -361,17 +427,32 @@ function flush(force) {
   if (!NET.on || !room) return;
   const t = performance.now();
   if (!force && !NET.out.length && t - NET.sentAt < 33) return;   // at most thirty a second when there is nothing new
-  room.send('fx', { upTo: state.tick + DELAY - 1, ev: NET.out }, { reliable: true });
+  room.send('fx', { m: NET.match, upTo: state.tick + DELAY - 1, ev: NET.out }, { reliable: true });
   NET.out = []; NET.sentAt = t;
 }
+const busy = {}, declined = {};   // who was heard playing another match, and when; seats given up before their match began here
 function onNet(m) {
-  if (!NET.on || !(m.from in NET.seatOf) || !m.body) return;
+  if (!m.body) return;
+  const other = m.body.m != null && (!NET.on || m.body.m !== NET.match);   // a word about a match this page is not playing
+  if (m.kind === 'fx' && (other || !NET.on)) busy[m.from] = Date.now();
+  if (m.kind === 'quit' && other) {
+    const k = String(m.body.m); (declined[k] = declined[k] || []).push(m.from);
+    const ks = Object.keys(declined); if (ks.length > 8) delete declined[ks[0]];
+    return;
+  }
+  if (!NET.on || other || !(m.from in NET.seatOf)) return;
   if (m.kind === 'fx') {
     const seat = NET.seatOf[m.from];
     for (const ev of m.body.ev || []) if (ev && ev.seat === seat && sim.ACTIONS.indexOf(ev.action) >= 0) NET.pending.push({ tick: ev.tick | 0, seat, action: ev.action });
     NET.pending.sort((a, b) => a.tick - b.tick);
     NET.upTo[m.from] = Math.max(NET.upTo[m.from], m.body.upTo | 0);
   } else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
+  else if (m.kind === 'quit') {
+    const seat = NET.seatOf[m.from], at = Math.max(state.tick, m.body.at | 0);
+    NET.pending.push({ tick: at, seat, action: 'BRAKE_OFF' }); NET.pending.sort((a, b) => a.tick - b.tick);
+    NET.botAt.push({ tick: at, seat }); NET.botAt.sort((a, b) => a.tick - b.tick);
+    NET.remote = NET.remote.filter(id => id !== m.from);
+  }
 }
 /* every two seconds each phone says what its world is at a tick; a world that differs is said so on the screen */
 function hashOf(st) {
@@ -380,7 +461,7 @@ function hashOf(st) {
   return h;
 }
 function checkStep(tick, h, from) {
-  if (from === null) { NET.mine[tick] = h; room.send('fh', { tick, h }, { reliable: true }); for (const id in NET.theirs) if (NET.theirs[id][tick] != null && NET.theirs[id][tick] !== h) NET.desync = true; return; }
+  if (from === null) { NET.mine[tick] = h; room.send('fh', { m: NET.match, tick, h }, { reliable: true }); for (const id in NET.theirs) if (NET.theirs[id][tick] != null && NET.theirs[id][tick] !== h) NET.desync = true; return; }
   (NET.theirs[from] = NET.theirs[from] || {})[tick] = h;
   if (NET.mine[tick] != null && NET.mine[tick] !== h) NET.desync = true;
 }
@@ -403,6 +484,9 @@ function finish() {
     const fail = () => { $('copied').textContent = 'The clipboard stayed closed; select the line and copy it by hand.'; };
     try { navigator.clipboard.writeText(text).then(done, fail); } catch (e) { fail(); }
   };
+  $('again').textContent = wasOnline ? 'BACK TO THE ROOM' : 'PLAY AGAIN';
+  $('toMenu').textContent = wasOnline ? 'LEAVE THE ROOM' : 'MENU';
+  $('leave').classList.add('hidden'); $('menu').classList.remove('on'); paused = false;
   $('end').classList.remove('hidden');
   $('touch').classList.remove('on');
 }
