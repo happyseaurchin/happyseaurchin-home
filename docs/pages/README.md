@@ -34,6 +34,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [experience-points](experience-points.md) | `experience-points.html` | the Experience Points proposal (23 Nov 2026), at `/experience-points`, its snazzy view, which its law names at 6 (`/proposal/experience-points` is its stan… |
 | [experiments](experiments.md) | `experiments/` | standalone math/visualization artifacts + generated `pscale-inventory.html` |
 | [eye](eye.md) | `eye.html` | Iris and Magic Eye (16 Nov 2026, lane eye.1), at `/eye`: |
+| [factory](factory.md) | `factory.html` | The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who might water the garden, read live from `outreach:keel` 5 and 6 and opened in the reader's own browser for `colour:outreach`'s holders alone |
 | [families](families.md) | `families.html` | Families on the Beach (17 Nov 2026, lane proposals-tidy.2, at David's word: |
 | [first-meeting](first-meeting.md) | `first-meeting.html` | the first-meeting proposal (11 Nov 2026), at `/first-meeting`, its snazzy view, which its law names at 6 from 12 Nov 2026, when it went live at David'… |
 | [flock-world](flock-world.md) | `flock-world.html` | the Flock World proposal (24 Nov 2026), at `/flock-world`, its snazzy view (`/proposal/flock-world` is its standard view): Forage and Migration grown into one flocking game for thousands on a world that wraps and grows, drawn as a murmuration at dusk over a patchwork of fields, an instrument a step |
