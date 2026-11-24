@@ -89,9 +89,6 @@ label.name input { flex: 1; }
 .board h3 { margin: 0 0 6px; font: 700 14px var(--display); letter-spacing: 0.06em; color: var(--ice); }
 .board ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .board li { display: grid; grid-template-columns: 1.6em minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 6px 8px; border-radius: 8px; font-size: 15px; }
-.board li.tap { cursor: pointer; }
-.board li.tap:hover { background: rgba(79, 143, 255, 0.1); }
-.board li.ghost { background: rgba(255, 225, 74, 0.1); box-shadow: inset 2px 0 0 var(--gold); }
 .board .rk { color: var(--dim); font: 500 13px var(--display); }
 .board .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .board .sc { font: 700 15px var(--display); font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -874,10 +871,10 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 function dayAddress(d) { const y = d.getUTCFullYear(), m0 = d.getUTCMonth(), dd = d.getUTCDate(); return String(y) + (Math.floor(m0 / 3) + 1) + (m0 % 3 + 1) + (Math.floor((dd - 1) / 7) + 1) + ((dd - 1) % 7 + 1) + '00'; }
 function today() { const p = plug(); if (p && p.today) { try { const a = String(p.today()); if (/^\d{10}$/.test(a)) return a; } catch (e) {} } return dayAddress(new Date()); }
 function sameDay(a, b) { return String(a || '').replace(/0+$/, '') === String(b || '').replace(/0+$/, ''); }
-/* the arcade's links (ways:plug 3.7): ?track=<day> rides that day's universe, ?ghost=<slot> rides beside that run, ?from=<name> says who brought you */
+/* the arcade's links (ways:plug 3.7): ?track=<day> rides that day's universe, ?from=<name> says who brought you; ?ghost=<slot>, riding beside
+ * that run, is not read, since Coil rides with no ghost (David, 24 Nov 2026: 'There shouldn't be a ghost-version') */
 const Q = (() => { try { return new URLSearchParams(location.search); } catch (e) { return new URLSearchParams(''); } })();
 const TRACK = /^\d{8}00$/.test(Q.get('track') || '') ? Q.get('track') : null;
-const GHOST_SLOT = /^\d+$/.test(Q.get('ghost') || '') ? +Q.get('ghost') : null;
 const FROM = String(Q.get('from') || '').replace(/[^a-z0-9_\s-]/gi, '').slice(0, 32);
 function rideDay() { const t = today(); return TRACK && TRACK <= t ? TRACK : t; }
 function mmss(s) { s = Math.max(0, Math.floor(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
@@ -941,7 +938,7 @@ const SET = {
 /* ── the colours ── */
 const HEX = ['#4f8fff', '#ffe14a', '#3fd0ff', '#ff62d6', '#62ff98', '#ff9d42', '#b494ff', '#ff6464'];
 const rgb = h => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
-const COL = HEX.map(rgb), ICE = [0.5, 0.78, 0.72], FOODC = [1, 0.82, 0.4], GHOSTC = [1, 0.93, 0.62], FOG = [0.018, 0.032, 0.066];
+const COL = HEX.map(rgb), ICE = [0.5, 0.78, 0.72], FOODC = [1, 0.82, 0.4], FOG = [0.018, 0.032, 0.066];
 
 /* ── WebGL2 ── */
 const cv = $('gl'), hudCv = $('hud'), hx = hudCv.getContext('2d');
@@ -1150,7 +1147,6 @@ let mode = 'attract';  // attract | solo | online
 let me = 0;            // my seat
 let follow = 0;        // the rider the camera rides with
 let ride = null;       // { kind: 'today' | 'free', day, moves, steps, over }
-let ghost = null;      // { w, name, steps } — today's ghost, a world of its own stepped beside yours
 let paused = false, acc = 0, last = performance.now(), crashCam = 0, endTimer = 0;
 let prevHead = null, curHead = null;
 const CAM = { q: [0, 0, 0, 1], set: false, orbit: 0.6, kick: 0 };
@@ -1241,18 +1237,6 @@ function buildWarn(w, t) {
     k++;
   }
 }
-function buildGhost(gw, t) {
-  nInst = 0;
-  const r = gw.riders[0];
-  const n = r.trail.length, skip = r.alive ? (r.blocked || r.next < 0 ? 1 : 2) : 0;
-  let fade = 1;
-  if (!r.alive) fade = Math.max(0, 1 - (gw.tick - r.diedAt) / Math.round(gw.law.WALLS_STAY_UP_DELAY * TPS));
-  const c = scaled(GHOSTC, fade);
-  const cc = [c[0], c[1], c[2]];
-  for (let j = r.trailStart; j < n - skip; j++) placeCell(r.trail[j], 0.9, cc, 0);
-  if (r.alive) { const hp = headOf(r); place(hp[0], hp[1], hp[2], 0.9, 0.9, 0.9, [1, 1, 0.85], 0); }
-}
-
 function drawCubes(proj, view, fogNear, fogFar, ghostPass) {
   if (!nInst) return;
   gl.useProgram(P.cube);
@@ -1347,7 +1331,6 @@ function render(dt, t) {
   drawCubes(proj, vm, fogNear, fogFar, false);
 
   gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
-  if (ghost && ghost.w && mode === 'solo') { buildGhost(ghost.w, t); drawCubes(proj, vm, fogNear, fogFar, true); }
   buildWarn(W, t); drawCubes(proj, vm, fogNear, fogFar, true);
   if (view !== 'outside') {   // the universe's faces, the dust, and streaks when fast
     gl.useProgram(P.grid);
@@ -1501,8 +1484,7 @@ function instruments() {
   if (mode === 'online') {
     const alive = W.riders.filter(x => x.alive).length;
     setText('hRound', ride && ride.kind === 'together' ? 'today\'s universe · ' + alive + ' riding' : 'round ' + W.round + ' · ' + alive + ' riding · ' + (W.wins[me] || 0) + (W.wins[me] === 1 ? ' win' : ' wins'));
-  } else if (ghost && ghost.w) setText('hRound', 'ghost: ' + ghost.name + ' ' + ghost.w.riders[0].dist);
-  else if (W.riders.length > 1) {
+  } else if (W.riders.length > 1) {
     const others = W.riders.filter(x => x.index !== me), riding = others.filter(x => x.alive).length;
     setText('hRound', riding + ' of ' + others.length + ' riding' + (r.cuts ? ' · you cut off ' + r.cuts : ''));
   } else setText('hRound', '');
@@ -1565,7 +1547,7 @@ function freeLaw() {
   return { WORLD_SIZE: SET.size, WALLS_LENGTH: SET.trail, FOOD: SET.trail > 0 ? SET.food : 0, GLASS: SET.glass, BOT_LEVEL: SET.level, BOT_RESPAWN: SET.back, RIDE_SECONDS: 0, ROUNDS: 0 };
 }
 function attract() {
-  mode = 'attract'; ride = null; ghost = null; paused = false; crashCam = 0;
+  mode = 'attract'; ride = null; paused = false; crashCam = 0;
   const seats = [0, 1, 2, 3, 4].map(() => ({ bot: true }));
   W = S.createWorld({ WORLD_SIZE: 24, GLASS: 1, WALLS_LENGTH: 160, FOOD: 0, COUNTDOWN_SECONDS: 0 }, seats, 'attract:' + Date.now());
   follow = 0; me = 0; CAM.set = false; prevHead = curHead = null; attractSince = performance.now();
@@ -1585,12 +1567,10 @@ function startRide(kind) {
     const day = rideDay(), set = dayKnown(day);
     W = S.todayWorld(day, name, set);
     ride = { kind, day, set, moves: [], steps: 0, over: false };
-    ghost = ghostFor(day);
   } else {
     const seats = [{ handle: name }].concat(Array.from({ length: SET.bots }, () => ({ bot: true })));
     W = S.createWorld(freeLaw(), seats, 'free:' + Date.now() + ':' + Math.random());
     ride = { kind, day: today(), moves: [], steps: 0, over: false };
-    ghost = null;
   }
   me = 0; follow = 0; CAM.set = false; prevHead = curHead = null; acc = 0; last = performance.now();
   for (const id of ['start', 'end', 'pause', 'lobby']) show(id, false);
@@ -1694,7 +1674,6 @@ function frame(now) {
       prevHead = fr ? headOf(fr) : null;
       S.step(W); n++;
       if (window.__trace && NET.on) window.__trace.push([W.tick, S.hash(W), W.riders.map(r => r.cell + '/' + r.h + '/' + r.u + '/' + r.p.toFixed(4) + '/' + r.v.toFixed(4) + '/' + (r.alive ? 1 : 0) + '/' + r.queue.join('') + '/' + (r.braking ? 'B' : '') + r.brake.toFixed(3)).join(' ')]);
-      if (ghost && ghost.w && mode === 'solo') S.step(ghost.w);
       news(W.news);
       if (NET.on && W.tick % 120 === 0) checkStep(W.tick, S.hash(W), null);
       acc -= TICK_MS;
@@ -1839,17 +1818,8 @@ function toMenu() {
   attract(); show('start', true); boardInto($('board'));
 }
 
-/* ── today's board and ghost ── */
+/* ── today's board ── */
 function bestToday() { try { const b = JSON.parse(get('best:' + rideDay()) || 'null'); return b && typeof b.dist === 'number' ? b : null; } catch (e) { return null; } }
-let ghostPick = null, ghostChosen = false;
-function ghostFor(day) {
-  let pick = ghostPick && !ghostPick.none && sameDay(ghostPick.day, day) ? ghostPick : null;
-  if (!pick && !(ghostPick && ghostPick.none)) { const b = bestToday(); if (b && b.proof) pick = { name: 'your best', proof: b.proof }; }
-  if (!pick) return null;
-  const p = S.replay(pick.proof, 'ghost');
-  if (!p.ok || !sameDay(p.day, day) || p.together || (dayCode(day) && p.code !== dayCode(day))) return null;
-  return { w: p.world, name: pick.name, steps: p.steps };
-}
 window.coilCheck = function (row) {   // a board line counts if its proof re-runs to the cells it says
   const rr = S.rerun(row && row.proof);
   if (!rr.ok) return false;
@@ -1864,8 +1834,8 @@ function boardInto(el) {
   el.innerHTML = '';
   const best = bestToday(), g = plug();
   const h = document.createElement('h3'); h.textContent = TRACK && rideDay() !== today() ? 'That day' : 'Today'; el.appendChild(h);
-  if (best) { const p = document.createElement('p'); p.textContent = 'Your best today: ' + best.dist + ' cells. It rides beside you as a ghost.'; el.appendChild(p); }
-  if (!g) { if (!best) { const p = document.createElement('p'); p.textContent = 'The same universe for everyone today. Your best ride rides with you as a ghost.'; el.appendChild(p); } return; }
+  if (best) { const p = document.createElement('p'); p.textContent = 'Your best today: ' + best.dist + ' cells.'; el.appendChild(p); }
+  if (!g) { if (!best) { const p = document.createElement('p'); p.textContent = 'The same universe for everyone today.'; el.appendChild(p); } return; }
   const wait = document.createElement('p'); wait.textContent = 'Reading the day\'s board…'; el.appendChild(wait);
   const day = rideDay();
   Promise.resolve().then(() => g.top({ at: day, n: 10 })).then(b => {
@@ -1882,21 +1852,10 @@ function boardInto(el) {
       setTimeout(() => {
         const v = window.coilCheck({ proof, line: row.line, at: row.at });
         if (v === false) { li.remove(); return; }
-        if (/^cot\./.test(proof)) { li.querySelector('.nm').textContent += ' · together'; li.title = 'Ridden together: its proof holds every rider\'s presses, and re-runs whole'; return; }
-        li.className = 'tap'; li.title = 'Ride with this run as your ghost';
-        const slot = row.proof && row.proof.slot;
-        if (GHOST_SLOT != null && slot === GHOST_SLOT && !ghostChosen) { ghostPick = { name: row.name, proof, day }; ghostChosen = true; }
-        if (!ghostPick && !ghostChosen) ghostPick = { name: row.name, proof, day };
-        if (ghostPick && ghostPick.proof === proof) li.classList.add('ghost');
-        li.addEventListener('click', () => {
-          ghostChosen = true;
-          const was = ghostPick && ghostPick.proof === proof;
-          ghostPick = was ? { none: true, day } : { name: row.name, proof, day };
-          Array.prototype.forEach.call(ol.children, x => x.classList.remove('ghost')); if (!was) li.classList.add('ghost');
-        });
+        if (/^cot\./.test(proof)) { li.querySelector('.nm').textContent += ' · together'; li.title = 'Ridden together: its proof holds every rider\'s presses, and re-runs whole'; }
       }, 40 + i * 60);
     });
-    const p = document.createElement('p'); p.textContent = 'Each rider\'s best, re-ridden here to check it. The marked ride rides beside you as a ghost; tap another to ride with it.'; el.appendChild(p);
+    const p = document.createElement('p'); p.textContent = 'Each rider\'s best, re-ridden here to check it.'; el.appendChild(p);
   }).catch(() => { wait.textContent = 'The day\'s board cannot be read just now.'; });
 }
 
@@ -2019,7 +1978,7 @@ function startOnline(p) {
   }
   NET = { on: true, joined: true, match, log: together ? [] : null, heard: {}, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, myId: id, sent: 0, n: 0, said: [], maxN: {}, nextQ: {}, held: {} };
   humans.forEach((q, i) => { NET.seatOf[q.id] = i; NET.names[q.id] = q.name; if (q.id !== id) { NET.remote.push(q.id); NET.upTo[q.id] = -1; } });
-  me = NET.seatOf[id]; follow = me; mode = 'online'; ghost = null;
+  me = NET.seatOf[id]; follow = me; mode = 'online';
   ride = together ? { kind: 'together', day: String(p.day), set: S.setOfCode(p.set), n: humans.length, names: humans.map(q => clean(q.name) || 'rider'), moves: [], steps: 0, over: false } : null; paused = false; crashCam = 0; shards.length = 0;
   CAM.set = false; prevHead = curHead = null; acc = 0; last = performance.now();
   for (const s of ['start', 'end', 'pause', 'lobby']) show(s, false);
@@ -2169,7 +2128,7 @@ function plugsCame() {
 }
 
 /* for a look under the hood, and for the page's own checks; nothing here writes the world */
-window.coil = { sim: S, get world() { return W; }, set world(v) {}, get mode() { return mode; }, get ride() { return ride; }, get ghost() { return ghost; },
+window.coil = { sim: S, get world() { return W; }, set world(v) {}, get mode() { return mode; }, get ride() { return ride; },
   startRide, input, brake, cycleView, toMenu, startOnline, plan, get net() { return NET; }, set net(v) {}, get set() { return SET; }, lastLine: () => lastLine, lastProof: () => lastProof };
 
 keysText(); soundLabel(); invertLabel(); viewLabel(); freeSync();
