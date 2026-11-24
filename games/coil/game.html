@@ -30,6 +30,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 #bar { position: fixed; left: 0; right: 0; top: 0; display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 8px;
   padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left)); pointer-events: none; }
 #bar .cell { display: flex; gap: 8px; align-items: baseline; }
+#bar .fill { flex-wrap: wrap; row-gap: 0; } #hFill:empty { display: none; }
 #bar .mid { flex-direction: column; align-items: center; gap: 0; }
 #bar .right { justify-content: flex-end; align-items: center; }
 .k { font-size: 13px; color: var(--muted); letter-spacing: 0.02em; }
@@ -129,7 +130,7 @@ beach-here { display: block; margin: 8px 0; }
 <canvas id="hud" aria-hidden="true"></canvas>
 
 <div id="bar" class="hidden">
-  <div class="cell"><span class="k">rode</span><b id="hDist">0</b></div>
+  <div class="cell fill"><span class="k">rode</span><b id="hDist">0</b><span class="k" id="hFill"></span></div>
   <div class="cell mid"><b id="hClock"></b><span class="k" id="hRound"></span></div>
   <div class="cell right"><button class="chip" id="bView" type="button">view</button><button class="chip" id="bMenu" type="button">menu</button></div>
 </div>
@@ -1367,6 +1368,18 @@ function hud(t) {
 function hexA(hex, a) { const c = rgb(hex); return 'rgba(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ',' + a.toFixed(3) + ')'; }
 
 const SIDES = ['', 'ONE SIDE', 'TWO SIDES', 'THREE SIDES', 'TUBE'];
+/* HOW PACKED THE UNIVERSE IS (24 Nov 2026, lane coil.1, at David's word: 'a stat of the volume filled if the setting has
+ * been endless. That shows how packed the space is'): every cell holding a block, the universe's own glass and every rider's
+ * trail, over all N³ cells, said only where the trail never ends (a snake's is bounded by its length). Counted here on the
+ * page from the world as it stands, never in the engine, so no proof, board line's ride or live match changes. */
+function filledPct(w) { if (!w || w.law.WALLS_LENGTH !== 0) return null; const o = w.occ; let n = 0; for (let i = 0; i < o.length; i++) if (o[i]) n++; return 100 * n / o.length; }
+const pctWords = v => v.toFixed(1) + '%';
+let fillSeen = { w: null, tick: 0, v: null };
+function fillNow() {   // counted again every quarter of a second of the world's clock
+  if (!W) return null;
+  if (fillSeen.w !== W || Math.abs(W.tick - fillSeen.tick) >= 15) fillSeen = { w: W, tick: W.tick, v: filledPct(W) };
+  return fillSeen.v;
+}
 let lastText = {};
 function setText(id, v) { if (lastText[id] !== v) { lastText[id] = v; $(id).textContent = v; } }
 function instruments() {
@@ -1374,6 +1387,7 @@ function instruments() {
   const r = W.riders[me];
   if (!r) return;
   setText('hDist', String(r.dist));
+  { const f = fillNow(); setText('hFill', f == null ? '' : pctWords(f) + ' filled'); }
   setText('hSpeed', String(Math.round(r.v)));
   setText('hSides', r.alive ? SIDES[r.touching] : '');
   $('hBar').firstChild.style.width = Math.min(100, (r.v / W.law.CYCLE_SPEED_MAX) * 100).toFixed(1) + '%';
@@ -1658,13 +1672,14 @@ function attractCare(now) {
 }
 
 /* ── the end of a ride ── */
-let lastLine = '', lastProof = '';
+let lastLine = '', lastProof = '', lastFill = null;
 function endOfRide(why) {
   if (!ride || ride.over) return;
   ride.over = true; ride.steps = W.tick; brake(false);
   const s = S.stats(W, me);
   const beside = s.seconds > 0 ? Math.round(100 * s.grind / s.seconds) : 0;
-  lastLine = 'RODE ' + s.dist + ' · ' + mmss(s.seconds) + ' · top ' + Math.round(s.top) + ' · beside a block ' + beside + '% · tube ' + s.tube.toFixed(1) + ' s' + (s.cuts ? ' · cut off ' + s.cuts : '') + (ride.kind === 'today' ? '' : ' · free ride');
+  lastFill = filledPct(W);   // the universe as it stood when the ride ended
+  lastLine = 'RODE ' + s.dist + ' · ' + mmss(s.seconds) + ' · top ' + Math.round(s.top) + ' · beside a block ' + beside + '% · tube ' + s.tube.toFixed(1) + ' s' + (s.cuts ? ' · cut off ' + s.cuts : '') + (lastFill != null ? ' · filled ' + pctWords(lastFill) : '') + (ride.kind === 'today' ? '' : ' · free ride');
   lastProof = ride.kind === 'today' ? S.proofOf(ride.day, ride.steps, ride.moves) : '';
   if (ride.kind === 'today') {
     const prev = bestToday();
@@ -1680,6 +1695,7 @@ function showEnd(why, s, beside) {
   $('eDist').textContent = String(s.dist);
   const stats = [['time', mmss(s.seconds)], ['top speed', Math.round(s.top)], ['beside a block', beside + '%'], ['down a tube', s.tube.toFixed(1) + ' s']];
   if (W.riders.length > 1) stats.push(['you cut off', W.law.BOT_RESPAWN || mode === 'online' ? String(s.cuts) : s.cuts + ' of ' + (W.riders.length - 1)]);
+  if (lastFill != null) stats.push(['space filled', pctWords(lastFill)]);
   $('eStats').innerHTML = stats
     .map(([k, v]) => '<div><b>' + esc(v) + '</b><span>' + esc(k) + '</span></div>').join('');
   $('eLine').textContent = lastLine;
