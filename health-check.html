@@ -214,6 +214,10 @@ section > h2, .sechead h2 { font-size: clamp(1.7rem, 3.6vw, 2.5rem); }
 .rtable th, .rtable td { border-bottom: 1px solid var(--rule); padding: 0.3rem 0.45rem; text-align: left; vertical-align: top; }
 .rtable th { color: var(--ink-2); font-weight: 600; }
 .empty { color: var(--ink-2); font-style: italic; }
+/* a branch of the spine the page was not drawn for, drawn plainly from its own words with its runs beneath */
+.branch { border-top: 1px solid var(--rule); }
+.branch .words details p { color: var(--ink); overflow-wrap: anywhere; }
+.branch .bruns { margin-top: 1rem; }
 .pastedhead { font-family: var(--display); font-weight: 400; font-size: 1.15rem; margin: 0.6rem 0 0; }
 
 /* talk */
@@ -450,6 +454,8 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
     </div>
   </div>
 
+  <div id="branches"></div>
+
   <section id="record">
     <div class="sechead">
       <h2>The record</h2>
@@ -500,7 +506,8 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
   'use strict';
   /* ── the beach behind the page: the steps are read from spine:health-check and repainted where they stand; the
      record is every runner's mirror, health-check:<handle>, its runs at 1.11111 and each later run a rung deeper,
-     plus the runs a person pasted into pool:health-check (field 2 '1.11111'). The band and the instruments draw
+     plus the runs a person pasted into pool:health-check (field 2 '1.11111'); a branch of the spine the page was
+     not drawn for (the loop at 2) is drawn plainly from its words, its runs beneath. The band and the instruments draw
      weft's own first two runs (health-check:weft 1.11111 and 1.111111). Nothing writes but the paste box. ── */
   var PREVIEW = !!window.__PREVIEW__;
   var SNAP = window.__SNAP__ || {};
@@ -972,10 +979,44 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
     var i = h.indexOf(': ');
     return i > 0 && i < 170 ? '<b>' + esc(h.slice(0, i)) + '</b>: ' + esc(h.slice(i + 2)) : esc(h);
   }
+  /* ── a branch the page was not drawn for: any digit of the spine holding rungs that no [data-sp] here repaints (the
+     loop at 2, drafted 23 November 2026, lane loop-health.1) is drawn plainly from its own words, its rungs in a fold,
+     with the runs that belong to it beneath, by the same shared reader; the six steps above stay the page's own ── */
+  var DRAWN_HERE = {};
+  each(document.querySelectorAll('[data-sp]'), function (el) { DRAWN_HERE[el.getAttribute('data-sp').charAt(0)] = 1; });
+  function rungsOf(n, ds, out) {
+    if (n == null) return out;
+    var t = textOf(n);
+    if (t) out.push({ at: ds.length > 1 ? ds.charAt(0) + '.' + ds.slice(1) : ds, t: t });
+    if (typeof n === 'object') for (var k = 1; k <= 9; k++) if (n[String(k)] != null) rungsOf(n[String(k)], ds + k, out);
+    return out;
+  }
+  function paintBranches(sp, all) {
+    var host = $('branches'); if (!host || !sp || typeof sp !== 'object') return;
+    var mounts = [], html = '';
+    for (var d = 1; d <= 9; d++) {
+      var k = String(d), node = sp[k];
+      if (DRAWN_HERE[k] || !node || typeof node !== 'object') continue;
+      var rungs = rungsOf(node, k, []); if (!rungs.length) continue;
+      var head = split(rungs[0].t), mine = (all || []).filter(function (r) { return String(r.at || '').charAt(0) === k; });
+      html += '<section class="branch" id="branch-' + k + '"><div class="sechead"><span class="addr">spine:health-check ' + k + '</span>' +
+        '<h2>' + esc(head.title ? caseTitle(head.title) : 'Branch ' + k) + '</h2><p>' + esc(capFirst(head.body)) + '</p></div>' +
+        (rungs.length > 1 ? '<div class="words"><details><summary>Its steps, as the beach holds them</summary>' + rungs.slice(1).map(function (r) {
+          var s = split(r.t);
+          return '<p><span class="addr">' + esc(r.at) + ' </span>' + (s.title ? '<b>' + esc(caseTitle(s.title)) + '</b> — ' : '') + esc(capFirst(s.body)) + '</p>';
+        }).join('') + '</details></div>' : '') +
+        '<div class="bruns" id="branchRuns-' + k + '"></div>' + (mine.length ? '' : '<p class="empty">No runs kept at this branch yet.</p>') + '</section>';
+      mounts.push([k, mine]);
+    }
+    host.innerHTML = html;
+    if (window.beachRuns) mounts.forEach(function (m) { beachRuns.draw($('branchRuns-' + m[0]), m[1], { label: 'Kept in each runner’s own mirror' }); });
+  }
   /* the mirrors' runs are the shared reader's to draw (runs.js: the newest as a card, the rest a dropdown with a chip per
      runner); the runs a person pasted into the room, field 2 the run step, stand beneath it, newest first, marked so */
   function paintRecord(mir, room) {
-    var runs = window.beachRuns && SPINE ? beachRuns.of(mir.mirrors || {}, { spine: SPINE, touched: mir.touched || {} }).filter(function (r) { return r.at === RUN_AT; }) : [];
+    var all = window.beachRuns && SPINE ? beachRuns.of(mir.mirrors || {}, { spine: SPINE, touched: mir.touched || {} }) : [];
+    var runs = all.filter(function (r) { return r.at === RUN_AT; });
+    paintBranches(SPINE, all);
     if (window.beachRuns) beachRuns.draw($('mirrorRuns'), runs, { label: 'Kept in each runner\u2019s own mirror' });
     var pasted = roomEntries(room).filter(function (e) { return String(e['2'] || '') === RUN_AT; }).reverse();
     var hands = {}; runs.forEach(function (r) { hands[r.who] = 1; }); pasted.forEach(function (e) { hands[e['1']] = 1; });
@@ -1006,6 +1047,7 @@ footer { border-top: 1px solid var(--rule); margin-top: 2.6rem; padding: 1.2rem 
       if (got[0]) MIR = got[0];
       ROOMBLOCK = got[1];
       if (!got[0] && !got[1]) {
+        paintBranches(SPINE, []);
         if (window.sitePass && sitePass.walled(BEACH)) $('recordNote').innerHTML = sitePass.wall(BEACH);
         else $('recordNote').textContent = 'The beach could not be read just now; the record shows again when it can be.';
         return;
