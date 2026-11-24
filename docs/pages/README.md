@@ -36,6 +36,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [eye](eye.md) | `eye.html` | Iris and Magic Eye (16 Nov 2026, lane eye.1), at `/eye`: |
 | [families](families.md) | `families.html` | Families on the Beach (17 Nov 2026, lane proposals-tidy.2, at David's word: |
 | [first-meeting](first-meeting.md) | `first-meeting.html` | the first-meeting proposal (11 Nov 2026), at `/first-meeting`, its snazzy view, which its law names at 6 from 12 Nov 2026, when it went live at David'… |
+| [flock-world](flock-world.md) | `flock-world.html` | the Flock World proposal (24 Nov 2026), at `/flock-world`, its snazzy view (`/proposal/flock-world` is its standard view): Forage and Migration grown into one flocking game for thousands on a world that wraps and grows, drawn as a murmuration at dusk over a patchwork of fields, an instrument a step |
 | [fotronic](fotronic.md) | `fotronic.html` + `fotronic/` | fotronic (26 Oct 2026), at `/fotronic`: |
 | [full-bandwidth](full-bandwidth.md) | `full-bandwidth.html` | the full-bandwidth walk (13 Nov 2026), at `/full-bandwidth`, its crafted page, which its law names at 6 (`/walk/full-bandwidth` draws the same family … |
 | [game-arcade](game-arcade.md) | `game-arcade.html` | the game arcade's proposal (21 Oct 2026), at `/game-arcade`: |
