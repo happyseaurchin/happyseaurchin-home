@@ -66,6 +66,9 @@
   .ten .score{font-family:var(--mono);font-size:13px;color:var(--solid);white-space:nowrap}
   .none{margin:4px 0 0;color:var(--vapour-dim);font-style:italic;font-size:15px}
   .count{margin:0;font-family:var(--mono);font-size:12px;letter-spacing:0.04em;color:var(--vapour)}
+  .here{margin:0;font-family:var(--mono);font-size:12px;letter-spacing:0.04em;color:var(--vapour-dim)}
+  .here.on{color:var(--liquid)}
+  .here a{color:inherit}
   .note{margin:6px 0 0;font-family:var(--mono);font-size:11.5px;color:var(--vapour-dim);line-height:1.5;overflow-wrap:anywhere}
   .note code,.how code{font-family:var(--mono);overflow-wrap:anywhere}
   .how{overflow-wrap:anywhere}
@@ -147,7 +150,8 @@ function card(g, b){
   let html = '<p class="kind">A game · handed in by ' + esc(g.by) + ' · plugged ' + esc(g.plugged) + '</p>' +
     '<h2><a href="' + page + '">' + esc(g.title || g.game) + '</a></h2>' +
     (g.what ? '<p class="what">' + esc(cap(g.what)) + '</p>' : '') +
-    '<a class="play" href="' + page + '">' + (daily ? '▶ Play today’s' : '▶ Play') + '</a>';
+    '<a class="play" href="' + page + '">' + (daily ? '▶ Play today’s' : '▶ Play') + '</a>' +
+    '<p class="here" hidden></p>';
   if (!daily) html += '<p class="none">It keeps no daily level and no board on the beach: it is played on its page.</p>';
   else if (!b || b.error) html += '<p class="none">Its board can’t be read just now' + (b && b.error ? ': ' + esc(b.error) : '') + '.</p>';
   else {
@@ -160,6 +164,37 @@ function card(g, b){
   li.innerHTML = html;
   return li;
 }
+/* WHO IS IN ITS ROOM NOW (24 Nov 2026, lane anteroom.1, David: 'where to go to join a waiting room?'): a live game's
+   players gather in its room's liquid on the beach (liquid:pool:<game>, the room plug's: a slot per player, written
+   while they stay, blanked when they leave), so each card reads it once, and again every half minute while the page
+   is in view, and says who is there now. A game with no live room has no liquid and says nothing. Writes nothing. */
+const BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach', FRESH = 25000;   // the room plug's own window
+function slotsOf(node, out){
+  if (!node || typeof node !== 'object') return out;
+  Object.keys(node).forEach(k => { if (!/^[1-9_]$/.test(k)) return; const s = node[k];
+    if (s && typeof s === 'object' && typeof s['1'] === 'string' && typeof s['3'] === 'string') out.push(s); else slotsOf(s, out); });
+  return out;
+}
+async function hereIn(g){
+  const r = await fetch(BEACH + '?block=' + encodeURIComponent('liquid:' + (g.room || 'pool:' + g.game)), { headers: { Accept: 'application/json' } });
+  if (!r.ok) return null;   // no room on the beach: the game is played alone
+  const block = await r.json().catch(() => null);
+  if (!block || typeof block !== 'object') return null;
+  const now = Date.parse(String(r.headers.get('X-Pscale-Now') || '').split('|')[0].trim()) || Date.now();
+  return slotsOf(block, []).filter(s => s._ && typeof s['7'] === 'string' && Math.abs(now - Date.parse(s['3'])) < FRESH).map(s => String(s['1']));
+}
+function sayHere(el, g, names){
+  if (!names) { el.hidden = true; return; }
+  const page = '/games/' + encodeURIComponent(g.game), n = names.length;
+  const who = names.slice(0, 3).map(esc).join(', ') + (n > 3 ? ' and ' + (n - 3) + ' more' : '');
+  el.className = 'here' + (n ? ' on' : '');
+  el.innerHTML = n ? '● ' + n + (n === 1 ? ' player' : ' players') + ' in its room now: ' + who + ' · <a href="' + page + '">play with them</a>'
+    : 'Plays live with others: nobody in its room just now, so the next to open it finds you.';
+  el.hidden = false;
+}
+function lookIn(list){
+  list.forEach((g, i) => { const el = $('shelf').children[i] && $('shelf').children[i].querySelector('.here'); if (el) hereIn(g).then(names => sayHere(el, g, names), () => {}); });
+}
 async function init(){
   const r = await fetch('/games/list.json', { cache: 'no-store', headers: { Accept: 'application/json' } });
   const list = (r.ok ? await r.json().catch(() => []) : []).filter(g => g && GAME.test(g.game || ''));
@@ -167,6 +202,8 @@ async function init(){
   const board = boards.find(b => b && b.date) || null, read = (board && board.read) || new Date().toISOString();
   $('today').textContent = (list.length ? list.length + (list.length === 1 ? ' game' : ' games') + ' · ' : '') + (board ? board.date + ' · the beach’s day ' + board.day + ' · ' : '') + 'read live, ' + clock(read);
   list.forEach((g, i) => $('shelf').appendChild(card(g, boards[i])));
+  lookIn(list);
+  setInterval(() => { if (!document.hidden) lookIn(list); }, 30000);
   if (!list.length){ const li = document.createElement('li'); li.className = 'game'; li.innerHTML = '<p class="kind">The shelf</p><h2>No game here yet</h2><p class="none">The first one handed in will stand here.</p>'; $('shelf').appendChild(li); }
   $('foot').innerHTML = 'The shelf is this site’s own list of the games it hosts, <code>games/list.json</code>; each game’s best three today come from the beach, through <code>/api/board</code>, as on <a href="/arcade">the arcade’s door</a>, which shows every game whose maker lists it. ' +
     'A game here plays at <code>/games/&lt;game&gt;</code> inside a frame sandboxed without this site’s origin: what it keeps (its player’s name and key) is kept for it under its own name, and it can reach the beach and nothing else. How a game plugs in: <code>ways:arcade</code> and <code>ways:plug</code> on the beach, and <a href="/game-arcade">the proposal</a>.';
