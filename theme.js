@@ -115,7 +115,8 @@
  * the last three passport:<h>, lists:<h> and now:<h>), so a key a page kept is the voice's and the voice's the
  * page's, one copy a block: wrapped where they stood, the voice would read the wrapped text as a key. Every other
  * name a key stood under (here-latch:, journal-latch:, grain-latch:, shell-latch:, the keepers' next-keeper:,
- * morning-keeper: and invite-keeper:, models:key:, gallery:pass, gallery:key, gallery:place-key, group:narrator) is
+ * morning-keeper: and invite-keeper:, models:key:, gallery:pass, gallery:key, gallery:place-key, group:narrator, and
+ * seal-word:<handle>, a word that only opens sealed lines, never a latch: the Factory's page passphrase) is
  * WRAPPED WHERE IT STANDS, under its own name, in localStorage, or sessionStorage for a tab. Where two old names held
  * different keys for one block, the second stands beside the first as a spare (beach-spare:<old name>), read back
  * under its own name until a key is next given for that block, so no key anyone kept is lost.
@@ -131,7 +132,7 @@
   var SEAL = 'https://beach.happyseaurchin.com/button/seal.js';
   var ABLE = 'site-keys:able', SPARE = 'beach-spare:';
   var MOVES = /^(next-latch|mirror-latch|passport-latch|lists-latch|now-latch):(.+)$/;
-  var WRAPS = /^(?:here-latch:|journal-latch:|grain-latch:|shell-latch:|next-keeper:|morning-keeper:|invite-keeper:|models:key:).+|^gallery:(?:pass|key|place-key)$|^group:narrator$/;
+  var WRAPS = /^(?:here-latch:|journal-latch:|grain-latch:|shell-latch:|next-keeper:|morning-keeper:|invite-keeper:|models:key:|seal-word:).+|^gallery:(?:pass|key|place-key)$|^group:narrator$/;
   var MEM = {}, TAB = {}, GONE = {}, READY = null, ABLE_NOW = false, sealP = null;
 
   function store(tab){ try { return tab ? window.sessionStorage : window.localStorage; } catch(e){ return null; } }

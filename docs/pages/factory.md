@@ -13,6 +13,17 @@ The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who m
 - **The key goes on but still opens nothing.** The page says the colour keeps no copy for that handle, and names whose copies it does keep.
 - **Some rows open.** It draws keel's whole page from the rows that opened, and lists the rest as sealed.
 
+**A passphrase of the page's own** (24 Nov 2026, David: 'i don't mind using a different passphrase if one has been created especially for that page'). David's usual key does not derive the keys at `passport:happyseaurchin` 9, and nor does his connector's (a read through it stays grey). So his copy in the colour opens only with whatever phrase those keys came from, and the voice holds one word per name and uses it for writes too. Typing that phrase here would send it to the beach on the tab's next write, even the ◐'s save of 9.2.
+
+So 'Factory passphrase' makes a reading identity of the reader's own, `<handle>-factory` by default, whose keys the reader makes on this page. It works in four steps:
+
+1. **First time.** The page asks the handle, then the passphrase twice. It creates `passport:<handle>` holding the keys at 9 the passphrase derives, latched under the latch it derives (seal.js `latch`). Nothing but the derived latch and the public halves leaves the browser.
+2. **Kept.** The passphrase is kept wrapped on this device as `seal-word:<handle>` (siteKeys); `factory:reader` names the handle.
+3. **Admitted.** The colour's keeper turns `colour:outreach` with a copy for the handle, and every row is sealed again in the new turn: a turn moves no line, as `outreach:keel` 8.7 says.
+4. **After that.** Each visit opens the rows with that identity's own copy (seal.js `colour.keyOf` and `colour.open`, in the page), with no question asked.
+
+The passphrase opens nothing else and is never a write's key. The device's name (`render:who`) stays as it was, so the voice, every other page and the reader's own keys are untouched. A wrong passphrase is refused in words, and a passport that stands with no keys is never written over.
+
 **How a line is split.** Each line splits on the labels `outreach:keel` 8.9 names: LEVEL, SECTOR, STANCE, CHURN, Door and Status, with the lead before them. From these it works out:
 
 - the beds, sectors and stances, which keel's filters and band use;
@@ -35,7 +46,7 @@ The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who m
 **Checked:**
 
 - The parser was run against keel's snapshot, each line rebuilt from its fields: no difference in any of the 49 rows (name, lead, the six labelled fields, beds, sectors, stances, status, watch), and the 13 headings sentence-cased from the beach's capitals match keel's.
-- In headless Chromium against a local beach (pscale-beach `scripts/local-beach.mjs`), with a made-up `colour:outreach` of two turns, test passports and invented rows, using the page, theme.js and the beach's own voice and seal unchanged: 28 of 28 checks passed, and 32 of 32 once the bar was added.
+- In headless Chromium against a local beach (pscale-beach `scripts/local-beach.mjs`), with a made-up `colour:outreach` of two turns, test passports and invented rows, using the page, theme.js and the beach's own voice and seal unchanged: 28 of 28 checks passed, 32 of 32 once the bar was added, and 40 of 40 with the page passphrase.
   - An unkeyed device sees no name.
   - A wrong key is refused in words.
   - The right key opens every row, and a reload opens them with no question.
@@ -44,6 +55,11 @@ The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who m
   - A stranger is told the colour keeps no copy for them.
   - The ◐ turns the register.
   - The loom's go menu shows the outreach tab holding The Factory.
+  - The page passphrase, 40 of 40 with it:
+    - A fresh device makes `happyseaurchin-factory`'s passport with its keys at 9, latched, so a write without its latch is refused.
+    - The device's name stays unset, and the passphrase is kept wrapped, never in the clear.
+    - After the keeper's turn 3 (a copy for each holder and the reading identity, every row sealed again in it), the same device opens all seven rows with no question.
+    - A wrong page passphrase is refused in words.
   - On this page, since the bar: 'options' holds 'addresses' and ◐, and both still work from inside it. 'go' stands beside it. The hand's own tab lists 'the factory' marked as here, from a list whose last rung is a bare line, as a point write leaves one. The outreach tab holds The Factory.
   - No sideways scroll on a phone, and no script error.
 - Against the live beach, unkeyed: 49 rows sealed under the same 11 headings, and the holders read from the colour.
