@@ -299,8 +299,7 @@ function drawSeal(){
   seal.classList.toggle("done", !shut.length);
   if (!ALL.length){ $("#sealLine").textContent = "outreach:keel keeps no rows at 5 or 6 just now."; $("#sealBody").innerHTML = ""; return; }
   if (!shut.length){
-    const by = PAGE && ALL.some(r => r.by) ? PAGE.handle : who;
-    $("#sealLine").innerHTML = "<b>" + open + " rows</b> opened here" + (by ? " for " + esc(by) : "") + ", each sealed in " + esc(COLOUR) + " on the beach.";
+    $("#sealLine").innerHTML = "<b>" + open + " rows</b> opened here" + (who ? " for " + esc(who) : "") + ", each sealed in " + esc(COLOUR) + " on the beach.";
     $("#sealBody").innerHTML = ""; return;
   }
   const line = open
@@ -324,10 +323,8 @@ function drawSeal(){
     }).join("") + "</ul></li>";
   }).join("") + "</ul>";
   $("#sealBody").innerHTML = "<div class=\"seal-act\">" + (wore && !held ? "" : "<button class=\"btn\" id=\"putKey\" type=\"button\">Open with your key</button>") +
-    "<button class=\"btn\" id=\"pageKey\" type=\"button\" title=\"a passphrase of this page's own, for a reading identity of yours\">Factory passphrase</button>" +
     "<span class=\"note\" id=\"keyNote\">" + note + "</span></div>" + map;
   const b = $("#putKey"); if (b) b.onclick = putKeyOn;
-  $("#pageKey").onclick = pagePassphrase;
 }
 async function putKeyOn(){
   const note = $("#keyNote");
@@ -342,86 +339,6 @@ async function putKeyOn(){
   const r = await VOICE.wear({ name }).catch(e => ({ ok: false, error: e.message || String(e) }));
   if (r && r.ok){ WORE = name; await openAll(); draw(); }
   else note.textContent = r && r.quiet ? "not opened" : (r && r.error) || "not opened";
-}
-
-/* ---------- a passphrase of the page's own (David, 24 Nov 2026: 'i don't mind using a different passphrase if one has been
- * created especially for that page'). A reader whose passport keys came from another phrase than the key they use (David's
- * do) gets a reading identity of their own, '<handle>-factory' by default, whose keys they make here from a passphrase
- * chosen for this page: published at passport:<that handle> 9, the passport latched under a latch derived from the
- * passphrase (seal.js latch), so the passphrase never leaves this browser. colour:outreach's keeper then admits the
- * handle, and the rows open with its own copy. Kept on this device as every key is, wrapped (siteKeys, 'seal-word:<handle>'),
- * and used for nothing but opening: never a write's key, never the voice's, and the device's name stays as it was. */
-const READER = "factory:reader";            /* the handle the page passphrase is for: a name, not a key */
-let PAGE = null, SEALP = null, COL = null;  /* { handle, word } in this page's memory; the beach's seal, loaded once; the colour as read */
-function sealLib(){
-  if (!SEALP) SEALP = (window.beachSeal ? Promise.resolve(window.beachSeal) : new Promise((ok, no) => {
-    const s = document.createElement("script");
-    s.src = BEACH + "/button/seal.js";
-    s.onload = () => window.beachSeal ? ok(window.beachSeal) : no(new Error("the beach’s seal did not load"));
-    s.onerror = () => no(new Error("the beach’s seal did not load"));
-    document.head.appendChild(s);
-  })).then(S => S.ready().then(() => S)).catch(e => { SEALP = null; throw e; });
-  return SEALP;
-}
-/* every row still sealed in the colour, opened with the page identity's own copy of its turn, where the keeper sealed one */
-async function pageOpen(){
-  if (!PAGE || !COL) return 0;
-  const S = await sealLib(), turns = S.colour.turns(COL), keys = {};
-  let n = 0;
-  for (const r of ALL){
-    if (r.text != null || !r.node || typeof r.node !== "object") continue;
-    const e = S.envelopeOf(r.node);
-    if (!e || S.mode(e) !== "colour" || String(e["9"]["2"]) !== COLOUR) continue;
-    const t = String(e["9"]["3"]);
-    if (!(t in keys)){ const turn = turns.find(x => x.address === t); keys[t] = turn ? await S.colour.keyOf(turn, PAGE.word, PAGE.handle).catch(() => null) : null; }
-    if (!keys[t]) continue;
-    const text = await S.colour.open(e, keys[t]).catch(() => null);
-    if (typeof text === "string"){ r.text = text; r.grey = ""; r.by = PAGE.handle; n++; }
-  }
-  DATA.rows = ALL.filter(r => r.text != null).map(rowOf);
-  return n;
-}
-/* the page passphrase this device keeps, if any, so a reader who set one opens the page with no question */
-async function pageKept(){
-  let h = ""; try { h = localStorage.getItem(READER) || ""; } catch (e) {}
-  if (!h || !window.siteKeys) return;
-  await window.siteKeys.ready();
-  const w = window.siteKeys.get("seal-word:" + h);
-  if (w) PAGE = { handle: h, word: w };
-}
-async function pagePassphrase(){
-  const note = $("#keyNote");
-  const who = VOICE && VOICE.name ? VOICE.name() : "";
-  let last = ""; try { last = localStorage.getItem(READER) || ""; } catch (e) {}
-  const typed = window.prompt("The handle your Factory passphrase is for (the first time, a new one is made for it):", last || (who ? who + "-factory" : ""));
-  if (typed === null) return;
-  const handle = window.cleanHandle ? window.cleanHandle(typed) : typed.trim();
-  if (!handle){ note.textContent = "a Factory passphrase is kept under a handle: none given"; return; }
-  const word = (window.prompt("The Factory passphrase for " + handle + ". It stays on this device, wrapped, and is never sent anywhere:") || "").trim();
-  if (!word){ note.textContent = "not opened"; return; }
-  note.textContent = "opening…";
-  let S; try { S = await sealLib(); } catch (e) { note.textContent = e.message; return; }
-  const pass = await readBlock("passport:" + handle).catch(() => null);
-  const mine = S.published(await S.pair(word, handle)), has = pass && S.publishedOf(pass["9"]);
-  if (!has){
-    /* a handle no one holds yet: its passport is made here, its keys at 9, latched under the latch the passphrase derives */
-    if (pass){ note.textContent = "passport:" + handle + " stands with no keys at 9, so it was made elsewhere: choose another handle"; return; }
-    const again = window.prompt("No keys stand for " + handle + " yet. To make them from this passphrase, enter it once more:");
-    if (again === null){ note.textContent = "nothing made"; return; }
-    if (again.trim() !== word){ note.textContent = "the two did not match, so nothing was made"; return; }
-    const body = { block: "passport:" + handle, new_lock: await S.latch(word, handle), content: { _: handle + " — a reading identity made on happyseaurchin.com/factory on " +
-      new Date().toISOString().slice(0, 10) + ", so the Factory opens with a passphrase of its own: the keys at 9 open the copy a colour's keeper seals to it, and its latch is derived from that passphrase, which never leaves the browser it was typed in. It writes nothing else.", "9": mine } };
-    const w = await fetch(BEACH + "/.well-known/pscale-beach", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
-      .then(r => r.json().catch(() => ({ error: "the beach did not answer" }))).catch(e => ({ error: e.message || String(e) }));
-    if (!w || w.error){ note.textContent = (w && w.error) || "the beach did not take it"; return; }
-  } else if (has.x25519 !== mine["2"]){ note.textContent = "that passphrase does not derive the keys published for " + handle; return; }
-  if (window.siteKeys) await window.siteKeys.set("seal-word:" + handle, word);
-  try { localStorage.setItem(READER, handle); } catch (e) {}
-  PAGE = { handle, word };
-  if (await pageOpen()){ draw(); return; }
-  drawSeal();
-  $("#keyNote").textContent = (has ? "Your Factory passphrase is right" : "Keys made for " + handle + ", and kept on this device") + ", and " + COLOUR +
-    " keeps no copy for " + handle + " yet: once its keeper admits " + handle + " (ask weft), this page opens with this passphrase.";
 }
 
 /* ---------- keel's page, drawn from the opened rows ---------- */
@@ -564,7 +481,7 @@ function draw(){
 async function load(){
   try {
     const [b, c] = await Promise.all([readBlock(BLOCK), readBlock(COLOUR).catch(() => null)]);
-    COL = c; HOLD = holdersOf(c);
+    HOLD = holdersOf(c);
     $("#holders").textContent = HOLD.names.length ? " (" + (HOLD.turn ? "at turn " + HOLD.turn + ": " : "") + HOLD.names.join(", ") + ")" : "";
     skeleton(b);
   } catch (e) {
@@ -575,8 +492,6 @@ async function load(){
   DATA.stamp = new Date().toLocaleString([], { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
   $("#stamp").textContent = "read live · " + DATA.stamp;
   await openAll();
-  await pageKept();
-  if (PAGE) await pageOpen().catch(() => 0);
   draw();
 }
 
