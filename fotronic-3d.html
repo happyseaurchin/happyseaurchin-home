@@ -144,6 +144,7 @@ input[type=range] { width: 100%; accent-color: var(--cyan); min-height: 32px; }
 <div id="bottom"></div>
 <div id="touch" class="hidden"><div class="half l" aria-hidden="true"></div><div class="half r" aria-hidden="true"></div><button type="button" id="brake">BRAKE</button></div>
 <div id="chrome" class="hidden">
+  <button type="button" class="chip" id="bMenu" aria-label="Leave the match and go back to the menu">✕ MENU</button>
   <button type="button" class="chip" id="bView" aria-label="View: inside. Tap for outside.">INSIDE</button>
   <button type="button" class="chip" id="bCam">CAMERA</button>
 </div>
@@ -170,6 +171,7 @@ input[type=range] { width: 100%; accent-color: var(--cyan); min-height: 32px; }
     <div id="lobby" hidden>
       <p class="hint" id="lobbyNote">Everyone here plays in one match, teams by arrival (blue, gold, blue…), bots in the empty seats. Anyone can start it, and a player on the flat Fotronic page plays the same match from above.</p>
       <beach-here id="here" label="START THE MATCH"></beach-here>
+      <button type="button" class="btn line" id="leaveRoom">LEAVE THE ROOM</button>
     </div>
     <p class="foot">Bots fill the other seats. The match ends at 100. The same law as <a href="https://happyseaurchin.com/fotronic">Fotronic</a>, seen from above there; the spec and its decisions: <a href="https://happyseaurchin.com/tronic-glass#fotronic">TRONIC Glass</a>.</p>
   </div>
@@ -221,7 +223,18 @@ input[type=range] { width: 100%; accent-color: var(--cyan); min-height: 32px; }
     <div class="hint" id="copied"></div>
     <button type="button" class="btn" id="copy">COPY THE LINE</button>
     <button type="button" class="btn line" id="again">PLAY AGAIN</button>
+    <button type="button" class="btn line" id="toMenu">MENU</button>
     <p class="foot">The line is the match's result, for the beach's voice to write into each player's own mirror at the match's address, where boards and cups read it (spine:tronic-glass 1.172).</p>
+  </div>
+</section>
+
+<section id="leave" class="sheet hidden" role="dialog" aria-modal="true" aria-label="Leave the match?">
+  <div class="card">
+    <h1>LEAVE THE MATCH?</h1>
+    <p class="lede" id="leaveLede">The match is paused while you choose.</p>
+    <button type="button" class="btn" id="stay">KEEP PLAYING</button>
+    <button type="button" class="btn line" id="quit">LEAVE</button>
+    <p class="foot">Esc asks this too; Esc again keeps playing.</p>
   </div>
 </section>
 
@@ -239,7 +252,13 @@ import * as s from './fotronic/sim.js'; window.FotronicSim = s;
  * share one match (spine:tronic-glass 1.15: the skin is the player's own and changes nothing of play). What is new
  * is only drawing: a WebGL2 arena, the camera inside the cycle (or outside it, where the player puts it), the map,
  * the instruments and the sound. Hosted beside fotronic.html, the script above is replaced by
- * `import * as sim from './fotronic/sim.js'` and nothing else changes. */
+ * `import * as sim from './fotronic/sim.js'` and nothing else changes.
+ *
+ * Hosted by weft (lane fotronic-3d.1, 24 Nov 2026) with what the flat page gained that afternoon, after this was built
+ * (happyseaurchin-home #795, David: 'all the choices allow the user to exit and go back'), so the two pages still play
+ * one match: a way back from every screen (✕ MENU or Esc asks LEAVE THE MATCH?; the camera card is the CAMERA chip's),
+ * and the words that go with it, a leaver's quit naming the tick their seat becomes a bot, a start that seats nobody
+ * heard playing another match, and a seat in another match given up at once mid-match. */
 const sim = window.FotronicSim;
 const $ = id => document.getElementById(id);
 const params = (() => { try { return new URLSearchParams(location.search); } catch (e) { return new URLSearchParams(''); } })();
@@ -261,7 +280,8 @@ const transport = {
 };
 let state = null, humans = { blue: null, gold: null }, law = sim.LAW, running = false;
 let mode = 'attract';   // attract (bots behind the start card) | local | online
-let paused = false;     // a local match waits while the camera card is open
+let paused = false;     // a local match waits while the camera card is open, or the question whether to leave
+let wasOnline = false;  // the match just played was online: the end card's way back is the waiting room
 transport.onEvent(event => { if (state) sim.apply(state, event); });
 
 /* ── the settings: the skin's, kept on this device ── */
@@ -276,10 +296,18 @@ function saveSet() { try { localStorage.setItem('fotronic3d', JSON.stringify(SET
 
 /* ── online: lockstep over the beach's room plug, as fotronic.html plays it (anteroom.1, 23 Nov 2026), with the three
  * repairs Coil carries (games-coil.md): the match id on the wire and what arrives early kept for it; every press, mine
- * or another page's, queued in order of tick, then seat; each page's words numbered and taken in the order sent. A page
- * that numbers nothing (the flat page as it stands) is taken as it comes, so the two pages still play one match. ── */
+ * or another page's, queued in order of tick, then seat; and no word that comes late, or never, parting the worlds.
+ * keel built the third as each page's words numbered and taken in the order sent. Hosted (lane fotronic-3d.1), it is
+ * carried another way, on this page and the flat page alike: held in order, one word the beach's relay never delivers
+ * (it keeps sixty unanswered words to a peer and drops the oldest) left every later word waiting behind it, and the
+ * match stood still for good (seen live, two pages joined only through the beach). So every word carries its page's
+ * presses of the last half second, each numbered, a press taken once by its number, and a word lost or overtaken costs
+ * nothing: no page can be more than DELAY ticks behind another, so any word that lets a page ride past a press's tick
+ * was sent while that press still rode in every word. A page that sends each press once (ev: a page from before the
+ * window) is taken as it comes, so the two pages still play one match. ── */
 const DELAY = 15;   // ticks (an eighth of a second) between a press and the tick it acts on, online
-function freshNet(on) { return { on, match: null, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, sent: 0, nextQ: {}, held: {} }; }
+const KEEP = 4 * DELAY;   // ticks a press rides in every word its page sends after its tick has come
+function freshNet(on) { return { on, match: null, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, n: 0, said: [], maxN: {}, botAt: [] }; }
 let NET = freshNet(false);
 function enqueue(ev) {
   const P = NET.pending;
@@ -290,9 +318,11 @@ function enqueue(ev) {
 function input(seat, action) {   // a person's press: now, at home; DELAY ticks on, online, the others told
   if (!state || seat === null || seat === undefined) return;
   if (!NET.on) { transport.send({ tick: state.tick, seat, action }); return; }
-  const ev = { tick: state.tick + DELAY, seat, action };
-  enqueue(ev); NET.out.push(ev);
+  const ev = { tick: state.tick + DELAY, seat, action, n: ++NET.n };
+  enqueue(ev); NET.out.push(ev); NET.said.push(ev);
 }
+/* what this page has pressed in the last half second, which rides in every word it sends */
+function recent() { NET.said = NET.said.filter(e => e.tick > state.tick - KEEP); return NET.said; }
 
 /* ── the start card ── */
 function fillSeats(sel, size, chosen) {
@@ -322,7 +352,34 @@ $('seatGold').addEventListener('change', keysHint);
 preset();
 
 $('go').addEventListener('click', start);
-$('again').addEventListener('click', () => { showSheet('start'); attract(); });
+/* ── every screen has a way back, as on the flat page (#795; 24 Nov 2026, David: 'all the choices allow the user to exit
+ * and go back'): ✕ MENU or Esc in a match asks to leave, the match paused at home and going on online; the end card
+ * plays again or goes back; the waiting room can be left. Back from an online match is the waiting room, and from
+ * there LEAVE THE ROOM is the menu. ── */
+const asking = () => !$('leave').classList.contains('hidden');
+function showMenu() { showSheet('start'); attract(); }
+function askLeave() {
+  if (!state || !running || mode === 'attract') return;
+  if (mode === 'local') { paused = true; for (const code of Array.from(held)) { const k = keySeat(code); held.delete(code); if (k && k.seat !== null) input(k.seat, 'BRAKE_OFF'); } }   // at home the match waits for the answer; online the others play on
+  $('leaveLede').textContent = NET.on ? 'The match goes on for the others while you choose. If you leave, a bot takes your seat, and you go back to the waiting room.' : 'The match is paused while you choose.';
+  showSheet('leave'); $('stay').focus();
+}
+function keepPlaying() { showSheet(null); if (paused) { paused = false; last = performance.now(); acc = 0; } }
+function leaveMatch() {
+  if (NET.on) {   // everything I said, sent; then the tick from which my seat is a bot, which no phone has passed yet
+    flush(true);
+    try { room.send('quit', { m: NET.match, at: state.tick + DELAY, win: recent() }, { reliable: true }); } catch (e) {}
+    NET.on = false;
+    $('lobbyNote').textContent = 'You left the match: a bot has your seat and the others play on. A start here seats whoever is not mid-match.';
+  }
+  held.clear(); brakeBtn.classList.remove('held');
+  showMenu();
+}
+$('bMenu').addEventListener('click', e => { e.stopPropagation(); askLeave(); });
+$('stay').addEventListener('click', keepPlaying);
+$('quit').addEventListener('click', leaveMatch);
+$('again').addEventListener('click', () => { if (wasOnline) showMenu(); else start(); });   // at home the same match again; online, back to the room
+$('toMenu').addEventListener('click', () => { if (wasOnline) leaveRoom(); showMenu(); });
 
 function start() {
   audioInit();
@@ -341,7 +398,7 @@ function start() {
   begin(st, 'local', local);
 }
 function begin(st, m, local) {
-  state = st; mode = m; humans = local;
+  state = st; mode = m; humans = local; wasOnline = m === 'online';
   running = true; paused = false; last = performance.now(); acc = 0;
   parts.length = 0; rings.length = 0; feedClear(); lastCount = -1;
   snapshot(); resetVis();
@@ -389,7 +446,14 @@ function keySeat(code) {
 const typing = e => e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range';
 window.addEventListener('keydown', e => {
   if (typing(e)) return;
-  if (!e.repeat && e.code === 'Escape') { if (!$('cam').classList.contains('hidden')) closeCam(); else if (mode !== 'attract' && running) openCam(); return; }
+  if (!e.repeat && e.code === 'Escape') {   // closes the camera card; in a match asks to leave, and again keeps playing; on the end card, MENU
+    if (!$('cam').classList.contains('hidden')) closeCam();
+    else if (asking()) keepPlaying();
+    else if (mode !== 'attract' && running) askLeave();
+    else if (!$('end').classList.contains('hidden')) $('toMenu').click();
+    return;
+  }
+  if (asking()) return;   // while the question stands the keys steer nothing
   if (!e.repeat && e.code === 'KeyV') { setView(SET.view === 'inside' ? 'outside' : 'inside'); return; }
   if (!e.repeat && e.code === 'KeyM') { setSound(!SET.sound); return; }
   if (!e.repeat && (e.code === 'KeyC' || e.code === 'Tab') && mode !== 'attract') { if (nextWatch()) e.preventDefault(); return; }
@@ -444,6 +508,7 @@ function frame(now) {
       if (NET.on && !NET.remote.every(id => NET.upTo[id] >= state.tick)) { NET.waiting += TICK_MS; acc = Math.min(acc, TICK_MS * 4); break; }   // everyone's word for this tick first
       NET.waiting = 0;
       if (NET.on) while (NET.pending.length && NET.pending[0].tick <= state.tick) sim.apply(state, NET.pending.shift());   // the presses due, at their tick
+      if (NET.on) while (NET.botAt.length && NET.botAt[0].tick <= state.tick) state.seats[NET.botAt.shift().seat].bot = true;   // a seat whose player left, a bot from its tick on every phone
       for (const e of sim.botEvents(state)) transport.send(e);
       snapshot();
       sim.step(state);
@@ -487,10 +552,18 @@ $('online').addEventListener('click', () => {
     if (!handle() && r.name) $('handle').value = cleanName(r.name);
   });
 });
+const LOBBY_NOTE = $('lobbyNote').textContent;
+function leaveRoom() {
+  if (room && room.joined && room.joined()) room.leave();
+  $('lobby').hidden = true; $('online').hidden = false;
+  $('lobbyNote').textContent = LOBBY_NOTE;
+}
+$('leaveRoom').addEventListener('click', leaveRoom);
 /* the seating the caller of a start hands every page: everyone here sorted by id, blue, gold, blue… by turn (as fotronic.html) */
 function plan() {
   const me = room.me(); if (!me) return null;
-  const all = [{ id: me.id, name: me.name }].concat(room.peers().map(p => ({ id: p.id, name: p.name }))).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const free = p => !(busy[p.id] > Date.now() - 2500);   // a player heard playing another match is left out of this one
+  const all = [{ id: me.id, name: me.name }].concat(room.peers().filter(free).map(p => ({ id: p.id, name: p.name }))).sort((a, b) => (a.id < b.id ? -1 : 1));
   const size = Math.min(law.TEAM_MAX_PLAYERS || 6, Math.max(parseInt($('size').value, 10) || 1, Math.ceil(all.length / 2)));
   return { size, match: 'online-' + Date.now().toString(36) + '-' + me.id.slice(0, 4), players: all.slice(0, size * 2).map((p, i) => ({ id: p.id, name: String(p.name || 'player').slice(0, 32), team: i % 2 ? 'gold' : 'blue', seat: Math.floor(i / 2) + 1 })) };
 }
@@ -505,6 +578,11 @@ if (room) {
   let called = null, calledTimer = 0;
   room.on('start', x => {
     const p = x && x.body; if (!p || !Array.isArray(p.players)) return;
+    if (running && mode !== 'attract') {   // mid-match here: a seat given me in another match is given up at once, and this match goes on
+      const me = room.me();
+      if (me && p.players.some(q => q.id === me.id)) { try { room.send('quit', { m: matchOf(p), at: 0 }, { reliable: true }); } catch (e) {} }
+      return;
+    }
     if (called && called.from < x.from && Date.now() < called.at + 1000) return;
     called = x; clearTimeout(calledTimer);
     calledTimer = setTimeout(() => startOnline(p), Math.max(0, (x.at || Date.now()) - Date.now()));
@@ -512,26 +590,27 @@ if (room) {
   room.on('message', onNet);
   room.on('gone', g => { NET.remote = NET.remote.filter(id => id !== g.id); });   // a player gone: the match goes on without waiting for them
 }
+const matchOf = p => String(p.match).slice(0, 60);
 function startOnline(p) {
   const me = room.me(); if (!me) return;
   const mine = p.players.find(q => q.id === me.id);
   if (!mine) { $('lobbyNote').textContent = 'A match started before you came in. The next one has you.'; return; }
   audioInit();
+  const gave = new Set(declined[matchOf(p)] || []); delete declined[matchOf(p)];   // seats given up before it began here
   const seats = [];
   for (const team of ['blue', 'gold']) for (let n = 1; n <= p.size; n++) {
     const q = p.players.find(x => x.team === team && x.seat === n);
-    seats.push({ team, seat: n, bot: !q, handle: q ? q.name : team + n });
+    seats.push({ team, seat: n, bot: !q || gave.has(q.id), handle: q ? q.name : team + n });
   }
-  const st = sim.createMatch(law, seats, String(p.match).slice(0, 60));
+  const st = sim.createMatch(law, seats, matchOf(p));
   NET = freshNet(true); NET.match = st.match;
   for (const q of p.players) {
     NET.seatOf[q.id] = st.seats.find(s => s.team === q.team && s.seat === q.seat).index; NET.names[q.id] = q.name;
-    if (q.id !== me.id) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
+    if (q.id !== me.id && !gave.has(q.id)) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
   }
   const local = { blue: null, gold: null }; local[mine.team] = NET.seatOf[me.id];
   begin(st, 'online', local);
-  const early = EARLY.splice(0).filter(e => e.m.body.m === NET.match && Date.now() - e.at < 10000);
-  for (const e of early) onNet(e.m);
+  for (const w of takeEarly(NET.match)) onNet(w);
   flush(true);
 }
 /* everything I have said up to a tick, sent: my presses since the last send, and the tick I have spoken for */
@@ -539,30 +618,58 @@ function flush(force) {
   if (!NET.on || !room) return;
   const t = performance.now();
   if (!force && !NET.out.length && t - NET.sentAt < 33) return;   // at most thirty a second when there is nothing new
-  try { room.send('fx', { m: NET.match, q: NET.sent + 1, upTo: state.tick + DELAY - 1, ev: NET.out }, { reliable: true }); NET.sent++; } catch (e) {}
+  try { room.send('fx', { m: NET.match, upTo: state.tick + DELAY - 1, ev: NET.out, win: recent() }, { reliable: true }); } catch (e) {}   // ev, each press once, for a page from before the window
   NET.out = []; NET.sentAt = t;
 }
-const EARLY = [];   // what arrives in the moment before this page's own start fires, kept for the match it names
+/* what arrives in the moment before this page's own start fires, kept for the match it names: by match, for ten seconds,
+ * so the words of a match running elsewhere in the room, heard from the waiting room, never crowd out the next one's */
+const EARLY = {};
+function keepEarly(m) {
+  const t = Date.now(), k = String(m.body.m);
+  for (const x in EARLY) if (t - EARLY[x].at > 10000) delete EARLY[x];
+  const b = EARLY[k] = EARLY[k] || { at: t, words: [] };
+  if (b.words.length < 400) b.words.push(m);
+}
+function takeEarly(match) {
+  const b = EARLY[match], t = Date.now();
+  for (const x in EARLY) delete EARLY[x];
+  return b && t - b.at < 10000 ? b.words : [];
+}
+const busy = {}, declined = {};   // who was heard playing another match, and when; seats given up before their match began here
 function onNet(m) {
   if (!m || !m.body) return;
-  if (!NET.on || (m.body.m && m.body.m !== NET.match)) { if (m.body.m && EARLY.length < 400) EARLY.push({ m, at: Date.now() }); return; }
-  if (!(m.from in NET.seatOf)) return;
-  if (m.kind === 'fx') {
-    const q = m.body.q | 0;
-    if (!q) { takeFx(m.from, m.body); return; }   // a page that numbers nothing, taken as it comes
-    const held = NET.held[m.from] = NET.held[m.from] || {};
-    if (q >= (NET.nextQ[m.from] || 1)) held[q] = m.body;
-    if (Object.keys(held).length > 240) NET.desync = true;   // a word lost on the way: the worlds can no longer agree
-    for (let k = NET.nextQ[m.from] || 1; held[k]; k = NET.nextQ[m.from]) { const b = held[k]; delete held[k]; NET.nextQ[m.from] = k + 1; takeFx(m.from, b); }
-  } else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
+  const other = m.body.m != null && (!NET.on || m.body.m !== NET.match);   // a word about a match this page is not playing
+  if (m.kind === 'fx' && (other || !NET.on)) busy[m.from] = Date.now();
+  if (m.kind === 'quit' && other && !(m.body.at | 0)) {   // a seat given up before its match began: a bot there from the start
+    const k = String(m.body.m); (declined[k] = declined[k] || []).push(m.from);
+    const ks = Object.keys(declined); if (ks.length > 8) delete declined[ks[0]];
+    return;
+  }
+  if (other) { keepEarly(m); return; }
+  if (!NET.on || !(m.from in NET.seatOf)) return;
+  if (m.kind === 'fx') { takePresses(m.from, m.body); NET.upTo[m.from] = Math.max(NET.upTo[m.from] == null ? -1 : NET.upTo[m.from], m.body.upTo | 0); }
+  else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
+  else if (m.kind === 'quit') {   // a player left: their seat a bot from the tick they named, the brake let go, nobody waiting for them
+    takePresses(m.from, m.body);
+    const seat = NET.seatOf[m.from], at = Math.max(state.tick, m.body.at | 0);
+    enqueue({ tick: at, seat, action: 'BRAKE_OFF' });
+    NET.botAt.push({ tick: at, seat }); NET.botAt.sort((a, b) => a.tick - b.tick);
+    NET.remote = NET.remote.filter(id => id !== m.from);
+  }
 }
-function takeFx(from, body) {
-  const seat = NET.seatOf[from];
-  for (const ev of body.ev || []) if (ev && ev.seat === seat && sim.ACTIONS.indexOf(ev.action) >= 0) {
+/* a page's presses: from its window (win), each taken once by its number, so a word lost or overtaken costs nothing;
+ * from a page that sends each press once (ev, a page from before the window), as they come */
+function takePresses(from, body) {
+  const seat = NET.seatOf[from], win = Array.isArray(body.win) ? body.win : null;
+  let maxN = NET.maxN[from] || 0;
+  if (win && win.length && (win[0].n | 0) > maxN + 1) NET.desync = true;   // presses gone from the window before any word brought them
+  for (const ev of win || body.ev || []) {
+    if (!ev || ev.seat !== seat || sim.ACTIONS.indexOf(ev.action) < 0) continue;
+    if (win) { const n = ev.n | 0; if (n <= maxN) continue; maxN = n; }
     if ((ev.tick | 0) < state.tick) NET.desync = true;   // a press for a tick already ridden: the worlds can no longer agree
     enqueue({ tick: ev.tick | 0, seat, action: ev.action });
   }
-  NET.upTo[from] = Math.max(NET.upTo[from] == null ? -1 : NET.upTo[from], body.upTo | 0);
+  NET.maxN[from] = maxN;
 }
 /* every two seconds each phone says what its world is at a tick; a world that differs is said so on the screen */
 function hashOf(st) {
@@ -594,6 +701,9 @@ function finish() {
     const fail = () => { $('copied').textContent = 'The clipboard stayed closed; select the line and copy it by hand.'; };
     try { navigator.clipboard.writeText(text).then(done, fail); } catch (e) { fail(); }
   };
+  $('again').textContent = wasOnline ? 'BACK TO THE ROOM' : 'PLAY AGAIN';
+  $('toMenu').textContent = wasOnline ? 'LEAVE THE ROOM' : 'MENU';
+  paused = false;
   showSheet('end');
   chrome(false);
   for (const v of views) { v.cine = true; v.cineAt = performance.now(); v.cineA = Math.random() * 6.283; fromHere(v); }
@@ -766,7 +876,7 @@ function hudDom() {
     if (NET.on && NET.waiting > 800) centre += '<div class="small">waiting for ' + esc(NET.remote.filter(id => !(NET.upTo[id] >= state.tick)).map(id => NET.names[id] || 'a player').join(', ')) + '…</div>';
     if (NET.desync) centre += '<div class="small">out of step with the others: this match is no longer the same world</div>';
   }
-  if (paused) centre = '<div class="small">paused while the camera card is open</div>';
+  if (paused) centre = asking() ? '' : '<div class="small">paused while the camera card is open</div>';
   $('mid').textContent = att ? '' : mid;
   if ($('centre').innerHTML !== centre) $('centre').innerHTML = centre;
   for (const g of gauges) {
@@ -788,7 +898,7 @@ function hudDom() {
 
 /* ── the sheets and the chips ── */
 function showSheet(id) {
-  for (const s of ['start', 'end', 'cam']) $(s).classList.toggle('hidden', s !== id);
+  for (const s of ['start', 'end', 'cam', 'leave']) $(s).classList.toggle('hidden', s !== id);
 }
 function chrome(on) {
   $('chrome').classList.toggle('hidden', !on);
