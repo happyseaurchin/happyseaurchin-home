@@ -10,6 +10,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [ai-inoculation-b](ai-inoculation-b.md) | `ai-inoculation-b.html` | AI Inoculation, B (27 Oct 2026), at `/ai-inoculation-b`: |
 | [animations-before-it-breaks](animations-before-it-breaks.md) | `animations/before-it-breaks.html` | Before It Breaks (27 Oct 2026): |
 | [animations-endosystemics-in-practice](animations-endosystemics-in-practice.md) | `animations/endosystemics-in-practice.html` | Endosystemics in Practice (29 Oct 2026): |
+| [animations-fields-factories-services](animations-fields-factories-services.md) | `animations/fields-factories-services.html` | Fields, factories, services (24 Nov 2026), at `/animations/fields-factories-services`: keel's chart of ten rich economies, 1800 to 2025, as shares of output from agriculture, industry and services |
 | [animations-nearly-there](animations-nearly-there.md) | `animations/nearly-there.html` | Nearly There (24 Oct 2026), at `/animations/nearly-there` (`/nearly-there` redirects there, `vercel.json`): |
 | [animations-ride-the-barrel](animations-ride-the-barrel.md) | `animations/ride-the-barrel.html` | Ride the Barrel (27 Oct 2026): |
 | [animations-silo-buster-path](animations-silo-buster-path.md) | `animations/silo-buster-path.html` | Silo Buster Path (24 Oct 2026): |
