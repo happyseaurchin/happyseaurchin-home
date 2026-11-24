@@ -2,8 +2,8 @@
  * /api/board — a game's board for today, read once for a crowd.
  *
  *   GET /api/board?game=<name>
- *       { game, title, page, room, law, board, ranked, day, date, source, top: [{ name, line, score, time, slot, at,
- *         tries, proof }], runs, players, recent: [{ slot, name, text, when, at, run }], read, asKept }
+ *       { game, title, page, room, law, board, ghost, ranked, day, date, source, top: [{ name, line, score, time, slot,
+ *         at, tries, proof }], runs, players, recent: [{ slot, name, text, when, at, run }], read, asKept }
  *
  * The arcade's front door (/arcade) lists every game on the shelf with its top ten today. A game plugged in
  * (spine:game-arcade 1.1111114; the plug button/game.js in pscale-beach, the recipe ways:arcade) keeps each
@@ -21,7 +21,9 @@
  * words ('fastest first' lowest first, 'most rats' highest first), a room line's score by its time or its
  * first number. A game whose room keeps runs but whose law does not stand yet (Bat Sky, 27 October 2026) is
  * answered unranked, ranked: false, its counts and its room only: the door shows it as listed and sends a
- * reader to its page for the ten. A name with neither a law nor a room of runs is no game's.
+ * reader to its page for the ten. A name with neither a law nor a room of runs is no game's. A law with a line
+ * 'ghost: none' keeps a game whose page rides no ghost and reads no ?ghost=<slot> (ways:plug 3.7), answered ghost:
+ * false, so the door offers no ghost to race (Coil, at David's word, 24 Nov 2026, lane coil.2); any other law, true.
  *
  * THE ROOM'S LAST LINES ride every answer (recent, the newest three, notes and runs alike), so the door
  * shows what people are saying about a game from the same one read (spine:game-arcade 1.11111168).
@@ -70,7 +72,7 @@ export function parseLaw(block, name, game) {
   const room = (/^(pool:[a-z0-9][a-z0-9-]*)/i.exec(find('room')) || [, 'pool:' + game])[1].toLowerCase();
   const urls = (lines.join(' ').match(/https?:\/\/[^\s'")\]]+/g) || []).map((u) => u.replace(/[;,.]+$/, ''));
   const page = (/^(https?:\/\/\S+)/.exec(find('page')) || [, urls[0] || ''])[1];
-  return { block: name, mode: find('mode'), room, page, board: { line: b, word, lowest: !/highest first/i.test(b), best: !/last per player/i.test(b), given: !!given }, title: find('title') || titleOf(game) };
+  return { block: name, mode: find('mode'), room, page, board: { line: b, word, lowest: !/highest first/i.test(b), best: !/last per player/i.test(b), given: !!given }, ghost: !/^none\b/i.test(find('ghost')), title: find('title') || titleOf(game) };
 }
 /* a law that keeps no board line (Matthew's game:<name>) says its order in its SCORE LAW's board sentence:
  * 'The board is each player's best on a wire, fastest first' or '… most rats then fewest swings' — whichever
@@ -183,7 +185,7 @@ export async function boardOf(game, now = new Date()) {
     b = block ? boardFromRoom(block, law, day) : b;
     source = 'room';
   }
-  return { game, title: law.title, page: law.page, room: law.room, law: law.block, board: law.board.line, ranked: true, day, date: dateWords(now), source, ...b, recent: recentOf(block), read: now.toISOString(), asKept: true };
+  return { game, title: law.title, page: law.page, room: law.room, law: law.block, board: law.board.line, ghost: law.ghost, ranked: true, day, date: dateWords(now), source, ...b, recent: recentOf(block), read: now.toISOString(), asKept: true };
 }
 
 export default async function handler(req, res) {
