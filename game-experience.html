@@ -446,7 +446,10 @@ function initMap(){MAP.narrow=narrowNow();MAP.L=buildGraph(MAP.narrow);var saved
     STEPS.forEach(function(s,k){if(!TABS[k]){TABS[k]=1;var f=$('find-'+k);if(f)f.textContent='You found '+FIND[k]+'.';}});if(ACTIVE<0)ACTIVE=0;paintTabs();showTab(ACTIVE);drawMap();$('btn-arcade').hidden=false;
     mapSay('Every room is open, each a tab below. The stair at the end goes up to the arcade.');});}
 /* ---------- the instruments: one to play beside each room; none writes to the beach ---------- */
-function runLoop(host,frame){if(!MOTION){for(var i=0;i<240;i++)frame(.016);return{kick:function(){frame(0);}};}
+function runLoop(host,frame){if(!MOTION){for(var i=0;i<240;i++)frame(.016);
+    /* with motion reduced nothing redraws on its own, and a canvas built in a closed tab is cleared when it opens at its real size: settle again whenever the size changes */
+    var cv=host.querySelector('canvas'),seen=cv?cv.width:0;function again(){if(cv&&cv.width!==seen){seen=cv.width;for(var j=0;j<240;j++)frame(.016);}}
+    FITS.push(again);window.addEventListener('resize',again);return{kick:function(){frame(0);}};}
   var vis=false,raf=0,last=0;function tick(t){var dt=Math.min(.05,(t-last)/1000);last=t;frame(dt);raf=vis?requestAnimationFrame(tick):0;}
   if('IntersectionObserver' in window)new IntersectionObserver(function(es){vis=es[0].isIntersecting;if(vis&&!raf){last=performance.now();raf=requestAnimationFrame(tick);}},{threshold:.05}).observe(host);
   else{vis=true;last=performance.now();raf=requestAnimationFrame(tick);}
@@ -475,23 +478,46 @@ function instSkin(host){host.innerHTML='<h3>Three rules, any skin</h3><div class
   var C=canvasIn(host.querySelector('.cvw'),.62),B=mkBirds(34,C.w,C.h),skin='birds',L;
   host.querySelectorAll('[data-s]').forEach(function(b){b.addEventListener('click',function(){skin=b.getAttribute('data-s');pressOne(host,'[data-s]',b);L.kick();});});
   L=runLoop(host,function(dt){flock(B,C.w,C.h,dt);var g=C.ctx;g.clearRect(0,0,C.w,C.h);B.forEach(function(p){drawBird(g,p,skin,'#cfe3f2',6);});});}
-function instPocket(host){host.innerHTML='<h3>The number in my pocket</h3><p class="cap mono" id="pk-seal"></p><div class="pkbar"><span id="pk-lo"></span><span id="pk-span"></span><span id="pk-hi"></span></div><svg class="pkline" viewBox="0 0 300 20" id="pk-line" aria-hidden="true"></svg><label class="cap">Is it higher than <b id="pk-x"></b>?<input type="range" id="pk-r" min="1" max="99" value="50"></label><div class="ctl"><button type="button" id="pk-ask">Ask</button><button type="button" id="pk-new">A new number</button></div><p class="cap" id="pk-say" aria-live="polite"></p>';
-  var lo,hi,secret,salt,asked,sealed;function say(t){$('pk-say').innerHTML=t;}
-  function paint(){var r=$('pk-r');r.min=lo;r.max=Math.max(lo,hi-1);r.value=Math.floor((lo+hi-1)/2);$('pk-x').textContent=r.value;var a=(lo-1)*3,b=hi*3;
+function instPocket(host){host.innerHTML='<h3>The number in my pocket</h3><div class="ctl" role="group" aria-label="Who plays"><button type="button" aria-pressed="true" data-m="watch">Watch the computer play</button><button type="button" aria-pressed="false" data-m="you">Play yourself</button><button type="button" aria-pressed="false" data-m="with">Play with the computer</button></div><p class="cap mono" id="pk-seal"></p><div class="pkbar"><span id="pk-lo"></span><span id="pk-span"></span><span id="pk-hi"></span></div><svg class="pkline" viewBox="0 0 300 20" id="pk-line" aria-hidden="true"></svg><label class="cap" id="pk-pick">Is it higher than <b id="pk-x"></b>?<input type="range" id="pk-r" min="1" max="99" value="50"></label><div class="ctl"><button type="button" id="pk-ask">Ask</button><button type="button" id="pk-yes">Yes</button><button type="button" id="pk-no">No</button><button type="button" id="pk-new">A new number</button></div><p class="cap" id="pk-say" aria-live="polite"></p><p class="cap" id="pk-note"></p>';
+  /* three ways to play one game: watch the computer find a sealed number, find it yourself, or keep one in your head for the computer to find */
+  var NOTE={watch:'Two plain programs: one keeps the number, sealed before the first question so it cannot change it; the other asks, halving what is left each time.',
+    you:'',
+    with:'I am a computer, not an LLM: a few lines of code that halve what is left with every question. Nothing seals the number in your head, so all I can do is test your answers against each other.'};
+  var mode='watch',lo,hi,secret,salt,asked,sealed,checking,over,gen=0;
+  function say(t){$('pk-say').innerHTML=t;}
+  function show(id,on){$(id).style.display=on?'':'none';}
+  function mid(){return Math.floor((lo+hi-1)/2);}
+  function qs(n){return n+' question'+(n===1?'':'s');}
+  function paint(){var r=$('pk-r');r.min=lo;r.max=Math.max(lo,hi-1);r.value=mid();$('pk-x').textContent=r.value;var a=(lo-1)*3,b=hi*3;
     $('pk-line').innerHTML='<rect x="0" y="6" width="300" height="8" rx="4" fill="#223242"/><rect x="'+a+'" y="6" width="'+Math.max(3,b-a)+'" height="8" rx="4" fill="#f3b64c"/>';
-    $('pk-lo').textContent=lo;$('pk-hi').textContent=hi;$('pk-span').textContent=(hi-lo+1)+' still possible';$('pk-ask').disabled=lo===hi;}
-  function fresh(){lo=1;hi=100;asked=0;secret=1+Math.floor(Math.random()*100);salt=Math.random().toString(36).slice(2,8);sealed='';
-    digest(secret+':'+salt).then(function(x){sealed=x;$('pk-seal').textContent=x?'Sealed before your first question: '+x.slice(0,16)+'…':'Sealed before your first question.';});
-    say('I hold a number from 1 to 100. Ask yes-or-no questions; every question counts.');paint();}
+    $('pk-lo').textContent=lo;$('pk-hi').textContent=hi;$('pk-span').textContent=(hi-lo+1)+' still possible';$('pk-ask').disabled=lo===hi;$('pk-yes').disabled=$('pk-no').disabled=over;}
+  function layout(){var w=mode==='with';show('pk-pick',mode==='you');show('pk-ask',!w);show('pk-yes',w);show('pk-no',w);
+    $('pk-ask').textContent=mode==='watch'?'Computer asks':'Ask';$('pk-new').textContent=w?'Start again':'A new number';$('pk-note').textContent=NOTE[mode];}
+  function fresh(){var my=++gen;lo=1;hi=100;asked=0;checking=false;over=false;sealed='';
+    if(mode==='with'){secret=null;salt='';$('pk-seal').textContent='Nothing is sealed: the number is in your head.';paint();
+      say('Think of a number from 1 to 100 and keep it in your head. Is it higher than <b>'+mid()+'</b>?');return;}
+    secret=1+Math.floor(Math.random()*100);salt=Math.random().toString(36).slice(2,8);$('pk-seal').textContent='';
+    digest(secret+':'+salt).then(function(x){if(my!==gen)return;sealed=x;$('pk-seal').textContent=x?'Sealed before the first question: '+x.slice(0,16)+'…':'Sealed before the first question.';});
+    say(mode==='watch'?'A number from 1 to 100 is sealed in the pocket. Tap <b>Computer asks</b> for each question.':'I hold a number from 1 to 100. Ask yes-or-no questions; every question counts.');paint();}
+  /* watch and play yourself: the pocket answers truly, and the seal opens at the end */
+  $('pk-ask').addEventListener('click',function(){if(lo===hi||mode==='with')return;var x=mode==='watch'?mid():+$('pk-r').value,yes=secret>x,my=gen;asked++;if(yes)lo=x+1;else hi=x;paint();
+    var q=mode==='watch'?'The computer asks: is it higher than <b>'+x+'</b>? The pocket says <b>'+(yes?'yes':'no')+'</b>. ':(yes?'Yes':'No')+'. ';
+    if(lo===hi)digest(lo+':'+salt).then(function(x2){if(my!==gen)return;say(q+(mode==='watch'?'The computer has it: ':'It is ')+'<b>'+lo+'</b>, found in '+qs(asked)+'. The seal opens as '+lo+':'+salt+(x2&&x2===sealed?', and it matches.':'.')+' Halving every time finds any number here in seven.');});
+    else say(q+asked+' asked so far.');});
+  /* play with the computer: it asks, you answer, and answers that cannot all be true are caught at the check */
+  function answer(yes){if(mode!=='with'||over)return;
+    if(checking){over=true;paint();say(yes?'Got it: <b>'+lo+'</b>, in '+qs(asked)+' and one to check. Halving every time finds any number here in seven.':'I smell a red herring. Your answers leave only <b>'+lo+'</b>, and you say it isn’t.');return;}
+    var x=mid();asked++;if(yes)lo=x+1;else hi=x;paint();
+    if(lo===hi){checking=true;say((yes?'Yes':'No')+'. That leaves one number. Is it <b>'+lo+'</b>?');}
+    else say((yes?'Yes':'No')+'. '+asked+' asked. Is it higher than <b>'+mid()+'</b>?');}
+  $('pk-yes').addEventListener('click',function(){answer(true);});$('pk-no').addEventListener('click',function(){answer(false);});
   $('pk-r').addEventListener('input',function(){$('pk-x').textContent=this.value;});
-  $('pk-ask').addEventListener('click',function(){if(lo===hi)return;var x=+$('pk-r').value,yes=secret>x;asked++;if(yes)lo=x+1;else hi=x;paint();
-    if(lo===hi)digest(lo+':'+salt).then(function(x2){say('It is <b>'+lo+'</b>, found in '+asked+' question'+(asked===1?'':'s')+'. The seal opens as '+lo+':'+salt+(x2&&x2===sealed?', and it matches.':'.')+' Halving every time finds any number here in seven.');});
-    else say((yes?'Yes':'No')+'. '+asked+' asked so far.');});
-  $('pk-new').addEventListener('click',fresh);fresh();}
-function instSeal(host){host.innerHTML='<h3>Seal a rule, open it later</h3><label class="cap">Your rule, in a few words<input type="text" id="sl-in" maxlength="80" placeholder="only things you could carry"></label><div class="ctl"><button type="button" id="sl-seal">Seal it</button><button type="button" id="sl-open" disabled>Open it</button></div><p class="cap mono" id="sl-grey" aria-live="polite"></p><p class="cap" id="sl-say"></p><p class="cap">Nothing here leaves the page. On the beach a sealed line stands in public as one grey line, and only the keeper’s key opens it.</p>';
+  host.querySelectorAll('[data-m]').forEach(function(b){b.addEventListener('click',function(){mode=b.getAttribute('data-m');pressOne(host,'[data-m]',b);layout();fresh();});});
+  $('pk-new').addEventListener('click',fresh);layout();fresh();}
+function instSeal(host){host.innerHTML='<h3>Seal a rule, open it later</h3><p class="cap">Be the keeper of the picnic game. Each player says one thing they will bring, and you answer only <b>yes, it can come</b> or <b>no, it can’t</b>, by a rule nobody else knows. Say the rule is ‘things that begin with your own initial’: Sam may bring sandwiches, but not apples. The players win when one of them can say the rule.</p><label class="cap">Your rule for what may come to the picnic<input type="text" id="sl-in" maxlength="80" placeholder="only things you could carry"></label><div class="ctl"><button type="button" id="sl-seal">Seal it</button><button type="button" id="sl-open" disabled>Open it</button></div><p class="cap mono" id="sl-grey" aria-live="polite"></p><p class="cap" id="sl-say"></p><p class="cap">Nothing here leaves the page. On the beach a sealed line stands in public as one grey line, and only the keeper’s key opens it.</p>';
   var kept='',salt='',sealed='';
-  $('sl-seal').addEventListener('click',function(){kept=$('sl-in').value.trim();if(!kept){$('sl-say').textContent='Write a rule first.';return;}salt=Math.random().toString(36).slice(2,10);
-    digest(kept+'|'+salt).then(function(x){sealed=x;$('sl-in').value='';$('sl-grey').innerHTML='<span class="greyline">'+(x?x.slice(0,40)+'…':'sealed')+'</span>';$('sl-say').textContent='Sealed. Anyone can see that a rule is kept, and no one can read it or change it.';$('sl-open').disabled=false;});});
+  $('sl-seal').addEventListener('click',function(){kept=$('sl-in').value.trim();if(!kept){$('sl-say').textContent='Write your rule first.';return;}salt=Math.random().toString(36).slice(2,10);
+    digest(kept+'|'+salt).then(function(x){sealed=x;$('sl-in').value='';$('sl-grey').innerHTML='<span class="greyline">'+(x?x.slice(0,40)+'…':'sealed')+'</span>';$('sl-say').textContent='Sealed before the first guess. Everyone can see that a rule is kept; no one else can read it, and not even you can change it. Play, then open it when someone says the rule.';$('sl-open').disabled=false;});});
   $('sl-open').addEventListener('click',function(){digest(kept+'|'+salt).then(function(x){$('sl-grey').textContent='“'+kept+'”';$('sl-say').textContent=x===sealed?'Opened. It matches its seal, so it is the rule kept from the start.':'It does not match its seal.';$('sl-open').disabled=true;});});}
 function instFlock(host){host.innerHTML='<h3>Two flock games</h3><div class="cvw"></div><div class="ctl" role="group" aria-label="Which game"><button type="button" aria-pressed="true" data-g="mig">Migration</button><button type="button" aria-pressed="false" data-g="for">Forage</button></div><p class="cap" id="fl-say" aria-live="off"></p>';
   var C=canvasIn(host.querySelector('.cvw'),.62),B,mode='mig',lead,swaps,t,food,home,lostN,hawk,out,L;
@@ -520,18 +546,23 @@ function instFlock(host){host.innerHTML='<h3>Two flock games</h3><div class="cvw
       B.forEach(function(p,i){if(!p.lost)drawBird(g,p,'birds',i===out?'#f3b64c':'#cfe3f2',i===out?7:6);});
       g.save();g.translate(hawk.x,hawk.y);g.fillStyle='#e8819f';g.beginPath();g.moveTo(10,0);g.lineTo(-8,-8);g.lineTo(-4,0);g.lineTo(-8,8);g.closePath();g.fill();g.restore();
       $('fl-say').textContent='The gold bird darts out for the green food and brings it home; the pink hawk takes whoever strays farthest. Brought home '+home+', lost '+lostN+'.';}});}
-function instStack(host){host.innerHTML='<h3>Your stack, among the room</h3><div class="cvw"></div>'+['Social','Relational power','Psychological'].map(function(nm,i){return '<label class="cap">'+nm+' <b class="st" id="st-'+i+'">C</b><input type="range" min="0" max="2" step="0.01" value="0" data-i="'+i+'"></label>';}).join('')+'<p class="cap">On the ground in C, flocking at B, leaving for the light towards A. Yours is the gold bird: set where you stand.</p>';
+function instStack(host){host.innerHTML='<h3>Your stack, among the room</h3><div class="cvw"></div>'+['Social','Relational power','Psychological'].map(function(nm,i){return '<label class="cap">'+nm+' <b class="st" id="st-'+i+'">C</b><input type="range" min="0" max="2" step="0.01" value="0" data-i="'+i+'"></label>';}).join('')+'<p class="cap">On the ground in C, flocking at B, circling the light at A, near it and never reaching it. Yours is the gold bird: set where you stand.</p>';
   var C=canvasIn(host.querySelector('.cvw'),.6),me=[0,0,0],birds=[],t=0,L;for(var i=0;i<9;i++)birds.push({x:20+Math.random()*(C.w-40),y:C.h-14,lv:i?Math.random()*1.7:0,ph:Math.random()*6.283,vx:0,vy:0});
-  host.querySelectorAll('input[type=range]').forEach(function(r){r.addEventListener('input',function(){var k=+r.getAttribute('data-i');me[k]=+r.value;$('st-'+k).textContent=['C','B','A'][Math.round(+r.value)];L.kick();});});
-  L=runLoop(host,function(dt){t+=dt;var w=C.w,h=C.h,g=C.ctx;birds[0].lv=(me[0]+me[1]+me[2])/3;g.clearRect(0,0,w,h);
-    var lg=g.createRadialGradient(w,h*.2,4,w,h*.2,w*.55);lg.addColorStop(0,'rgba(243,182,76,.35)');lg.addColorStop(1,'rgba(243,182,76,0)');g.fillStyle=lg;g.fillRect(0,0,w,h);
+  /* where a bird is heading: down in C, the flock at B, or an orbit round A in the top right corner, anticlockwise, out past the right edge and back in from the top,
+     closer the higher the stack and never reaching it; with motion reduced each bird at A holds a place on the part of its orbit that shows. Returns x, y and the way it faces. */
+  function aim(b,w,h){var lv=b.lv;if(lv<.67)return[b.x,h-14-Math.abs(Math.sin(t*3+b.ph))*3,1,0];
+    if(lv<1.34){var r=Math.min(w,h)*.22;return[w*.42+Math.cos(t*.9+b.ph)*r*1.3,h*.45+Math.sin(t*1.3+b.ph*1.7)*r*.6,1,0];}
+    var k=(lv-1.34)/.66,R=Math.min(w,h)*(.62-.28*k),f=MOTION?b.ph-t*.7:Math.PI*(.6+.3*b.ph/6.283);return[w-14+Math.cos(f)*R,13+Math.sin(f)*R,Math.sin(f),-Math.cos(f)];}
+  function frame(dt){t+=dt;var w=C.w,h=C.h,g=C.ctx;birds[0].lv=(me[0]+me[1]+me[2])/3;g.clearRect(0,0,w,h);
+    var lg=g.createRadialGradient(w-14,13,4,w-14,13,w*.55);lg.addColorStop(0,'rgba(243,182,76,.35)');lg.addColorStop(1,'rgba(243,182,76,0)');g.fillStyle=lg;g.fillRect(0,0,w,h);
     g.strokeStyle='#223242';g.beginPath();g.moveTo(0,h-7);g.lineTo(w,h-7);g.stroke();g.fillStyle='#8199ab';g.font='12px "Special Elite", monospace';g.fillText('A',w-18,18);g.fillText('B',8,h*.45);g.fillText('C',8,h-14);
-    birds.forEach(function(b,i){if(i){b.lv=Math.max(0,Math.min(2,b.lv+Math.sin(t*.2+b.ph)*dt*.08));}var lv=b.lv,tx,ty;
-      if(lv<.67){tx=b.x;ty=h-14-Math.abs(Math.sin(t*3+b.ph))*3;}
-      else if(lv<1.34){var r=Math.min(w,h)*.22;tx=w*.42+Math.cos(t*.9+b.ph)*r*1.3;ty=h*.45+Math.sin(t*1.3+b.ph*1.7)*r*.6;}
-      else{var k=(lv-1.34)/.66;tx=w*.62+k*w*.3+Math.cos(t+b.ph)*10;ty=h*.32-k*h*.12+Math.sin(t*1.4+b.ph)*8;}
-      b.vx+=((tx-b.x)*3-b.vx*2)*dt;b.vy+=((ty-b.y)*3-b.vy*2)*dt;b.x+=b.vx*dt*3;b.y+=b.vy*dt*3;
-      drawBird(g,{x:b.x,y:b.y,vx:(Math.abs(b.vx)+Math.abs(b.vy)<.5)?1:b.vx,vy:b.vy},lv<.67?'dots':'birds',i?'#cfe3f2':'#f3b64c',i?6:8);});});}
+    birds.forEach(function(b,i){if(i){b.lv=Math.max(0,Math.min(2,b.lv+Math.sin(t*.2+b.ph)*dt*.08));}var a=aim(b,w,h);
+      b.vx+=((a[0]-b.x)*3-b.vx*2)*dt;b.vy+=((a[1]-b.y)*3-b.vy*2)*dt;b.x+=b.vx*dt*3;b.y+=b.vy*dt*3;
+      drawBird(g,{x:b.x,y:b.y,vx:(Math.abs(b.vx)+Math.abs(b.vy)<.5)?a[2]:b.vx,vy:(Math.abs(b.vx)+Math.abs(b.vy)<.5)?a[3]:b.vy},b.lv<.67?'dots':'birds',i?'#cfe3f2':'#f3b64c',i?6:8);});}
+  host.querySelectorAll('input[type=range]').forEach(function(r){r.addEventListener('input',function(){var k=+r.getAttribute('data-i');me[k]=+r.value;$('st-'+k).textContent=['C','B','A'][Math.round(+r.value)];
+    /* with motion reduced the loop stands still, so the gold bird is put straight where its stack places it */
+    if(!MOTION){var b=birds[0];b.lv=(me[0]+me[1]+me[2])/3;var a=aim(b,C.w,C.h);b.x=a[0];b.y=a[1];b.vx=0;b.vy=0;}L.kick();});});
+  L=runLoop(host,frame);}
 function instExample(host){var S=['They play ten minutes of a flock game on their phones.','The State Stack goes up on the wall, each person’s stack set on their own phone.','The question opens as a proposal: what is known, and one decision, SATURDAYS, NOT SATURDAYS or NOT YET.','They talk it through as the listening game, from the words to what is meant to where it comes from.','Each answers in their own mirror, their AIs adding what each knows; the room keeps what was said.','The decision stands when everyone it waits on has answered.','A thread carries the change, and next week’s lines on the Now Catalyst show it happening. Nobody sent an email.'];
   host.innerHTML='<h3>A team of six, deciding about Saturdays</h3><svg viewBox="0 0 300 200" id="ex-svg" aria-hidden="true"></svg><p class="cap" id="ex-say" aria-live="polite"></p><div class="ctl"><button type="button" id="ex-play">Play it</button><button type="button" id="ex-next">Next</button></div>';
   var st=0,timer=0;
