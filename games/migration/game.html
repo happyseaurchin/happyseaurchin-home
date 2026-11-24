@@ -249,6 +249,17 @@ function hashStr(s) { let h = 2166136261 >>> 0; for (let i = 0; i < s.length; i+
 function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const fmtT = (s) => { s = Math.max(0, Math.round(s)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
 const hash1 = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+/* ONE SKY (24 Nov 2026, lane anteroom.1, at David's word; spine:flock-world 1.1): every chance that moves the sky is
+   drawn from the day, the bird and the moment (and, in a live sky, the run every phone in it shares), never from the
+   phone's own Math.random, so two phones flying the same day fly the same flock, and a host handed the sky carries on
+   the birds as they were. Sounds, wing-beats and names stay free. */
+function skyR(i, why, tick) { return mulberry32(hashStr('sky|' + (W.P ? W.P.key : '') + '|' + (W.live ? W.run : 0) + '|' + i + '|' + (tick === undefined ? Math.round(W.t * 60) : tick) + '|' + why)); }
+function monthOfKey(key) {   // the season comes from the day flown, never the phone's own month
+  const k = String(key); let m = /^\d{4}(\d)(\d)\d{4}$/.exec(k);   // the beach's day address: 2026424300 is the year, then the season 4 (Oct to Dec) and its month 2
+  if (m && +m[1] >= 1 && +m[1] <= 4 && +m[2] >= 1 && +m[2] <= 3) return (+m[1] - 1) * 3 + (+m[2] - 1);
+  m = /^\d{4}-(\d{2})-\d{2}$/.exec(k); if (m) return clamp(+m[1] - 1, 0, 11);   // the phone's own day, where the beach is out of reach
+  return new Date().getMonth();
+}
 function shuffled(arr, R) { const a = arr.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); const t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
 const $ = (id) => document.getElementById(id);
 const RMQ = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
@@ -532,7 +543,7 @@ function makeParams(key) {
   const R = mulberry32(seed);
   const rr = (a, b) => a + (b - a) * R();
   const sgn = () => (R() < 0.5 ? -1 : 1);
-  const month = new Date().getMonth();
+  const month = monthOfKey(key);
   const season = month >= 2 && month <= 4 ? 0 : month >= 5 && month <= 7 ? 1 : month >= 8 && month <= 10 ? 2 : 3;
   const P = { key: String(key), s: seed % 99991, season, south: season >= 2 };
   P.start = { x: 0, y: 0 };
@@ -783,14 +794,14 @@ const W = {
 };
 const EV = {}, PL = {};
 
-function newAI() {
-  const r = Math.random;
+function newAI(i) {
+  const r = skyR(i, 'ai', 0);
   return { lift: 0, joined: true, joinT: -99, offT: 0, lastT: 0, keen: false, pace: 1, tgt: null, nextLook: 0, dest: null,
     wRoost: 0.75 + 0.6 * r(), wHard: 0.3 + 1.6 * r(), wFood: 0.2 + 2.0 * r(), wWind: 0.2 + 1.0 * r(), bias: (r() - 0.5) * 0.56, stubborn: r(), loyalty: r(), courage: r(), relief: 0.22 + 0.16 * r(), think: r() * 0.8, dis: 0, pref: -Math.PI / 2, willing: Math.pow(r(), 2.5), goal: 'roost', river: 0, astray: (r() < 0.5 ? -1 : 1) * (0.35 + 0.25 * r()), astrayUntil: 0, hill: r() };
 }
 function newBird(i, name, kind) {
   return { i, name, kind: kind | 0, site: -1, pf: -1, pl: 0, far: 0, gby: -1, pend: -1, pendT: 0, brokeT: -99, db: 0, x: 0, y: 0, vx: 0, vy: 0, hd: -Math.PI / 2, hs: -Math.PI / 2, sp: V, b: 1, tg: -1, slot: 0, hdes: -Math.PI / 2, drag: 0.5, flap: Math.random() * TAU,
-    st: 0, own: 'ai', grp: null, ai: newAI(), surge: 0, prev: -1, frontSince: 0, downT: 0, landT: 0, nf: 0, root: -1, mine: false,
+    st: 0, own: 'ai', grp: null, ai: newAI(i), surge: 0, prev: -1, frontSince: 0, downT: 0, landT: 0, nf: 0, root: -1, mine: false,
     nx: 0, ny: 0, nvx: 0, nvy: 0, nhd: 0, nt: 0, sx: 0, sy: 0, on: false, setX: 0, setY: 0 };
 }
 function routeHeading() { const P = W.P; return Math.atan2(P.roost.y - P.start.y, P.roost.x - P.start.x); }
@@ -826,15 +837,16 @@ function resetBirdAtDawn(b) {
   b.y = P.start.y + (c * o[0] + s * -o[1]) + p[1] + (hash1(b.i + 77) - 0.5) * 10;
   b.hd = th; b.hs = th; b.hdes = th; b.sp = V * 0.92; b.vx = Math.cos(th) * b.sp; b.vy = Math.sin(th) * b.sp;
   b.tg = D.l === 0 ? -1 : D.base + ((D.l - 1) >> 1); b.slot = D.l === 0 ? 0 : (D.l - 1) & 1;
-  b.b = b.own === 'ai' ? 0.5 + 0.5 * Math.random() : 0.96;
+  const R = skyR(b.i, 'dawn', 0);
+  b.b = b.own === 'ai' ? 0.5 + 0.5 * R() : 0.96;
   b.st = 0; b.grp = null; b.surge = 0; b.prev = -1; b.frontSince = 0; b.downT = 0; b.drag = 0.4; b.landT = 0;
   b.nt = 0; b.pend = -1;
   if (b.ai) {
-    b.ai.dis = 0; b.ai.think = Math.random() * 0.8;
+    b.ai.dis = 0; b.ai.think = R() * 0.8;
     b.ai.goal = 'roost'; b.ai.resolve = 0;
     if (D.l === 0) { // each dawn flock's front has its own idea: straight on, feed first, the river's easy air, or a roost that isn't there
       b.ai.goal = ['roost', 'marsh', 'astray', 'valley'][D.f % 4]; b.ai.river = D.f % 2;
-      b.ai.astrayUntil = 24 + 18 * Math.random(); b.ai.bias = (Math.random() - 0.5) * 0.2; b.b = 0.85 + 0.15 * Math.random();
+      b.ai.astrayUntil = 24 + 18 * R(); b.ai.bias = (R() - 0.5) * 0.2; b.b = 0.85 + 0.15 * R();
     }
   }
 }
@@ -924,7 +936,7 @@ function restAt(b, s) {
   b.sp = 0; b.vx = 0; b.vy = 0; b.tg = -1; b.slot = 0; b.st = 3; b.b = 1; b.drag = 0.4;
   b.grp = null; b.surge = 0; b.prev = -1; b.frontSince = 0; b.downT = 0; b.landT = 0; b.nt = 0; b.pend = -1;
   s.left = s.n;
-  if (b.ai) { b.ai.goal = 'roost'; b.ai.lift = 0; b.ai.joined = true; b.ai.think = Math.random() * 0.8; }
+  if (b.ai) { b.ai.goal = 'roost'; b.ai.lift = 0; b.ai.joined = true; b.ai.think = skyR(b.i, 'rest', 0)() * 0.8; }
 }
 function passAt(b, f) {
   const p = heapPos(b.pl, f.h);
@@ -933,7 +945,7 @@ function passAt(b, f) {
   b.tg = b.pl === 0 ? -1 : f.base + ((b.pl - 1) >> 1); b.slot = b.pl === 0 ? 0 : (b.pl - 1) & 1;
   b.st = 0; b.b = b.pl === 0 ? 0.92 : 0.6 + 0.35 * hash1(b.i + 3); b.drag = 0.4;
   b.grp = null; b.surge = 0; b.prev = -1; b.frontSince = 0; b.downT = 0; b.landT = 0; b.nt = 0; b.pend = -1;
-  if (b.ai) { b.ai.goal = 'pass'; b.ai.dest = { x: f.dx, y: f.dy }; b.ai.lift = 0; b.ai.joined = true; b.ai.think = Math.random() * 0.8; }
+  if (b.ai) { b.ai.goal = 'pass'; b.ai.dest = { x: f.dx, y: f.dy }; b.ai.lift = 0; b.ai.joined = true; b.ai.think = skyR(b.i, 'pass', 0)() * 0.8; }
 }
 function chooseKeen(avoid) { // one computer bird plays as a person would: it leads, gathers, rests, and races you
   const B = W.birds; let pick = null, pd = 1e9;
@@ -1184,7 +1196,7 @@ function landingGroup(b) {
 }
 function land(b) {
   b.st = 1; b.landT = W.t; b.grp = landingGroup(b); b.sp = 0;
-  const P = W.P, a = Math.random() * TAU, r = Math.sqrt(Math.random()) * P.roost.r * 0.55;
+  const P = W.P, R = skyR(b.i, 'land'), a = R() * TAU, r = Math.sqrt(R()) * P.roost.r * 0.55;
   b.setX = P.roost.x + Math.cos(a) * r; b.setY = P.roost.y + Math.sin(a) * r;
   b.vx = 0; b.vy = 0;
 }
@@ -1276,15 +1288,15 @@ function aiThink(b) {
     if (ai.offT > 8 + 18 * ai.loyalty && b.b > 0.25) { ai.offT = 0; W.dbg.detour++; aiPeel(b, plan(b, ai, null), 'detour'); return; }
   }
   // tired and out where the air bites: tuck in deeper, where breath comes back (reluctantly, a bird at a time)
-  if (b.b < 0.42 && b.drag > 0.45 && fl.size >= 5 && W.t > (ai.tuckGate || 0) && Math.random() < 0.4) {
+  if (b.b < 0.42 && b.drag > 0.45 && fl.size >= 5 && W.t > (ai.tuckGate || 0) && skyR(b.i, 'tuck')() < 0.4) {
     ai.tuckGate = W.t + 6; spliceOut(b); dropInside(b, null); W.dbg.tuck = (W.dbg.tuck || 0) + 1;
     if (b.tg < 0 && T.st === 0 && !chainHas(T, b)) applyTarget(b, T.i, 'inside'); // nowhere deeper: back where it was
     return;
   }
   // reluctant relief: right behind a spent front, fresh, and willing
-  if (T === R && R.b < 0.15 && b.b > 0.72 && Math.random() < 0.25 * ai.willing) { W.dbg.relief++; aiTakeFront(b, 'relief'); return; }
+  if (T === R && R.b < 0.15 && b.b > 0.72 && skyR(b.i, 'relief')() < 0.25 * ai.willing) { W.dbg.relief++; aiTakeFront(b, 'relief'); return; }
   // reluctant leapfrog: fresh, but stuck behind a spent bird
-  if (b.b > 0.75 && T.b < 0.28 && T.tg >= 0 && Math.random() < 0.12 * ai.willing) {
+  if (b.b > 0.75 && T.b < 0.28 && T.tg >= 0 && skyR(b.i, 'leap')() < 0.12 * ai.willing) {
     const U = B[T.tg];
     if (U && U.st === 0 && U !== b && !chainHas(U, b)) { spliceOut(b); if (applyTarget(b, U.i, 'leap')) { W.dbg.argue++; return; } }
   }
@@ -1407,7 +1419,7 @@ function liftSite(q, T) {
     let best = null, bd = 1e9;
     for (const o of cand) { const d = Math.hypot(o.x - b.x, o.y - b.y); if (d < bd) { bd = d; best = o; } }
     b.tg = -1; b.pend = (best || T).i; b.pendT = W.t;
-    if (b.ai) { b.ai.lift = W.t; b.ai.joined = false; b.ai.goal = 'roost'; b.ai.willing = 0.45 + 0.5 * Math.random(); b.ai.think = 0.4 + 0.4 * Math.random(); b.ai.offT = 0; }
+    if (b.ai) { const R = skyR(b.i, 'lift'); b.ai.lift = W.t; b.ai.joined = false; b.ai.goal = 'roost'; b.ai.willing = 0.45 + 0.5 * R(); b.ai.think = 0.4 + 0.4 * R(); b.ai.offT = 0; }
   }
   S.liftBuf.push({ n: up.length, x: st.x, y: st.y, kind: st.kind, to: T.i, t: W.t });
   Sound.play('come');
@@ -1491,7 +1503,7 @@ function scheduleDecisions(X, w, h0) {
   const B = W.birds; let n = 0;
   for (let k = 0; k < B.length; k++) {
     const F = B[k]; if (F.tg !== X.i || F.st !== 0 || F.own !== 'ai') continue;
-    W.pend.push({ at: W.t + 0.3 + Math.random() * 1.25, f: F.i, x: X.i, w, h0 }); n++;
+    W.pend.push({ at: W.t + 0.3 + skyR(F.i, 'decide|' + X.i)() * 1.25, f: F.i, x: X.i, w, h0 }); n++;
   }
   W.tallies.set(X.i, { go: 0, stay: 0, left: n, by: X.i });
   W.stayLead.delete(X.i);
@@ -1506,7 +1518,7 @@ function processPending() {
       const pref = plan(F, F.ai, flockOf(F));
       const go = Math.cos(angDiff(X.hdes, pref)), stay = Math.cos(angDiff(p.h0, pref));
       const z = 2.6 * (go - stay) + 1.4 * (F.ai.loyalty - 0.5) + (X.own !== 'ai' ? 0.35 : 0) - 0.8 * (1 - F.b) + (p.w < 0 ? -0.2 : 0);
-      if (Math.random() < 1 / (1 + Math.exp(-z))) {
+      if (skyR(F.i, 'come|' + X.i)() < 1 / (1 + Math.exp(-z))) {
         if (tl) tl.go++; W.dbg.go++;
         decisionFx(F, X, true);
       } else {
@@ -1550,7 +1562,7 @@ function hostAI(dt) {
   for (let k = 0; k < B.length; k++) {
     const b = B[k]; if (b.own !== 'ai' || b.st !== 0) continue;
     b.ai.think -= dt;
-    if (b.ai.think <= 0) { b.ai.think = 0.45 + Math.random() * 0.5; aiThink(b); }
+    if (b.ai.think <= 0) { b.ai.think = 0.45 + skyR(b.i, 'think')() * 0.5; aiThink(b); }
     if (b.b < 0.02 && b.tg < 0 && flockSize(b) === 1 && W.phase === 'fly') { b.downT += dt; if (b.downT > 15) goDown(b); } else b.downT = 0;
   }
   W.coordT -= dt; if (W.coordT <= 0) { W.coordT = 0.5; coordinate(); }
@@ -1821,7 +1833,10 @@ function becomeHost() {
   W.host = true; W.adopted = true;
   for (const b of W.birds) if (b.own !== Net.id && b.own !== 'ai' && !Net.peers.has(b.own)) b.own = 'ai';
   for (const b of W.birds) if (b.own === 'ai' && b.nt) { b.x = b.nx; b.y = b.ny; b.hd = b.nhd; b.sp = V * 0.9; }
+  // the sky's characters are the day's (skyR), so the birds a new host carries on are the birds they were
+  for (const b of W.birds) if (b.own === 'ai' && b.ai) { const c = newAI(b.i); for (const k of TRAITS) b.ai[k] = c[k]; }
 }
+const TRAITS = ['wRoost', 'wHard', 'wFood', 'wWind', 'stubborn', 'loyalty', 'courage', 'relief', 'willing', 'astray', 'hill'];
 function onPeerGone(id) {
   if (!W.live) return;
   const wasHost = id === Net.hostId;
@@ -1854,7 +1869,7 @@ function netPump(dt) {
 }
 function freshLiveWorld() {
   W.host = true; W.adopted = true; W.live = true;
-  setCountry(dayKey()); spawnFlock(FILL); W.run = 1; W.t = 0; W.phase = 'fly'; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0;
+  setCountry(dayKey()); W.run = 1; spawnFlock(FILL); W.t = 0; W.phase = 'fly';   // the run first: the first day's characters are drawn from it W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0;
   chooseKeen(-1);
   hostAssign(Net.id, S.name);
 }
@@ -1937,9 +1952,9 @@ function newTrainingRun() {
   Net.leave(); W.live = false; W.host = true; W.adopted = true; Net.id = 'me';
   setCountry(dayKey());
   spawnFlock(FILL);
-  const sz = dawnSizes(W.birds.length), f = sz.length >= 3 ? 1 + Math.floor(Math.random() * 2) : 0;
+  const Y = skyR(-1, 'yours', 0), sz = dawnSizes(W.birds.length), f = sz.length >= 3 ? 1 + Math.floor(Y() * 2) : 0;
   let base = 0; for (let k = 0; k < f; k++) base += sz[k];
-  const mine = base + Math.min(sz[f] - 1, 2 + Math.floor(Math.random() * 3));
+  const mine = base + Math.min(sz[f] - 1, 2 + Math.floor(Y() * 3));
   W.me = mine; const me = W.birds[mine]; me.own = 'me'; me.name = S.name; me.b = 0.96;
   chooseKeen(mine);
   W.run++; W.t = 0; W.phase = 'fly'; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0; W.tallies.clear();
@@ -1947,7 +1962,7 @@ function newTrainingRun() {
 }
 function onDawn(asHost) {
   // a new day begins in a live sky
-  if (asHost) { W.run++; W.t = 0; W.phase = 'fly'; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0; W.tallies.clear(); for (const b of W.birds) { if (b.own === 'ai') b.ai = newAI(); if (canControl(b)) resetBirdAtDawn(b); } W.keen = -1; W.gath = new Map(); for (const b of W.birds) b.gby = -1; chooseKeen(W.me); }
+  if (asHost) { W.run++; W.t = 0; W.phase = 'fly'; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0; W.tallies.clear(); for (const b of W.birds) { if (b.own === 'ai') b.ai = newAI(b.i); if (canControl(b)) resetBirdAtDawn(b); } W.keen = -1; W.gath = new Map(); for (const b of W.birds) b.gby = -1; chooseKeen(W.me); }
   else { const me = myBird(); if (me) resetBirdAtDawn(me); W.phase = 'fly'; }
   beginMyRun(true);
 }
