@@ -1606,7 +1606,7 @@ function input(action) {
   const r = W.riders[me];
   if (!r || !r.alive || W.phase === 'over' || W.phase === 'result') return;
   if (SET.invert && (action === 'U' || action === 'D')) action = action === 'U' ? 'D' : 'U';
-  if (NET.on) { const ev = { tick: W.tick + DELAY, seat: me, action }; enqueue(ev); NET.out.push(ev); return; }
+  if (NET.on) { myPress(action); return; }
   S.apply(W, { tick: W.tick, seat: me, action });
   if (ride && !ride.over) ride.moves.push({ tick: W.tick, action });
 }
@@ -1618,7 +1618,7 @@ function brake(on) {
   const r = W.riders[me]; if (!r || !r.alive) return;
   const action = on ? 'BRAKE_ON' : 'BRAKE_OFF';
   if (window.__netlog && NET.on) window.__netlog.push(['brake', W.tick, action]);
-  if (NET.on) { const ev = { tick: W.tick + DELAY, seat: me, action }; enqueue(ev); NET.out.push(ev); return; }
+  if (NET.on) { myPress(action); return; }
   S.apply(W, { tick: W.tick, seat: me, action });
   if (ride && !ride.over) ride.moves.push({ tick: W.tick, action });
 }
@@ -1903,8 +1903,20 @@ function boardInto(el) {
 /* ── ride together: lockstep over the beach's room plug, as fotronic plays it (fotronic.md, 23 Nov 2026).
  * Every page runs the same world from the same match: the computer riders are computed alike on each, so they cross
  * no wire; a press is stamped DELAY ticks ahead and sent to the others; a page steps a tick only once every other
- * rider has said they have sent everything up to it; every two seconds each page says a hash of its world. ── */
+ * rider has said they have sent everything up to it; every two seconds each page says a hash of its world.
+ * No word that comes late, or never, parts the worlds (24 Nov 2026, lane coil.2, as lane fotronic-3d.1 carried it on
+ * fotronic's two pages): every word carries its page's presses of the last quarter second (win), each numbered (n) and
+ * taken once, so a word lost or overtaken costs nothing. Until then each page's words were numbered and taken in the
+ * order sent, and one word the beach's relay never delivered (it keeps sixty unanswered words to a peer and drops the
+ * oldest) left every later word waiting behind it, and the ride stood still for good (seen live on fotronic, which
+ * carried the same hold: 699 words behind a gap, the match stopped at tick 15). No page can be more than DELAY ticks
+ * behind another, so any word that lets a page ride past a press's tick was sent while that press still rode in
+ * every word. ── */
 const DELAY = 8;   // ticks (about an eighth of a second) between a press and the tick it acts on
+/* ticks a press rides in every word its page sends after its tick has come: any length past DELAY carries every press
+ * (no page can ride past one before a word sent within DELAY ticks of it), and every byte of it rides in the relay's
+ * slot, so twice DELAY, a quarter second, where fotronic keeps half a second */
+const KEEP = 2 * DELAY;
 /* every press, mine or another page's, joins NET.pending in order of tick (then seat; the sort is stable, so one
  * rider's presses at one tick keep their order). A press appended unsorted can sit behind another page's later ones,
  * and the loop that applies them stops at the first not yet due: then this page acts on it late and the worlds part
@@ -1915,7 +1927,15 @@ function enqueue(ev) {
   while (i > 0 && (P[i - 1].tick > ev.tick || (P[i - 1].tick === ev.tick && P[i - 1].seat > ev.seat))) i--;
   P.splice(i, 0, ev);
 }
-let NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, myId: null, sent: 0, nextQ: {}, held: {} };
+/* this page's own press, online: queued, said once in the next word (ev), and kept to ride in every word (win) */
+function myPress(action) {
+  const ev = { tick: W.tick + DELAY, seat: me, action, n: ++NET.n };
+  enqueue(ev); NET.out.push(ev); NET.said.push(ev);
+}
+/* what this page has pressed in the last KEEP ticks; a copy, since the beach's relay holds a word a moment before it
+ * writes it, and a later press must not slip into it */
+function recent() { NET.said = NET.said.filter(e => e.tick > W.tick - KEEP); return NET.said.slice(); }
+let NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, myId: null, sent: 0, n: 0, said: [], maxN: {}, nextQ: {}, held: {} };
 function room() { return hub(); }
 $('bTogether').addEventListener('click', () => {
   audioInit();
@@ -1923,6 +1943,7 @@ $('bTogether').addEventListener('click', () => {
   show('start', false); show('lobby', true);
   const nm = clean($('name').value) || SET.name;
   if (nm) { SET.name = nm; put('name', nm); }
+  if (leaving) { clearTimeout(leaving); leaving = 0; }   // back before the room was left: still in it
   if (NET.joined) return;
   $('lNote').textContent = 'Opening the room…';
   R.join({ name: nm || undefined, max: 8 }).then(j => {   // a universe seats eight: a ninth rider is seated in pool:coil:2 (the room plug's join({ max }))
@@ -1933,8 +1954,15 @@ $('bTogether').addEventListener('click', () => {
   });
 });
 $('bLeave').addEventListener('click', () => { leaveRoom(); show('lobby', false); show('start', true); });
-function leaveRoom() { const R = room(); if (R && NET.joined) { try { R.leave(); } catch (e) {} } NET.joined = false; }
+function leaveRoom() { clearTimeout(leaving); leaving = 0; const R = room(); if (R && NET.joined) { try { R.leave(); } catch (e) {} } NET.joined = false; }
 addEventListener('pagehide', leaveRoom);
+/* out of the room from a ride (✕, or the end card's menu): the last word said first, as going back to the room says it,
+ * and the room left four seconds later, not at once. The beach's relay reads a page's words about once a second and
+ * loses whatever is unread when the page leaves, so leaving at once let one page take a last press that another never
+ * heard, and the two rode on apart (24 Nov 2026, lane coil.2: three riders relayed, the leaver's last turn read by one
+ * of the two left, the worlds parted at its tick). A start that names this page in those seconds is declined. */
+let leaving = 0;
+function leaveRoomSoon() { clearTimeout(leaving); leaving = setTimeout(() => { leaving = 0; leaveRoom(); }, 4000); }
 function myIdNow() { const R = room(); if (NET.myId) return NET.myId; try { const m = R && R.me && R.me(); return m ? m.id : null; } catch (e) { return null; } }
 function plan() {
   const R = room(); if (!R) return null;
@@ -1961,6 +1989,7 @@ function wire() {
   let called = null, calledTimer = 0;
   R.on('start', x => {
     const p = x && x.body; if (!p || !Array.isArray(p.players)) return;
+    if (leaving) { if (p.players.some(q => q.id === myIdNow())) declineMatch(p.match); return; }   // on the way out of the room: declined while the room still carries it
     if (called && called.from < x.from && Date.now() < called.at + 1000) return;   // two starts at once: the lower id's wins everywhere
     called = x; clearTimeout(calledTimer);
     calledTimer = setTimeout(() => startOnline(p), Math.max(0, (x.at || Date.now()) - Date.now()));
@@ -1975,10 +2004,10 @@ function safeLaw(l) {
   return { WORLD_SIZE: size, WALLS_LENGTH: trail, FOOD: trail > 0 ? Math.max(0, Math.min(24, +l.FOOD || 0)) : 0, GLASS: +l.GLASS ? 1 : 0, BOT_LEVEL: [1, 2, 3].indexOf(+l.BOT_LEVEL) >= 0 ? +l.BOT_LEVEL : 2, RIDE_SECONDS: 0, ROUNDS: 1 };
 }
 function startOnline(p) {
-  const id = myIdNow(); if (!id) return;
+  const id = myIdNow(); if (!id || !NET.joined) return;   // a page out of the room rides nothing
   const mine = p.players.find(q => q.id === id);
   if (!mine) { $('lNote').textContent = 'A ride started before you came in. The next one has you.'; return; }
-  if (NET.on) { declineMatch(p.match); return; }   // mid-match: never pulled out of the ride this page is in
+  if (NET.on || leaving) { declineMatch(p.match); return; }   // mid-match, or on the way out of the room: never pulled into another ride
   const humans = p.players.slice(0, 8).sort((a, b) => a.seat - b.seat), match = String(p.match).slice(0, 60);
   const together = p.kind === 'today' && /^\d{10}$/.test(String(p.day)) && !!S.setOfCode(p.set);
   if (together) {
@@ -1988,56 +2017,81 @@ function startOnline(p) {
     const seats = humans.map(q => ({ handle: clean(q.name) || 'rider', bot: false })).concat(Array.from({ length: Math.max(0, Math.min(+p.bots || 0, 8 - humans.length)) }, () => ({ bot: true })));
     W = S.createWorld(safeLaw(p.law), seats, match);
   }
-  NET = { on: true, joined: true, match, log: together ? [] : null, heard: {}, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, myId: id, sent: 0, nextQ: {}, held: {} };
+  NET = { on: true, joined: true, match, log: together ? [] : null, heard: {}, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, myId: id, sent: 0, n: 0, said: [], maxN: {}, nextQ: {}, held: {} };
   humans.forEach((q, i) => { NET.seatOf[q.id] = i; NET.names[q.id] = q.name; if (q.id !== id) { NET.remote.push(q.id); NET.upTo[q.id] = -1; } });
   me = NET.seatOf[id]; follow = me; mode = 'online'; ghost = null;
   ride = together ? { kind: 'together', day: String(p.day), set: S.setOfCode(p.set), n: humans.length, names: humans.map(q => clean(q.name) || 'rider'), moves: [], steps: 0, over: false } : null; paused = false; crashCam = 0; shards.length = 0;
   CAM.set = false; prevHead = curHead = null; acc = 0; last = performance.now();
   for (const s of ['start', 'end', 'pause', 'lobby']) show(s, false);
   chrome(true); banner(together ? 'Today\'s universe, together' : 'Round 1', together ? ride.names.join(' · ') : wins());
-  const early = EARLY.splice(0).filter(e => e.m.body.m === NET.match && Date.now() - e.at < 10000);
-  for (const e of early) onNet(e.m);
+  for (const x of takeEarly(NET.match)) onNet(x);   // what the others said before this page's start fired
   flush(true);
 }
 function flush(force) {
   const R = room(); if (!NET.on || !R) return;
-  const t = performance.now();
-  if (!force && !NET.out.length && t - NET.sentAt < 33) return;
-  if (window.__netlog) window.__netlog.push(['send', W.tick, W.tick + DELAY - 1, NET.out.map(e => e.tick + e.action).join(' ')]);
-  try { R.send('fx', { m: NET.match, q: NET.sent + 1, upTo: W.tick + DELAY - 1, ev: NET.out }, { reliable: true }); NET.sent++; } catch (e) {}
-  NET.out = []; NET.sentAt = t;
+  const t = performance.now(), upTo = W.tick + DELAY - 1;
+  /* nothing new is said at most thirty times a second, and while this page waits (its upTo unchanged) four times a
+   * second: the beach's relay writes every word a peer has not yet read into the page's one slot, and an unlatched
+   * write may be 64 KB at most; with the window in it, the same word said thirty times a second while a relayed page
+   * waited filled 96 KB (24 Nov 2026, lane coil.2, three riders on the rig's model of the relay) */
+  if (!force && !NET.out.length && (t - NET.sentAt < 33 || (upTo === NET.saidUpTo && t - NET.sentAt < 250))) return;
+  if (window.__netlog) window.__netlog.push(['send', W.tick, upTo, NET.out.map(e => e.tick + e.action).join(' ')]);
+  /* win, the presses of the last KEEP ticks, for every page; ev, each press once, and q, the word's number, for a page
+   * from before the window, which takes words in the order they were sent */
+  try { R.send('fx', { m: NET.match, q: NET.sent + 1, upTo, ev: NET.out, win: recent() }, { reliable: true }); NET.sent++; } catch (e) {}
+  NET.out = []; NET.sentAt = t; NET.saidUpTo = upTo;
 }
-const EARLY = [];   // what arrives in the moment before this page's own start fires, kept for the match it names
+/* what arrives for a match before this page's own start fires, kept for it: a start fires a moment later on one page
+ * than another, and the others' first words, a press stamped in the countdown among them, must not be lost. Kept by
+ * match for ten seconds, so the words of a ride going on elsewhere in the room, heard from the lobby, never crowd out
+ * the next one's (one list of 400, as it was, filled while a rider waited in the lobby through a ride) */
+const EARLY = {};
+function keepEarly(m) {
+  const t = Date.now(), k = String(m.body.m);
+  for (const x in EARLY) if (t - EARLY[x].at > 10000) delete EARLY[x];
+  const b = EARLY[k] = EARLY[k] || { at: t, words: [] };
+  if (b.words.length < 400) b.words.push(m);
+}
+function takeEarly(match) {
+  const b = EARLY[match], t = Date.now();
+  for (const x in EARLY) delete EARLY[x];
+  return b && t - b.at < 10000 ? b.words : [];
+}
 function onNet(m) {
   if (!m || !m.body) return;
-  if (m.body.m && m.body.m !== NET.match && m.kind === 'fx') { if (m.body.quit) delete BUSY[m.from]; else BUSY[m.from] = Date.now(); }   // who is riding a match of their own
-  if (!NET.on || (m.body.m && m.body.m !== NET.match)) {
-    while (EARLY.length && Date.now() - EARLY[0].at > 10000) EARLY.shift();   // the last ten seconds only, so others' long matches never crowd out the words of one about to start
-    if (m.body.m && EARLY.length < 400) EARLY.push({ m, at: Date.now() });
-    return;
-  }
-  if (!(m.from in NET.seatOf)) return;
+  const other = !!m.body.m && (!NET.on || m.body.m !== NET.match);   // a word about a match this page is not riding
+  if (other && m.kind === 'fx') { if (m.body.quit) delete BUSY[m.from]; else BUSY[m.from] = Date.now(); }   // who is riding a match of their own
+  if (other) { keepEarly(m); return; }
+  if (!NET.on || !(m.from in NET.seatOf)) return;
   if (m.kind === 'fx') {
-    /* a page's word is taken in the order it was sent, by its number q. Until a pair's direct channel opens, the room
-     * plug carries a message through the beach, and after that straight across, so a later word can overtake an earlier
-     * one, and its upTo would let this page ride past a press still on its way (found 24 Nov 2026, lane coil.1: two
-     * pages whose ride started before their channel opened, a turn applied late on one of them, the worlds parted) */
-    const q = m.body.q | 0;
-    if (!q) { takeFx(m.from, m.body); return; }   // a page that numbers nothing, taken as it comes
-    const held = NET.held[m.from] = NET.held[m.from] || {};
+    /* words are taken as they come: until a pair's direct channel opens the room plug carries a word through the
+     * beach, and after that straight across, so a later word can overtake an earlier one (lane coil.1's crossing), and
+     * the beach's relay can drop one; every word carries its page's presses of the last quarter second, so neither costs
+     * a press (takeFx) */
+    if (Array.isArray(m.body.win) || !(m.body.q | 0)) { takeFx(m.from, m.body); return; }
+    /* a page from before the window sends each press once and numbers its words (q): they are taken in the order they
+     * were sent, as that page takes them, so a ride with it is the ride two such pages had */
+    const q = m.body.q | 0, held = NET.held[m.from] = NET.held[m.from] || {};
     if (q >= (NET.nextQ[m.from] || 1)) held[q] = m.body;
     if (Object.keys(held).length > 240) NET.desync = true;   // a word lost on the way: the worlds can no longer agree
     for (let k = NET.nextQ[m.from] || 1; held[k]; k = NET.nextQ[m.from]) { const b = held[k]; delete held[k]; NET.nextQ[m.from] = k + 1; takeFx(m.from, b); }
   } else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
 }
+/* a page's presses: from its window (win), each taken once by its number, so a word lost or overtaken costs nothing;
+ * from a page before the window (ev, each press once), as its words are taken */
 function takeFx(from, body) {
   if (!body.quit) NET.heard[from] = true;   // heard riding this match, not only seated in it
-  if (window.__netlog) window.__netlog.push(['recv', W.tick, body.upTo, (body.ev || []).map(e => e.tick + e.action).join(' ')]);
-  const seat = NET.seatOf[from];
-  for (const ev of body.ev || []) if (ev && ev.seat === seat && S.ACTIONS.indexOf(ev.action) >= 0) {
+  const seat = NET.seatOf[from], win = Array.isArray(body.win) ? body.win : null;
+  if (window.__netlog) window.__netlog.push(['recv', W.tick, body.upTo, (win || body.ev || []).map(e => e && e.tick + e.action).join(' ')]);
+  let maxN = NET.maxN[from] || 0;
+  if (win && win[0] && (win[0].n | 0) > maxN + 1) NET.desync = true;   // presses gone from the window before any word brought them
+  for (const ev of win || body.ev || []) {
+    if (!ev || ev.seat !== seat || S.ACTIONS.indexOf(ev.action) < 0) continue;
+    if (win) { const n = ev.n | 0; if (n <= maxN) continue; maxN = n; }
     if ((ev.tick | 0) < W.tick) NET.desync = true;   // a press for a tick already ridden: the worlds can no longer agree
     enqueue({ tick: ev.tick | 0, seat, action: ev.action });
   }
+  NET.maxN[from] = maxN;
   NET.upTo[from] = Math.max(NET.upTo[from] == null ? -1 : NET.upTo[from], body.upTo | 0);
 }
 function checkStep(tick, h, from) {
@@ -2047,20 +2101,21 @@ function checkStep(tick, h, from) {
   if (NET.mine[tick] != null && NET.mine[tick] !== h) NET.desync = true;
 }
 function leaveOnline(quiet) {
-  NET.on = false; leaveRoom();
+  quitMatch(); leaveRoomSoon();   // the last word, then the room (leaveRoomSoon)
   if (!quiet) toMenu();
 }
 const BUSY = {};   // a peer's id → when it was last heard riding a match of its own
-/* LEAVING A MATCH, NOT THE ROOM (lane coil.1): a last word that waits on nothing (upTo a billion ticks), numbered like
- * every other, so the others ride on without waiting for this page, whose rider, if still riding, rides on with no hand */
+/* LEAVING A MATCH, NOT THE ROOM (lane coil.1): a last word that waits on nothing (upTo a billion ticks), carrying the
+ * window like every other, so the others ride on without waiting for this page, whose rider, if still riding, rides on
+ * with no hand */
 function quitMatch() {
   const R = room();
-  if (NET.on && R) { try { R.send('fx', { m: NET.match, q: NET.sent + 1, upTo: 1e9, ev: NET.out, quit: true }, { reliable: true }); NET.sent++; } catch (e) {} }
+  if (NET.on && R) { try { R.send('fx', { m: NET.match, q: NET.sent + 1, upTo: 1e9, ev: NET.out, win: recent(), quit: true }, { reliable: true }); NET.sent++; } catch (e) {} }
   NET.out = []; NET.on = false;
 }
 function declineMatch(match) {   // a start that named a page already riding: its match is told not to wait for it
   const R = room(); if (!R) return;
-  try { R.send('fx', { m: String(match).slice(0, 60), q: 1, upTo: 1e9, ev: [], quit: true }, { reliable: true }); } catch (e) {}
+  try { R.send('fx', { m: String(match).slice(0, 60), q: 1, upTo: 1e9, ev: [], win: [], quit: true }, { reliable: true }); } catch (e) {}
 }
 function togetherWith() {   // the riders heard riding this match with you: a seat given to someone who declined it is not named
   const names = Object.keys(NET.seatOf).filter(id => id !== NET.myId && NET.heard && NET.heard[id]).sort((a, b) => NET.seatOf[a] - NET.seatOf[b]).map(id => NET.names[id] || 'someone');
