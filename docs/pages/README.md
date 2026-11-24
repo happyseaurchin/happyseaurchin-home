@@ -27,6 +27,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [components](components.md) | `components/` + `docs/components/` | numbered component inventory — HTML pages + source `.md` files, fed by the ingest pipeline |
 | [corkboard](corkboard.md) | `corkboard.html` | every proposal on one board, laid out by what it shares (20 Nov 2026, lane review.1), at `/corkboard`: the shared board is the block `corkboard`, each person's own `corkboard:<handle>` |
 | [dashboard](dashboard.md) | `dashboard/` | the beach dashboard — keel's claude.ai dashboard (`dash.js`, near-verbatim) on a small runtime (`runtime.js`) that reads the census, the `presence` bl… |
+| [decision-block](decision-block.md) | `decision-block.html` | the Decision Block proposal (23 Nov 2026), at `/decision-block`, its snazzy view (`/proposal/decision-block` is its standard view): the scope of the block a run-up is walked through, for Convo, drawn as a signal box's route panel with an assembler to lay the block out, walk it and keep one's cut |
 | [determinacy](determinacy.md) | `determinacy.html` | the determinacy inquiry (15 Nov 2026), at `/determinacy`, its snazzy view, which its law names at 6 (`/proposal/determinacy` is its standard view, dra… |
 | [door-js](door-js.md) | `door.js` | the door, ‘with your AI’ (15 Nov 2026, lane o-page-unit.3; |
 | [experience-first](experience-first.md) | `experience-first.html` | Experience first (20 Nov 2026, lane experience.1), at `/experience-first`, its snazzy view, which its law names at 6 (`/proposal/experience-first` is … |
@@ -35,13 +36,16 @@ Each note is what a session needs before it touches that file: what the page is,
 | [eye](eye.md) | `eye.html` | Iris and Magic Eye (16 Nov 2026, lane eye.1), at `/eye`: |
 | [families](families.md) | `families.html` | Families on the Beach (17 Nov 2026, lane proposals-tidy.2, at David's word: |
 | [first-meeting](first-meeting.md) | `first-meeting.html` | the first-meeting proposal (11 Nov 2026), at `/first-meeting`, its snazzy view, which its law names at 6 from 12 Nov 2026, when it went live at David'… |
+| [flock-world](flock-world.md) | `flock-world.html` | the Flock World proposal (24 Nov 2026), at `/flock-world`, its snazzy view (`/proposal/flock-world` is its standard view): Forage and Migration grown into one flocking game for thousands on a world that wraps and grows, drawn as a murmuration at dusk over a patchwork of fields, an instrument a step |
 | [fotronic](fotronic.md) | `fotronic.html` + `fotronic/` | fotronic (26 Oct 2026), at `/fotronic`: |
 | [full-bandwidth](full-bandwidth.md) | `full-bandwidth.html` | the full-bandwidth walk (13 Nov 2026), at `/full-bandwidth`, its crafted page, which its law names at 6 (`/walk/full-bandwidth` draws the same family … |
 | [game-arcade](game-arcade.md) | `game-arcade.html` | the game arcade's proposal (21 Oct 2026), at `/game-arcade`: |
 | [game-ecology](game-ecology.md) | `game-ecology.html` | the game-ecology proposal (28 Oct 2026), at `/game-ecology`, its snazzy view, which its law names at 6 (`/proposal/game-ecology` is its standard view,… |
 | [game-experience](game-experience.md) | `game-experience.html` | the Game Experience proposal (22 Nov 2026), at `/game-experience`, its snazzy view, which its law names at 6 (`/proposal/game-experience` is its stan… |
 | [games](games.md) | `games/` | games played here (27 Oct 2026, lane plug.1), at `/games`: |
+| [games-coil](games-coil.md) | `games/coil/` | Coil (24 Nov 2026, lane coil.1), at `/games/coil`: happyseaurchin's game, built by keel, snake in a three-torus, its family founded on the beach, hosted with three changes so it plays live correctly, its engine checked on its own terms |
 | [games-forage](games-forage.md) | `games/forage/` | Forage (23 Nov 2026, lane games.1), at `/games/forage`: happyseaurchin's game, built by keel, its family founded on the beach and plugged, its engine checked on its own terms |
+| [games-ghost-racer](games-ghost-racer.md) | `games/ghost-racer/` | Ghost Racer (27 Oct 2026, lanes plug.3 and plug.4), at `/games/ghost-racer`: happyseaurchin's game, built by keel, the first to carry the room plug, its race live player to player |
 | [games-migration](games-migration.md) | `games/migration/` | Migration (23 Nov 2026, lane games.1), at `/games/migration`: happyseaurchin's game from keel's brief, its family founded on the beach, hosted with six changes so it fits the plugs and the sandbox |
 | [games-the-chain](games-the-chain.md) | `games/the-chain/` | The Chain (20 Nov 2026, lane chain.1), at `/games/the-chain`: happyseaurchin's game, built by keel, hosted in the plug's frame without the plug's checks |
 | [garden](garden.md) | `garden.html` | the garden proposal (17 Nov 2026), at `/garden`, its snazzy view once its law names it at 6 (`/proposal/garden` is its standard view, drawn from its b… |
@@ -87,6 +91,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [runs-js](runs-js.md) | `runs.js` | a family's runs, drawn where a page asks (20 Nov 2026, lane pscale.lab; |
 | [salt-app](salt-app.md) | `salt-app.html` | the SALT app proposal (4 Nov 2026), at `/salt-app`, its snazzy view, which its law names at 6 (since 19 Nov 2026, lane salt.app.2, at David's word: |
 | [sam-6-nov](sam-6-nov.md) | `sam-6-nov.html` | the crafted page of the meeting sam-6-nov (9 Nov 2026, lane meeting.link), at `/sam-6-nov`; |
+| [salt-demo](salt-demo.md) | `salt-demo.html` | the Demo proposal (23 Nov 2026), an adjunct to the magic mirror, at `/salt-demo`, its snazzy view (`/proposal/salt-demo` is its standard view): the inside of the magic mirror's sixth stone, the path to David's demo of verso speaking once in a room on his phone, and SALT's experiences and access after it, in the world of an opening night in a small theatre |
 | [says-js](says-js.md) | `says.js` | comments on a page's parts, as a kit any page carries (24 Oct 2026; |
 | [schematic](schematic.md) | `schematic.html` | the schematic form's plain page (29 Oct 2026; |
 | [schematics-proposal](schematics-proposal.md) | `schematics-proposal.html` | the schematics proposal (28 Oct 2026), at `/schematics-proposal` (since 29 Oct 2026, when `/schematics` became the map of maps, a redirect in `vercel.… |
