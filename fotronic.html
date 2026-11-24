@@ -173,16 +173,35 @@ transport.onEvent(event => { if (state) sim.apply(state, event); });
  * path first'). Every phone runs the same world from the same match: the bots are computed alike on each from the
  * state, so they cross no wire; a person's press is stamped DELAY ticks ahead and sent to the others; and a phone
  * steps a tick only once every other player has said they have sent everything up to it. A press waits in the
- * page's own queue until its tick, never in the world's inbox, which a new round clears. ── */
+ * page's own queue until its tick, never in the world's inbox, which a new round clears. Coil's three repairs, which
+ * the 3D page carries too (24 Nov 2026, lane fotronic-3d.1; keel at pool:weft 832 and 833): what arrives for a match
+ * before this page's start fires is kept for it; every press, mine or another page's, joins the queue in order of
+ * tick, then seat; and no word that comes late, or never, parts the worlds. Coil holds each page's words in the order
+ * sent for that; here every word carries its page's presses of the last half second instead, each numbered and taken
+ * once, because held in order, one word the beach's relay never delivers (it keeps sixty unanswered words to a peer
+ * and drops the oldest) left every later word waiting behind it and the match stood still for good (seen live, two
+ * pages joined only through the beach). No page can be more than DELAY ticks behind another, so any word that lets a
+ * page ride past a press's tick was sent while that press still rode in every word. ── */
 const DELAY = 15;   // ticks (an eighth of a second) between a press and the tick it acts on, online
-const NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: '' };
+const KEEP = 4 * DELAY;   // ticks a press rides in every word its page sends after its tick has come
+const NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: '', n: 0, said: [], maxN: {} };
 let wasOnline = false, paused = false;
 const asking = () => !$('leave').classList.contains('hidden');
+/* in order of tick, then seat: a press appended unsorted could sit behind another page's later ones, and the loop that
+ * applies them stops at the first not yet due, so this page would act on it late and the worlds part (keel, 833) */
+function enqueue(ev) {
+  const P = NET.pending;
+  let i = P.length;
+  while (i > 0 && (P[i - 1].tick > ev.tick || (P[i - 1].tick === ev.tick && P[i - 1].seat > ev.seat))) i--;
+  P.splice(i, 0, ev);
+}
 function input(seat, action) {   // a person's press: now, at home; DELAY ticks on, online, the others told
   if (!NET.on) { transport.send({ tick: state.tick, seat, action }); return; }
-  const ev = { tick: state.tick + DELAY, seat, action };
-  NET.pending.push(ev); NET.out.push(ev);
+  const ev = { tick: state.tick + DELAY, seat, action, n: ++NET.n };
+  enqueue(ev); NET.out.push(ev); NET.said.push(ev);
 }
+/* what this page has pressed in the last half second, which rides in every word it sends */
+function recent() { NET.said = NET.said.filter(e => e.tick > state.tick - KEEP); return NET.said; }
 
 /* ── the start screen ── */
 function fillSeats(sel, size, chosen) {
@@ -227,7 +246,7 @@ function keepPlaying() { $('leave').classList.add('hidden'); paused = false; las
 function leaveMatch() {
   if (NET.on) {   /* everything I said, sent; then the tick from which my seat is a bot, which no phone has passed yet */
     flush(true);
-    if (room) room.send('quit', { m: NET.match, at: state.tick + DELAY }, { reliable: true });
+    if (room) room.send('quit', { m: NET.match, at: state.tick + DELAY, win: recent() }, { reliable: true });
     NET.on = false;
     $('lobbyNote').textContent = 'You left the match: a bot has your seat and the others play on. A start here seats whoever is not mid-match.';
   }
@@ -406,7 +425,7 @@ function startOnline(p) {
     seats.push({ team, seat: n, bot: !q || gave.has(q.id), handle: q ? q.name : team + n });
   }
   state = sim.createMatch(law, seats, matchOf(p));
-  Object.assign(NET, { on: true, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: matchOf(p) });
+  Object.assign(NET, { on: true, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: matchOf(p), n: 0, said: [], maxN: {} });
   for (const q of p.players) {
     NET.seatOf[q.id] = state.seats.find(s => s.team === q.team && s.seat === q.seat).index; NET.names[q.id] = q.name;
     if (q.id !== me.id && !gave.has(q.id)) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
@@ -420,6 +439,7 @@ function startOnline(p) {
   wasOnline = true; paused = false; $('leave').classList.add('hidden'); $('menu').classList.add('on');
   running = true; last = performance.now(); acc = 0;
   window.fotronic = { state, law, transport, net: NET };
+  for (const w of takeEarly(NET.match)) onNet(w);   // what the others said before this page's start fired
   flush(true);
 }
 /* everything I have said up to a tick, sent: my presses since the last send, and the tick I have spoken for */
@@ -427,32 +447,64 @@ function flush(force) {
   if (!NET.on || !room) return;
   const t = performance.now();
   if (!force && !NET.out.length && t - NET.sentAt < 33) return;   // at most thirty a second when there is nothing new
-  room.send('fx', { m: NET.match, upTo: state.tick + DELAY - 1, ev: NET.out }, { reliable: true });
+  room.send('fx', { m: NET.match, upTo: state.tick + DELAY - 1, ev: NET.out, win: recent() }, { reliable: true });   // ev, each press once, for a page from before the window
   NET.out = []; NET.sentAt = t;
+}
+/* what arrives for a match before this page's own start fires, kept for it: a start fires a moment later on one page
+ * than another, and the others' first words, a press stamped in the countdown among them, must not be lost (keel, 832).
+ * Kept by match for ten seconds, so the words of a match running elsewhere in the room, heard from the waiting room,
+ * never crowd out the next one's. */
+const EARLY = {};
+function keepEarly(m) {
+  const t = Date.now(), k = String(m.body.m);
+  for (const x in EARLY) if (t - EARLY[x].at > 10000) delete EARLY[x];
+  const b = EARLY[k] = EARLY[k] || { at: t, words: [] };
+  if (b.words.length < 400) b.words.push(m);
+}
+function takeEarly(match) {
+  const b = EARLY[match], t = Date.now();
+  for (const x in EARLY) delete EARLY[x];
+  return b && t - b.at < 10000 ? b.words : [];
 }
 const busy = {}, declined = {};   // who was heard playing another match, and when; seats given up before their match began here
 function onNet(m) {
-  if (!m.body) return;
+  if (!m || !m.body) return;
   const other = m.body.m != null && (!NET.on || m.body.m !== NET.match);   // a word about a match this page is not playing
   if (m.kind === 'fx' && (other || !NET.on)) busy[m.from] = Date.now();
-  if (m.kind === 'quit' && other) {
+  if (m.kind === 'quit' && other && !(m.body.at | 0)) {   // a seat given up before its match began: a bot there from the start
     const k = String(m.body.m); (declined[k] = declined[k] || []).push(m.from);
     const ks = Object.keys(declined); if (ks.length > 8) delete declined[ks[0]];
     return;
   }
-  if (!NET.on || other || !(m.from in NET.seatOf)) return;
-  if (m.kind === 'fx') {
-    const seat = NET.seatOf[m.from];
-    for (const ev of m.body.ev || []) if (ev && ev.seat === seat && sim.ACTIONS.indexOf(ev.action) >= 0) NET.pending.push({ tick: ev.tick | 0, seat, action: ev.action });
-    NET.pending.sort((a, b) => a.tick - b.tick);
-    NET.upTo[m.from] = Math.max(NET.upTo[m.from], m.body.upTo | 0);
-  } else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
-  else if (m.kind === 'quit') {
+  if (other) { keepEarly(m); return; }
+  if (!NET.on || !(m.from in NET.seatOf)) return;
+  /* words are taken as they come: until a pair's direct channel opens the room plug carries a word through the beach,
+   * and after that straight across, so a later word can overtake an earlier one (Coil's crossing, lane coil.1), and the
+   * beach's relay can drop one; every word carries the presses its page made in the last half second, so neither
+   * costs a press */
+  if (m.kind === 'fx') { takePresses(m.from, m.body); NET.upTo[m.from] = Math.max(NET.upTo[m.from] == null ? -1 : NET.upTo[m.from], m.body.upTo | 0); }
+  else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
+  else if (m.kind === 'quit') {   // a player left: their seat a bot from the tick they named, the brake let go, nobody waiting for them
+    takePresses(m.from, m.body);
     const seat = NET.seatOf[m.from], at = Math.max(state.tick, m.body.at | 0);
-    NET.pending.push({ tick: at, seat, action: 'BRAKE_OFF' }); NET.pending.sort((a, b) => a.tick - b.tick);
+    enqueue({ tick: at, seat, action: 'BRAKE_OFF' });
     NET.botAt.push({ tick: at, seat }); NET.botAt.sort((a, b) => a.tick - b.tick);
     NET.remote = NET.remote.filter(id => id !== m.from);
   }
+}
+/* a page's presses: from its window (win), each taken once by its number, so a word lost or overtaken costs nothing;
+ * from a page that sends each press once (ev, a page from before the window), as they come */
+function takePresses(from, body) {
+  const seat = NET.seatOf[from], win = Array.isArray(body.win) ? body.win : null;
+  let maxN = NET.maxN[from] || 0;
+  if (win && win.length && (win[0].n | 0) > maxN + 1) NET.desync = true;   // presses gone from the window before any word brought them
+  for (const ev of win || body.ev || []) {
+    if (!ev || ev.seat !== seat || sim.ACTIONS.indexOf(ev.action) < 0) continue;
+    if (win) { const n = ev.n | 0; if (n <= maxN) continue; maxN = n; }
+    if ((ev.tick | 0) < state.tick) NET.desync = true;   // a press for a tick already ridden: the worlds can no longer agree
+    enqueue({ tick: ev.tick | 0, seat, action: ev.action });
+  }
+  NET.maxN[from] = maxN;
 }
 /* every two seconds each phone says what its world is at a tick; a world that differs is said so on the screen */
 function hashOf(st) {
@@ -571,7 +623,7 @@ function draw() {
     ctx.fill();
     ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.7; ctx.stroke(); ctx.globalAlpha = 1;
     if (z.conquest > 0) {   // the ring fills as enemies drive inside it
-      ctx.beginPath(); ctx.arc(X(z.x), Y(z.y), z.r * view.s - 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * z.conquest);
+      ctx.beginPath(); ctx.arc(X(z.x), Y(z.y), Math.max(0, z.r * view.s - 3), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * z.conquest);   // never below 0, or arc throws as a fallen zone shrinks away (keel, 24 Nov)
       ctx.strokeStyle = COLOUR[z.team === 'blue' ? 'gold' : 'blue']; ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.stroke();
     }
   }

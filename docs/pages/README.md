@@ -39,6 +39,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [first-meeting](first-meeting.md) | `first-meeting.html` | the first-meeting proposal (11 Nov 2026), at `/first-meeting`, its snazzy view, which its law names at 6 from 12 Nov 2026, when it went live at David'… |
 | [flock-world](flock-world.md) | `flock-world.html` | the Flock World proposal (24 Nov 2026), at `/flock-world`, its snazzy view (`/proposal/flock-world` is its standard view): Forage and Migration grown into one flocking game for thousands on a world that wraps and grows, drawn as a murmuration at dusk over a patchwork of fields, an instrument a step |
 | [fotronic](fotronic.md) | `fotronic.html` + `fotronic/` | fotronic (26 Oct 2026), at `/fotronic`: |
+| [fotronic-3d](fotronic-3d.md) | `fotronic-3d.html` | Fotronic 3D (24 Nov 2026, lane fotronic-3d.1), at `/fotronic-3d`: the same match seen from inside the light cycle, built by keel, sharing `pool:fotronic` with the flat page |
 | [full-bandwidth](full-bandwidth.md) | `full-bandwidth.html` | the full-bandwidth walk (13 Nov 2026), at `/full-bandwidth`, its crafted page, which its law names at 6 (`/walk/full-bandwidth` draws the same family … |
 | [game-arcade](game-arcade.md) | `game-arcade.html` | the game arcade's proposal (21 Oct 2026), at `/game-arcade`: |
 | [game-ecology](game-ecology.md) | `game-ecology.html` | the game-ecology proposal (28 Oct 2026), at `/game-ecology`, its snazzy view, which its law names at 6 (`/proposal/game-ecology` is its standard view,… |

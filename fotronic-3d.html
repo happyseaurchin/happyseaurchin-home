@@ -1,0 +1,1915 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Fotronic 3D</title>
+<meta name="description" content="Fotronic from inside the light cycle: the same Fortress match, two teams of light cycles and a zone each, on the Ladle's own numbers, seen from the saddle.">
+<meta property="og:title" content="Fotronic 3D">
+<meta property="og:description" content="Fotronic from inside the light cycle: the same Fortress match, two teams of light cycles and a zone each, on the Ladle's own numbers, seen from the saddle.">
+<meta name="theme-color" content="#04070d">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* VOICE: the arena at night, from the saddle: terse, exact, the Ladle's.
+   IDEA: a light cycle's instrument edge: the view is the vehicle, the words sit at its rim.
+   PICTURE: the arena itself, drawn in WebGL: walls of light, the zones' beacons, a floor that reflects them.
+   COLOUR and TYPE: the Ladle's blue #4488ff and gold #ffff44 on the grid's night #04070d; Orbitron and IBM Plex Mono, as fotronic.
+   LAYOUT: the view fills the screen; a thin score bar above, the gauges below, the map in a corner, cards over the arena. */
+:root {
+  --bg: #04070d; --panel: rgba(10, 18, 34, 0.94); --ink: #e6f6ff; --muted: #8ba5bb; --rule: #173452; --rule-2: #24507a;
+  --blue: #4488ff; --gold: #ffff44; --cyan: #36c9ff; --red: #ff6b6b;
+  --display: 'Orbitron', system-ui, sans-serif; --mono: 'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; min-width: 0; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--mono); font-size: 15px; line-height: 1.5; overflow: hidden; -webkit-text-size-adjust: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+canvas#gl, canvas#hud { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+canvas#hud { pointer-events: none; }
+a { color: var(--cyan); }
+
+/* the bar above and the gauges below, over the view */
+#top { position: fixed; top: 0; left: 0; right: 0; z-index: 2; pointer-events: none; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px;
+  padding: max(8px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) 22px max(14px, env(safe-area-inset-left));
+  background: linear-gradient(rgba(4, 7, 13, 0.82), rgba(4, 7, 13, 0)); font-family: var(--display); font-weight: 700; letter-spacing: 0.06em; }
+#top .b { color: var(--blue); text-shadow: 0 0 12px rgba(68, 136, 255, 0.7); }
+#top .g { color: var(--gold); text-align: right; text-shadow: 0 0 12px rgba(255, 255, 68, 0.55); }
+#top .score { font-size: 1.4rem; }
+#mid { font-size: 0.8rem; color: var(--muted); font-weight: 500; text-align: center; min-height: 1.2em; }
+#feed { position: fixed; top: calc(max(8px, env(safe-area-inset-top)) + 40px); left: 50%; transform: translateX(-50%); z-index: 2; pointer-events: none; display: grid; gap: 2px; justify-items: center; font-size: 0.8rem; width: min(92vw, 34rem); text-align: center; }
+#feed div { background: rgba(4, 7, 13, 0.55); padding: 1px 10px; border-radius: 4px; color: var(--ink); transition: opacity 0.6s; }
+#feed .b { color: var(--blue); } #feed .g { color: var(--gold); }
+#centre { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; pointer-events: none; text-align: center; font-family: var(--display); font-weight: 700; }
+#centre .big { font-size: clamp(2rem, 9vmin, 5rem); letter-spacing: 0.08em; text-shadow: 0 0 24px rgba(230, 246, 255, 0.5); }
+#centre .small { font-size: clamp(0.8rem, 2.4vmin, 1.05rem); color: var(--muted); font-family: var(--mono); font-weight: 400; margin-top: 0.4em; text-shadow: 0 0 8px #000; }
+#centre .b { color: var(--blue); } #centre .g { color: var(--gold); }
+#bottom { position: fixed; left: 0; right: 0; bottom: 0; z-index: 2; pointer-events: none; display: flex; gap: 12px 18px; justify-content: center; align-items: flex-end; flex-wrap: wrap;
+  padding: 26px max(14px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  background: linear-gradient(rgba(4, 7, 13, 0), rgba(4, 7, 13, 0.78)); font-size: 0.76rem; color: var(--muted); }
+.rider { display: grid; grid-template-columns: auto auto; gap: 2px 12px; align-items: center; }
+.rider .who { grid-column: 1 / -1; font-family: var(--display); font-weight: 700; letter-spacing: 0.08em; font-size: 0.74rem; }
+.rider .who.b { color: var(--blue); } .rider .who.g { color: var(--gold); }
+.speed { font-family: var(--display); font-weight: 700; font-size: 1.5rem; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.speed small { font-size: 0.62rem; color: var(--muted); font-weight: 500; letter-spacing: 0.06em; margin-left: 4px; }
+.bars { display: grid; gap: 3px; }
+.gauge { display: grid; grid-template-columns: 4.6em 72px; align-items: center; gap: 6px; }
+.gauge i { display: block; height: 5px; border-radius: 3px; background: var(--rule); position: relative; overflow: hidden; }
+.gauge i b { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 3px; background: var(--ink); }
+.gauge.spd i b { background: var(--cyan); } .gauge.rub i b { background: var(--red); } .gauge.brk i b { background: var(--ink); }
+#watching { font-family: var(--display); letter-spacing: 0.08em; font-size: 0.74rem; color: var(--muted); }
+
+/* the buttons that stay over the view */
+#chrome { position: fixed; z-index: 4; right: max(10px, env(safe-area-inset-right)); bottom: max(10px, env(safe-area-inset-bottom)); display: flex; gap: 8px; }
+#chrome.hidden, #touch.hidden { display: none; }
+.chip { font: 700 0.7rem var(--display); letter-spacing: 0.1em; color: var(--ink); background: rgba(10, 18, 34, 0.82); border: 1px solid var(--rule-2); border-radius: 999px; padding: 0 16px; min-height: 44px; cursor: pointer; }
+.chip:focus-visible, .btn:focus-visible, .seg button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+#touch { position: fixed; inset: 0; z-index: 3; }
+#touch .half { position: absolute; top: 0; bottom: 0; width: 50%; }
+#touch .half.l { left: 0; } #touch .half.r { right: 0; }
+#brake { position: absolute; left: 50%; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 64px); transform: translateX(-50%); font: 700 0.8rem var(--display); letter-spacing: 0.1em; color: var(--ink); background: rgba(10, 18, 34, 0.78); border: 1px solid var(--rule-2); border-radius: 999px; padding: 12px 26px; min-height: 44px; }
+#brake.held { background: rgba(255, 107, 107, 0.28); border-color: var(--red); }
+
+/* the cards */
+.sheet { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; background: radial-gradient(ellipse at center, rgba(4, 7, 13, 0.35), rgba(4, 7, 13, 0.78)); padding: max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-right)) max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); overflow: auto; touch-action: pan-y; user-select: text; -webkit-user-select: text; }
+.sheet.hidden { display: none; }
+.card { width: min(35rem, 100%); background: var(--panel); border: 1px solid var(--rule-2); border-radius: 10px; padding: 20px 22px; box-shadow: 0 0 60px rgba(54, 201, 255, 0.14); margin: auto; }
+h1 { font-family: var(--display); font-weight: 700; font-size: clamp(1.6rem, 6vw, 2.4rem); line-height: 1.05; letter-spacing: 0.14em; margin: 0 0 4px; text-shadow: 0 0 24px rgba(54, 201, 255, 0.5); }
+h1 small { display: block; font-family: var(--mono); font-weight: 400; font-size: 0.8rem; letter-spacing: 0.04em; color: var(--muted); margin-top: 8px; }
+h2 { font-family: var(--display); font-weight: 700; font-size: 1.1rem; letter-spacing: 0.14em; margin: 0 0 6px; }
+h3 { font-family: var(--display); font-weight: 500; font-size: 0.72rem; letter-spacing: 0.12em; color: var(--muted); margin: 14px 0 6px; text-transform: uppercase; }
+#cam .card { padding: 16px 18px; }
+#cam h3 { margin: 10px 0 4px; }
+#cam .seg button { min-height: 36px; padding: 0 12px; }
+#cam .keys { margin-top: 8px; }
+#cam .btn { margin-top: 10px; }
+.lede { margin: 10px 0 14px; color: var(--muted); }
+.row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 14px; margin: 10px 0; }
+label { display: grid; gap: 4px; font-size: 0.78rem; letter-spacing: 0.04em; color: var(--muted); }
+label.b { color: var(--blue); } label.g { color: var(--gold); }
+select, input[type=text] { font: inherit; font-size: 16px; color: var(--ink); background: #061020; border: 1px solid var(--rule-2); border-radius: 6px; padding: 8px 10px; min-height: 44px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button { font: 500 0.78rem var(--mono); color: var(--muted); background: #061020; border: 1px solid var(--rule-2); border-radius: 999px; padding: 0 14px; min-height: 40px; cursor: pointer; }
+.seg button[aria-pressed=true] { color: #04070d; background: var(--cyan); border-color: var(--cyan); font-weight: 500; }
+.slide { display: grid; grid-template-columns: 8.6em minmax(0, 1fr) 5.6em; align-items: center; gap: 10px; margin: 4px 0; font-size: 0.8rem; color: var(--muted); }
+.slide output { text-align: right; color: var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+input[type=range] { width: 100%; accent-color: var(--cyan); min-height: 32px; }
+.keys { font-size: 0.82rem; color: var(--muted); margin: 12px 0 0; }
+.keys kbd { font-family: var(--mono); border: 1px solid var(--rule-2); border-radius: 4px; padding: 0 5px; color: var(--ink); }
+.btn { font: 700 0.9rem var(--display); letter-spacing: 0.1em; color: #04070d; background: var(--cyan); border: 0; border-radius: 999px; padding: 0 26px; min-height: 46px; cursor: pointer; margin-top: 14px; margin-right: 6px; }
+.btn.line { background: transparent; color: var(--ink); border: 1px solid var(--rule-2); }
+.line-box { font-family: var(--mono); font-size: 0.9rem; background: #061020; border: 1px solid var(--rule-2); border-radius: 6px; padding: 10px 12px; margin: 8px 0; word-break: break-word; user-select: all; -webkit-user-select: all; }
+.hint { font-size: 0.8rem; color: var(--muted); min-height: 1.2em; margin-top: 6px; }
+.foot { font-size: 0.74rem; color: var(--muted); margin-top: 14px; }
+.foot a { color: var(--muted); }
+.note { font-size: 0.76rem; color: var(--muted); margin: 4px 0 0; }
+#lobby { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--rule); }
+#lobby[hidden] { display: none; }
+#lobby beach-here { color: var(--ink); font-size: 0.86rem; }
+#lobby beach-here button { font: 700 0.78rem var(--display); letter-spacing: 0.08em; border-color: var(--rule-2); padding: 10px 18px; }
+#lobby beach-here .bh-go { background: var(--cyan); color: #04070d; border-color: var(--cyan); }
+#lobby beach-here .bh-count { font-family: var(--display); color: var(--cyan); }
+#lobby beach-here .bh-link { color: var(--muted); }
+/* the camera card sits beside the view while you play, so what it changes shows at once */
+#cam.side { place-items: center end; background: linear-gradient(90deg, rgba(4, 7, 13, 0), rgba(4, 7, 13, 0.55)); }
+#cam.side .card { margin: auto 0; width: min(25rem, 100%); }
+#nogl { position: fixed; inset: 0; z-index: 9; display: grid; place-items: center; background: var(--bg); padding: 16px; }
+@media (max-width: 600px) {
+  .card { padding: 16px 16px; }
+  h1 small { margin-top: 4px; }
+  .lede { font-size: 0.86rem; line-height: 1.45; margin: 6px 0 8px; }
+  .row { gap: 6px 10px; margin: 6px 0; }
+  .keys { font-size: 0.78rem; margin-top: 8px; }
+  .btn { margin-top: 10px; }
+  #top .score { font-size: 1.1rem; }
+  #cam.side { place-items: end center; background: linear-gradient(rgba(4, 7, 13, 0), rgba(4, 7, 13, 0.6)); }
+  #cam.side .card { max-height: 62vh; overflow: auto; }
+  .gauge { grid-template-columns: 4.2em 54px; }
+}
+@media (prefers-reduced-motion: reduce) { #feed div { transition: none; } }
+</style>
+</head>
+<body>
+<canvas id="gl" role="img" aria-label="The Fortress arena seen from inside a light cycle: walls of light in blue and gold, the two zones with their beacons, and the floor's grid."></canvas>
+<canvas id="hud" aria-hidden="true"></canvas>
+
+<div id="top">
+  <div class="b"><span class="score" id="scoreBlue">0</span> BLUE</div>
+  <div id="mid"></div>
+  <div class="g">GOLD <span class="score" id="scoreGold">0</span></div>
+</div>
+<div id="feed" aria-live="polite"></div>
+<div id="centre" aria-live="polite"></div>
+<div id="bottom"></div>
+<div id="touch" class="hidden"><div class="half l" aria-hidden="true"></div><div class="half r" aria-hidden="true"></div><button type="button" id="brake">BRAKE</button></div>
+<div id="chrome" class="hidden">
+  <button type="button" class="chip" id="bMenu" aria-label="Leave the match and go back to the menu">✕ MENU</button>
+  <button type="button" class="chip" id="bView" aria-label="View: inside. Tap for outside.">INSIDE</button>
+  <button type="button" class="chip" id="bCam">CAMERA</button>
+</div>
+
+<section id="start" class="sheet" aria-label="Start a match">
+  <div class="card">
+    <h1>FOTRONIC 3D <small>Fortress as a minimal team snake, seen from the saddle</small></h1>
+    <p class="lede">Two teams, a zone each. Hold yours, take theirs: one enemy alone in a zone takes it in five seconds, one defender inside stops one attacker. Ride close to a wall to go fast. The Ladle's own numbers, and the same match as Fotronic: only the view is new.</p>
+    <div class="row">
+      <label>Team size <select id="size"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option><option>6</option></select></label>
+      <label>Your name <input type="text" id="handle" maxlength="32" autocomplete="nickname" placeholder="you"></label>
+      <label class="b">Blue seat you take <select id="seatBlue"></select></label>
+      <label class="g">Gold seat you take <select id="seatGold"></select></label>
+    </div>
+    <h3>The view</h3>
+    <div class="seg" role="group" aria-label="The view">
+      <button type="button" data-view="inside" aria-pressed="true">Inside the cycle</button>
+      <button type="button" data-view="outside" aria-pressed="false">Outside it</button>
+      <button type="button" class="openCam">Camera settings</button>
+    </div>
+    <p class="keys" id="keys"></p>
+    <button type="button" class="btn" id="go">PLAY</button>
+    <button type="button" class="btn line" id="online">PLAY ONLINE</button>
+    <div id="lobby" hidden>
+      <p class="hint" id="lobbyNote">Everyone here plays in one match, teams by arrival (blue, gold, blue…), bots in the empty seats. Anyone can start it, and a player on the flat Fotronic page plays the same match from above.</p>
+      <beach-here id="here" label="START THE MATCH"></beach-here>
+      <button type="button" class="btn line" id="leaveRoom">LEAVE THE ROOM</button>
+    </div>
+    <p class="foot">Bots fill the other seats. The match ends at 100. The same law as <a href="https://happyseaurchin.com/fotronic">Fotronic</a>, seen from above there; the spec and its decisions: <a href="https://happyseaurchin.com/tronic-glass#fotronic">TRONIC Glass</a>.</p>
+  </div>
+</section>
+
+<section id="cam" class="sheet hidden" aria-label="The camera">
+  <div class="card">
+    <h2>THE CAMERA</h2>
+    <div class="seg" role="group" aria-label="The view">
+      <button type="button" data-view="inside" aria-pressed="true">Inside the cycle</button>
+      <button type="button" data-view="outside" aria-pressed="false">Outside it</button>
+    </div>
+    <div class="slide"><span>Field of view</span><input type="range" id="sFov" min="60" max="130" step="1" aria-label="Field of view, degrees across"><output id="oFov"></output></div>
+    <h3>Outside: where the camera sits</h3>
+    <div class="slide"><span>Behind</span><input type="range" id="sBack" min="-60" max="80" step="0.5" aria-label="Metres behind the cycle"><output id="oBack"></output></div>
+    <div class="slide"><span>Beside</span><input type="range" id="sSide" min="-60" max="60" step="0.5" aria-label="Metres to the right of the cycle"><output id="oSide"></output></div>
+    <div class="slide"><span>Above</span><input type="range" id="sUp" min="0.5" max="160" step="0.5" aria-label="Metres above the floor"><output id="oUp"></output></div>
+    <div class="seg" role="group" aria-label="What the camera keeps to" style="margin-top:8px">
+      <button type="button" data-frame="turns" aria-pressed="true">Turns with the cycle</button>
+      <button type="button" data-frame="grid" aria-pressed="false">Fixed to the grid</button>
+    </div>
+    <p class="note" id="frameNote"></p>
+    <div class="seg" role="group" aria-label="Where to put it" style="margin-top:10px">
+      <button type="button" data-preset="behind">Behind</button>
+      <button type="button" data-preset="high">High behind</button>
+      <button type="button" data-preset="beside">Beside</button>
+      <button type="button" data-preset="over">Overhead</button>
+    </div>
+    <h3>The map</h3>
+    <div class="seg" role="group" aria-label="The map">
+      <button type="button" data-map="turns" aria-pressed="true">Turns with you</button>
+      <button type="button" data-map="grid" aria-pressed="false">Your end at the bottom</button>
+    </div>
+    <h3>Sound and light</h3>
+    <div class="seg">
+      <button type="button" id="tSound" aria-pressed="true">Sound on</button>
+      <button type="button" id="tGlow" aria-pressed="true">Glow and reflections on</button>
+    </div>
+    <p class="keys"><kbd>V</kbd> inside or outside · <kbd>C</kbd> the next rider, when you are watching · <kbd>M</kbd> sound · <kbd>Esc</kbd> this card</p>
+    <button type="button" class="btn" id="camDone">DONE</button>
+  </div>
+</section>
+
+<section id="end" class="sheet hidden" aria-label="The match is over">
+  <div class="card">
+    <h1 id="endTitle">MATCH OVER</h1>
+    <p class="lede" id="endLede"></p>
+    <div id="lines"></div>
+    <div class="hint" id="copied"></div>
+    <button type="button" class="btn" id="copy">COPY THE LINE</button>
+    <button type="button" class="btn line" id="again">PLAY AGAIN</button>
+    <button type="button" class="btn line" id="toMenu">MENU</button>
+    <p class="foot">The line is the match's result, for the beach's voice to write into each player's own mirror at the match's address, where boards and cups read it (spine:tronic-glass 1.172).</p>
+  </div>
+</section>
+
+<section id="leave" class="sheet hidden" role="dialog" aria-modal="true" aria-label="Leave the match?">
+  <div class="card">
+    <h1>LEAVE THE MATCH?</h1>
+    <p class="lede" id="leaveLede">The match is paused while you choose.</p>
+    <button type="button" class="btn" id="stay">KEEP PLAYING</button>
+    <button type="button" class="btn line" id="quit">LEAVE</button>
+    <p class="foot">Esc asks this too; Esc again keeps playing.</p>
+  </div>
+</section>
+
+<script src="https://beach.happyseaurchin.com/button/room.js" data-game="fotronic"></script>
+<script type="module">
+import * as s from './fotronic/sim.js'; window.FotronicSim = s;
+</script>
+<script type="module">
+/* Fotronic 3D — fotronic's own match (fotronic/sim.js, the script above, verbatim), drawn from inside the light cycle.
+ *
+ * Built by keel (Claude Opus 5.5, max effort, claude.ai Project Keel) on 24 November 2026 at David's word: 'I'd love to
+ * have an insider view of the fotronic game … first and foremost in the initial build -- the camera is from the
+ * target's perspective on the grid facing forwards.' Everything that is play is fotronic.html's: the law, the seats,
+ * the transport, the bots, the result line and the online lockstep, so a rider here and a rider on the flat page can
+ * share one match (spine:tronic-glass 1.15: the skin is the player's own and changes nothing of play). What is new
+ * is only drawing: a WebGL2 arena, the camera inside the cycle (or outside it, where the player puts it), the map,
+ * the instruments and the sound. Hosted beside fotronic.html, the script above is replaced by
+ * `import * as sim from './fotronic/sim.js'` and nothing else changes.
+ *
+ * Hosted by weft (lane fotronic-3d.1, 24 Nov 2026) with what the flat page gained that afternoon, after this was built
+ * (happyseaurchin-home #795, David: 'all the choices allow the user to exit and go back'), so the two pages still play
+ * one match: a way back from every screen (✕ MENU or Esc asks LEAVE THE MATCH?; the camera card is the CAMERA chip's),
+ * and the words that go with it, a leaver's quit naming the tick their seat becomes a bot, a start that seats nobody
+ * heard playing another match, and a seat in another match given up at once mid-match. */
+const sim = window.FotronicSim;
+const $ = id => document.getElementById(id);
+const params = (() => { try { return new URLSearchParams(location.search); } catch (e) { return new URLSearchParams(''); } })();
+const MATCH = (params.get('match') || 'local').replace(/[^\w.:-]/g, '').slice(0, 40) || 'local';
+const TPS = sim.LAW.TICKS_PER_SECOND, TICK_MS = 1000 / TPS;
+const touch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const reduceQ = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : { matches: false };
+const esc = s => String(s).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const ease = t => t * t * t * (t * (t * 6 - 15) + 10);
+const cleanName = v => String(v || '').replace(/[^A-Za-z0-9_\s-]/g, '').trim().slice(0, 32);
+
+/* ── the transport: a local loop (1.17); every event, from a key, a tap or a bot, goes through it ── */
+const transport = {
+  listeners: [],
+  send(event) { for (const f of this.listeners) f(event); },
+  onEvent(f) { this.listeners.push(f); }
+};
+let state = null, humans = { blue: null, gold: null }, law = sim.LAW, running = false;
+let mode = 'attract';   // attract (bots behind the start card) | local | online
+let paused = false;     // a local match waits while the camera card is open, or the question whether to leave
+let wasOnline = false;  // the match just played was online: the end card's way back is the waiting room
+transport.onEvent(event => { if (state) sim.apply(state, event); });
+
+/* ── the settings: the skin's, kept on this device ── */
+const DEF = { view: 'inside', fov: 100, back: 12, side: 0, up: 6, frame: 'turns', map: 'turns', sound: true, glow: true };
+function tidy(s) {
+  const num = (v, lo, hi, d) => { v = Number(v); return isFinite(v) ? clamp(v, lo, hi) : d; };
+  return { view: s.view === 'outside' ? 'outside' : 'inside', fov: num(s.fov, 60, 130, 100), back: num(s.back, -60, 80, 12), side: num(s.side, -60, 60, 0), up: num(s.up, 0.5, 160, 6),
+    frame: s.frame === 'grid' ? 'grid' : 'turns', map: s.map === 'grid' ? 'grid' : 'turns', sound: s.sound !== false, glow: s.glow !== false };
+}
+const SET = (() => { let s = {}; try { s = JSON.parse(localStorage.getItem('fotronic3d') || '{}') || {}; } catch (e) { s = {}; } return tidy(Object.assign({}, DEF, s)); })();
+function saveSet() { try { localStorage.setItem('fotronic3d', JSON.stringify(SET)); } catch (e) {} }
+
+/* ── online: lockstep over the beach's room plug, as fotronic.html plays it (anteroom.1, 23 Nov 2026), with the three
+ * repairs Coil carries (games-coil.md): the match id on the wire and what arrives early kept for it; every press, mine
+ * or another page's, queued in order of tick, then seat; and no word that comes late, or never, parting the worlds.
+ * keel built the third as each page's words numbered and taken in the order sent. Hosted (lane fotronic-3d.1), it is
+ * carried another way, on this page and the flat page alike: held in order, one word the beach's relay never delivers
+ * (it keeps sixty unanswered words to a peer and drops the oldest) left every later word waiting behind it, and the
+ * match stood still for good (seen live, two pages joined only through the beach). So every word carries its page's
+ * presses of the last half second, each numbered, a press taken once by its number, and a word lost or overtaken costs
+ * nothing: no page can be more than DELAY ticks behind another, so any word that lets a page ride past a press's tick
+ * was sent while that press still rode in every word. A page that sends each press once (ev: a page from before the
+ * window) is taken as it comes, so the two pages still play one match. ── */
+const DELAY = 15;   // ticks (an eighth of a second) between a press and the tick it acts on, online
+const KEEP = 4 * DELAY;   // ticks a press rides in every word its page sends after its tick has come
+function freshNet(on) { return { on, match: null, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, n: 0, said: [], maxN: {}, botAt: [] }; }
+let NET = freshNet(false);
+function enqueue(ev) {
+  const P = NET.pending;
+  let i = P.length;
+  while (i > 0 && (P[i - 1].tick > ev.tick || (P[i - 1].tick === ev.tick && P[i - 1].seat > ev.seat))) i--;
+  P.splice(i, 0, ev);
+}
+function input(seat, action) {   // a person's press: now, at home; DELAY ticks on, online, the others told
+  if (!state || seat === null || seat === undefined) return;
+  if (!NET.on) { transport.send({ tick: state.tick, seat, action }); return; }
+  const ev = { tick: state.tick + DELAY, seat, action, n: ++NET.n };
+  enqueue(ev); NET.out.push(ev); NET.said.push(ev);
+}
+/* what this page has pressed in the last half second, which rides in every word it sends */
+function recent() { NET.said = NET.said.filter(e => e.tick > state.tick - KEEP); return NET.said; }
+
+/* ── the start card ── */
+function fillSeats(sel, size, chosen) {
+  sel.innerHTML = '<option value="0">bot</option>' + Array.from({ length: size }, (_, i) => '<option value="' + (i + 1) + '"' + (chosen === i + 1 ? ' selected' : '') + '>seat ' + (i + 1) + '</option>').join('');
+}
+function preset() {
+  const team = params.get('team'), seat = parseInt(params.get('seat') || '', 10);
+  const size = Math.max(parseInt($('size').value, 10), seat > 0 && seat <= law.TEAM_MAX_PLAYERS ? seat : 0) || 3;
+  $('size').value = String(size);
+  fillSeats($('seatBlue'), size, team === 'gold' ? 0 : (team === 'blue' && seat > 0 ? seat : 1));
+  fillSeats($('seatGold'), size, team === 'gold' && seat > 0 ? seat : 0);
+  if (team === 'blue' || team === 'gold') { if (team === 'blue') $('seatGold').value = '0'; else $('seatBlue').value = '0'; }
+  $('handle').value = cleanName(params.get('handle'));
+  keysHint();
+}
+function keysHint() {
+  const b = $('seatBlue').value !== '0', g = $('seatGold').value !== '0';
+  let t;
+  if (b && g) t = 'Blue turns with <kbd>A</kbd> <kbd>D</kbd> and brakes with <kbd>S</kbd>; gold with <kbd>←</kbd> <kbd>→</kbd> and <kbd>↓</kbd>. The screen splits in two, a view each.';
+  else if (b || g) t = 'Turn with <kbd>←</kbd> <kbd>→</kbd>, brake with <kbd>↓</kbd>' + (touch ? ', or tap the left or right half of the screen and hold BRAKE.' : '.') + ' <kbd>V</kbd> inside or outside.';
+  else t = 'No seat of yours: ride along with the bots. <kbd>C</kbd> the next rider, <kbd>V</kbd> inside or outside.';
+  $('keys').innerHTML = t;
+}
+$('size').addEventListener('change', () => { const n = parseInt($('size').value, 10); fillSeats($('seatBlue'), n, Math.min(n, parseInt($('seatBlue').value, 10))); fillSeats($('seatGold'), n, Math.min(n, parseInt($('seatGold').value, 10))); keysHint(); });
+$('seatBlue').addEventListener('change', keysHint);
+$('seatGold').addEventListener('change', keysHint);
+preset();
+
+$('go').addEventListener('click', start);
+/* ── every screen has a way back, as on the flat page (#795; 24 Nov 2026, David: 'all the choices allow the user to exit
+ * and go back'): ✕ MENU or Esc in a match asks to leave, the match paused at home and going on online; the end card
+ * plays again or goes back; the waiting room can be left. Back from an online match is the waiting room, and from
+ * there LEAVE THE ROOM is the menu. ── */
+const asking = () => !$('leave').classList.contains('hidden');
+function showMenu() { showSheet('start'); attract(); }
+function askLeave() {
+  if (!state || !running || mode === 'attract') return;
+  if (mode === 'local') { paused = true; for (const code of Array.from(held)) { const k = keySeat(code); held.delete(code); if (k && k.seat !== null) input(k.seat, 'BRAKE_OFF'); } }   // at home the match waits for the answer; online the others play on
+  $('leaveLede').textContent = NET.on ? 'The match goes on for the others while you choose. If you leave, a bot takes your seat, and you go back to the waiting room.' : 'The match is paused while you choose.';
+  showSheet('leave'); $('stay').focus();
+}
+function keepPlaying() { showSheet(null); if (paused) { paused = false; last = performance.now(); acc = 0; } }
+function leaveMatch() {
+  if (NET.on) {   // everything I said, sent; then the tick from which my seat is a bot, which no phone has passed yet
+    flush(true);
+    try { room.send('quit', { m: NET.match, at: state.tick + DELAY, win: recent() }, { reliable: true }); } catch (e) {}
+    NET.on = false;
+    $('lobbyNote').textContent = 'You left the match: a bot has your seat and the others play on. A start here seats whoever is not mid-match.';
+  }
+  held.clear(); brakeBtn.classList.remove('held');
+  showMenu();
+}
+$('bMenu').addEventListener('click', e => { e.stopPropagation(); askLeave(); });
+$('stay').addEventListener('click', keepPlaying);
+$('quit').addEventListener('click', leaveMatch);
+$('again').addEventListener('click', () => { if (wasOnline) showMenu(); else start(); });   // at home the same match again; online, back to the room
+$('toMenu').addEventListener('click', () => { if (wasOnline) leaveRoom(); showMenu(); });
+
+function start() {
+  audioInit();
+  const size = parseInt($('size').value, 10);
+  const handle = cleanName($('handle').value) || 'you';
+  const mine = { blue: parseInt($('seatBlue').value, 10), gold: parseInt($('seatGold').value, 10) };
+  const seats = [];
+  for (const team of ['blue', 'gold']) for (let n = 1; n <= size; n++) {
+    const human = mine[team] === n;
+    seats.push({ team, seat: n, bot: !human, handle: human ? handle : team + n });
+  }
+  NET = freshNet(false);
+  const st = sim.createMatch(law, seats, MATCH);
+  const local = { blue: null, gold: null };
+  st.seats.forEach(s => { if (!s.bot) local[s.team] = s.index; });
+  begin(st, 'local', local);
+}
+function begin(st, m, local) {
+  state = st; mode = m; humans = local; wasOnline = m === 'online';
+  running = true; paused = false; last = performance.now(); acc = 0;
+  parts.length = 0; rings.length = 0; feedClear(); lastCount = -1;
+  snapshot(); resetVis();
+  const own = [humans.blue, humans.gold].filter(i => i !== null);
+  views = own.length ? own.map(i => newView(i, false)) : [newView(0, true)];
+  showSheet(null);
+  chrome(true);
+  bottomGauges();
+  window.fotronic = { state, law, transport, net: NET };   // for a look under the hood; nothing here writes the state
+}
+
+/* behind the start card, a match of bots plays itself and the camera circles one rider */
+function attract() {
+  const seats = [];
+  for (const team of ['blue', 'gold']) for (let n = 1; n <= 3; n++) seats.push({ team, seat: n, bot: true, handle: team + n });
+  NET = freshNet(false);
+  state = sim.createMatch(law, seats, 'attract');
+  for (let i = 0; i < 9 * TPS; i++) { for (const e of sim.botEvents(state)) sim.apply(state, e); sim.step(state); }   // walls up already
+  mode = 'attract'; humans = { blue: null, gold: null };
+  running = true; paused = false; last = performance.now(); acc = 0;
+  parts.length = 0; rings.length = 0; feedClear();
+  snapshot(); resetVis();
+  const v = newView(Math.floor(Math.random() * state.cycles.length), true);
+  v.cine = true; v.cineAt = performance.now(); v.cineA = Math.random() * 6.283;
+  views = [v];
+  chrome(false);
+  $('bottom').innerHTML = ''; gauges = [];
+}
+
+/* ── keys: a key sends an event; it never touches the state (1.16) ── */
+const held = new Set();
+function keySeat(code) {
+  const two = humans.blue !== null && humans.gold !== null;
+  const arrowsFor = two ? humans.gold : (humans.blue !== null ? humans.blue : humans.gold);
+  if (code === 'ArrowLeft') return { seat: arrowsFor, action: 'L' };
+  if (code === 'ArrowRight') return { seat: arrowsFor, action: 'R' };
+  if (code === 'ArrowDown') return { seat: arrowsFor, action: 'BRAKE' };
+  if (two) {
+    if (code === 'KeyA') return { seat: humans.blue, action: 'L' };
+    if (code === 'KeyD') return { seat: humans.blue, action: 'R' };
+    if (code === 'KeyS') return { seat: humans.blue, action: 'BRAKE' };
+  }
+  return null;
+}
+const typing = e => e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName) && e.target.type !== 'range';
+window.addEventListener('keydown', e => {
+  if (typing(e)) return;
+  if (!e.repeat && e.code === 'Escape') {   // closes the camera card; in a match asks to leave, and again keeps playing; on the end card, MENU
+    if (!$('cam').classList.contains('hidden')) closeCam();
+    else if (asking()) keepPlaying();
+    else if (mode !== 'attract' && running) askLeave();
+    else if (!$('end').classList.contains('hidden')) $('toMenu').click();
+    return;
+  }
+  if (asking()) return;   // while the question stands the keys steer nothing
+  if (!e.repeat && e.code === 'KeyV') { setView(SET.view === 'inside' ? 'outside' : 'inside'); return; }
+  if (!e.repeat && e.code === 'KeyM') { setSound(!SET.sound); return; }
+  if (!e.repeat && (e.code === 'KeyC' || e.code === 'Tab') && mode !== 'attract') { if (nextWatch()) e.preventDefault(); return; }
+  if (!running || !state || e.repeat || mode === 'attract' || paused) return;
+  const k = keySeat(e.code);
+  if (!k || k.seat === null) return;
+  e.preventDefault();
+  if (k.action === 'BRAKE') { if (!held.has(e.code)) { held.add(e.code); input(k.seat, 'BRAKE_ON'); } }
+  else input(k.seat, k.action);
+});
+window.addEventListener('keyup', e => {
+  if (!state || mode === 'attract') return;
+  const k = keySeat(e.code);
+  if (k && k.action === 'BRAKE' && held.has(e.code)) { held.delete(e.code); if (k.seat !== null) input(k.seat, 'BRAKE_OFF'); }
+});
+window.addEventListener('blur', () => { if (!state || mode === 'attract') return; for (const code of Array.from(held)) { const k = keySeat(code); held.delete(code); if (k && k.seat !== null) input(k.seat, 'BRAKE_OFF'); } });
+
+/* ── taps: either half of the screen turns the human's cycle; the brake is a button held ── */
+function tapSeat() { return humans.blue !== null ? humans.blue : humans.gold; }
+for (const side of ['l', 'r']) {
+  document.querySelector('#touch .half.' + side).addEventListener('pointerdown', e => {
+    if (!running || !state || paused || mode === 'attract') return;
+    e.preventDefault();
+    const seat = tapSeat();
+    if (seat !== null && state.cycles[seat] && state.cycles[seat].alive) input(seat, side === 'l' ? 'L' : 'R');
+    else nextWatch();   // out of this round: a tap rides with the next rider
+  });
+}
+const brakeBtn = $('brake');
+function brake(on) {
+  const seat = tapSeat();
+  if (!running || !state || seat === null || mode === 'attract') return;
+  if (brakeBtn.classList.contains('held') === on) return;
+  brakeBtn.classList.toggle('held', on);
+  input(seat, on ? 'BRAKE_ON' : 'BRAKE_OFF');
+}
+brakeBtn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); brake(true); });
+for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) brakeBtn.addEventListener(ev, () => brake(false));
+
+/* ── the clock: 120 ticks a second, drawn on every frame between, each cycle placed between its last two ticks ── */
+let last = performance.now(), acc = 0, lastFrame = performance.now();
+const prev = { x: [], y: [], dir: [] };
+function snapshot() { if (!state) return; for (let i = 0; i < state.cycles.length; i++) { const c = state.cycles[i]; prev.x[i] = c.x; prev.y[i] = c.y; prev.dir[i] = c.dir; } }
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = clamp((now - lastFrame) / 1000, 0, 0.1); lastFrame = now;
+  if (!state) return;
+  if (running && !paused && !window.__f3dFreeze) {
+    acc += Math.min(now - last, 250);
+    last = now;
+    while (acc >= TICK_MS) {
+      if (NET.on && !NET.remote.every(id => NET.upTo[id] >= state.tick)) { NET.waiting += TICK_MS; acc = Math.min(acc, TICK_MS * 4); break; }   // everyone's word for this tick first
+      NET.waiting = 0;
+      if (NET.on) while (NET.pending.length && NET.pending[0].tick <= state.tick) sim.apply(state, NET.pending.shift());   // the presses due, at their tick
+      if (NET.on) while (NET.botAt.length && NET.botAt[0].tick <= state.tick) state.seats[NET.botAt.shift().seat].bot = true;   // a seat whose player left, a bot from its tick on every phone
+      for (const e of sim.botEvents(state)) transport.send(e);
+      snapshot();
+      sim.step(state);
+      if (NET.on && state.tick % 240 === 0) checkStep(state.tick, hashOf(state), null);
+      acc -= TICK_MS;
+      if (news(state.news)) break;
+    }
+    if (NET.on) flush(false);
+  } else last = now;
+  const alpha = running && !paused && !window.__f3dFreeze ? clamp(acc / TICK_MS, 0, 1) : 1;
+  try { draw(dt, now / 1000, alpha); } catch (err) { console.error(err); }
+  hudDom();
+  audioFrame();
+  quality(dt);
+}
+document.addEventListener('visibilitychange', () => { last = performance.now(); acc = 0; });
+
+/* what the world said this tick: crashes, turns, falls, rounds; true when the clock should stop */
+function news(list) {
+  for (const n of list) {
+    if (n.kind === 'death') onDeath(n);
+    else if (n.kind === 'turn') onTurn(n);
+    else if (n.kind === 'fall') onFall(n);
+    else if (n.kind === 'round') onRound(n);
+    else if (n.kind === 'go') onGo();
+    else if (n.kind === 'over') { if (mode === 'attract') attract(); else finish(); return true; }
+  }
+  return false;
+}
+
+/* ── online: the room, the seating, the start, and the wire ── */
+const room = window.beachRoom || null;
+function handle() { return cleanName($('handle').value); }
+$('online').addEventListener('click', () => {
+  audioInit();
+  $('lobby').hidden = false;
+  if (!room) { $('lobbyNote').textContent = 'The beach\'s room plug did not load here, so there is nobody to play with on this page. PLAY still plays against bots, and the page hosted on happyseaurchin.com plays online.'; return; }
+  $('online').hidden = true;
+  room.join({ name: handle() || undefined }).then(r => {
+    if (!r || !r.ok) { $('lobbyNote').textContent = 'The room would not open: ' + ((r && r.error) || 'no answer'); $('online').hidden = false; return; }
+    if (!handle() && r.name) $('handle').value = cleanName(r.name);
+  });
+});
+const LOBBY_NOTE = $('lobbyNote').textContent;
+function leaveRoom() {
+  if (room && room.joined && room.joined()) room.leave();
+  $('lobby').hidden = true; $('online').hidden = false;
+  $('lobbyNote').textContent = LOBBY_NOTE;
+}
+$('leaveRoom').addEventListener('click', leaveRoom);
+/* the seating the caller of a start hands every page: everyone here sorted by id, blue, gold, blue… by turn (as fotronic.html) */
+function plan() {
+  const me = room.me(); if (!me) return null;
+  const free = p => !(busy[p.id] > Date.now() - 2500);   // a player heard playing another match is left out of this one
+  const all = [{ id: me.id, name: me.name }].concat(room.peers().filter(free).map(p => ({ id: p.id, name: p.name }))).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const size = Math.min(law.TEAM_MAX_PLAYERS || 6, Math.max(parseInt($('size').value, 10) || 1, Math.ceil(all.length / 2)));
+  return { size, match: 'online-' + Date.now().toString(36) + '-' + me.id.slice(0, 4), players: all.slice(0, size * 2).map((p, i) => ({ id: p.id, name: String(p.name || 'player').slice(0, 32), team: i % 2 ? 'gold' : 'blue', seat: Math.floor(i / 2) + 1 })) };
+}
+(function hereReady() {
+  const here = $('here');
+  const set = () => { try { if (Object.prototype.hasOwnProperty.call(here, 'body')) delete here.body; here.body = plan; } catch (e) {} };
+  if (window.customElements && customElements.whenDefined) customElements.whenDefined('beach-here').then(set);
+  set();
+})();
+if (room) {
+  /* two starts called at once: on every page the call of the lower id wins, as the host does, so all start one world */
+  let called = null, calledTimer = 0;
+  room.on('start', x => {
+    const p = x && x.body; if (!p || !Array.isArray(p.players)) return;
+    if (running && mode !== 'attract') {   // mid-match here: a seat given me in another match is given up at once, and this match goes on
+      const me = room.me();
+      if (me && p.players.some(q => q.id === me.id)) { try { room.send('quit', { m: matchOf(p), at: 0 }, { reliable: true }); } catch (e) {} }
+      return;
+    }
+    if (called && called.from < x.from && Date.now() < called.at + 1000) return;
+    called = x; clearTimeout(calledTimer);
+    calledTimer = setTimeout(() => startOnline(p), Math.max(0, (x.at || Date.now()) - Date.now()));
+  });
+  room.on('message', onNet);
+  room.on('gone', g => { NET.remote = NET.remote.filter(id => id !== g.id); });   // a player gone: the match goes on without waiting for them
+}
+const matchOf = p => String(p.match).slice(0, 60);
+function startOnline(p) {
+  const me = room.me(); if (!me) return;
+  const mine = p.players.find(q => q.id === me.id);
+  if (!mine) { $('lobbyNote').textContent = 'A match started before you came in. The next one has you.'; return; }
+  audioInit();
+  const gave = new Set(declined[matchOf(p)] || []); delete declined[matchOf(p)];   // seats given up before it began here
+  const seats = [];
+  for (const team of ['blue', 'gold']) for (let n = 1; n <= p.size; n++) {
+    const q = p.players.find(x => x.team === team && x.seat === n);
+    seats.push({ team, seat: n, bot: !q || gave.has(q.id), handle: q ? q.name : team + n });
+  }
+  const st = sim.createMatch(law, seats, matchOf(p));
+  NET = freshNet(true); NET.match = st.match;
+  for (const q of p.players) {
+    NET.seatOf[q.id] = st.seats.find(s => s.team === q.team && s.seat === q.seat).index; NET.names[q.id] = q.name;
+    if (q.id !== me.id && !gave.has(q.id)) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
+  }
+  const local = { blue: null, gold: null }; local[mine.team] = NET.seatOf[me.id];
+  begin(st, 'online', local);
+  for (const w of takeEarly(NET.match)) onNet(w);
+  flush(true);
+}
+/* everything I have said up to a tick, sent: my presses since the last send, and the tick I have spoken for */
+function flush(force) {
+  if (!NET.on || !room) return;
+  const t = performance.now();
+  if (!force && !NET.out.length && t - NET.sentAt < 33) return;   // at most thirty a second when there is nothing new
+  try { room.send('fx', { m: NET.match, upTo: state.tick + DELAY - 1, ev: NET.out, win: recent() }, { reliable: true }); } catch (e) {}   // ev, each press once, for a page from before the window
+  NET.out = []; NET.sentAt = t;
+}
+/* what arrives in the moment before this page's own start fires, kept for the match it names: by match, for ten seconds,
+ * so the words of a match running elsewhere in the room, heard from the waiting room, never crowd out the next one's */
+const EARLY = {};
+function keepEarly(m) {
+  const t = Date.now(), k = String(m.body.m);
+  for (const x in EARLY) if (t - EARLY[x].at > 10000) delete EARLY[x];
+  const b = EARLY[k] = EARLY[k] || { at: t, words: [] };
+  if (b.words.length < 400) b.words.push(m);
+}
+function takeEarly(match) {
+  const b = EARLY[match], t = Date.now();
+  for (const x in EARLY) delete EARLY[x];
+  return b && t - b.at < 10000 ? b.words : [];
+}
+const busy = {}, declined = {};   // who was heard playing another match, and when; seats given up before their match began here
+function onNet(m) {
+  if (!m || !m.body) return;
+  const other = m.body.m != null && (!NET.on || m.body.m !== NET.match);   // a word about a match this page is not playing
+  if (m.kind === 'fx' && (other || !NET.on)) busy[m.from] = Date.now();
+  if (m.kind === 'quit' && other && !(m.body.at | 0)) {   // a seat given up before its match began: a bot there from the start
+    const k = String(m.body.m); (declined[k] = declined[k] || []).push(m.from);
+    const ks = Object.keys(declined); if (ks.length > 8) delete declined[ks[0]];
+    return;
+  }
+  if (other) { keepEarly(m); return; }
+  if (!NET.on || !(m.from in NET.seatOf)) return;
+  if (m.kind === 'fx') { takePresses(m.from, m.body); NET.upTo[m.from] = Math.max(NET.upTo[m.from] == null ? -1 : NET.upTo[m.from], m.body.upTo | 0); }
+  else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
+  else if (m.kind === 'quit') {   // a player left: their seat a bot from the tick they named, the brake let go, nobody waiting for them
+    takePresses(m.from, m.body);
+    const seat = NET.seatOf[m.from], at = Math.max(state.tick, m.body.at | 0);
+    enqueue({ tick: at, seat, action: 'BRAKE_OFF' });
+    NET.botAt.push({ tick: at, seat }); NET.botAt.sort((a, b) => a.tick - b.tick);
+    NET.remote = NET.remote.filter(id => id !== m.from);
+  }
+}
+/* a page's presses: from its window (win), each taken once by its number, so a word lost or overtaken costs nothing;
+ * from a page that sends each press once (ev, a page from before the window), as they come */
+function takePresses(from, body) {
+  const seat = NET.seatOf[from], win = Array.isArray(body.win) ? body.win : null;
+  let maxN = NET.maxN[from] || 0;
+  if (win && win.length && (win[0].n | 0) > maxN + 1) NET.desync = true;   // presses gone from the window before any word brought them
+  for (const ev of win || body.ev || []) {
+    if (!ev || ev.seat !== seat || sim.ACTIONS.indexOf(ev.action) < 0) continue;
+    if (win) { const n = ev.n | 0; if (n <= maxN) continue; maxN = n; }
+    if ((ev.tick | 0) < state.tick) NET.desync = true;   // a press for a tick already ridden: the worlds can no longer agree
+    enqueue({ tick: ev.tick | 0, seat, action: ev.action });
+  }
+  NET.maxN[from] = maxN;
+}
+/* every two seconds each phone says what its world is at a tick; a world that differs is said so on the screen */
+function hashOf(st) {
+  let h = st.score.blue * 7919 + st.score.gold * 104729;
+  for (const c of st.cycles) h = (Math.imul(h, 31) + Math.round(c.x * 1000) * 3 + Math.round(c.y * 1000) * 5 + c.dir * 7 + (c.alive ? 11 : 13)) | 0;
+  return h;
+}
+function checkStep(tick, h, from) {
+  if (from === null) { NET.mine[tick] = h; try { room && room.send('fh', { m: NET.match, tick, h }, { reliable: true }); } catch (e) {} for (const id in NET.theirs) if (NET.theirs[id][tick] != null && NET.theirs[id][tick] !== h) NET.desync = true; return; }
+  (NET.theirs[from] = NET.theirs[from] || {})[tick] = h;
+  if (NET.mine[tick] != null && NET.mine[tick] !== h) NET.desync = true;
+}
+
+/* ── the end: the result line (1.172) ── */
+function finish() {
+  running = false;
+  if (NET.on) { flush(true); NET.on = false; }
+  const who = state.seats.filter(s => !s.bot);
+  const lines = (who.length ? who : [state.seats[0]]).map(s => sim.resultLine(state, s.index));
+  const winner = state.score.blue === state.score.gold ? null : (state.score.blue > state.score.gold ? 'BLUE' : 'GOLD');
+  $('endTitle').textContent = winner ? winner + ' WINS' : 'A DRAW';
+  $('endTitle').style.color = winner === 'BLUE' ? 'var(--blue)' : winner === 'GOLD' ? 'var(--gold)' : '';
+  $('endLede').textContent = 'BLUE ' + state.score.blue + ' – GOLD ' + state.score.gold + ' · rounds ' + state.rounds.blue + '–' + state.rounds.gold + ' · ' + (state.tick / TPS / 60).toFixed(1) + ' minutes';
+  $('lines').innerHTML = lines.map(l => '<div class="line-box">' + esc(l) + '</div>').join('');
+  $('copied').textContent = '';
+  $('copy').onclick = () => {
+    const text = lines.join('\n');
+    const done = () => { $('copied').textContent = 'Copied.'; };
+    const fail = () => { $('copied').textContent = 'The clipboard stayed closed; select the line and copy it by hand.'; };
+    try { navigator.clipboard.writeText(text).then(done, fail); } catch (e) { fail(); }
+  };
+  $('again').textContent = wasOnline ? 'BACK TO THE ROOM' : 'PLAY AGAIN';
+  $('toMenu').textContent = wasOnline ? 'LEAVE THE ROOM' : 'MENU';
+  paused = false;
+  showSheet('end');
+  chrome(false);
+  for (const v of views) { v.cine = true; v.cineAt = performance.now(); v.cineA = Math.random() * 6.283; fromHere(v); }
+}
+
+/* ── the views: one per person at this screen, or one riding along with the bots ── */
+let views = [];
+function newView(seat, spectator) {
+  return { seat, spectator, watch: seat, set: false, yaw: 0, yawO: 0, roll: 0, crash: null, cine: false, cineAt: 0, cineA: 0,
+    from: null, fromAt: 0, lastPose: null, pose: null, vp: null, rect: null, inside: true, boost: 0, ahead: null, shake: 0 };
+}
+const CRASH_S = 1.8;   // seconds the camera stays with a crash before it rides with someone alive
+function fromHere(v) { if (v.lastPose) { v.from = v.lastPose; v.fromAt = performance.now(); } }
+function teamOf(v) { return !v.spectator && state.seats[v.seat] ? state.seats[v.seat].team : null; }
+function pickAlive(v) {
+  const alive = state.cycles.filter(c => c.alive);
+  if (!alive.length) return null;
+  const team = teamOf(v);
+  const mates = team ? alive.filter(c => c.team === team) : [];
+  const pool = mates.length ? mates : alive;
+  const ref = v.crash || state.cycles[v.watch] || pool[0];
+  let best = pool[0], bd = Infinity;
+  for (const c of pool) { const d = (c.x - ref.x) * (c.x - ref.x) + (c.y - ref.y) * (c.y - ref.y); if (d < bd) { bd = d; best = c; } }
+  return best.index;
+}
+function updateWatch(v) {
+  if (v.cine) {
+    const c = state.cycles[v.watch];
+    if ((!c || !c.alive || performance.now() - v.cineAt > 11000) && state.phase === 'play') {
+      const alive = state.cycles.filter(x => x.alive && x.index !== v.watch);
+      if (alive.length) { fromHere(v); v.watch = alive[Math.floor(Math.random() * alive.length)].index; v.cineAt = performance.now(); v.cineA = Math.random() * 6.283; }
+    }
+    return;
+  }
+  const own = state.cycles[v.seat];
+  if (!v.spectator) {
+    if (state.phase === 'countdown') { if (v.watch !== v.seat) { v.watch = v.seat; v.set = false; } v.crash = null; return; }
+    if (own && own.alive) { if (v.watch !== v.seat) { fromHere(v); v.watch = v.seat; v.set = false; } v.crash = null; return; }
+  }
+  const w = state.cycles[v.watch];
+  if (w && w.alive) return;
+  if (v.crash && state.tick - v.crash.tick < CRASH_S * TPS) return;
+  if (state.phase !== 'play') return;   // between rounds, stay where the crash left you
+  const next = pickAlive(v);
+  if (next !== null && next !== v.watch) { fromHere(v); v.watch = next; v.set = false; v.crash = null; }
+}
+/* C, or a tap when you are only watching: the next rider alive */
+function nextWatch() {
+  if (!state || mode === 'attract') return false;
+  let used = false;
+  for (const v of views) {
+    const ownAlive = !v.spectator && state.cycles[v.seat] && state.cycles[v.seat].alive;
+    if (ownAlive) continue;
+    const alive = state.cycles.filter(c => c.alive).map(c => c.index);
+    if (!alive.length) continue;
+    const after = alive.filter(i => i > v.watch);
+    const nx = after.length ? after[0] : alive[0];
+    if (nx !== v.watch) { fromHere(v); v.watch = nx; v.set = false; v.crash = null; used = true; }
+  }
+  return used;
+}
+
+/* ── the events, felt: particles, a ring on the floor, a line in the feed, a sound ── */
+const TEAMC = { blue: [0.267, 0.533, 1.0], gold: [1.0, 1.0, 0.267] };
+const RIMC = [0.212, 0.788, 1.0];
+const parts = [];   // {x,y,z,vx,vy,vz,life,max,size,c}
+const rings = [];   // a crash's shock on the floor: {x,y,t,c}
+function burst(x, y, h, c, n, speed, size, life) {
+  const k = reduceQ.matches ? 0.4 : 1;
+  for (let i = 0; i < Math.round(n * k); i++) {
+    const a = Math.random() * Math.PI * 2, up = Math.random(), s = speed * (0.35 + Math.random() * 0.65);
+    parts.push({ x, y: h, z: -y, vx: Math.cos(a) * s * (1 - up * 0.5), vy: up * speed * 0.9, vz: Math.sin(a) * s * (1 - up * 0.5), life: life * (0.6 + Math.random() * 0.4), max: life, size: size * (0.5 + Math.random()), c });
+  }
+}
+function onDeath(n) {
+  const c = state.cycles[n.seat], col = TEAMC[c.team];
+  if (mode !== 'attract') { burst(n.x, n.y, 0.6, col, 90, 14, 0.22, 1.4); burst(n.x, n.y, 0.6, [1, 1, 1], 24, 9, 0.12, 0.7); }
+  else burst(n.x, n.y, 0.6, col, 50, 12, 0.22, 1.2);
+  rings.push({ x: n.x, y: n.y, t: 0, c: col });
+  let mine = false;
+  for (const v of views) if (v.watch === n.seat) {
+    fromHere(v);
+    v.crash = { tick: state.tick, x: n.x, y: n.y, dir: c.dir };
+    if (!v.spectator && v.seat === n.seat) { v.shake = 1; mine = true; }
+  }
+  if (mode === 'attract') return;
+  boom(mine ? 1 : 0.18 + 0.5 * nearness(n.x, n.y));
+  feedDeath(n, c);
+}
+function onTurn(n) {
+  const c = state.cycles[n.seat]; if (!c) return;
+  const w = c.walls[c.walls.length - 1];
+  if (mode !== 'attract') burst(w.x1, w.y1, 0.15, TEAMC[c.team], 6, 3, 0.07, 0.35);
+  if (mode !== 'attract' && views.some(v => !v.spectator && v.seat === n.seat)) blip(1240, 0.035, 0.035, 'triangle');
+}
+function onFall(n) {
+  const z = state.zones[n.zone];
+  burst(z.x, z.y, 1, TEAMC[n.zone === 'blue' ? 'gold' : 'blue'], 140, 18, 0.25, 1.6);
+  if (mode === 'attract') return;
+  feed('<span class="' + n.zone[0] + '">' + n.zone.toUpperCase() + '’S ZONE FELL</span>');
+  chord(n.zone === ownTeam() ? [220, 277, 330] : [440, 554, 659], 0.9);
+}
+function onRound() { if (mode !== 'attract') chord([330, 415, 494], 0.6); }
+function onGo() { if (mode !== 'attract') blip(880, 0.22, 0.08, 'square'); }
+function ownTeam() { const v = views.find(x => !x.spectator); return v ? state.seats[v.seat].team : null; }
+function nearness(x, y) {
+  let best = 0;
+  for (const v of views) { const c = state.cycles[v.watch]; if (!c) continue; const d = Math.hypot(c.x - x, c.y - y); best = Math.max(best, 1 - smooth(10, 300, d)); }
+  return best;
+}
+function nameOf(i) { const s = state.seats[i]; if (!s) return '?'; const local = views.some(v => !v.spectator && v.seat === i) && views.length === 1; return local ? 'You' : s.handle; }
+function tag(i) { const s = state.seats[i]; return '<span class="' + s.team[0] + '">' + esc(nameOf(i)) + '</span>'; }
+function feedDeath(n, c) {
+  let line;
+  if (n.killer !== null && n.killer !== undefined) line = tag(n.killer) + ' cut off ' + tag(n.seat);
+  else if (c.killedBy === -1) line = tag(n.seat) + ' hit the rim';
+  else if (c.killedBy === n.seat) line = tag(n.seat) + ' hit ' + (nameOf(n.seat) === 'You' ? 'your' : 'their') + ' own wall';
+  else if (c.killedBy !== null && c.killedBy !== undefined && state.cycles[c.killedBy]) line = tag(n.seat) + ' hit ' + tag(c.killedBy) + '’s wall';
+  else line = tag(n.seat) + ' crashed';
+  feed(line);
+}
+const feedEl = $('feed');
+function feed(html) {
+  const d = document.createElement('div'); d.innerHTML = html; feedEl.appendChild(d);
+  while (feedEl.children.length > 3) feedEl.removeChild(feedEl.firstChild);
+  setTimeout(() => { d.style.opacity = '0'; }, 2600);
+  setTimeout(() => { if (d.parentNode) d.parentNode.removeChild(d); }, 3300);
+}
+function feedClear() { feedEl.innerHTML = ''; }
+
+/* ── the HUD in words: the score, the round, the zones, the gauges ── */
+let gauges = [], lastCount = -1;
+function bottomGauges() {
+  gauges = [];
+  const el = $('bottom');
+  el.innerHTML = '';
+  if (mode === 'attract') return;
+  for (const team of ['blue', 'gold']) {
+    const i = humans[team];
+    if (i === null) continue;
+    const wrap = document.createElement('div'); wrap.className = 'rider';
+    wrap.innerHTML = '<div class="who ' + team[0] + '"></div><div class="speed"><span>0</span><small>KM/H</small></div><div class="bars"><span class="gauge rub"><span>rubber</span><i><b></b></i></span><span class="gauge brk"><span>brake</span><i><b></b></i></span></div>';
+    wrap.querySelector('.who').textContent = state.seats[i].handle;
+    el.appendChild(wrap);
+    const bars = wrap.querySelectorAll('b');
+    gauges.push({ i, wrap, speed: wrap.querySelector('.speed span'), rubber: bars[0], brake: bars[1], shown: '' });
+  }
+  const w = document.createElement('span'); w.id = 'watching'; el.appendChild(w);
+}
+function hudDom() {
+  if (!state) return;
+  const att = mode === 'attract';
+  $('scoreBlue').textContent = att ? '' : state.score.blue;
+  $('scoreGold').textContent = att ? '' : state.score.gold;
+  $('top').style.visibility = att ? 'hidden' : '';
+  const left = Math.max(0, Math.ceil((state.phaseUntil - state.tick) / TPS));
+  let mid = 'round ' + state.round, centre = '';
+  if (!att && running) {
+    if (state.phase === 'countdown') {
+      centre = '<div class="big">' + left + '</div><div class="small">round ' + state.round + ' · first to ' + law.LIMIT_SCORE + '</div>';
+      if (left !== lastCount) { lastCount = left; if (left > 0) blip(440, 0.12, 0.06, 'square'); }
+    } else if (state.phase === 'result' && state.lastRound) {
+      const w = state.lastRound.winner;
+      centre = '<div class="big ' + (w ? w[0] : '') + '">' + (w ? w.toUpperCase() + ' TAKES IT' : 'A DRAW') + '</div><div class="small">' + esc(state.lastRound.how) + '</div>';
+      lastCount = -1;
+    } else if (state.phase === 'play') {
+      const zb = state.zones.blue, zg = state.zones.gold;
+      mid = 'round ' + state.round + (zb.conquest > 0 ? ' · blue zone ' + Math.round(zb.conquest * 100) + '%' : '') + (zg.conquest > 0 ? ' · gold zone ' + Math.round(zg.conquest * 100) + '%' : '');
+    }
+    if (NET.on && NET.waiting > 800) centre += '<div class="small">waiting for ' + esc(NET.remote.filter(id => !(NET.upTo[id] >= state.tick)).map(id => NET.names[id] || 'a player').join(', ')) + '…</div>';
+    if (NET.desync) centre += '<div class="small">out of step with the others: this match is no longer the same world</div>';
+  }
+  if (paused) centre = asking() ? '' : '<div class="small">paused while the camera card is open</div>';
+  $('mid').textContent = att ? '' : mid;
+  if ($('centre').innerHTML !== centre) $('centre').innerHTML = centre;
+  for (const g of gauges) {
+    const c = state.cycles[g.i];
+    const kmh = String(Math.round(c.v * 3.6));
+    if (g.shown !== kmh) { g.speed.textContent = kmh; g.shown = kmh; }
+    g.rubber.style.width = Math.min(100, c.rubber / law.CYCLE_RUBBER * 100) + '%';
+    g.brake.style.width = (c.brake * 100) + '%';
+    g.wrap.style.opacity = c.alive ? 1 : 0.35;
+  }
+  const wEl = $('watching');
+  if (wEl) {
+    let t = '';
+    const v = views[0];
+    if (v && !att) { const ownAlive = !v.spectator && state.cycles[v.seat] && state.cycles[v.seat].alive; if (!ownAlive && state.phase === 'play' && state.cycles[v.watch] && state.cycles[v.watch].alive) t = 'WATCHING ' + state.seats[v.watch].handle.toUpperCase() + (touch ? ' · TAP FOR THE NEXT' : ' · C FOR THE NEXT'); }
+    if (wEl.textContent !== t) wEl.textContent = t;
+  }
+}
+
+/* ── the sheets and the chips ── */
+function showSheet(id) {
+  for (const s of ['start', 'end', 'cam', 'leave']) $(s).classList.toggle('hidden', s !== id);
+}
+function chrome(on) {
+  $('chrome').classList.toggle('hidden', !on);
+  const tapper = on && touch;
+  $('touch').classList.toggle('hidden', !tapper);
+  $('brake').style.display = tapper && tapSeat() !== null ? '' : 'none';
+  syncCamUi();
+}
+let camFrom = null;
+function openCam() {
+  camFrom = !$('start').classList.contains('hidden') ? 'start' : null;
+  const playing = mode !== 'attract' && running;
+  $('cam').classList.toggle('side', playing || camFrom === null);
+  showSheet('cam');
+  if (playing && mode === 'local') { paused = true; for (const code of Array.from(held)) { const k = keySeat(code); held.delete(code); if (k && k.seat !== null) input(k.seat, 'BRAKE_OFF'); } }
+  syncCamUi();
+  const b = $('cam').querySelector('[aria-pressed=true]'); if (b) b.focus();
+}
+function closeCam() {
+  showSheet(camFrom);
+  if (paused) { paused = false; last = performance.now(); acc = 0; }
+  camFrom = null;
+}
+for (const b of document.querySelectorAll('.openCam')) b.addEventListener('click', openCam);
+$('bCam').addEventListener('click', e => { e.stopPropagation(); openCam(); });
+$('camDone').addEventListener('click', closeCam);
+$('bView').addEventListener('click', e => { e.stopPropagation(); setView(SET.view === 'inside' ? 'outside' : 'inside'); });
+function setView(m) {
+  if (SET.view === m) return;
+  SET.view = m; saveSet();
+  for (const v of views) fromHere(v);
+  syncCamUi();
+}
+function setSound(on) { SET.sound = on; saveSet(); if (on) audioInit(); if (AU.out) AU.out.gain.setTargetAtTime(on ? 0.9 : 0, AU.ctx.currentTime, 0.05); syncCamUi(); }
+const PRESETS = { behind: { back: 12, side: 0, up: 6, frame: 'turns' }, high: { back: 34, side: 0, up: 26, frame: 'turns' }, beside: { back: 4, side: 15, up: 3.5, frame: 'turns' }, over: { back: 0, side: 0, up: 120, frame: 'grid' } };
+for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => setView(b.dataset.view));
+for (const b of document.querySelectorAll('[data-frame]')) b.addEventListener('click', () => { SET.frame = b.dataset.frame; saveSet(); for (const v of views) fromHere(v); syncCamUi(); });
+for (const b of document.querySelectorAll('[data-map]')) b.addEventListener('click', () => { SET.map = b.dataset.map; saveSet(); syncCamUi(); });
+$('tSound').addEventListener('click', () => setSound(!SET.sound));
+$('tGlow').addEventListener('click', () => { SET.glow = !SET.glow; saveSet(); syncCamUi(); });
+for (const b of document.querySelectorAll('[data-preset]')) b.addEventListener('click', () => { Object.assign(SET, PRESETS[b.dataset.preset]); if (SET.view !== 'outside') SET.view = 'outside'; saveSet(); for (const v of views) fromHere(v); syncCamUi(); });
+const SLIDERS = [['sFov', 'oFov', 'fov', v => Math.round(v) + '°'], ['sBack', 'oBack', 'back', v => v + ' m'], ['sSide', 'oSide', 'side', v => (v > 0 ? v + ' m right' : v < 0 ? (-v) + ' m left' : '0 m')], ['sUp', 'oUp', 'up', v => v + ' m']];
+for (const [s, o, k, f] of SLIDERS) $(s).addEventListener('input', () => { SET[k] = Number($(s).value); if (k !== 'fov' && SET.view !== 'outside') SET.view = 'outside'; saveSet(); $(o).textContent = f(SET[k]); syncCamUi(); });
+function syncCamUi() {
+  const press = (sel, on) => { for (const b of document.querySelectorAll(sel)) b.setAttribute('aria-pressed', on(b) ? 'true' : 'false'); };
+  press('[data-view]', b => b.dataset.view === SET.view);
+  press('[data-frame]', b => b.dataset.frame === SET.frame);
+  press('[data-map]', b => b.dataset.map === SET.map);
+  $('tSound').setAttribute('aria-pressed', SET.sound ? 'true' : 'false'); $('tSound').textContent = SET.sound ? 'Sound on' : 'Sound off';
+  $('tGlow').setAttribute('aria-pressed', SET.glow ? 'true' : 'false'); $('tGlow').textContent = SET.glow ? 'Glow and reflections on' : 'Glow and reflections off';
+  for (const [s, o, k, f] of SLIDERS) { if (Number($(s).value) !== SET[k]) $(s).value = SET[k]; $(o).textContent = f(SET[k]); }
+  $('frameNote').textContent = SET.frame === 'turns' ? 'It turns as the cycle turns, so behind stays behind.' : 'It keeps the grid’s bearing, your own end behind you, so the cycle rides toward the camera or away from it.';
+  $('bView').textContent = SET.view === 'inside' ? 'INSIDE' : 'OUTSIDE';
+  $('bView').setAttribute('aria-label', 'View: ' + SET.view + '. Tap for ' + (SET.view === 'inside' ? 'outside' : 'inside') + '.');
+}
+syncCamUi();
+
+/* ── sound: a hum that rises with speed, a hiss beside a wall, a burst at a crash ── */
+const AU = { ctx: null, out: null, noise: null, voices: [] };
+function audioInit() {
+  if (!SET.sound) return;
+  if (AU.ctx) { if (AU.ctx.state === 'suspended') AU.ctx.resume().catch(() => {}); return; }
+  const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+  try { AU.ctx = new AC(); } catch (e) { AU.ctx = null; return; }
+  const ac = AU.ctx;
+  AU.out = ac.createGain(); AU.out.gain.value = 0.9; AU.out.connect(ac.destination);
+  const nb = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), ch = nb.getChannelData(0);
+  for (let i = 0; i < ch.length; i++) ch[i] = Math.random() * 2 - 1;
+  AU.noise = nb;
+  for (let k = 0; k < 2; k++) {
+    const o1 = ac.createOscillator(); o1.type = 'sawtooth';
+    const o2 = ac.createOscillator(); o2.type = 'square';
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.Q.value = 5;
+    const g2 = ac.createGain(); g2.gain.value = 0.3;
+    const g = ac.createGain(); g.gain.value = 0;
+    o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(g); g.connect(AU.out);
+    const ns = ac.createBufferSource(); ns.buffer = nb; ns.loop = true;
+    const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 3400; bp.Q.value = 0.8;
+    const hg = ac.createGain(); hg.gain.value = 0;
+    ns.connect(bp); bp.connect(hg); hg.connect(AU.out);
+    o1.start(); o2.start(); ns.start();
+    AU.voices.push({ o1, o2, lp, g, hg });
+  }
+}
+function audioFrame() {
+  if (!AU.ctx || !state) return;
+  const t = AU.ctx.currentTime;
+  for (let k = 0; k < AU.voices.length; k++) {
+    const vo = AU.voices[k], v = views[k];
+    let gain = 0, f = 45, cut = 400, hiss = 0;
+    if (v && !v.spectator && mode !== 'attract' && running && !paused && state.phase === 'play') {
+      const c = state.cycles[v.seat];
+      if (c && c.alive) { gain = 0.045; f = 32 + c.v * 1.5; cut = 260 + c.v * 24; hiss = clamp(v.boost, 0, 1) * 0.045 + clamp(c.rubber / law.CYCLE_RUBBER, 0, 1) * 0.04; }
+    }
+    vo.o1.frequency.setTargetAtTime(f, t, 0.04); vo.o2.frequency.setTargetAtTime(f * 1.006, t, 0.04);
+    vo.lp.frequency.setTargetAtTime(cut, t, 0.05);
+    vo.g.gain.setTargetAtTime(gain, t, 0.08); vo.hg.gain.setTargetAtTime(hiss, t, 0.05);
+  }
+}
+function blip(freq, dur, gain, type) {
+  if (!AU.ctx || !SET.sound) return;
+  const ac = AU.ctx, t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+  o.type = type || 'sine'; o.frequency.value = freq;
+  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(AU.out); o.start(t); o.stop(t + dur + 0.02);
+}
+function chord(fs, dur) { for (const f of fs) blip(f, dur, 0.03, 'triangle'); }
+function boom(k) {
+  if (!AU.ctx || !SET.sound || k <= 0.01) return;
+  const ac = AU.ctx, t = ac.currentTime;
+  const s = ac.createBufferSource(); s.buffer = AU.noise;
+  const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(2400, t); lp.frequency.exponentialRampToValueAtTime(90, t + 0.8);
+  const g = ac.createGain(); g.gain.setValueAtTime(0.32 * k, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+  s.connect(lp); lp.connect(g); g.connect(AU.out); s.start(t); s.stop(t + 1);
+  const o = ac.createOscillator(), og = ac.createGain(); o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(30, t + 0.5);
+  og.gain.setValueAtTime(0.25 * k, t); og.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+  o.connect(og); og.connect(AU.out); o.start(t); o.stop(t + 0.65);
+}
+
+/* ── WebGL2 ── */
+const cv = $('gl'), hudCv = $('hud'), hx = hudCv.getContext('2d');
+let gl = null, glLost = false;
+try { gl = cv.getContext('webgl2', { antialias: false, alpha: false, depth: true, stencil: false, powerPreference: 'high-performance' }); } catch (e) { gl = null; }
+if (!gl) {
+  const d = document.createElement('div'); d.id = 'nogl';
+  d.innerHTML = '<div class="card"><h2>FOTRONIC 3D</h2><p class="lede">This browser cannot draw the arena: it needs WebGL 2, which most phones and computers since 2021 have. Try another browser, or play <a href="https://happyseaurchin.com/fotronic">Fotronic</a> from above.</p></div>';
+  document.body.appendChild(d);
+}
+cv.addEventListener('webglcontextlost', e => { e.preventDefault(); glLost = true; });
+cv.addEventListener('webglcontextrestored', () => { glLost = false; try { initGL(); } catch (e) { console.error(e); } });
+
+const VS_TRI = `#version 300 es
+out vec2 vUv;
+void main() { vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2)); vUv = p; gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0); }`;
+const FS_SKY = `#version 300 es
+precision highp float;
+in vec2 vUv; uniform vec3 uF, uR, uU, uHor; uniform vec2 uTan; uniform float uTime; out vec4 o;
+float hash(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yxz + 33.33); return fract((p.x + p.y) * p.z); }
+void main() {
+  vec2 n = vUv * 2.0 - 1.0;
+  vec3 d = normalize(uF + n.x * uTan.x * uR + n.y * uTan.y * uU);
+  float e = d.y;
+  vec3 c = mix(uHor, vec3(0.004, 0.007, 0.015), smoothstep(0.0, 0.42, max(e, 0.0)));
+  c += vec3(0.06, 0.2, 0.3) * exp(-abs(e) * 70.0) * 0.5 + vec3(0.03, 0.08, 0.14) * exp(-abs(e) * 9.0) * 0.3;
+  if (e > 0.012) {
+    vec3 q = d * 240.0, cell = floor(q), f = fract(q) - 0.5;
+    float h = hash(cell);
+    if (h > 0.991) { float s = smoothstep(0.34, 0.0, length(f)); float tw = 0.65 + 0.35 * sin(uTime * (0.7 + h * 2.0) + h * 40.0); c += vec3(0.55, 0.72, 1.0) * s * tw * (h - 0.991) * 110.0 * smoothstep(0.012, 0.2, e); }
+  }
+  o = vec4(c, 1.0);
+}`;
+const VS_FLOOR = `#version 300 es
+layout(location=0) in vec2 aP; uniform mat4 uVP; out vec2 vP; out vec3 vW;
+void main() { vP = aP; vW = vec3(aP.x, 0.0, -aP.y); gl_Position = uVP * vec4(vW, 1.0); }`;
+const FS_FLOOR = `#version 300 es
+precision highp float;
+in vec2 vP; in vec3 vW;
+uniform vec3 uEye, uHor; uniform vec2 uFog; uniform float uSize, uTime;
+uniform vec4 uZa, uZb; uniform vec3 uCa, uCb, uAa, uAb;
+out vec4 o;
+float grid(vec2 p, float s, float w) {
+  vec2 fw = max(fwidth(p), vec2(1e-4));
+  vec2 q = abs(fract(p / s + 0.5) - 0.5) * s;
+  vec2 l = 1.0 - smoothstep(vec2(w * 0.5), vec2(w * 0.5) + fw * 1.25, q);
+  vec2 fade = 1.0 - smoothstep(vec2(s * 0.05), vec2(s * 0.28), fw);
+  return max(l.x * fade.x, l.y * fade.y);
+}
+vec3 zone(vec2 p, vec4 z, vec3 col, vec3 att) {
+  if (z.z <= 0.01) return vec3(0.0);
+  vec2 dv = p - z.xy; float r = length(dv), fw = max(fwidth(r), 1e-4);
+  float disc = 1.0 - smoothstep(z.z - fw, z.z + fw, r);
+  float rim = 1.0 - smoothstep(0.2, 0.2 + fw * 1.5, abs(r - z.z));
+  float pulse = 1.0 - smoothstep(0.1, 0.1 + fw * 1.5, abs(fract((r + uTime * 3.0) / 10.0) - 0.5) * 10.0);
+  vec3 c = col * disc * (0.045 + 0.1 * z.w) + col * rim * 0.9 + col * pulse * disc * 0.06;
+  float cw = r > 0.01 ? fract((1.5707963 - atan(dv.y, dv.x)) / 6.2831853) : 0.0;
+  float band = 1.0 - smoothstep(0.55, 0.55 + fw * 1.5, abs(r - (z.z - 1.6)));
+  c += att * band * step(cw, z.w) * step(0.0005, z.w) * 1.6;
+  return c;
+}
+void main() {
+  float d = length(vW - uEye);
+  bool inside = vP.x >= 0.0 && vP.x <= uSize && vP.y >= 0.0 && vP.y <= uSize;
+  vec3 c = inside ? vec3(0.015, 0.028, 0.05) : vec3(0.006, 0.011, 0.02);
+  float minor = grid(vP, 10.0, 0.06), major = grid(vP, 50.0, 0.18);
+  vec3 gc = vec3(0.212, 0.788, 1.0);
+  c += gc * (inside ? minor * 0.12 + major * 0.36 : major * 0.06);
+  if (inside) c += zone(vP, uZa, uCa, uAa) + zone(vP, uZb, uCb, uAb);
+  float e = (vW.y - uEye.y) / max(d, 1e-3);
+  vec3 sky = uHor + vec3(0.06, 0.2, 0.3) * exp(-abs(e) * 70.0) * 0.5 + vec3(0.03, 0.08, 0.14) * exp(-abs(e) * 9.0) * 0.3;
+  c = mix(c, sky, smoothstep(uFog.x, uFog.y, d));
+  o = vec4(c, 1.0);
+}`;
+const VS_WALL = `#version 300 es
+layout(location=0) in vec2 aQ;
+layout(location=1) in vec4 iSeg;
+layout(location=2) in vec4 iCol;
+layout(location=3) in vec4 iInfo;
+uniform mat4 uVP; uniform float uMirror, uSpill;
+out vec3 vW; out vec2 vQ; out vec4 vCol; out vec4 vInfo; out float vAlong; out float vAcross;
+void main() {
+  vec2 a = iSeg.xy, b = iSeg.zw, p = mix(a, b, aQ.x);
+  vAlong = abs(b.y - a.y) < 1e-4 ? p.x : p.y;
+  vec3 w;
+  if (uSpill > 0.5) {
+    vec2 dir = b - a; float L = length(dir);
+    vec2 nrm = L > 1e-5 ? vec2(-dir.y, dir.x) / L : vec2(0.0);
+    float across = aQ.y * 2.0 - 1.0;
+    vec2 q = p + nrm * across * (uSpill > 1.5 ? 0.2 : 2.4);
+    w = vec3(q.x, uSpill > 1.5 ? iInfo.x : 0.015, -q.y); vAcross = across;
+  } else { w = vec3(p.x, aQ.y * iInfo.x, -p.y); vAcross = 0.0; }
+  vW = w; vQ = aQ; vCol = iCol; vInfo = iInfo;
+  if (uMirror > 0.5) w.y = -w.y;
+  gl_Position = uVP * vec4(w, 1.0);
+}`;
+const FS_WALL = `#version 300 es
+precision highp float;
+in vec3 vW; in vec2 vQ; in vec4 vCol; in vec4 vInfo; in float vAlong; in float vAcross;
+uniform vec3 uEye; uniform vec2 uFog; uniform float uMirror, uSpill, uTime;
+out vec4 o;
+void main() {
+  float d = length(vW - uEye);
+  float fog = 1.0 - smoothstep(uFog.x, uFog.y, d);
+  vec3 col = vCol.rgb; float fade = vCol.a;
+  if (uSpill > 1.5) { o = vec4(col * (1.6 + 0.6 * (1.0 - abs(vAcross))) * fade * fog * smoothstep(0.5, 2.2, d), 1.0); return; }
+  if (uSpill > 0.5) { float k = clamp(1.0 - abs(vAcross), 0.0, 1.0); o = vec4(col * k * k * k * 0.3 * fade * fog, 1.0); return; }
+  float H = vInfo.x, hm = vQ.y * H;
+  float fwH = max(fwidth(hm), 1e-4), fwA = max(fwidth(vAlong), 1e-4);
+  float top = 1.0 - smoothstep(0.05, 0.11 + fwH * 1.5, H - hm);
+  float base = 1.0 - smoothstep(0.03, 0.15 + fwH * 1.5, hm);
+  float glow;
+  if (vInfo.z > 0.5) {
+    float gx = 1.0 - smoothstep(0.06, 0.06 + fwA * 1.5, abs(fract(vAlong / 10.0 + 0.5) - 0.5) * 10.0);
+    float gy = 1.0 - smoothstep(0.04, 0.04 + fwH * 1.5, abs(fract(hm / 2.5 + 0.5) - 0.5) * 2.5);
+    float g = max(gx * (1.0 - smoothstep(0.8, 4.0, fwA)), gy * (1.0 - smoothstep(0.3, 1.2, fwH)));
+    glow = 0.03 + g * 0.26 + top * 1.5 + base * 0.5;
+  } else {
+    float slat = 1.0 - smoothstep(0.04, 0.04 + fwA * 1.5, abs(fract(vAlong / 4.0 + 0.5) - 0.5) * 4.0);
+    slat *= 1.0 - smoothstep(0.4, 1.6, fwA);
+    glow = 0.13 + 0.26 * (1.0 - vQ.y) * (1.0 - vQ.y) + slat * 0.12 + top * 2.7 + base * 1.2;
+  }
+  vec3 c = col * glow * fade;
+  if (vInfo.y > 0.0) c = mix(c, vec3(1.0, 0.22, 0.18) * glow * 1.3, clamp(vInfo.y * (0.65 + 0.35 * sin(uTime * 20.0)), 0.0, 1.0));
+  c *= fog * smoothstep(0.5, 2.2, d);
+  if (uMirror > 0.5) c *= 0.26 * (1.0 - vQ.y) * (1.0 - vQ.y);
+  o = vec4(c, 1.0);
+}`;
+const VS_CYCLE = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in float aE;
+uniform mat4 uVP, uM; uniform float uMirror; out vec3 vW; out vec3 vN; out float vE;
+void main() { vec4 w = uM * vec4(aP, 1.0); vW = w.xyz; vN = mat3(uM) * aN; vE = aE; if (uMirror > 0.5) w.y = -w.y; gl_Position = uVP * w; }`;
+const FS_CYCLE = `#version 300 es
+precision highp float;
+in vec3 vW; in vec3 vN; in float vE;
+uniform vec3 uCol, uEye; uniform vec2 uFog; uniform float uMirror, uBright; out vec4 o;
+void main() {
+  vec3 V = normalize(uEye - vW), N = normalize(vN);
+  float ndv = clamp(abs(dot(N, V)), 0.0, 1.0), fres = pow(1.0 - ndv, 3.0);
+  vec3 body = vec3(0.022, 0.032, 0.05) * (0.45 + 0.55 * max(N.y, 0.0)) + uCol * fres * 0.55;
+  vec3 c = mix(body, uCol * 2.3 * uBright, vE);
+  c *= 1.0 - smoothstep(uFog.x, uFog.y, length(uEye - vW));
+  if (uMirror > 0.5) c *= 0.22;
+  o = vec4(c, 1.0);
+}`;
+const VS_BEAM = `#version 300 es
+layout(location=0) in vec2 aQ;
+uniform mat4 uVP; uniform vec3 uBase, uRight; uniform vec2 uSize; uniform float uMirror; out vec2 vQ; out vec3 vW;
+void main() { vec3 w = uBase + uRight * (aQ.x * 2.0 - 1.0) * uSize.x + vec3(0.0, aQ.y * uSize.y, 0.0); vQ = vec2(aQ.x * 2.0 - 1.0, aQ.y); vW = w; if (uMirror > 0.5) w.y = -w.y; gl_Position = uVP * vec4(w, 1.0); }`;
+const FS_BEAM = `#version 300 es
+precision highp float;
+in vec2 vQ; in vec3 vW; uniform vec3 uCol, uEye; uniform vec2 uFog; uniform float uTime, uK, uMirror; out vec4 o;
+void main() {
+  float x2 = vQ.x * vQ.x;
+  float core = exp(-x2 * 60.0), halo = exp(-x2 * 5.0);
+  float v = pow(clamp(1.0 - vQ.y, 0.0, 1.0), 1.4) * smoothstep(0.0, 0.02, vQ.y + 0.01);
+  float pulse = 0.82 + 0.18 * sin(uTime * 2.6 - vQ.y * 24.0);
+  vec3 c = uCol * (core * 1.9 + halo * 0.32) * v * pulse * uK;
+  c *= 1.0 - smoothstep(uFog.x, uFog.y * 1.8, length(vW - uEye)) * 0.55;
+  if (uMirror > 0.5) c *= 0.2;
+  o = vec4(c, 1.0);
+}`;
+const VS_RING = `#version 300 es
+layout(location=0) in vec2 aQ;
+uniform mat4 uVP; uniform vec3 uC; uniform float uR, uH, uMirror; out vec2 vQ; out vec3 vW;
+void main() { float a = aQ.x * 6.2831853; vec3 w = uC + vec3(cos(a) * uR, aQ.y * uH, -sin(a) * uR); vQ = aQ; vW = w; if (uMirror > 0.5) w.y = -w.y; gl_Position = uVP * vec4(w, 1.0); }`;
+const FS_RING = `#version 300 es
+precision highp float;
+in vec2 vQ; in vec3 vW;
+uniform vec3 uCol, uAtt, uEye; uniform vec2 uFog; uniform float uConq, uTime, uMirror, uK, uDash; out vec4 o;
+void main() {
+  float v = clamp(vQ.y, 0.0, 1.0), cw = fract(0.25 - vQ.x);
+  float top = 1.0 - smoothstep(0.0, 0.08 + fwidth(v) * 1.5, 1.0 - v);
+  float body = pow(1.0 - v, 1.6);
+  float dash = uDash > 0.0 ? smoothstep(0.08, 0.16, abs(fract(vQ.x * uDash - uTime * 0.35) - 0.5)) : 1.0;
+  vec3 c = uCol * (body * 0.26 * dash + top * 1.25);
+  if (uConq > 0.0005 && cw < uConq) c = uAtt * (body * 0.95 + top * 2.2);
+  float d = length(vW - uEye);
+  c *= (1.0 - smoothstep(uFog.x, uFog.y * 1.3, d)) * smoothstep(0.5, 2.0, d) * uK;
+  if (uMirror > 0.5) c *= 0.24 * body;
+  o = vec4(c, 1.0);
+}`;
+const VS_PT = `#version 300 es
+layout(location=0) in vec4 aP; layout(location=1) in vec4 aC;
+uniform mat4 uVP; uniform float uPx, uMirror; out vec4 vC;
+void main() { vec3 w = aP.xyz; if (uMirror > 0.5) w.y = -w.y; vec4 p = uVP * vec4(w, 1.0); gl_Position = p; gl_PointSize = clamp(aP.w * uPx / max(p.w, 0.05), 1.0, 64.0); vC = aC; if (uMirror > 0.5) vC.a *= 0.22; }`;
+const FS_PT = `#version 300 es
+precision mediump float;
+in vec4 vC; out vec4 o;
+void main() { float r = length(gl_PointCoord - 0.5) * 2.0; if (r > 1.0) discard; float k = (1.0 - r) * (1.0 - r); o = vec4(vC.rgb * vC.a * k, 1.0); }`;
+const FS_BRIGHT = `#version 300 es
+precision highp float;
+in vec2 vUv; uniform sampler2D uTex; uniform float uThr; out vec4 o;
+void main() { vec3 c = texture(uTex, vUv).rgb; if (any(isnan(c)) || any(isinf(c))) c = vec3(0.0); c = clamp(c, 0.0, 64.0); float l = max(c.r, max(c.g, c.b)); o = vec4(c * (max(l - uThr, 0.0) / max(l, 1e-4)), 1.0); }`;
+const FS_DOWN = `#version 300 es
+precision highp float;
+in vec2 vUv; uniform sampler2D uTex; uniform vec2 uHalf; out vec4 o;
+void main() {
+  vec3 s = texture(uTex, vUv).rgb * 4.0;
+  s += texture(uTex, vUv - uHalf).rgb + texture(uTex, vUv + uHalf).rgb;
+  s += texture(uTex, vUv + vec2(uHalf.x, -uHalf.y)).rgb + texture(uTex, vUv - vec2(uHalf.x, -uHalf.y)).rgb;
+  o = vec4(s / 8.0, 1.0);
+}`;
+const FS_UP = `#version 300 es
+precision highp float;
+in vec2 vUv; uniform sampler2D uTex, uAdd; uniform vec2 uHalf; uniform float uMix; out vec4 o;
+void main() {
+  vec2 h = uHalf;
+  vec3 s = texture(uTex, vUv + vec2(-h.x * 2.0, 0.0)).rgb + texture(uTex, vUv + vec2(h.x * 2.0, 0.0)).rgb;
+  s += texture(uTex, vUv + vec2(0.0, h.y * 2.0)).rgb + texture(uTex, vUv + vec2(0.0, -h.y * 2.0)).rgb;
+  s += (texture(uTex, vUv + vec2(-h.x, h.y)).rgb + texture(uTex, vUv + vec2(h.x, h.y)).rgb + texture(uTex, vUv + vec2(h.x, -h.y)).rgb + texture(uTex, vUv + vec2(-h.x, -h.y)).rgb) * 2.0;
+  o = vec4(s / 12.0 + texture(uAdd, vUv).rgb * uMix, 1.0);
+}`;
+const FS_COMP = `#version 300 es
+precision highp float;
+in vec2 vUv; uniform sampler2D uScene, uBloom; uniform float uK, uHdr, uVig, uRed; uniform vec2 uRes; out vec4 o;
+void main() {
+  vec3 s = texture(uScene, vUv).rgb, b = texture(uBloom, vUv).rgb;
+  if (any(isnan(s)) || any(isinf(s))) s = vec3(0.0);
+  if (any(isnan(b)) || any(isinf(b))) b = vec3(0.0);
+  vec3 c = max(s, 0.0) + max(b, 0.0) * uK;
+  if (uHdr > 0.5) c = vec3(1.0) - exp(-c * 1.25);
+  vec2 q = vUv - 0.5; q.x *= uRes.x / uRes.y;
+  c *= 1.0 - uVig * dot(q, q);
+  o = vec4(c, 1.0);
+}`;
+
+const G = { P: {}, U: {}, ok: false };
+function shader(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s) + '\n' + src.slice(0, 80)); return s; }
+function program(vs, fs, names) {
+  const p = gl.createProgram(); gl.attachShader(p, shader(gl.VERTEX_SHADER, vs)); gl.attachShader(p, shader(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p);
+  if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; for (const n of names) u[n] = gl.getUniformLocation(p, n);
+  return { p, u };
+}
+function vao(arrays) {   // arrays: [{loc, data, size, divisor, buf}]
+  const v = gl.createVertexArray(); gl.bindVertexArray(v);
+  for (const a of arrays) {
+    const b = a.buf || gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    if (a.data) gl.bufferData(gl.ARRAY_BUFFER, a.data, gl.STATIC_DRAW);
+    if (a.layout) for (const l of a.layout) { gl.enableVertexAttribArray(l.loc); gl.vertexAttribPointer(l.loc, l.size, gl.FLOAT, false, a.stride, l.off); if (l.div) gl.vertexAttribDivisor(l.loc, 1); }
+    else { gl.enableVertexAttribArray(a.loc); gl.vertexAttribPointer(a.loc, a.size, gl.FLOAT, false, 0, 0); if (a.divisor) gl.vertexAttribDivisor(a.loc, 1); }
+  }
+  gl.bindVertexArray(null);
+  return v;
+}
+
+/* the light cycle: two wheels of light round a dark hull, nose at the head, 2.2 m long (model: +x ahead, +z right) */
+function cycleMesh() {
+  const P = [], N = [], E = [];
+  const put = (p, n, e) => { P.push(p[0], p[1], p[2]); N.push(n[0], n[1], n[2]); E.push(e); };
+  function torus(cx, cy, R, r, e) {
+    const U = 44, V = 10;
+    const at = (i, j) => { const u = i / U * Math.PI * 2, w = j / V * Math.PI * 2; const n = [Math.cos(u) * Math.cos(w), Math.sin(u) * Math.cos(w), Math.sin(w)]; return { p: [cx + Math.cos(u) * R + n[0] * r, cy + Math.sin(u) * R + n[1] * r, n[2] * r], n }; };
+    for (let i = 0; i < U; i++) for (let j = 0; j < V; j++) {
+      const a = at(i, j), b = at(i + 1, j), c = at(i + 1, j + 1), d = at(i, j + 1);
+      for (const q of [a, b, c, a, c, d]) put(q.p, q.n, e);
+    }
+  }
+  function box(x0, y0, z0, x1, y1, z1, e) {
+    const f = [[[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1], [1, 0, 0]], [[x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [x0, y0, z0], [-1, 0, 0]],
+      [[x0, y1, z0], [x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [0, 1, 0]], [[x0, y0, z1], [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [0, -1, 0]],
+      [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1]], [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1]]];
+    for (const q of f) for (const k of [0, 1, 2, 0, 2, 3]) put(q[k], q[4], e);
+  }
+  torus(-0.47, 0.47, 0.4, 0.07, 1);
+  const front = P.length / 3;
+  torus(-1.75, 0.47, 0.4, 0.07, 1);
+  box(-1.82, 0.3, -0.16, -0.42, 0.6, 0.16, 0);
+  box(-1.5, 0.6, -0.13, -0.78, 0.86, 0.13, 0);
+  box(-1.82, 0.43, -0.172, -0.42, 0.485, 0.172, 1);
+  box(-1.82, 0.6, -0.09, -0.42, 0.628, 0.09, 1);
+  box(-1.5, 0.86, -0.07, -0.78, 0.885, 0.07, 1);
+  box(-0.52, 0.42, -0.1, -0.42, 0.52, 0.1, 0.7);
+  box(-1.8, 0.42, -0.1, -1.7, 0.52, 0.1, 0.7);
+  return { pos: new Float32Array(P), nor: new Float32Array(N), emit: new Float32Array(E), front, count: P.length / 3 };
+}
+
+function initGL() {
+  if (!gl) return;
+  const L = (o, n) => o.concat(n);
+  const common = ['uVP', 'uEye', 'uFog', 'uMirror', 'uTime'];
+  G.P.sky = program(VS_TRI, FS_SKY, ['uF', 'uR', 'uU', 'uHor', 'uTan', 'uTime']);
+  G.P.floor = program(VS_FLOOR, FS_FLOOR, ['uVP', 'uEye', 'uHor', 'uFog', 'uSize', 'uTime', 'uZa', 'uZb', 'uCa', 'uCb', 'uAa', 'uAb']);
+  G.P.wall = program(VS_WALL, FS_WALL, L(common, ['uSpill']));
+  G.P.cycle = program(VS_CYCLE, FS_CYCLE, L(common, ['uM', 'uCol', 'uBright']));
+  G.P.beam = program(VS_BEAM, FS_BEAM, L(common, ['uBase', 'uRight', 'uSize', 'uCol', 'uK']));
+  G.P.ring = program(VS_RING, FS_RING, L(common, ['uC', 'uR', 'uH', 'uCol', 'uAtt', 'uConq', 'uK', 'uDash']));
+  G.P.pt = program(VS_PT, FS_PT, ['uVP', 'uPx', 'uMirror']);
+  G.P.bright = program(VS_TRI, FS_BRIGHT, ['uTex', 'uThr']);
+  G.P.down = program(VS_TRI, FS_DOWN, ['uTex', 'uHalf']);
+  G.P.up = program(VS_TRI, FS_UP, ['uTex', 'uAdd', 'uHalf', 'uMix']);
+  G.P.comp = program(VS_TRI, FS_COMP, ['uScene', 'uBloom', 'uK', 'uHdr', 'uVig', 'uRed', 'uRes']);
+  G.empty = gl.createVertexArray();
+  // the floor: the arena and well beyond it, so the horizon is the floor's, not an edge
+  const S = law.ARENA_SIZE, M = 20000;
+  G.floor = vao([{ loc: 0, size: 2, data: new Float32Array([-M, -M, S + M, -M, S + M, S + M, -M, -M, S + M, S + M, -M, S + M]) }]);
+  // a unit quad, for walls, their light on the floor and the beacons
+  const quad = new Float32Array([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1]);
+  G.wallBuf = gl.createBuffer();
+  G.wall = vao([{ loc: 0, size: 2, data: quad }, { buf: G.wallBuf, stride: 48, layout: [{ loc: 1, size: 4, off: 0, div: 1 }, { loc: 2, size: 4, off: 16, div: 1 }, { loc: 3, size: 4, off: 32, div: 1 }] }]);
+  G.quad = vao([{ loc: 0, size: 2, data: quad }]);
+  // a cylinder's band, for the zones' rings and a crash's shock
+  const ring = [], RS = 128;
+  for (let i = 0; i < RS; i++) { const a = i / RS, b = (i + 1) / RS; ring.push(a, 0, b, 0, b, 1, a, 0, b, 1, a, 1); }
+  G.ring = vao([{ loc: 0, size: 2, data: new Float32Array(ring) }]); G.ringN = ring.length / 2;
+  const m = cycleMesh();
+  G.cycle = vao([{ loc: 0, size: 3, data: m.pos }, { loc: 1, size: 3, data: m.nor }, { loc: 2, size: 1, data: m.emit }]);
+  G.cycleN = m.count; G.cycleFront = m.front;
+  G.ptBuf = gl.createBuffer();
+  G.pt = vao([{ buf: G.ptBuf, stride: 32, layout: [{ loc: 0, size: 4, off: 0 }, { loc: 1, size: 4, off: 16 }] }]);
+  G.targets = null;
+  G.ok = true;
+}
+if (gl) { try { initGL(); } catch (e) { console.error(e); G.ok = false; } }
+
+/* the frame buffers: the scene drawn with four samples (in half floats where the device can), then the bloom chain */
+let SCALE = 1;
+const fixedScale = () => window.__f3dScale || 0;
+function makeTarget(w, h, ifmt, type) {
+  const t = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, t);
+  gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, w, h, 0, gl.RGBA, type, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  const f = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, f); gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+  return { t, f, w, h };
+}
+function freeTargets(T) {
+  if (!T) return;
+  for (const x of [T.scene].concat(T.down, T.up)) if (x) { gl.deleteTexture(x.t); gl.deleteFramebuffer(x.f); }
+  if (T.ms) { gl.deleteFramebuffer(T.ms); gl.deleteRenderbuffer(T.msC); gl.deleteRenderbuffer(T.msD); }
+}
+function buildTargets(w, h, hdr) {
+  const ifmt = hdr ? gl.RGBA16F : gl.RGBA8, type = hdr ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE;
+  let samples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0);
+  try { const s = gl.getInternalformatParameter(gl.RENDERBUFFER, ifmt, gl.SAMPLES); if (s && s.length) samples = Math.min(samples, s[0]); else samples = 0; } catch (e) {}
+  const T = { w, h, hdr, samples, down: [], up: [] };
+  T.ms = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, T.ms);
+  T.msC = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, T.msC); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, ifmt, w, h);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, T.msC);
+  T.msD = gl.createRenderbuffer(); gl.bindRenderbuffer(gl.RENDERBUFFER, T.msD); gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
+  gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, T.msD);
+  let ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  T.scene = makeTarget(w, h, ifmt, type);
+  ok = ok && gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  let lw = w, lh = h;
+  for (let i = 0; i < 5; i++) { lw = Math.max(1, lw >> 1); lh = Math.max(1, lh >> 1); T.down.push(makeTarget(lw, lh, ifmt, type)); }
+  for (let i = 0; i < 4; i++) T.up.push(makeTarget(T.down[i].w, T.down[i].h, ifmt, type));
+  ok = ok && gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  if (!ok) { freeTargets(T); return null; }
+  return T;
+}
+let HDR_OK = null;
+function targetsFor(w, h) {
+  const T = G.targets;
+  if (T && T.w === w && T.h === h) return T;
+  freeTargets(T); G.targets = null;
+  if (HDR_OK === null) HDR_OK = !!(gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+  let N = HDR_OK ? buildTargets(w, h, true) : null;
+  if (!N) N = buildTargets(w, h, false);
+  G.targets = N;
+  return N;
+}
+
+/* ── matrices ── */
+function perspective(fovy, aspect, near, far) { const f = 1 / Math.tan(fovy / 2), nf = 1 / (near - far); return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]); }
+function viewMat(e, f, u, r) { return new Float32Array([r[0], u[0], -f[0], 0, r[1], u[1], -f[1], 0, r[2], u[2], -f[2], 0, -(r[0] * e[0] + r[1] * e[1] + r[2] * e[2]), -(u[0] * e[0] + u[1] * e[1] + u[2] * e[2]), f[0] * e[0] + f[1] * e[1] + f[2] * e[2], 1]); }
+function mul(a, b) { const o = new Float32Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
+const norm = v => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+
+/* ── the cameras ── */
+const EYE_BACK = 1.05, EYE_H = 1.15, PITCH = -0.035, WALL_H = 3, RIM_H = 10, CYCLE_LEN = 2.0;
+function angWrap(a) { a = (a + Math.PI) % (2 * Math.PI); if (a < 0) a += 2 * Math.PI; return a - Math.PI; }
+function approach(cur, target, dt, tau) { return tau <= 0 ? target : cur + angWrap(target - cur) * (1 - Math.exp(-dt / tau)); }
+/* each cycle drawn between its last two ticks; a cycle that turned in the last tick is drawn where it is */
+function headAt(i, alpha) {
+  const c = state.cycles[i];
+  if (!c) return [law.ARENA_SIZE / 2, law.ARENA_SIZE / 2];
+  if (prev.x[i] === undefined || prev.dir[i] !== c.dir || !c.alive) return [c.x, c.y];
+  return [prev.x[i] + (c.x - prev.x[i]) * alpha, prev.y[i] + (c.y - prev.y[i]) * alpha];
+}
+function insidePose(h, yaw, roll, hfov) {
+  const cf = Math.cos(yaw), sf = Math.sin(yaw);
+  const eye = [h[0] - cf * EYE_BACK, EYE_H, -(h[1] - sf * EYE_BACK)];
+  return { eye, look: [eye[0] + cf * 20, EYE_H + Math.tan(PITCH) * 20, eye[2] - sf * 20], alt: [cf, 0, -sf], roll, hfov };
+}
+function outsidePose(h, yawO, teamPhi, hfov) {
+  const grid = SET.frame === 'grid';
+  const phi = grid ? teamPhi : yawO, cf = Math.cos(phi), sf = Math.sin(phi);
+  const ex = h[0] - cf * SET.back + sf * SET.side, ey = h[1] - sf * SET.back - cf * SET.side;
+  const ahead = grid ? 0 : 6;
+  const eye = [ex, Math.max(0.4, SET.up), -ey], look = [h[0] + cf * ahead, 0.9, -(h[1] + sf * ahead)];
+  if (Math.hypot(eye[0] - look[0], eye[1] - look[1], eye[2] - look[2]) < 0.3) eye[1] += 0.5;
+  return { eye, look, alt: [cf, 0, -sf], roll: 0, hfov };
+}
+function overviewPose(teamPhi) {
+  const S = law.ARENA_SIZE, cf = Math.cos(teamPhi), sf = Math.sin(teamPhi);
+  return { eye: [S / 2 - cf * S * 0.66, S * 0.25, -(S / 2 - sf * S * 0.66)], look: [S / 2 + cf * S * 0.06, 0, -(S / 2 + sf * S * 0.06)], alt: [cf, 0, -sf], roll: 0, hfov: 84 };
+}
+function crashPose(v) {
+  const k = clamp((state.tick - v.crash.tick) / (CRASH_S * TPS), 0, 1), e = 1 - Math.pow(1 - k, 3);
+  const phi = v.crash.dir * Math.PI / 2 + 0.8 * e, cf = Math.cos(phi), sf = Math.sin(phi);
+  const back = 4 + 15 * e;
+  return { eye: [v.crash.x - cf * back, 1.6 + 9 * e, -(v.crash.y - sf * back)], look: [v.crash.x, 0.6, -v.crash.y], alt: [cf, 0, -sf], roll: 0, hfov: Math.min(SET.fov, 96) };
+}
+function cinePose(v, h) {
+  const a = v.cineA + (performance.now() - v.cineAt) * (reduceQ.matches ? 0.00003 : 0.00011);
+  const eye = [h[0] + Math.cos(a) * 24, 7.5, -(h[1] + Math.sin(a) * 24)];
+  return { eye, look: [h[0], 1.2, -h[1]], alt: [1, 0, 0], roll: 0, hfov: 78 };
+}
+function blendPose(a, b, e) {
+  const Lp = (p, q) => [p[0] + (q[0] - p[0]) * e, p[1] + (q[1] - p[1]) * e, p[2] + (q[2] - p[2]) * e];
+  return { eye: Lp(a.eye, b.eye), look: Lp(a.look, b.look), alt: e < 0.5 ? a.alt : b.alt, roll: a.roll + (b.roll - a.roll) * e, hfov: a.hfov + (b.hfov - a.hfov) * e };
+}
+function poseFor(v, dt, alpha) {
+  if (window.__f3dPose) { const q = window.__f3dPose; v.lastPose = { eye: q.eye, look: q.look, alt: [1, 0, 0], roll: 0, hfov: q.hfov || 100 }; v.inside = !!q.inside; return v.lastPose; }
+  const c = state.cycles[v.watch];
+  const team = teamOf(v) || (c ? c.team : 'blue');
+  const teamPhi = team === 'gold' ? -Math.PI / 2 : Math.PI / 2;
+  const tgt = c ? c.dir * Math.PI / 2 : teamPhi;
+  if (!v.set) { v.yaw = v.yawO = tgt; v.roll = 0; v.set = true; }
+  const y0 = v.yaw;
+  v.yaw = approach(v.yaw, tgt, dt, reduceQ.matches ? 0.03 : 0.055);
+  v.yawO = approach(v.yawO, tgt, dt, 0.22);
+  v.inside = SET.view === 'inside';
+  const rate = dt > 1e-4 ? angWrap(v.yaw - y0) / dt : 0;
+  const wantRoll = reduceQ.matches || !v.inside ? 0 : clamp(rate * 0.016, -0.11, 0.11);
+  v.roll += (wantRoll - v.roll) * (1 - Math.exp(-dt / 0.07));
+  const h = headAt(v.watch, alpha);
+  const sp = c ? c.v : law.CYCLE_SPEED;
+  const kick = reduceQ.matches ? 0 : clamp((sp - law.CYCLE_SPEED) * 0.3, 0, 14);
+  let pose;
+  if (v.cine) pose = cinePose(v, h);
+  else if (v.crash && (!c || !c.alive)) pose = crashPose(v);
+  else if (v.inside) pose = insidePose(h, v.yaw, v.roll, SET.fov + kick);
+  else pose = outsidePose(h, v.yawO, teamPhi, SET.fov + kick * 0.5);
+  if (!v.cine && !reduceQ.matches && mode !== 'attract') {   // between rounds the camera rises to see the whole arena, and comes back down for the start
+    const ov = overviewPose(teamPhi);
+    if (state.phase === 'countdown') { const k = 1 - (state.phaseUntil - state.tick) / (law.ROUND_COUNTDOWN_SECONDS * TPS); pose = blendPose(ov, pose, ease(smooth(0.04, 0.86, k))); }
+    else if (state.phase === 'result') { const k = 1 - (state.phaseUntil - state.tick) / (law.ROUND_RESULT_SECONDS * TPS); pose = blendPose(pose, ov, ease(smooth(0.2, 1, k))); }
+    else if (state.phase === 'over') pose = ov;
+  }
+  if (v.from) {   // a change of rider or of view eases over half a second
+    const k = (performance.now() - v.fromAt) / (reduceQ.matches ? 1 : 550);
+    if (k >= 1) v.from = null; else pose = blendPose(v.from, pose, ease(clamp(k, 0, 1)));
+  }
+  if (v.shake > 0 && !reduceQ.matches) {
+    const s = v.shake * v.shake * 0.35;
+    pose = Object.assign({}, pose, { eye: [pose.eye[0] + (Math.random() - 0.5) * s, pose.eye[1] + (Math.random() - 0.5) * s, pose.eye[2] + (Math.random() - 0.5) * s] });
+    v.shake = Math.max(0, v.shake - dt * 2.2);
+  }
+  v.lastPose = pose;
+  return pose;
+}
+function frameOf(pose, aspect) {
+  let f = norm([pose.look[0] - pose.eye[0], pose.look[1] - pose.eye[1], pose.look[2] - pose.eye[2]]);
+  let ref = [0, 1, 0];
+  if (Math.abs(f[1]) > 0.985) ref = pose.alt;
+  let r = norm(cross(f, ref)), u = cross(r, f);
+  if (pose.roll) { const cr = Math.cos(pose.roll), sr = Math.sin(pose.roll); const r2 = [r[0] * cr + u[0] * sr, r[1] * cr + u[1] * sr, r[2] * cr + u[2] * sr]; u = [u[0] * cr - r[0] * sr, u[1] * cr - r[1] * sr, u[2] * cr - r[2] * sr]; r = r2; }
+  const hf = clamp(pose.hfov, 40, 150) * Math.PI / 180;
+  const fovy = clamp(2 * Math.atan(Math.tan(hf / 2) / aspect), 0.55, 1.95);
+  return { eye: pose.eye, f, u, r, fovy, aspect, tanY: Math.tan(fovy / 2), tanX: Math.tan(fovy / 2) * aspect };
+}
+
+/* ── what is drawn: per view, because the wall ahead of each rider is marked for that rider alone ── */
+let wallData = new Float32Array(12 * 4096), wallN = 0;
+function pushWall(x1, y1, x2, y2, c, fade, height, danger, kind) {
+  if ((wallN + 1) * 12 > wallData.length) { const b = new Float32Array(wallData.length * 2); b.set(wallData); wallData = b; }
+  const o = wallN * 12;
+  wallData[o] = x1; wallData[o + 1] = y1; wallData[o + 2] = x2; wallData[o + 3] = y2;
+  wallData[o + 4] = c[0]; wallData[o + 5] = c[1]; wallData[o + 6] = c[2]; wallData[o + 7] = fade;
+  wallData[o + 8] = height; wallData[o + 9] = danger; wallData[o + 10] = kind; wallData[o + 11] = 0;
+  wallN++;
+}
+const RIM_LOCAL = (() => { const S = sim.LAW.ARENA_SIZE; return [{ x1: 0, y1: 0, x2: S, y2: 0 }, { x1: S, y1: 0, x2: S, y2: S }, { x1: S, y1: S, x2: 0, y2: S }, { x1: 0, y1: S, x2: 0, y2: 0 }]; })();
+function buildWalls(alpha, dangerSeg, dangerK) {
+  wallN = 0;
+  for (const s of state.rimCache || RIM_LOCAL) pushWall(s.x1, s.y1, s.x2, s.y2, RIMC, 1, RIM_H, s === dangerSeg ? dangerK : 0, 1);
+  const stay = law.WALLS_STAY_UP_DELAY * TPS;
+  for (const c of state.cycles) {
+    const n = c.walls.length; if (!n) continue;
+    const col = TEAMC[c.team];
+    const fade = c.alive ? 1 : Math.max(0.12, 1 - (state.tick - c.diedAt) / stay) * (0.85 + 0.15 * Math.sin(state.tick * 0.9));
+    for (let j = 0; j < n; j++) {
+      const w = c.walls[j];
+      let x2 = w.x2, y2 = w.y2;
+      if (c.alive && j === n - 1) {   // the head segment, drawn from behind the cycle's body: the wall leaves the rear wheel
+        const h = headAt(c.index, alpha), L = Math.abs(h[0] - w.x1) + Math.abs(h[1] - w.y1), cut = Math.min(L, CYCLE_LEN);
+        x2 = h[0] - sim.DX[c.dir] * cut; y2 = h[1] - sim.DY[c.dir] * cut;
+      }
+      if (Math.abs(x2 - w.x1) + Math.abs(y2 - w.y1) < 1e-4) continue;
+      pushWall(w.x1, w.y1, x2, y2, col, fade, WALL_H, w === dangerSeg ? dangerK : 0, 0);
+    }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, G.wallBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, wallData.subarray(0, wallN * 12), gl.STREAM_DRAW);
+}
+let ptData = new Float32Array(8 * 4096), ptN = 0;
+const GLOWS = [];   // [x, z, colour] of each cycle drawn this view
+function pushPt(x, y, z, size, c, a) {
+  if ((ptN + 1) * 8 > ptData.length) { const b = new Float32Array(ptData.length * 2); b.set(ptData); ptData = b; }
+  const o = ptN * 8; ptData[o] = x; ptData[o + 1] = y; ptData[o + 2] = z; ptData[o + 3] = size; ptData[o + 4] = c[0]; ptData[o + 5] = c[1]; ptData[o + 6] = c[2]; ptData[o + 7] = a; ptN++;
+}
+/* motes in the air around the eye, so the inside view feels the speed */
+const MOTES = (() => { const m = []; let s = 7; const r = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; }; for (let i = 0; i < 360; i++) m.push([r() * 140, 0.15 + r() * r() * 7, r() * 140]); return m; })();
+function buildPoints(eye, withMotes) {
+  ptN = 0;
+  for (const p of parts) pushPt(p.x, p.y, p.z, p.size, p.c, clamp(p.life / p.max, 0, 1) * 2.2);
+  for (const g of GLOWS) pushPt(g[0], 0.3, g[1], 4.2, g[2], 0.95);
+  if (withMotes && !reduceQ.matches) {
+    for (const m of MOTES) {
+      const x = eye[0] + (((m[0] - eye[0]) % 140) + 140) % 140 - 70, z = eye[2] + (((m[2] - eye[2]) % 140) + 140) % 140 - 70;
+      const d = Math.hypot(x - eye[0], z - eye[2]);
+      pushPt(x, m[1], z, 0.035, RIMC, 0.32 * (1 - smooth(20, 70, d)));
+    }
+  }
+  gl.bindBuffer(gl.ARRAY_BUFFER, G.ptBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, ptData.subarray(0, ptN * 8), gl.STREAM_DRAW);
+}
+function stepEffects(dt) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.life -= dt; if (p.life <= 0) { parts.splice(i, 1); continue; }
+    p.vy -= 9.8 * dt * 0.7; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    if (p.y < 0.03) { p.y = 0.03; p.vy = -p.vy * 0.3; p.vx *= 0.7; p.vz *= 0.7; }
+    const k = Math.exp(-dt * 1.2); p.vx *= k; p.vz *= k;
+  }
+  for (let i = rings.length - 1; i >= 0; i--) { rings[i].t += dt; if (rings[i].t > 0.9) rings.splice(i, 1); }
+}
+const vis = { yaw: [] };   // each cycle's drawn heading, eased so a turn reads as a turn
+function resetVis() { vis.yaw = []; }
+
+let curT = 0;
+function setCommon(P, vp, eye, fog, mirror, t) {
+  const u = P.u;
+  gl.uniformMatrix4fv(u.uVP, false, vp); gl.uniform3fv(u.uEye, eye); gl.uniform2f(u.uFog, fog[0], fog[1]); gl.uniform1f(u.uMirror, mirror ? 1 : 0); if (u.uTime) gl.uniform1f(u.uTime, t);
+}
+const HOR = [0.022, 0.06, 0.092];
+function modelMat(x, y, yaw) { const c = Math.cos(yaw), s = Math.sin(yaw); return new Float32Array([c, 0, -s, 0, 0, 1, 0, 0, s, 0, c, 0, x, 0, -y, 1]); }
+
+function renderView(v, rect, dt, t, alpha) {
+  const fr = v.frame;
+  const proj = perspective(fr.fovy, fr.aspect, 0.05, 4000), vm = viewMat(fr.eye, fr.f, fr.u, fr.r), vp = mul(proj, vm);
+  v.vp = vp;
+  const eye = fr.eye;
+  const S = law.ARENA_SIZE;
+  const fog = [180, 980];
+  gl.viewport(rect.gx, rect.gy, rect.gw, rect.gh); gl.scissor(rect.gx, rect.gy, rect.gw, rect.gh); gl.enable(gl.SCISSOR_TEST);
+  gl.clearColor(HOR[0], HOR[1], HOR[2], 1); gl.clearDepth(1); gl.depthMask(true); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);   // the mask must be open, or the depth is not cleared
+  gl.disable(gl.CULL_FACE);
+  // the sky
+  gl.disable(gl.DEPTH_TEST); gl.depthMask(false); gl.disable(gl.BLEND);
+  gl.useProgram(G.P.sky.p);
+  gl.uniform3fv(G.P.sky.u.uF, fr.f); gl.uniform3fv(G.P.sky.u.uR, fr.r); gl.uniform3fv(G.P.sky.u.uU, fr.u); gl.uniform3fv(G.P.sky.u.uHor, HOR);
+  gl.uniform2f(G.P.sky.u.uTan, fr.tanX, fr.tanY); gl.uniform1f(G.P.sky.u.uTime, t);
+  gl.bindVertexArray(G.empty); gl.drawArrays(gl.TRIANGLES, 0, 3);
+  // the floor, with the zones on it
+  gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
+  const Fp = G.P.floor; gl.useProgram(Fp.p);
+  gl.uniformMatrix4fv(Fp.u.uVP, false, vp); gl.uniform3fv(Fp.u.uEye, eye); gl.uniform3fv(Fp.u.uHor, HOR); gl.uniform2f(Fp.u.uFog, fog[0], fog[1]); gl.uniform1f(Fp.u.uSize, S); gl.uniform1f(Fp.u.uTime, t);
+  const zb = state.zones.blue, zg = state.zones.gold;
+  gl.uniform4f(Fp.u.uZa, zb.x, zb.y, zb.r, zb.conquest); gl.uniform4f(Fp.u.uZb, zg.x, zg.y, zg.r, zg.conquest);
+  gl.uniform3fv(Fp.u.uCa, TEAMC.blue); gl.uniform3fv(Fp.u.uCb, TEAMC.gold); gl.uniform3fv(Fp.u.uAa, TEAMC.gold); gl.uniform3fv(Fp.u.uAb, TEAMC.blue);
+  gl.bindVertexArray(G.floor); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  // what is drawn: the walls, with the one ahead of this rider marked
+  const c = state.cycles[v.watch];
+  let dSeg = null, dK = 0;
+  v.ahead = null;
+  if (c && c.alive && !v.cine && state.phase === 'play') {
+    const hit = sim.castRay(state, c, c.dir, 240);
+    if (hit) { v.ahead = hit; dSeg = hit.seg; dK = !v.spectator && v.watch === v.seat ? clamp(1 - hit.s / Math.max(10, c.v * 0.85), 0, 1) : 0; }
+  }
+  buildWalls(alpha, dSeg, dK);
+  GLOWS.length = 0;
+  for (const o of state.cycles) { if (!o.alive || (o.index === v.watch && v.inside && !v.cine && !v.crash)) continue; const h = headAt(o.index, alpha); GLOWS.push([h[0] - Math.cos(o.dir * Math.PI / 2) * 1.1, -(h[1] - Math.sin(o.dir * Math.PI / 2) * 1.1), TEAMC[o.team]]); }
+  buildPoints(eye, v.inside && !v.cine);
+  const glow = SET.glow;
+  // the reflection, under the floor's sheen
+  if (glow) {
+    gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
+    drawWalls(vp, eye, fog, true, t);
+    drawCycles(v, vp, eye, fog, true, alpha);
+    drawZones(vp, eye, fog, true, t, fr);
+  }
+  // the solid things
+  gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND);
+  drawCycles(v, vp, eye, fog, false, alpha);
+  // the light
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE); gl.depthMask(false);
+  drawSpill(vp, eye, fog, t);
+  drawWalls(vp, eye, fog, false, t);
+  drawZones(vp, eye, fog, false, t, fr);
+  drawRings(vp, eye, fog, t);
+  drawPoints(vp, rect, fr);
+  gl.depthMask(true); gl.disable(gl.BLEND);
+}
+function drawWalls(vp, eye, fog, mirror, t) {
+  if (!wallN) return;
+  const P = G.P.wall; gl.useProgram(P.p); setCommon(P, vp, eye, fog, mirror, t); gl.uniform1f(P.u.uSpill, 0);
+  gl.bindVertexArray(G.wall); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, wallN);
+}
+function drawSpill(vp, eye, fog, t) {
+  if (!wallN) return;
+  const P = G.P.wall; gl.useProgram(P.p); setCommon(P, vp, eye, fog, false, t);
+  gl.bindVertexArray(G.wall);
+  gl.uniform1f(P.u.uSpill, 1); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, wallN);
+  if (eye[1] > WALL_H) { gl.uniform1f(P.u.uSpill, 2); gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, wallN); }
+}
+function drawCycles(v, vp, eye, fog, mirror, alpha) {
+  const P = G.P.cycle; gl.useProgram(P.p); setCommon(P, vp, eye, fog, mirror, curT);
+  gl.bindVertexArray(G.cycle);
+  for (const c of state.cycles) {
+    if (!c.alive) continue;
+    const h = headAt(c.index, alpha);
+    const own = c.index === v.watch && v.inside && !v.cine && !(v.crash && !c.alive);
+    if (own) continue;   // the eye is in this cycle
+    const yaw = vis.yaw[c.index] === undefined ? c.dir * Math.PI / 2 : vis.yaw[c.index];
+    gl.uniformMatrix4fv(P.u.uM, false, modelMat(h[0], h[1], yaw));
+    gl.uniform3fv(P.u.uCol, TEAMC[c.team]); gl.uniform1f(P.u.uBright, (c.team === 'gold' ? 0.7 : 1) * (c.rubber > 0.2 ? 1 + Math.min(1.5, c.rubber) : 1));   // gold is the brighter colour to the eye
+    gl.drawArrays(gl.TRIANGLES, 0, G.cycleN);
+  }
+}
+function drawZones(vp, eye, fog, mirror, t, fr) {
+  for (const team of ['blue', 'gold']) {
+    const z = state.zones[team]; if (z.r <= 0.01) continue;
+    const col = TEAMC[team], att = TEAMC[team === 'blue' ? 'gold' : 'blue'];
+    const R = G.P.ring; gl.useProgram(R.p); setCommon(R, vp, eye, fog, mirror, t);
+    gl.uniform3f(R.u.uC, z.x, 0, -z.y); gl.uniform1f(R.u.uR, z.r); gl.uniform1f(R.u.uH, 1.7);
+    gl.uniform3fv(R.u.uCol, col); gl.uniform3fv(R.u.uAtt, att); gl.uniform1f(R.u.uConq, z.conquest); gl.uniform1f(R.u.uK, 1); gl.uniform1f(R.u.uDash, 56);
+    gl.bindVertexArray(G.ring); gl.drawArrays(gl.TRIANGLES, 0, G.ringN);
+    // the beacon: a column of light over the zone, seen across the arena
+    const B = G.P.beam; gl.useProgram(B.p); setCommon(B, vp, eye, fog, mirror, t);
+    const dx = z.x - eye[0], dz = -z.y - eye[2], L = Math.hypot(dx, dz) || 1;
+    gl.uniform3f(B.u.uBase, z.x, 0, -z.y); gl.uniform3f(B.u.uRight, -dz / L, 0, dx / L);
+    const k = (z.standing ? 1 : clamp(z.r / law.FORTRESS_RADIUS, 0, 1) * (0.6 + 0.4 * Math.sin(t * 30))) * (1 - smooth(30, 80, eye[1]));   // from high up the zones need no beacon
+    if (k <= 0.001) continue;
+    gl.uniform2f(B.u.uSize, 2.6 + L * 0.004, 90); gl.uniform3fv(B.u.uCol, z.conquest > 0.02 ? mixC(col, att, z.conquest) : col); gl.uniform1f(B.u.uK, k);
+    gl.bindVertexArray(G.quad); gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+}
+function mixC(a, b, k) { return [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k]; }
+function drawRings(vp, eye, fog, t) {
+  if (!rings.length) return;
+  const R = G.P.ring; gl.useProgram(R.p); setCommon(R, vp, eye, fog, false, t);
+  gl.bindVertexArray(G.ring);
+  for (const r of rings) {
+    const k = r.t / 0.9;
+    gl.uniform3f(R.u.uC, r.x, 0, -r.y); gl.uniform1f(R.u.uR, 1.5 + k * 18); gl.uniform1f(R.u.uH, 1.4 * (1 - k) + 0.1);
+    gl.uniform3fv(R.u.uCol, r.c); gl.uniform3fv(R.u.uAtt, r.c); gl.uniform1f(R.u.uConq, 0); gl.uniform1f(R.u.uK, (1 - k) * 1.6); gl.uniform1f(R.u.uDash, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, G.ringN);
+  }
+}
+function drawPoints(vp, rect, fr) {
+  if (!ptN) return;
+  const P = G.P.pt; gl.useProgram(P.p);
+  gl.uniformMatrix4fv(P.u.uVP, false, vp); gl.uniform1f(P.u.uPx, rect.gh / (2 * fr.tanY)); gl.uniform1f(P.u.uMirror, 0);
+  gl.bindVertexArray(G.pt); gl.drawArrays(gl.POINTS, 0, ptN);
+}
+
+/* the whole frame: each view into the multisampled scene, then the glow, then the screen */
+let DPR = Math.min(window.devicePixelRatio || 1, 2), HUD_DPR = DPR;
+function layoutViews() {
+  const W = innerWidth, H = innerHeight;
+  if (views.length === 2) {
+    if (W >= H) { const a = Math.floor(W / 2); return [{ x: 0, y: 0, w: a, h: H }, { x: a, y: 0, w: W - a, h: H }]; }
+    const a = Math.floor(H / 2); return [{ x: 0, y: 0, w: W, h: a }, { x: 0, y: a, w: W, h: H - a }];
+  }
+  return [{ x: 0, y: 0, w: W, h: H }];
+}
+function draw(dt, t, alpha) {
+  curT = t;
+  if (!state) return;
+  stepEffects(paused ? 0 : dt);
+  for (const c of state.cycles) { const tg = c.dir * Math.PI / 2; vis.yaw[c.index] = vis.yaw[c.index] === undefined || !c.alive ? tg : approach(vis.yaw[c.index], tg, dt, 0.045); }
+  const W = innerWidth, H = innerHeight;
+  const rects = layoutViews();
+  for (let i = 0; i < views.length; i++) {
+    const v = views[i], R = rects[i] || rects[0];
+    updateWatch(v);
+    v.rect = R;
+    v.frame = frameOf(poseFor(v, dt, alpha), R.w / Math.max(1, R.h));
+  }
+  // the HUD's canvas
+  HUD_DPR = Math.min(window.devicePixelRatio || 1, 2);
+  const hw = Math.round(W * HUD_DPR), hh = Math.round(H * HUD_DPR);
+  if (hudCv.width !== hw || hudCv.height !== hh) { hudCv.width = hw; hudCv.height = hh; }
+  if (!gl || !G.ok || glLost) { drawHud(t); return; }
+  const sc = (fixedScale() || SCALE) * Math.min(window.devicePixelRatio || 1, 2);
+  const cw = Math.max(2, Math.round(W * sc)), ch = Math.max(2, Math.round(H * sc));
+  if (cv.width !== cw || cv.height !== ch) { cv.width = cw; cv.height = ch; }
+  const T = targetsFor(cw, ch);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, T ? T.ms : null);
+  for (let i = 0; i < views.length; i++) {
+    const v = views[i], R = v.rect;
+    const gx = Math.round(R.x * sc), gw = Math.round((R.x + R.w) * sc) - gx, gyTop = Math.round(R.y * sc), gh = Math.round((R.y + R.h) * sc) - gyTop;
+    R.gx = gx; R.gw = gw; R.gh = gh; R.gy = ch - gyTop - gh;
+    renderView(v, R, dt, t, alpha);
+  }
+  gl.disable(gl.SCISSOR_TEST);
+  if (T) post(T, cw, ch);
+  drawHud(t);
+}
+function pass(P, target, w, h) { gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.f : null); gl.viewport(0, 0, w, h); gl.useProgram(P.p); gl.bindVertexArray(G.empty); }
+function bindTex(unit, tex, loc) { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(loc, unit); }
+function post(T, cw, ch) {
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(false);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, T.ms); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, T.scene.f);
+  gl.blitFramebuffer(0, 0, T.w, T.h, 0, 0, T.w, T.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null); gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+  const glow = SET.glow;
+  if (glow) {
+    let P = G.P.bright, d0 = T.down[0];
+    pass(P, d0, d0.w, d0.h); bindTex(0, T.scene.t, P.u.uTex); gl.uniform1f(P.u.uThr, T.hdr ? 0.85 : 0.6); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    P = G.P.down;
+    for (let i = 1; i < T.down.length; i++) { const s = T.down[i - 1], d = T.down[i]; pass(P, d, d.w, d.h); bindTex(0, s.t, P.u.uTex); gl.uniform2f(P.u.uHalf, 0.5 / s.w, 0.5 / s.h); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+    P = G.P.up;
+    let src = T.down[T.down.length - 1];
+    for (let i = T.up.length - 1; i >= 0; i--) { const d = T.up[i]; pass(P, d, d.w, d.h); bindTex(0, src.t, P.u.uTex); bindTex(1, T.down[i].t, P.u.uAdd); gl.uniform2f(P.u.uHalf, 0.5 / src.w, 0.5 / src.h); gl.uniform1f(P.u.uMix, 0.55); gl.drawArrays(gl.TRIANGLES, 0, 3); src = d; }
+  }
+  const P = G.P.comp;
+  pass(P, null, cw, ch);
+  bindTex(0, T.scene.t, P.u.uScene); bindTex(1, glow ? T.up[0].t : T.scene.t, P.u.uBloom);
+  gl.uniform1f(P.u.uK, glow ? 0.75 : 0); gl.uniform1f(P.u.uHdr, T.hdr ? 1 : 0); gl.uniform1f(P.u.uVig, 0.55); gl.uniform2f(P.u.uRes, cw, ch);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  gl.activeTexture(gl.TEXTURE0);
+}
+/* slower than about forty frames a second for a while: draw fewer pixels; quick again: more */
+let slow = 0, quick = 0;
+function quality(dt) {
+  if (fixedScale() || !running || paused || document.hidden) return;
+  if (dt > 0.026) { slow++; quick = 0; } else if (dt < 0.0135) { quick++; slow = Math.max(0, slow - 1); }
+  if (slow > 40 && SCALE > 0.55) { SCALE = Math.max(0.55, SCALE * 0.85); slow = 0; }
+  if (quick > 240 && SCALE < 1) { SCALE = Math.min(1, SCALE + 0.1); quick = 0; }
+}
+
+/* ── the instruments, drawn over the view: the walls beside you, the wall ahead, the map, who is who ── */
+const HEX = { blue: '#4488ff', gold: '#ffff44' };
+function rgba(c, a) { return 'rgba(' + Math.round(c[0] * 255) + ',' + Math.round(c[1] * 255) + ',' + Math.round(c[2] * 255) + ',' + a.toFixed(3) + ')'; }
+function project(vp, R, x, y, z) {
+  const w = vp[3] * x + vp[7] * y + vp[11] * z + vp[15];
+  if (w <= 0.05) return null;
+  const nx = (vp[0] * x + vp[4] * y + vp[8] * z + vp[12]) / w, ny = (vp[1] * x + vp[5] * y + vp[9] * z + vp[13]) / w;
+  return [R.x + (nx + 1) / 2 * R.w, R.y + (1 - ny) / 2 * R.h, w];
+}
+function sideOf(c, dir) {   // the nearest wall within the side rays' reach, as the law's side rays see it
+  const hit = sim.castRay(state, c, dir, law.CYCLE_WALL_NEAR);
+  if (!hit || hit.s <= 1e-6) return null;
+  const f = hit.owner === -1 ? law.CYCLE_ACCEL_RIM : hit.owner === c.index ? law.CYCLE_ACCEL_SELF : state.cycles[hit.owner].team === c.team ? law.CYCLE_ACCEL_TEAM : law.CYCLE_ACCEL_ENEMY;
+  const k = f * (1 / (hit.s + law.CYCLE_ACCEL_OFFSET) - 1 / (law.CYCLE_WALL_NEAR + law.CYCLE_ACCEL_OFFSET)) / (1 / law.CYCLE_ACCEL_OFFSET - 1 / (law.CYCLE_WALL_NEAR + law.CYCLE_ACCEL_OFFSET));
+  return { s: hit.s, k: clamp(k, 0, 1), col: hit.owner === -1 ? RIMC : TEAMC[state.cycles[hit.owner].team] };
+}
+function drawHud(t) {
+  const X = hx;
+  X.setTransform(HUD_DPR, 0, 0, HUD_DPR, 0, 0);
+  X.clearRect(0, 0, innerWidth, innerHeight);
+  if (!state || mode === 'attract') return;
+  for (const v of views) if (v.rect && v.vp) { X.save(); try { hudView(X, v, t); } catch (e) { console.error(e); } finally { X.restore(); } }   // one bad frame never leaves the canvas clipped
+  if (views.length === 2) {
+    const a = views[1].rect;
+    X.fillStyle = 'rgba(54,201,255,0.45)';
+    if (a.x > 0) X.fillRect(a.x - 1, 0, 2, innerHeight); else X.fillRect(0, a.y - 1, innerWidth, 2);
+  }
+}
+function hudView(X, v, t) {
+  const R = v.rect, c = state.cycles[v.watch];
+  const playing = state.phase === 'play' && running;
+  const riding = !v.spectator && v.watch === v.seat && c && c.alive;
+  X.save();
+  X.beginPath(); X.rect(R.x, R.y, R.w, R.h); X.clip();
+  v.boost = 0;
+  if (riding && playing) {
+    // the walls beside you: an edge of the screen lights in the wall's colour, brighter as you ride closer
+    for (const [side, dir] of [['L', (c.dir + 1) & 3], ['R', (c.dir + 3) & 3]]) {
+      const w = sideOf(c, dir); if (!w || w.k <= 0) continue;
+      v.boost += w.k;
+      const W = R.w * (0.1 + 0.1 * w.k), x0 = side === 'L' ? R.x : R.x + R.w - W;
+      const g = X.createLinearGradient(side === 'L' ? R.x : R.x + R.w, 0, side === 'L' ? R.x + W : R.x + R.w - W, 0);
+      g.addColorStop(0, rgba(w.col, 0.55 * w.k + 0.08)); g.addColorStop(1, rgba(w.col, 0));
+      X.fillStyle = g; X.fillRect(x0, R.y, W, R.h);
+    }
+    // rubber: pressing into a wall, the edges go red before it kills
+    if (c.rubber > 0.05) {
+      const k = clamp(c.rubber / law.CYCLE_RUBBER, 0, 1);
+      const g = X.createRadialGradient(R.x + R.w / 2, R.y + R.h / 2, Math.min(R.w, R.h) * 0.25, R.x + R.w / 2, R.y + R.h / 2, Math.max(R.w, R.h) * 0.75);
+      g.addColorStop(0, 'rgba(255,107,107,0)'); g.addColorStop(1, 'rgba(255,107,107,' + (0.75 * k).toFixed(3) + ')');
+      X.fillStyle = g; X.fillRect(R.x, R.y, R.w, R.h);
+    }
+  }
+  // the wall ahead: how far, inside the cycle
+  if (riding && playing && v.inside && !v.from) {
+    const cx = R.x + R.w / 2, cy = R.y + R.h / 2;
+    const s = v.ahead ? v.ahead.s : Infinity, tt = s / Math.max(1, c.v);
+    const col = tt < 0.45 ? '255,107,107' : tt < 1.1 ? '255,214,102' : '54,201,255';
+    const a = s < 240 ? 0.85 : 0.35;
+    const gap = 16 + clamp(tt, 0, 3) * 6;
+    X.strokeStyle = 'rgba(' + col + ',' + a + ')'; X.lineWidth = 1.5;
+    X.beginPath(); X.moveTo(cx - gap - 10, cy); X.lineTo(cx - gap, cy); X.moveTo(cx + gap, cy); X.lineTo(cx + gap + 10, cy); X.stroke();
+    X.fillStyle = 'rgba(' + col + ',' + a + ')'; X.beginPath(); X.arc(cx, cy, 1.6, 0, Math.PI * 2); X.fill();
+    if (s < 240) { X.font = '500 12px "IBM Plex Mono", ui-monospace, monospace'; X.textAlign = 'center'; X.fillText(Math.round(s) + ' m', cx, cy + 22); }
+  }
+  // who is who: names over the people, a mark over your team
+  const team = teamOf(v);
+  X.textAlign = 'center';
+  for (const o of state.cycles) {
+    if (!o.alive || o.index === v.watch) continue;
+    const human = !state.seats[o.index].bot, mate = team && o.team === team;
+    if (!human && !mate) continue;
+    const h = headAt(o.index, 1);
+    const p = project(v.vp, R, h[0], WALL_H + 1.2, -h[1]);
+    if (!p || p[0] < R.x || p[0] > R.x + R.w || p[1] < R.y || p[1] > R.y + R.h) continue;
+    const a = 1 - smooth(140, 420, p[2]);
+    if (a <= 0.02) continue;
+    X.fillStyle = HEX[o.team]; X.globalAlpha = a;
+    X.beginPath(); X.moveTo(p[0] - 6, p[1] - 7); X.lineTo(p[0] + 6, p[1] - 7); X.lineTo(p[0], p[1]); X.closePath(); X.fill();
+    if (human) { X.font = '700 11px Orbitron, system-ui, sans-serif'; X.fillText(state.seats[o.index].handle, p[0], p[1] - 12); }
+    X.globalAlpha = 1;
+  }
+  drawMap(X, v);
+  X.restore();
+}
+function drawMap(X, v) {
+  const R = v.rect, S = law.ARENA_SIZE;
+  const m = Math.round(clamp(Math.min(R.w, R.h) * 0.27, 92, 190));
+  const topPad = R.y < 10 ? 56 : 10;
+  const x0 = R.x + R.w - m - 12, y0 = R.y + topPad;
+  if (v === views[0]) placeChrome(y0 + m);
+  X.save();
+  X.beginPath(); roundRect(X, x0, y0, m, m, 10); X.fillStyle = 'rgba(3,6,11,0.72)'; X.fill();
+  X.strokeStyle = 'rgba(36,80,122,0.9)'; X.lineWidth = 1; X.stroke();
+  X.clip();
+  const team = teamOf(v) || (state.cycles[v.watch] ? state.cycles[v.watch].team : 'blue');
+  const rot = SET.map === 'turns' ? v.yaw - Math.PI / 2 : (team === 'gold' ? Math.PI : 0);
+  const k = m / (S * 1.1), px = 1 / k;
+  X.translate(x0 + m / 2, y0 + m / 2); X.rotate(rot); X.scale(k, -k); X.translate(-S / 2, -S / 2);
+  X.strokeStyle = 'rgba(54,201,255,0.1)'; X.lineWidth = px;
+  X.beginPath(); for (let i = 50; i < S; i += 50) { X.moveTo(i, 0); X.lineTo(i, S); X.moveTo(0, i); X.lineTo(S, i); } X.stroke();
+  X.strokeStyle = 'rgba(54,201,255,0.6)'; X.lineWidth = 1.5 * px; X.strokeRect(0, 0, S, S);
+  for (const z of [state.zones.blue, state.zones.gold]) {
+    if (z.r <= 0) continue;
+    X.beginPath(); X.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+    X.fillStyle = z.team === 'blue' ? 'rgba(68,136,255,' + (0.12 + z.conquest * 0.12) + ')' : 'rgba(255,255,68,' + (0.1 + z.conquest * 0.12) + ')'; X.fill();
+    X.strokeStyle = HEX[z.team]; X.lineWidth = px; X.stroke();
+    if (z.conquest > 0) { X.beginPath(); X.arc(z.x, z.y, Math.max(0.01, z.r - 3 * px), Math.PI / 2, Math.PI / 2 - Math.PI * 2 * z.conquest, true); X.strokeStyle = HEX[z.team === 'blue' ? 'gold' : 'blue']; X.lineWidth = 3 * px; X.stroke(); }
+  }
+  const stay = law.WALLS_STAY_UP_DELAY * TPS;
+  X.lineCap = 'butt';
+  for (const c of state.cycles) {
+    if (!c.walls.length) continue;
+    X.globalAlpha = c.alive ? 0.95 : Math.max(0.15, 1 - (state.tick - c.diedAt) / stay);
+    X.beginPath(); for (const w of c.walls) { X.moveTo(w.x1, w.y1); X.lineTo(w.x2, w.y2); }
+    X.strokeStyle = HEX[c.team]; X.lineWidth = 1.3 * px; X.stroke();
+  }
+  X.globalAlpha = 1;
+  // the view's reach, from the rider it rides with
+  const wc = state.cycles[v.watch];
+  if (wc && wc.alive && v.frame) {
+    const half = Math.atan(v.frame.tanX), L = 140;
+    const ang = v.inside ? v.yaw : Math.atan2(-v.frame.f[2], v.frame.f[0]);
+    X.beginPath(); X.moveTo(wc.x, wc.y); X.lineTo(wc.x + Math.cos(ang + half) * L, wc.y + Math.sin(ang + half) * L); X.lineTo(wc.x + Math.cos(ang - half) * L, wc.y + Math.sin(ang - half) * L); X.closePath();
+    X.fillStyle = 'rgba(230,246,255,0.07)'; X.fill();
+  }
+  for (const c of state.cycles) {
+    if (!c.alive) continue;
+    const me = c.index === v.watch, n = (me ? 9 : 6.5) * px, dx = sim.DX[c.dir], dy = sim.DY[c.dir];
+    X.beginPath(); X.moveTo(c.x + dx * n * 1.5, c.y + dy * n * 1.5); X.lineTo(c.x - dx * n - dy * n * 0.8, c.y - dy * n + dx * n * 0.8); X.lineTo(c.x - dx * n + dy * n * 0.8, c.y - dy * n - dx * n * 0.8); X.closePath();
+    X.fillStyle = HEX[c.team]; X.fill();
+    if (me) { X.beginPath(); X.arc(c.x, c.y, 2.2 * px, 0, Math.PI * 2); X.fillStyle = '#fff'; X.fill(); }
+    else if (!state.seats[c.index].bot) { X.beginPath(); X.arc(c.x, c.y, 11 * px, 0, Math.PI * 2); X.strokeStyle = HEX[c.team]; X.lineWidth = px; X.stroke(); }
+  }
+  X.restore();
+}
+let chromeAt = '';
+function placeChrome(mapBottom) {
+  const narrow = innerWidth < 640, want = narrow ? Math.round(mapBottom + 10) + 'px' : '';
+  if (want === chromeAt) return; chromeAt = want;
+  const el = $('chrome');
+  el.style.top = want; el.style.bottom = narrow ? 'auto' : ''; el.style.flexDirection = narrow ? 'column' : ''; el.style.alignItems = narrow ? 'flex-end' : '';
+}
+function roundRect(X, x, y, w, h, r) { X.moveTo(x + r, y); X.arcTo(x + w, y, x + w, y + h, r); X.arcTo(x + w, y + h, x, y + h, r); X.arcTo(x, y + h, x, y, r); X.arcTo(x, y, x + w, y, r); X.closePath(); }
+
+/* ── for a look under the hood, and for the checks ── */
+window.fotronic3d = {
+  get views() { return views; }, get state() { return state; }, SET, setView, sync: syncCamUi,
+  advance(n) { for (let i = 0; i < n && state; i++) { for (const e of sim.botEvents(state)) transport.send(e); snapshot(); sim.step(state); if (news(state.news)) break; } },
+  get G() { return G; }, hashOf,
+  get dbg() { return { ptN, wallN, glows: GLOWS.length, parts: parts.length, pointRange: gl ? Array.from(gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)) : null }; }
+};
+
+attract();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
