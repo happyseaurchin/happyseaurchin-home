@@ -20,6 +20,9 @@ const BLOCKS = {
   'pool:alley': { _: 'The room of alley.', 1: { _: '29 rats squashed in the alley of Monday', 1: 'Julie J, a visitor', 2: DAY, 3: '2026-10-26T10:00:00Z', 7: 'ra1.' + DAY + '.29.31.x' }, 2: { _: '11 rats squashed in the alley of Monday', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T10:05:00Z', 7: 'ra1.' + DAY + '.11.40.y' }, 3: { _: 'fun but my thumb hurts', 1: 'Stacey, a visitor', 2: DAY, 3: '2026-10-26T10:06:00Z' } },
   'pool:sky': { _: 'The room of sky.', 1: { _: '12 bats in the sky of Monday', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T09:00:00Z', 7: 'bs3.' + DAY + '.12.x' }, 2: { _: '14 bats in the sky of Monday', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T09:10:00Z', 7: 'bs3.' + DAY + '.14.y' }, 3: { _: '9 bats in the sky of Sunday', 1: 'Soraya, a visitor', 2: '2026414400', 3: '2026-10-25T09:10:00Z', 7: 'bs3.2026414400.9.z' } },
   'pool:chat': { _: 'A parlour.', 1: { _: 'hello', 1: 'someone', 3: '2026-10-26T09:00:00Z' } },
+  // a law that rides no ghost, its line beneath the board line as the beach subnests one (Coil's, 24 Nov 2026)
+  'function:ride': { _: 'THE LAW of ride.', 1: 'mode: game', 3: 'room: pool:ride', 4: { _: 'board: RODE, highest first, best per player', 1: 'ghost: none — the page rides no ghost and reads no ?ghost=' }, 6: 'page: https://example.org/ride' },
+  'pool:ride': { _: 'The room of ride.', 1: { _: 'RODE 42 · 0:07 · tube 2.4 s', 1: 'ann, a visitor', 2: DAY, 3: '2026-10-26T10:00:00Z', 7: 'co1.x' }, 2: { _: 'RODE 17 · 0:04', 1: 'bob, a visitor', 2: DAY, 3: '2026-10-26T10:05:00Z', 7: 'co1.y' } },
   'pool:ghost-wire': { _: 'The room.', 1: { _: '2.62 s on the wire', 1: 'Darcy, a visitor', 2: DAY, 3: '2026-10-26T09:45:10Z', 7: 'gw1.' + DAY + '.157.AAA', 8: '32' }, 2: { _: '2.03 s', 1: 'Guest 4821', 2: DAY, 3: '2026-10-26T09:50:00Z', 7: 'gw1.' + DAY + '.122.AAA' }, 3: { _: '2.50 s', 1: 'Phenomemental, a visitor', 2: DAY, 3: '2026-10-26T10:00:00Z', 5: 'Guest 4821', 7: 'gw1.' + DAY + '.150.AAA' }, 4: { _: 'a note', 1: 'Jenna, a visitor', 2: DAY, 3: '2026-10-26T10:01:00Z' } }
 };
 // 'old' wrote at the week's address, which the day's board does not gather upward; cat's line stands only at the day
@@ -68,6 +71,11 @@ b = await boardOf('sky', NOW);
 check('a room of runs whose law does not stand is answered unranked: no order, the day\'s runs and players counted, its lines', b && b.ranked === false && b.law === null && b.top.length === 0 && b.runs === 2 && b.players === 1 && b.recent.length === 3 && b.room === 'pool:sky', b);
 b = await boardOf('chat', NOW);
 check('a room that keeps no runs, and no law, is no game\'s', b === null, b);
+
+console.log('\na law that rides no ghost');
+b = await boardOf('ride', NOW);
+check('a law saying \'ghost: none\' beneath its board line is answered ghost: false, its board line read as ever', b && b.ghost === false && b.board === 'RODE, highest first, best per player' && b.source === 'room' && b.top.map((r) => r.name + ' ' + r.score + ' ' + r.slot).join('|') === 'ann 42 1|bob 17 2', b);
+check('…and a law that says nothing of a ghost is answered ghost: true, the room\'s runs raced as ways:plug 3.7 says', (await boardOf('bats', NOW)).ghost === true && (await boardOf('ghost-wire', NOW)).ghost === true, null);
 
 console.log('\nthe door');
 let r = await call({ game: 'wire' });
