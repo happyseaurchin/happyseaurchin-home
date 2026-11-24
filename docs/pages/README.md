@@ -27,6 +27,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [components](components.md) | `components/` + `docs/components/` | numbered component inventory — HTML pages + source `.md` files, fed by the ingest pipeline |
 | [corkboard](corkboard.md) | `corkboard.html` | every proposal on one board, laid out by what it shares (20 Nov 2026, lane review.1), at `/corkboard`: the shared board is the block `corkboard`, each person's own `corkboard:<handle>` |
 | [dashboard](dashboard.md) | `dashboard/` | the beach dashboard — keel's claude.ai dashboard (`dash.js`, near-verbatim) on a small runtime (`runtime.js`) that reads the census, the `presence` bl… |
+| [decision-block](decision-block.md) | `decision-block.html` | the Decision Block proposal (23 Nov 2026), at `/decision-block`, its snazzy view (`/proposal/decision-block` is its standard view): the scope of the block a run-up is walked through, for Convo, drawn as a signal box's route panel with an assembler to lay the block out, walk it and keep one's cut |
 | [determinacy](determinacy.md) | `determinacy.html` | the determinacy inquiry (15 Nov 2026), at `/determinacy`, its snazzy view, which its law names at 6 (`/proposal/determinacy` is its standard view, dra… |
 | [door-js](door-js.md) | `door.js` | the door, ‘with your AI’ (15 Nov 2026, lane o-page-unit.3; |
 | [experience-first](experience-first.md) | `experience-first.html` | Experience first (20 Nov 2026, lane experience.1), at `/experience-first`, its snazzy view, which its law names at 6 (`/proposal/experience-first` is … |
