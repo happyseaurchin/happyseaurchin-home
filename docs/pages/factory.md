@@ -1,6 +1,6 @@
 # `factory.html`
 
-The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who might water the garden, the investors at `outreach:keel` 5 (UK early-stage capital) and 6 (beyond the UK), placed at the bed each would feed, the soil, the middle or the flowers. David's word that day: 'ensure it is plugged into the beach well -- it should only be visible by you, keel, me (happyseaurchin)'. keel made the look the same day as a snapshot with every row written into the file; this page is that file (56,799 bytes, sha256 `345217f5…c84a21`) with its data taken out and nothing written in its place. Its rows are read from `outreach:keel` on every visit, where each one is sealed in `colour:outreach`, and are opened in the reader's browser through the beach's voice (`siteVoice`: `open`, `grey` and `wear`). So the page opens for the colour's holders and nobody else: at turn 2, happyseaurchin, keel and weft. The repo is public, so no row, name or door ever enters it, not even in the first commit.
+The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who might water the garden, the investors at `outreach:keel` 5 (UK early-stage capital) and 6 (beyond the UK), placed at the bed each would feed, the soil, the middle or the flowers. David's word that day: 'ensure it is plugged into the beach well -- it should only be visible by you, keel, me (happyseaurchin)'. keel made the look the same day as a snapshot with every row written into the file; this page is that file (56,799 bytes, sha256 `345217f5…c84a21`) with its data taken out and nothing written in its place. Its rows are read from `outreach:keel` on every visit, where each one is sealed in `colour:outreach`, and are opened in the reader's browser through the beach's voice (`siteVoice`: `open`, `grey` and `wear`). So the page opens for the colour's holders and nobody else: at turn 4, happyseaurchin, keel and weft. The repo is public, so no row, name or door ever enters it, not even in the first commit.
 
 **What it reads.** It reads the two blocks with plain `fetch`, which carries the pass:
 
@@ -13,16 +13,12 @@ The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who m
 - **The key goes on but still opens nothing.** The page says the colour keeps no copy for that handle, and names whose copies it does keep.
 - **Some rows open.** It draws keel's whole page from the rows that opened, and lists the rest as sealed.
 
-**A passphrase of the page's own** (24 Nov 2026, David: 'i don't mind using a different passphrase if one has been created especially for that page'). David's usual key does not derive the keys at `passport:happyseaurchin` 9, and nor does his connector's (a read through it stays grey). So his copy in the colour opens only with whatever phrase those keys came from, and the voice holds one word per name and uses it for writes too. Typing that phrase here would send it to the beach on the tab's next write, even the ◐'s save of 9.2.
+**One key, one handle** (24 Nov 2026, evening, lane grain-way.1, at David's 'one-key fix … tidy up the mess of the fake identity'). For about an hour the page had a passphrase of its own (#801). It made a separate reading identity, `happyseaurchin-factory`, because the keys at `passport:happyseaurchin` 9 had been made from an older phrase that neither David's usual key nor his connector's could open. The fault was in that one block, not the page:
+- At 17:37Z those keys were made again from David's own key, through his connector.
+- `colour:outreach` was turned to turn 4 for happyseaurchin, keel and weft.
+- Its 50 lines were sealed again in that turn, word for word.
 
-So 'Factory passphrase' makes a reading identity of the reader's own, `<handle>-factory` by default, whose keys the reader makes on this page. It works in four steps:
-
-1. **First time.** The page asks the handle, then the passphrase twice. It creates `passport:<handle>` holding the keys at 9 the passphrase derives, latched under the latch it derives (seal.js `latch`). Nothing but the derived latch and the public halves leaves the browser.
-2. **Kept.** The passphrase is kept wrapped on this device as `seal-word:<handle>` (siteKeys); `factory:reader` names the handle.
-3. **Admitted.** The colour's keeper turns `colour:outreach` with a copy for the handle, and every row is sealed again in the new turn: a turn moves no line, as `outreach:keel` 8.7 says.
-4. **After that.** Each visit opens the rows with that identity's own copy (seal.js `colour.keyOf` and `colour.open`, in the page), with no question asked.
-
-The passphrase opens nothing else and is never a write's key. The device's name (`render:who`) stays as it was, so the voice, every other page and the reader's own keys are untouched. A wrong passphrase is refused in words, and a passport that stands with no keys is never written over.
+With that done, #801 was reverted. The page opens with the reader's own handle and key through the voice, like every other page. `passport:happyseaurchin-factory` still stands, but it opens nothing: no current turn of any colour keeps a copy for it.
 
 **How a line is split.** Each line splits on the labels `outreach:keel` 8.9 names: LEVEL, SECTOR, STANCE, CHURN, Door and Status, with the lead before them. From these it works out:
 
@@ -46,7 +42,7 @@ The passphrase opens nothing else and is never a write's key. The device's name 
 **Checked:**
 
 - The parser was run against keel's snapshot, each line rebuilt from its fields: no difference in any of the 49 rows (name, lead, the six labelled fields, beds, sectors, stances, status, watch), and the 13 headings sentence-cased from the beach's capitals match keel's.
-- In headless Chromium against a local beach (pscale-beach `scripts/local-beach.mjs`), with a made-up `colour:outreach` of two turns, test passports and invented rows, using the page, theme.js and the beach's own voice and seal unchanged: 28 of 28 checks passed, 32 of 32 once the bar was added, and 40 of 40 with the page passphrase.
+- In headless Chromium against a local beach (pscale-beach `scripts/local-beach.mjs`), with a made-up `colour:outreach` of two turns, test passports and invented rows, using the page, theme.js and the beach's own voice and seal unchanged: 28 of 28 checks passed, and 32 of 32 once the bar was added.
   - An unkeyed device sees no name.
   - A wrong key is refused in words.
   - The right key opens every row, and a reload opens them with no question.
@@ -55,11 +51,6 @@ The passphrase opens nothing else and is never a write's key. The device's name 
   - A stranger is told the colour keeps no copy for them.
   - The ◐ turns the register.
   - The loom's go menu shows the outreach tab holding The Factory.
-  - The page passphrase, 40 of 40 with it:
-    - A fresh device makes `happyseaurchin-factory`'s passport with its keys at 9, latched, so a write without its latch is refused.
-    - The device's name stays unset, and the passphrase is kept wrapped, never in the clear.
-    - After the keeper's turn 3 (a copy for each holder and the reading identity, every row sealed again in it), the same device opens all seven rows with no question.
-    - A wrong page passphrase is refused in words.
   - On this page, since the bar: 'options' holds 'addresses' and ◐, and both still work from inside it. 'go' stands beside it. The hand's own tab lists 'the factory' marked as here, from a list whose last rung is a bare line, as a point write leaves one. The outreach tab holds The Factory.
   - No sideways scroll on a phone, and no script error.
 - Against the live beach, unkeyed: 49 rows sealed under the same 11 headings, and the holders read from the colour.
