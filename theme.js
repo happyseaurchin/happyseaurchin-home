@@ -1606,6 +1606,10 @@
      * own board, corkboard:<handle>, so it takes no handle in its path (David, 2026-11-20, review.1: "Add to personal
      * list and site list"; "Can't find it on any list") */
     ['corkboard',    'corkboard', 'bare'],
+    /* keel's register of who might water the garden: it carries no row, and opens the rows sealed in colour:outreach in
+     * the reader's own browser for the colour's holders alone, so it stands without a handle and is off until chosen
+     * (David, 2026-11-24, money.1: "can you add this to my personal list for happyseaurchin go please") */
+    ['the factory',  'factory',  'bare'],
     /* the hand's record drawn as threads through the days, each turn's pull requests, pages, documents and
      * apps a link; /lanes/<hand>+<hand> lays several side by side (David, 2026-10-20: "a simple visual for
      * the lanes/sessions we are operating with; and allows others to attach theirs") */
@@ -1623,7 +1627,7 @@
     ['earth',            'earth',        'optional']
   ];
   /* off until chosen — every other door is what a newcomer meets */
-  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, lanes:1, corkboard:1, 'https://mirror.onen.ai/':1 };
+  var DOORS_OFF = { next:1, morning:1, ledger:1, across:1, earth:1, connect:1, lanes:1, corkboard:1, factory:1, 'https://mirror.onen.ai/':1 };
   /* a page renamed keeps the lists that named it */
   var DOOR_ALIAS = { shell:'passport', self:'passport' };
   /* who you do it with: the door in, and the live surface where people actually
