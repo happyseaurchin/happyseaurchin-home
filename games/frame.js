@@ -48,4 +48,10 @@
       }
     } catch (err) {}
   });
+  /* the beach's side of the game, around it and never inside it (24 Nov 2026, lane coil.1): /games/wrap.js lays a handle on
+   * this page's left edge and the drawer it opens (share, your AI, the game's room, today's board); it reads no message
+   * from the frame, and nothing it loads reaches into the game */
+  var wrap = document.createElement('script');
+  wrap.src = '/games/wrap.js'; wrap.setAttribute('data-game', GAME); wrap.async = true;
+  document.body.appendChild(wrap);
 })();
