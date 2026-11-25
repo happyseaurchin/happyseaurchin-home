@@ -25,6 +25,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [character-sheets](character-sheets.md) | `character-sheets.html` | the character-sheets proposal (22 Oct 2026), at `/character-sheets`: |
 | [coloured-stigmergy](coloured-stigmergy.md) | `coloured-stigmergy.html` | the coloured-stigmergy proposal (26 Oct 2026), at `/coloured-stigmergy`: |
 | [common-ground](common-ground.md) | `common-ground.html` | the Common ground proposal (18 Nov 2026), at `/common-ground`, its snazzy view, which its law names at 6 (`/proposal/common-ground` is its standard vi… |
+| [commons](commons.md) | `commons.html` | the beach's commons (25 Nov 2026, lane credits.apps.1), at `/commons`: money paid into it becomes credits at the moment of payment, everyone's by their four-column XP (contract three), paying for an answer on the shared key for someone with no AI of their own; drawn from `/api/commons` |
 | [components](components.md) | `components/` + `docs/components/` | numbered component inventory — HTML pages + source `.md` files, fed by the ingest pipeline |
 | [corkboard](corkboard.md) | `corkboard.html` | every proposal on one board, laid out by what it shares (20 Nov 2026, lane review.1), at `/corkboard`: the shared board is the block `corkboard`, each person's own `corkboard:<handle>` |
 | [dashboard](dashboard.md) | `dashboard/` | the beach dashboard — keel's claude.ai dashboard (`dash.js`, near-verbatim) on a small runtime (`runtime.js`) that reads the census, the `presence` bl… |
