@@ -251,14 +251,21 @@ export default async function handler(req, res) {
   if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(family)) return res.status(400).json({ error: 'not a family name' });
   const at = q.at ? new Date(String(q.at)) : new Date();
   if (isNaN(at.getTime())) return res.status(400).json({ error: 'at is not a moment (ISO 8601)' });
-  const credits = q.credits === undefined ? null : Number(q.credits);
+  const given = q.credits ?? q.n;                       // a machine names the credits n
+  const credits = given === undefined ? null : Number(given);
   if (credits !== null && !(Number.isFinite(credits) && credits >= 0 && credits <= 1e9)) return res.status(400).json({ error: 'credits is not a whole number' });
   try {
     const xp = await xpOf(family, at);
-    const supporter = String(q.supporter ?? q.buyer ?? '');   // a machine may name the payer as buyer
-    if (supporter && !/^[A-Za-z0-9_.-]{2,64}$/.test(supporter)) return res.status(400).json({ error: 'supporter is not a handle' });
-    if (credits !== null) {
-      xp.shares = shareOut(xp, credits, supporter);
+    /* the payer, as a machine names them (buyer=): a supporter who takes part keeps the law's share; a quiet one buys for
+       the family's fund (fund:<family>), is named nowhere and keeps nothing, every credit going on */
+    const payer = String(q.supporter ?? q.buyer ?? '');
+    if (payer && !/^(fund:)?[A-Za-z0-9_.-]{2,64}$/.test(payer)) return res.status(400).json({ error: 'supporter is not a handle' });
+    const supporter = payer.startsWith('fund:') ? '' : payer;
+    {
+      /* a machine reading its split calls this address bare or with n: the split is always answered, on the scale of
+         the credits named, else of a million, which a machine splits by share to the cent */
+      xp.shares = shareOut(xp, credits === null ? 1e6 : credits, supporter);
+      if (credits === null) xp.shares.scale = 'a million, as shares';
       /* the split a ticket machine reads at the moment of payment ({ split: { <handle>: credits } }, the machine's
          credits.to as an https:// address): whole credits that sum to N, the supporter's own share and the commons
          among them, so the machine gives exactly what it is told and nothing is left over */

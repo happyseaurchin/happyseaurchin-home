@@ -70,6 +70,12 @@ check('…and a few credits still sum exactly, the same way for anyone', one.by.
 
 const r = await call({ family: 'fund', at: NOW.toISOString(), credits: '1000', supporter: 'eve' });
 check('the door answers with the columns, the shares and the split a machine reads, summing to the credits', r.code === 200 && r.body.shares && r.body.shares.credits === 1000 && r.body.shares.supporter.credits === 300 && r.body.beat === '2026424471' && Object.values(r.body.split).reduce((a, b) => a + b, 0) === 1000 && r.body.split.eve === 300, r.body && { beat: r.body.beat, shares: r.body.shares && r.body.shares.credits });
+const bare = await call({ family: 'fund' });
+check('called bare, as a machine calls its split, it still answers the split, on a scale of a million', bare.code === 200 && Object.values(bare.body.split).reduce((a, b) => a + b, 0) === 1e6 && bare.body.shares.scale, bare.body && bare.body.split);
+const quiet = await call({ family: 'fund', n: '100', buyer: 'fund:fund' });
+const named = await call({ family: 'fund', n: '100', buyer: 'eve' });
+check('a machine\'s n and buyer are read: a quiet supporter (fund:) keeps nothing, one who takes part keeps the law\'s share',
+  quiet.code === 200 && !('fund:fund' in quiet.body.split) && quiet.body.shares.supporter === null && named.body.split.eve === 30 && Object.values(named.body.split).reduce((a, b) => a + b, 0) === 100, { q: quiet.body && quiet.body.split, n: named.body && named.body.split });
 check('a name that is no family, a moment that is no moment and credits that are no number are refused',
   (await call({ family: 'No Such' })).code === 400 && (await call({ family: 'fund', at: 'soon' })).code === 400 && (await call({ family: 'fund', credits: '-3' })).code === 400 && (await call({ family: 'fund', credits: '5', supporter: 'no one' })).code === 400);
 
