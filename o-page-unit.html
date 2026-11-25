@@ -729,6 +729,7 @@ details.phase1 .hero { padding-top: 6px; }
 .sup-mine h4 { margin: 0; }
 .sup-mine p { margin: 0; font-size: .9rem; color: var(--n-ink-2); }
 .sup-mine p b { color: var(--n-ink); }
+.support code.sup-id { font: .78rem var(--mono); overflow-wrap: anywhere; color: inherit; }
 .support button.pbtn:disabled { opacity: .45; cursor: default; }
 </style>
 </head>
@@ -855,7 +856,7 @@ details.phase1 .hero { padding-top: 6px; }
 <p class="sup-note" id="supNote" aria-live="polite"></p>
 </div>
 <div class="sup-mine" id="supMine" hidden></div>
-<p class="fig-note">Test mode: Stripe’s test card moves no money, and every credit here is a test credit, read from the test issuer’s own book, which only its machine writes (<span class="addr">credits:test-support-tickets</span>; the wallets’ rules at <span class="addr">pool:experience-points 2</span>). Live money waits on David.</p>
+<p class="fig-note">Test mode: Stripe’s test card moves no money, and every credit here is a test credit, read from the test issuer’s own book, which only its machine writes (<code class="sup-id">credits:test-support-tickets</code>; the wallets’ rules at <code class="sup-id">pool:experience-points 2</code>). Live money waits on David.</p>
 </section><div class="rooms"><details class="room"><summary><h3 data-sp="1.1111111112" data-part="title">The ask and the pledge</h3><span class="addr">1.1111111112</span></summary><div class="in"><p data-sp="1.1111111112" data-part="body">The phase&#x27;s funding decision is written in words of its own, &#x27;DECIDE — &lt;what the money is for&gt;: £&lt;the line&gt; by &lt;the date&gt;, paid to &lt;whom&gt;? PLEDGE or NOT YET.&#x27;, its law&#x27;s 2 saying what each word does; a pledge is a line in the pledger&#x27;s own reading at that address, &#x27;PLEDGE £20 — why&#x27;. A pledge said again replaces the last, and NOT YET takes it back. A worked example, every number invented: a phase asks £300 by 30 November, paid to its keeper; four pledges of £50 to £100 reach the line, its decisions stand, and each of the four is then asked to pay.</p></div></details><details class="room"><summary><h3 data-sp="1.1111111113" data-part="title">Paid at the quorum</h3><span class="addr">1.1111111113</span></summary><div class="in"><p data-sp="1.1111111113" data-part="body">The beach&#x27;s ticket machine already takes any amount (services 4, the founding supporters) and sells a ticket for a named product (services 6, the arcade&#x27;s plug at £5). A phase that asks for money becomes one product there, named in its law, and once the page says the quorum is met each pledger pays there; the keeper reads each pledger&#x27;s ticket on the beach as the arcade reads a maker&#x27;s (happyseaurchin-home scripts/plug-ticket.mjs). Until the product stands at the machine, pledges are counted and nobody pays.</p></div></details><details class="room"><summary><h3 data-sp="1.1111111114" data-part="title">Credit</h3><span class="addr">1.1111111114</span></summary><div class="in"><p data-sp="1.1111111114" data-part="body">David at 1.11118: &#x27;It might need credit investment, with threshold.&#x27; The beach&#x27;s own credit is SAND&#x27;s: minted only when a credit-bearing ticket is bought (payway 2.2), carried as receipts at a passport&#x27;s 6.2 and gifts at its 6.3 (sand-v2), and checked by pscale_verify_rider. A pledge could be paid in that credit as well as in pounds; no phase has been paid that way yet.</p></div></details><details class="room"><summary><h3 data-sp="1.1111111115" data-part="title">Who pays at scale</h3><span class="addr">1.1111111115</span></summary><div class="in"><p data-sp="1.1111111115" data-part="body">Nobody central: each phase&#x27;s money goes from its pledgers through Stripe to whoever its law names, and the beach keeps only the pledge lines, each in its pledger&#x27;s own reading, and the tickets.</p></div></details></div><div class="decide p2d" id="d-11111111118" data-at="1.1111111118" data-words="TICKETS,CREDIT,BOTH,NOT YET" data-waits="happyseaurchin"><div class="dtop"><span class="tag">Decide<span class="addr">1.1111111118</span></span><span class="who" data-dec="1.1111111118" data-part="who">asks David, and James and Matthew, then anyone</span></div><p class="q" data-dec="1.1111111118" data-part="q">Let a phase ask for money as pledges against a line, paid only once its quorum is met, by ticket, by the beach&#x27;s own credit, or both?</p><p class="ongo"><b>On TICKETS, CREDIT or BOTH</b>, a phase may ask for money as pledges against a line, paid that way once its quorum is met; nobody pays before.</p></div>
 
 <div class="step-readings"><h4>Readings of this part</h4><ul></ul></div></div></div></section>
@@ -3067,15 +3068,18 @@ details.phase1 .hero { padding-top: 6px; }
   /* ── who funds it: every support counted, the named ones by their own line, credits by whom they reached ── */
   function whoFunds() {
     return Promise.all([block('credits:' + ISSUER), getJSON('/api/mirrors?family=' + FAM).catch(function () { return null; })]).then(function (got) {
-      return batches(linesOf(got[0])).then(function (bs) {
-        var mirrors = (got[1] && got[1].mirrors) || {}, named = [], reached = {}, total = 0;
+      var mirrors = (got[1] && got[1].mirrors) || {}, said = [];
+      Object.keys(mirrors).forEach(function (h) {
+        var t = textOf(nodeAt(mirrors[h], AT));
+        if (/^SUPPORT\b/.test(t)) said.push({ h: h, line: t.replace(/^SUPPORT\s*[—–-]?\s*/, '') });
+      });
+      /* a ticket's grain is the pair of the issuer and whoever it was bought in the name of: the fund's for a quiet one,
+         the supporter's own where they took part, so a funder's line is checked against a ticket of their own */
+      return Promise.all([batches(linesOf(got[0])), pairOf(ISSUER, FUND)].concat(said.map(function (x) { return pairOf(ISSUER, x.h); }))).then(function (r) {
+        var bs = r[0], fundPair = 'grain:' + r[1], named = [], reached = {}, total = 0;
         bs.forEach(function (b) { total += b.total; b.out.forEach(function (l) { reached[l.to] = (reached[l.to] || 0) + l.n; }); });
-        Object.keys(mirrors).forEach(function (h) {
-          var t = textOf(nodeAt(mirrors[h], AT));
-          if (!/^SUPPORT\b/.test(t)) return;
-          named.push({ h: h, line: t.replace(/^SUPPORT\s*[—–-]?\s*/, ''), paid: bs.some(function (b) { return b.own && b.own.to === h; }) });
-        });
-        var quiet = bs.filter(function (b) { return !b.own; }).length, el = $('supWho');
+        said.forEach(function (x, i) { var g = 'grain:' + r[i + 2]; named.push({ h: x.h, line: x.line, paid: bs.some(function (b) { return b.from === g; }) }); });
+        var quiet = bs.filter(function (b) { return b.from === fundPair; }).length, el = $('supWho');
         if (!bs.length && !named.length) { el.innerHTML = '<p class="fine">Nobody has supported this phase yet, not even in test mode.</p>'; return bs; }
         var html = '<p>' + bs.length + ' support' + (bs.length === 1 ? '' : 's') + ' so far, ' + fmt(total) + ' test credits made' + (quiet ? ', ' + quiet + ' given quietly' : '') + '.</p>';
         if (named.length) html += '<ul>' + named.map(function (x) {
@@ -3169,20 +3173,24 @@ details.phase1 .hero { padding-top: 6px; }
     var b = bs.filter(function (x) { return x.id === id; })[0], mine = $('supMine');
     mine.hidden = false;
     if (!b) { mine.innerHTML = '<h4>Your support</h4><p>Your ticket is with the test machine; its credits aren’t in the book yet. This page reads again in a moment.</p>'; setTimeout(function () { whoFunds().then(record); }, 4000); return; }
-    var own = b.own, out = Math.round((b.total - (own ? own.n : 0)) * 100) / 100;
+    pairOf(ISSUER, FUND).then(function (fp) { recordOf(b, id, 'grain:' + fp !== b.from); });
+  }
+  function recordOf(b, id, named) {
+    var mine = $('supMine'), own = b.own, buyer = own ? own.to : named ? (clean($('supName').value) || who()) : '';
+    var out = Math.round((b.total - (own ? own.n : 0)) * 100) / 100;
     var html = '<h4>Your support</h4><p>At ' + esc(new Date(b.when).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })) + ' your ticket became <b>' + fmt(b.total) + ' test credits</b>' +
-      (own ? ': <b>' + fmt(own.n) + '</b> to you (' + esc(own.to) + '), to take part and gift with, and ' : ', all of them ') +
+      (own ? ': <b>' + fmt(own.n) + '</b> to you (' + esc(own.to) + '), to take part and gift with, and ' : named ? ' in your name, none of them kept by you (the law names no supporter’s share yet), and ' : ', given quietly, all of them ') +
       '<b>' + fmt(out) + '</b> shared at once by the four columns as they stood at that moment.</p>' +
       '<div class="sup-cols" id="supThen"><p class="fine">Reading the columns as they stood…</p></div>' +
-      '<p class="fine">Your record: your ticket’s id, <span class="addr">' + esc(id) + '</span>, which only you hold, its lines in the book <span class="addr">credits:' + esc(ISSUER) + '</span>, and the machine’s receipt.</p>';
-    if (own) html += '<label>Your line among its funders<textarea id="supSay"></textarea></label><div class="row"><button type="button" class="pbtn wax" id="supSayGo">Put my line among its funders</button></div><p class="sup-note" id="supSayNote" aria-live="polite"></p>';
+      '<p class="fine">Your record: your ticket’s id, <code class="sup-id">' + esc(id) + '</code>, which only you hold, its lines in the book <code class="sup-id">credits:' + esc(ISSUER) + '</code>, and the machine’s receipt.</p>';
+    if (buyer) html += '<label>Your line among its funders, as ' + esc(buyer) + '<textarea id="supSay"></textarea></label><div class="row"><button type="button" class="pbtn wax" id="supSayGo">Put my line among its funders</button></div><p class="sup-note" id="supSayNote" aria-live="polite"></p>';
     mine.innerHTML = html;
-    getJSON('/api/xp?family=' + FAM + '&at=' + encodeURIComponent(b.when) + '&credits=' + b.total + '&buyer=' + encodeURIComponent(own ? own.to : FUND)).then(function (xp) { drawCols(xp, $('supThen'), own && own.to); }, function () {});
-    if (!own) return;
+    getJSON('/api/xp?family=' + FAM + '&at=' + encodeURIComponent(b.when) + '&credits=' + b.total + '&buyer=' + encodeURIComponent(buyer || FUND)).then(function (xp) { drawCols(xp, $('supThen'), buyer); }, function () {});
+    if (!buyer) return;
     var ta = $('supSay'), clear = window.keepDraft ? window.keepDraft(ta, FAM + ':support:said') : function () {};
     if (window.dictate) window.dictate(ta);
     getJSON('/api/mirrors?family=' + FAM).then(function (d) {
-      var now = textOf(nodeAt(((d && d.mirrors) || {})[own.to] || {}, AT));
+      var now = textOf(nodeAt(((d && d.mirrors) || {})[buyer] || {}, AT));
       if (/^SUPPORT\b/.test(now)) { ta.value = now.replace(/^SUPPORT\s*[—–-]?\s*/, ''); $('supSayGo').textContent = 'Change my line'; }
       else if (!ta.value) ta.value = line.value;
     }, function () { if (!ta.value) ta.value = line.value; });
@@ -3190,7 +3198,7 @@ details.phase1 .hero { padding-top: 6px; }
       var note = $('supSayNote'), text = ta.value.trim();
       note.className = 'sup-note'; note.textContent = 'Saying it on the beach…';
       if (!window.beachVoice) { note.className = 'sup-note err'; note.textContent = 'The beach’s voice didn’t load.'; return; }
-      window.beachVoice.say({ field: FAM, at: AT, text: 'SUPPORT' + (text ? ' — ' + text : ''), name: own.to }).then(function (r) {
+      window.beachVoice.say({ field: FAM, at: AT, text: 'SUPPORT' + (text ? ' — ' + text : ''), name: buyer }).then(function (r) {
         if (!r || !r.ok) { note.className = 'sup-note err'; note.textContent = (r && r.error) || 'Not said.'; return; }
         clear(); clearLine(); note.className = 'sup-note ok'; note.textContent = 'It stands in your own reading, among its funders.';
         $('supSayGo').textContent = 'Change my line';
