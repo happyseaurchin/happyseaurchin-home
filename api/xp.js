@@ -256,11 +256,13 @@ export default async function handler(req, res) {
   if (credits !== null && !(Number.isFinite(credits) && credits >= 0 && credits <= 1e9)) return res.status(400).json({ error: 'credits is not a whole number' });
   try {
     const xp = await xpOf(family, at);
-    /* the payer, as a machine names them (buyer=): a supporter who takes part keeps the law's share; a quiet one buys for
-       the family's fund (fund:<family>), is named nowhere and keeps nothing, every credit going on */
+    /* the payer, as a machine names them (buyer=): a supporter who takes part keeps the law's share; a quiet one buys in
+       the family's fund's own handle (<family>-fund), so neither the ticket nor the book names them, and keeps nothing,
+       every credit going on (a grain is the issuer-and-buyer hash anyone can test against a handle, so only a ticket
+       bought in the fund's name keeps a quiet supporter out of the book: credits.games.1, ticketing-agent #13) */
     const payer = String(q.supporter ?? q.buyer ?? '');
     if (payer && !/^(fund:)?[A-Za-z0-9_.-]{2,64}$/.test(payer)) return res.status(400).json({ error: 'supporter is not a handle' });
-    const supporter = payer.startsWith('fund:') ? '' : payer;
+    const supporter = payer.startsWith('fund:') || payer === family + '-fund' ? '' : payer;
     {
       /* a machine reading its split calls this address bare or with n: the split is always answered, on the scale of
          the credits named, else of a million, which a machine splits by share to the cent */

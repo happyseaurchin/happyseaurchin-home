@@ -2993,14 +2993,16 @@ details.phase1 .hero { padding-top: 6px; }
  * credit. Credits are read from the test issuer's own book, credits:<issuer>, which only its machine writes, one line per
  * recipient per move, in order ({1 id, 2 n, 3 when, 4 point, 5 to, 6 from, 7 warrant}; pscale-commons/ticketing-agent #13,
  * credits.games.1), the wallets' rule at pool:experience-points 2. A supporter who takes part buys in their own name; one
- * who supports quietly buys for the family's fund, fund:<family>, so no line anywhere names them. Reads, and one say: a
+ * who supports quietly buys in the family's fund's own handle, <family>-fund, so no line anywhere names them. Reads, and one say: a
  * supporter who took part may put their own line among its funders, 'SUPPORT — …', in their own reading at the funding
  * address, the box starting from what they already said there (CLAUDE.md rule 6). Nothing else is written from here. */
 (function () {
   'use strict';
   var box = document.getElementById('support'); if (!box) return;
-  var FAM = 'o-page-unit', AT = '1.111111111', ISSUER = 'test-support-tickets', FUND = 'fund:' + FAM;
-  var RATE = 10;    /* test credits a pound, the games lane's own: provisional, the machine's setting and David's to set */
+  var FAM = 'o-page-unit', AT = '1.111111111', ISSUER = 'test-support-tickets', FUND = FAM + '-fund';
+  var RATE = 10;    /* test credits a pound until the machine's own terms say otherwise: the ticket carries the rate (its product's
+                       credits n or per_pound, read from GET /share/<product> as JSON), provisional and David's to set */
+  var TERMS = {};
   var BEACH = 'https://beach.happyseaurchin.com/.well-known/pscale-beach';
   var POTS = [['players', '★', 'Its contributors', 'answers, room lines and knots on its threads'],
               ['bringers', '♥', 'Who brought them', 'answering someone’s share of it on the String'],
@@ -3114,7 +3116,18 @@ details.phase1 .hero { padding-top: 6px; }
   }
 
   /* ── the form: how much, how, and the way to the test machine ── */
+  /* the ticket's own terms, where a test machine is named: its credits per pound and the issuer whose book keeps them */
+  function terms(product) {
+    if (!MACHINE) return Promise.resolve(null);
+    if (TERMS[product] !== undefined) return Promise.resolve(TERMS[product]);
+    return getJSON(MACHINE + '/share/' + encodeURIComponent(product)).then(function (t) { TERMS[product] = t; return t; }, function () { TERMS[product] = null; return null; });
+  }
   function paint() {
+    var product = FAM + '-support-' + amt;
+    terms(product).then(function (t) {
+      var c = t && t.credits, r = c ? (c.per_pound || (c.n ? c.n / amt : 0)) : 0;
+      if (r && r !== RATE) { RATE = r; paint(); }
+    });
     box.querySelectorAll('[data-amt]').forEach(function (b) { b.setAttribute('aria-pressed', String(Number(b.getAttribute('data-amt')) === amt)); });
     box.querySelectorAll('[data-part]').forEach(function (b) { b.setAttribute('aria-pressed', String((b.getAttribute('data-part') === '1') === part)); });
     $('supPart').hidden = !part;
