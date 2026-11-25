@@ -101,6 +101,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [schematics-proposal](schematics-proposal.md) | `schematics-proposal.html` | the schematics proposal (28 Oct 2026), at `/schematics-proposal` (since 29 Oct 2026, when `/schematics` became the map of maps, a redirect in `vercel.… |
 | [scripts](scripts.md) | `scripts/` | inventory pipeline (active) + legacy beach ops (read the warnings) |
 | [security-schematic](security-schematic.md) | `security-schematic.html` | the security schematic's crafted page (5 Nov 2026, lane systemic.1), at `/security-schematic`, its Snazzy view once its law names it at 6 (`/schematic… |
+| [shore](shore.md) | `shore.html` | the Shore page (25 Nov 2026), at `/shore`, the working page of the family Shore, which its law names at 6 once this page is live (`/proposal/shore` is… |
 | [stage](stage.md) | `stage.html` | the people's stage (20 Oct 2026), at `/stage/<family>` (a rewrite in `vercel.json`; |
 | [sticky-maths](sticky-maths.md) | `sticky-maths.html` | sticky maths (15 Nov 2026), at `/sticky-maths`, its snazzy view, which its law names at 6 (`/proposal/sticky-maths` is its standard view, drawn from i… |
 | [string](string.md) | `string.html` | the String (27 Oct 2026, lane string.2; |
