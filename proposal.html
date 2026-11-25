@@ -200,6 +200,12 @@
   .chain .ch-w{color:var(--vapour-dim)}
   /* builder's layer (theme.js siteBuilder): what people have said about a part, shown only in builder mode */
   .answers li.relayed{opacity:0.82}
+  #tables .ktable{border:1px solid var(--line-strong);border-radius:var(--radius,8px);padding:0.9rem 1rem;margin:0.8rem 0;background:rgba(var(--card-rgb),0.5)}
+  #tables .ktable h3{margin:0 0 0.2rem}
+  #tables .kt-rows{list-style:none;margin:0.6rem 0 0;padding:0;display:grid;gap:0.35rem;font-size:0.95rem;overflow-wrap:anywhere}
+  #tables .kt-head{font-family:var(--mono);font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim);margin-top:0.5rem}
+  #tables .kt-grey{color:var(--vapour-dim);font-family:var(--mono);font-size:12.5px;letter-spacing:0.02em}
+  #tables .kt-act{margin:0.8rem 0 0;display:flex;flex-wrap:wrap;align-items:center;gap:0.6rem}
   .build-under{margin:1rem 0 0.4rem;padding:0.75rem 0.9rem;border:1px dashed var(--line-strong);border-radius:var(--radius,8px);display:grid;gap:0.5rem}
   .build-under .bu-h{font-family:var(--mono);font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
   .build-under .bu-at{margin-left:0.4rem;opacity:0.75}
@@ -596,6 +602,9 @@
         if (op) L.opened = { name: op[1].toLowerCase(), at: op[2] };
       }
       if (p[0] === 9) L.provenance = p[1];
+      /* a keyed table the law names (function:proposal 4, 25 November 2026): 'table: <block> <address> — what it holds' */
+      var tre = /\btable:\s*([a-z][\w:-]*[\w])\s+(\d(?:\.\d+)?)\s*(?:[—–-]\s*([^·;]*))?/gi, tm;
+      while ((tm = tre.exec(p[1]))) { L.tables = L.tables || []; L.tables.push({ block: tm[1], at: tm[2], what: (tm[3] || '').trim().replace(/[.,]+$/, '') }); }
     });
     if (!L.room) L.room = name;
     return L;
@@ -928,9 +937,11 @@
       if (built) parts.push(threadsHTML());
       STEPS.forEach(function (s, i) { parts.push(stepHTML(s, i)); });
       if (!built) parts.push(threadsHTML());
+      if (L.tables && L.tables.length) parts.push(tablesHTML());
       parts.push(besideHTML());
       parts.push(talkHTML());
       $('main').innerHTML = parts.join('');
+      paintTables();
       $('foot').innerHTML = footHTML(page);
       document.querySelectorAll('.decide').forEach(function (card) { wireCard(card); });
       var cf = $('copyFold'), ca = $('copyAsk');
@@ -1057,6 +1068,63 @@
         '<div class="runs-under" data-step="' + esc(s.addr) + '"></div>' +
         '<div class="th-under" data-step="' + esc(s.addr) + '"></div>' +
       '</section>';
+    }
+    /* KEYED TABLES (function:proposal 4): each table the law names, its shape open to everyone, a heading in the open and
+       one grey line for each sealed row, naming its colour and turn; the rows open only in a holder's own browser, through
+       the beach's voice with the key this device keeps for them (theme.js siteVoice: open, grey, wear), as /factory does */
+    function tablesHTML() {
+      return '<section id="tables"><div class="addr">its keyed tables · their shape open, their rows for their holders</div><h2>' +
+        (L.tables.length === 1 ? 'Its table' : 'Its tables') + '</h2>' + L.tables.map(function (t, i) {
+          return '<div class="ktable" id="kt-' + i + '" data-i="' + i + '"><h3>' + esc(t.what ? cap(t.what) : t.block + ' ' + t.at) + '</h3>' +
+            '<p class="addr">at <b>' + esc(t.block) + ' ' + esc(t.at) + '</b></p><div class="kt-body"><p class="empty">Reading the table…</p></div></div>';
+        }).join('') + '</section>';
+    }
+    var KVOICE = null;
+    function paintTables() {
+      if (!L.tables || !L.tables.length) return;
+      (KVOICE || !window.siteVoice ? Promise.resolve(KVOICE) : window.siteVoice().then(function (v) { KVOICE = v; return v; }, function () { return null; })).then(function () {
+        L.tables.forEach(function (t, i) {
+          var box = document.querySelector('#kt-' + i + ' .kt-body'); if (!box) return;
+          readBlock(t.block).then(function (b) {
+            var node = b ? nodeAt(b, t.at) : null;
+            if (!node || typeof node !== 'object') { box.innerHTML = '<p class="empty">Nothing stands at ' + esc(t.block + ' ' + t.at) + ' just now.</p>'; return; }
+            var rows = [];
+            for (var h = 1; h <= 9; h++) {
+              var H = node[String(h)]; if (H == null) continue;
+              if (H && typeof H === 'object' && typeof H._ === 'string' && Object.keys(H).some(function (k) { return /^[1-9]$/.test(k); })) {
+                rows.push({ head: H._ });
+                for (var r = 1; r <= 9; r++) if (H[String(r)] != null) rows.push({ node: H[String(r)] });
+              } else rows.push({ node: H });
+            }
+            var sealed = rows.filter(function (x) { return x.node && typeof x.node === 'object'; });
+            Promise.all(rows.map(function (x) {
+              if (!x.node) return null;
+              if (typeof x.node === 'string') { x.text = x.node; return null; }
+              return (KVOICE ? KVOICE.open(x.node).catch(function () { return null; }) : Promise.resolve(null)).then(function (s) {
+                if (typeof s === 'string') x.text = s; else x.grey = KVOICE ? KVOICE.grey(x.node) : 'a sealed line';
+              });
+            })).then(function () {
+              var shut = rows.filter(function (x) { return x.grey; }).length;
+              box.innerHTML = '<ul class="kt-rows">' + rows.map(function (x) {
+                if (x.head) return '<li class="kt-head">' + rich(cap(textOf(x.head))) + '</li>';
+                return x.text != null ? '<li>' + rich(cap(x.text)) + '</li>' : '<li class="kt-grey">' + esc(x.grey) + '</li>';
+              }).join('') + '</ul>' + (shut ? '<p class="kt-act"><button type="button" class="send kt-key">Open with your key</button> <span class="hint">' +
+                (sealed.length === shut ? shut + ' sealed ' + (shut === 1 ? 'row' : 'rows') + ', open to the colour\u2019s holders' : shut + ' still sealed') + '</span></p>' : '');
+              var k = box.querySelector('.kt-key');
+              if (k) k.onclick = function () {
+                var hint = box.querySelector('.hint');
+                if (!KVOICE) { hint.textContent = 'The beach\u2019s voice did not load, so nothing can be opened here just now.'; return; }
+                var name = (KVOICE.name && KVOICE.name()) || ME || clean(window.prompt('Your handle, to put your key on:') || '');
+                if (!name) { hint.textContent = 'A key is put on under your handle: none given.'; return; }
+                hint.textContent = 'Opening…';
+                KVOICE.wear({ name: name }).then(function (r) {
+                  if (r && r.ok) paintTables(); else hint.textContent = r && r.quiet ? 'Not opened.' : (r && r.error) || 'Not opened.';
+                }, function (e) { hint.textContent = e.message || 'Not opened.'; });
+              };
+            });
+          }, function () { box.innerHTML = '<p class="empty">The table could not be read just now.</p>'; });
+        });
+      });
     }
     function threadsHTML() {
       return '<section id="threads"><div class="addr">the threads · live from the beach</div><h2>Threads</h2><div id="threadsBody"></div></section>';
