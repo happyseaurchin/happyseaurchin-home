@@ -199,6 +199,7 @@
   .chain .ch-link.ch-none{opacity:0.55}
   .chain .ch-w{color:var(--vapour-dim)}
   /* builder's layer (theme.js siteBuilder): what people have said about a part, shown only in builder mode */
+  .answers li.relayed{opacity:0.82}
   .build-under{margin:1rem 0 0.4rem;padding:0.75rem 0.9rem;border:1px dashed var(--line-strong);border-radius:var(--radius,8px);display:grid;gap:0.5rem}
   .build-under .bu-h{font-family:var(--mono);font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
   .build-under .bu-at{margin-left:0.4rem;opacity:0.75}
@@ -643,7 +644,14 @@
     var out = [];
     Object.keys(mirrors || {}).forEach(function (h) {
       var t = voiceOf(nodeAt(mirrors[h], d.at)) || (typeof nodeAt(mirrors[h], d.at) === 'string' ? nodeAt(mirrors[h], d.at) : '');
-      if (t) { var a = parseAnswer(t, d.tokens); a.who = h; a.kind = kindOf(d, a.token); out.push(a); }
+      if (t) {
+        var a = parseAnswer(t, d.tokens); a.who = h; a.kind = kindOf(d, a.token);
+        /* a word given off the beach, recorded by the hand that heard it, 'at <handle>'s word' (function:proposal 3): shown
+           under that person as said in chat, never counted until they say it themselves */
+        var rel = /\bat\s+([A-Za-z0-9_-]+)['’]s\s+word\b/i.exec(a.line || '');
+        if (rel && rel[1].toLowerCase() !== String(h).toLowerCase()) { a.relayed = rel[1]; a.kind = 'none'; }
+        out.push(a);
+      }
     });
     return out.sort(function (a, b) { return (b.who === ME) - (a.who === ME) || a.who.localeCompare(b.who); });
   }
@@ -1127,16 +1135,33 @@
       var who = {};
       DECS.forEach(function (d) {
         var list = answersAt(MIRRORS, d), n = {};
-        list.forEach(function (a) { who[a.who] = 1; if (a.token) n[a.token] = (n[a.token] || 0) + 1; });
+        list.forEach(function (a) { who[a.who] = 1; if (a.token && !a.relayed) n[a.token] = (n[a.token] || 0) + 1; });
         var chips = d.tokens.filter(function (t) { return n[t[0]]; }).map(function (t) { return '<span class="chip ' + t[1] + '">' + esc(t[0]) + ' ' + n[t[0]] + '</span>'; });
         document.querySelectorAll('.tally[data-at="' + d.at + '"]').forEach(function (el) { el.innerHTML = chips.length ? chips.join('') : '<span class="chip none">no answers yet</span>'; });
         var card = $('d-' + d.at.replace('.', '')); if (!card) return;
         ownLine(card, list);
         show(card.querySelector('.reading'), d.at, 'The shared reading');
+        var ownHere = ME ? list.some(function (b) { return b.who === ME && !b.relayed; }) : false;
         card.querySelector('.answers').innerHTML = list.length ? list.map(function (a) {
+          if (a.relayed) {
+            var theirs = ME && ME.toLowerCase() === a.relayed.toLowerCase() && !ownHere;
+            var said = (a.line || '').replace(/^\s*at\s+[A-Za-z0-9_-]+['’]s\s+word\b[\s,.:;—–-]*/i, '');
+            return '<li class="relayed"><span class="chip none">' + esc(a.token || 'NOTE') + '</span><span><span class="name">' + esc(a.relayed) + '</span> · said in chat, recorded by ' +
+              esc(a.who) + (a.line ? ': ' + esc(a.line) : '') + (theirs
+                ? ' <button type="button" class="linkish mkmine" data-tok="' + esc(a.token).replace(/"/g, '&quot;') + '" data-line="' + esc(said).replace(/"/g, '&quot;') + '">say it as mine</button>'
+                : ' <span class="empty">Not counted until they say it here.</span>') + '</span></li>';
+          }
           return '<li class="' + (a.who === ME ? 'mine' : '') + '"><span class="chip ' + a.kind + '">' + esc(a.token || 'NOTE') + '</span>' +
             '<span><span class="name">' + esc(a.who) + '</span>' + (a.line ? ' · ' + esc(a.line) : '') + '</span></li>';
         }).join('') : '<li><span></span><span class="empty">No answers yet. Be the first.</span></li>';
+        /* their own tap: the word and its line put in their own box, said in their own mirror when they send it */
+        card.querySelectorAll('.mkmine').forEach(function (b) {
+          b.onclick = function () {
+            var add = card.querySelector('details.add'); if (add) add.open = true;
+            card.querySelectorAll('.choices button').forEach(function (x) { if (x.getAttribute('data-tok') === b.getAttribute('data-tok') && x.getAttribute('aria-pressed') !== 'true') x.click(); });
+            var box = card.querySelector('textarea'); if (box) { box.value = b.getAttribute('data-line') || ''; box.focus(); }
+          };
+        });
       });
       var note = $('standsNote'), people = Object.keys(who), latest = '';
       Object.keys(TOUCHED).forEach(function (h) { if (who[h] && String(TOUCHED[h]) > latest) latest = TOUCHED[h]; });
