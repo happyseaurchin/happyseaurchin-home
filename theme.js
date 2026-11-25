@@ -3086,7 +3086,8 @@
     /* A COLOUR'S OWN PLACES (the coloured dashboards' step 3, 23 Nov 2026): a colour keeps its list as a hand keeps
      * its own, at lists:colour:<name> 2, and the menu shows it as a tab of its own to a reader whose device holds the
      * colour (the voice's colours: each colour's copy opened with the key this device keeps) and to nobody else, read
-     * once, when the menu first opens. The one so far is admin, David's and weft's. */
+     * once, when the menu first opens. A list with no place draws no tab, and the tabs stand in the order their reads
+     * return; since 25 Nov 2026 (go-menu.1) admin's is the one with places, builders' and outreach's standing empty. */
     var HELD = null, COLOUR_LISTS = {};
 
     function tabRow(){
