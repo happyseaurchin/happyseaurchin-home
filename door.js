@@ -33,8 +33,10 @@
     if (h.getAttribute('data-proposal')) return { name: slug(h.getAttribute('data-proposal')) };
     return null;
   }
-  function who() {
-    try { return String(localStorage.getItem('render:who') || '').replace(/[^A-Za-z0-9_-]/g, ''); } catch (e) { return ''; }
+  /* whose reading it is: the name a page says (a hosted game's frame says the one its player plays under, which the frame
+   * keeps apart from the device's), else the device's own */
+  function who(own) {
+    try { return String(own || localStorage.getItem('render:who') || '').replace(/[^A-Za-z0-9_-]/g, ''); } catch (e) { return ''; }
   }
   function voice(x) { return typeof x === 'string' ? x : x && typeof x._ === 'string' ? x._ : ''; }
 
@@ -170,7 +172,8 @@
     recipe: 'Ask me where I am, then take me through the next step',
     meeting: 'Tell me what was said and what comes next, then help me answer it',
     schematic: 'Explain this part and how it fits the whole, then help me comment where it does not fit',
-    premiere: 'Tell me what it is and how to take part'
+    premiere: 'Tell me what it is and how to take part',
+    game: "Tell me how it is played and what today's board and its room show, then help me play it better"
   };
   /* the page's public address: its canonical where it names one, so a preview or a local copy
    * still hands the reader's AI the page as everyone else finds it */
@@ -181,7 +184,7 @@
     var host = /(^|\.)happyseaurchin\.com$/.test(location.hostname) ? location.host : 'happyseaurchin.com';
     return host + location.pathname.replace(/\.html$/, '').replace(/\/+$/, '');
   }
-  function message(fam, kind, place, me) {
+  function message(fam, kind, place, me, played) {
     /* a page whose first message is a line of its own hands it over here (/mind-meld: the one line its walk is) */
     if (typeof window.siteDoorMessage === 'function') {
       try { var own = window.siteDoorMessage({ family: fam ? fam.name : '', kind: kind, place: place, me: me }); if (own) return String(own); } catch (e) {}
@@ -192,6 +195,24 @@
         '. Use the beach connector to read what it shows, and help me with it' + (me ? ' as ' + me : '') + '.';
     }
     var host = BEACH.replace(/^https?:\/\//, ''), way = kind === 'recipe' ? 'ways:recipe' : 'ways:reader';
+    /* A GAME is played, never answered (24 November 2026, lane coil.1, at David's 'Fix the door's words for games'): its law
+     * says how it is played, its room, its board and how a run is kept (function:<game> 2 to 5), and the page keeps each
+     * player's runs in their own <game>:<handle> with a proof the board re-runs. So the reader's AI is sent to the law, the
+     * board and the room, and told never to write in that mirror, where a reading would stand on the board as a run;
+     * ways:reader, which has no game among its kinds (8) and is under the shared project lock, is named for what holds */
+    if (kind === 'game') {
+      var line = "I'm playing the game " + fam.name + ' at ' + url + '. ' +
+        'Use the beach connector: its law is function:' + fam.name + ' at ' + host + ' (how it is played, its room, its board and how a run is kept), ' +
+        'and ' + way + ' says how to help me read it and talk in its room. A game is played on its page, never answered: the page keeps ' +
+        "each player's runs in their own " + fam.name + ':<handle>, with a proof its board re-runs, so never write there by hand. ' +
+        'Without a connector, read its law at ' + BEACH + '/.well-known/pscale-beach?block=function:' + fam.name +
+        " and today's board at https://happyseaurchin.com/api/board?game=" + fam.name + '. ';
+      if (place) line += "I've reached " + place.said + '. ';
+      /* the name the game is played under, where its page said it (played), is where the runs are; the device's own name is
+       * only who is asking, since a hosted game keeps a name of its own and never sees the device's */
+      return line + ASK.game + (!me ? "; if I want to leave a line in its room, help me word it and I'll leave it on the page."
+        : played ? '. I play it as ' + me + ', so my runs are in ' + fam.name + ':' + me + '.' : ". I'm " + me + ' on the beach.');
+    }
     var out = "I'm reading " + (NOUN[kind] || 'the page') + ' ' + fam.name + ' at ' + url + '. ' +
       'Use the beach connector: its text is spine:' + fam.name + ' and its law function:' + fam.name + ' at ' + host +
       ', and ' + way + ' says how to help me with it. Without a connector, read it at ' + BEACH +
@@ -289,7 +310,7 @@
       '<p class="aid-small" style="margin:0">ChatGPT and other AIs, Claude Code, an agent of your own, and what to do when something goes wrong: <a href="/connect">happyseaurchin.com/connect</a></p></li>' +
     '</ol></div>';
 
-  var back = null, opener = null, state = { fam: null, kind: '', place: null, marks: null, me: '' };
+  var back = null, opener = null, state = { fam: null, kind: '', place: null, marks: null, me: '', played: false };
   function $(sel) { return back.querySelector(sel); }
   function build() {
     if (back) return;
@@ -348,8 +369,9 @@
     var w = $('.aid-where');
     w.hidden = !state.place;
     if (state.place) $('.aid-at').textContent = state.place.said;
-    $('.aid-msg').value = message(state.fam, state.kind, state.place, state.me);
+    $('.aid-msg').value = message(state.fam, state.kind, state.place, state.me, state.played);
     $('.aid-who').textContent = state.me ? ''
+      : state.kind === 'game' ? 'Your AI reads the game, its board and its room with no name; your runs are kept under the name you play as.'
       : 'Your AI reads and helps you draft with no name. To have it answer under your own name, make one at happyseaurchin.com/connect.';
   }
   function open(opts) {
@@ -357,7 +379,8 @@
     build();
     opener = opts.from || document.activeElement;
     state.fam = opts.family ? { name: slug(opts.family), kind: opts.kind || '' } : familyOf();
-    state.me = who();
+    state.me = who(opts.me);
+    state.played = !!(opts.me && state.me);   // the page said the name (a game's frame: the one its player plays under)
     state.marks = marked();
     state.place = placeOf(state.marks, opts.at);
     /* a page that shows one step at a time says where the reader is itself (window.siteDoorPlace) */

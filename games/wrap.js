@@ -199,9 +199,10 @@
   /* ── a line in the room: the name this person plays the game under (the frame keeps it), else the device's, else one
    * the voice makes; appended to the open room in the plug's note shape, as /arcade's box appends one ── */
   var NAME = '';
+  function ownName() { try { return clean(localStorage.getItem('games:' + GAME + ':render:who')); } catch (e) { return ''; } }
   function nameNow() {
     if (NAME) return Promise.resolve(NAME);
-    var own = ''; try { own = clean(localStorage.getItem('games:' + GAME + ':render:who')); } catch (e) {}
+    var own = ownName();
     if (own) return Promise.resolve(NAME = own);
     var V = window.beachVoice, n = clean(V && V.name && V.name());
     if (n) return Promise.resolve(NAME = n);
@@ -255,7 +256,9 @@
       if (typeof window.siteDoorOpen !== 'function') { said.textContent = 'The door did not open here: https://happyseaurchin.com/connect says how to bring the beach to your AI.'; return; }
       said.textContent = '';
       close();
-      window.siteDoorOpen(btn, { family: board && board.law ? GAME : undefined });   // a game with a law on the beach is a family its door can name
+      /* a game with a law on the beach is a family its door can name; the name is the one this person plays it under, where
+       * the page keeps their runs (<game>:<name>), never the device's */
+      window.siteDoorOpen(btn, { family: board && board.law ? GAME : undefined, me: ownName() || undefined });
     });
   });
 })();
