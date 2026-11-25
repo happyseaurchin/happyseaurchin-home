@@ -52,6 +52,18 @@
   .btn.go-on{background:var(--liquid);color:var(--abyss);border-color:var(--liquid)}
   .btn:focus-visible,.chip:focus-visible,.go:focus-visible,.x:focus-visible,.float:focus-visible,.again:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
   .ask{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:14px;max-width:36rem}
+  .find{display:flex;align-items:center;gap:10px;max-width:44rem}
+  .find input{flex:1;min-width:0;font:inherit;font-size:15px;padding:8px 14px;border-radius:999px;border:1px solid var(--line-strong,rgba(255,255,255,.22));background:rgba(255,255,255,.05);color:var(--foam)}
+  .find input::placeholder{color:var(--vapour-dim)}
+  .find input:focus-visible{outline:2px solid var(--liquid);outline-offset:2px}
+  .find-n{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);white-space:nowrap}
+  .waits{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;padding-block:1px}
+  .waits::-webkit-scrollbar{display:none}
+  .waits > *{flex:none}
+  .waits > b{font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--pin-you);margin-right:4px;font-weight:400}
+  .waits button{font:inherit;font-size:13.5px;padding:3px 11px;border-radius:999px;border:1px solid var(--pin-you);background:none;color:var(--foam);cursor:pointer}
+  .waits button:hover{background:var(--pin-you);color:var(--abyss)}
+  .waits .none{font-size:13.5px;color:var(--vapour-dim)}
   .filters{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-block:1px;align-items:center}
   .filters::-webkit-scrollbar{display:none}
   .chip{flex:none;display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;padding:4px 10px;border-radius:999px;
@@ -146,6 +158,13 @@
       <h1>Corkboard</h1>
       <p class="lede" id="lede">Every proposal on the beach on one board, laid out by what it shares with the others. Your board stays as it is: drag a card to move it, or pick several (Select, or Shift-click) and move them together.</p>
     </div>
+    <!-- the finder (spine:o-page-unit 1.111111111118, with keel's CHANGE: the corkboard with a search through every word
+         and 'waits on you' at its top; lane tidy.2, the scope at pool:o-page-unit 25, part 3) -->
+    <div class="find" role="search">
+      <input type="search" id="find" placeholder="Find any word in a proposal’s name, its line, its group or its threads" aria-label="Find a proposal by any word" autocomplete="off" spellcheck="false" enterkeyhint="search">
+      <span class="find-n" id="find-n" aria-live="polite"></span>
+    </div>
+    <div class="waits" id="waits" hidden></div>
     <div class="controls">
       <label class="sw" for="sw-moves">
         <input type="checkbox" id="sw-moves" checked>
@@ -254,7 +273,7 @@
   }
 
   let cards = [], byId = new Map(), edges = [], strands = [], nodes = [], N = new Map(), registry = null, groups = [];
-  let viewer = '';
+  let viewer = '', query = '';
 
   function build(proposals, shared, makers) {
     const snap = new Map();
@@ -527,7 +546,28 @@
 
   /* ---------- what is shown: every state on, each one faded with a tap ---------- */
   let opened = null, selectMode = false; const picked = new Set();
-  function shown(n) { return !faded.has(n.c.state); }
+  /* the finder: a card stands when every word typed is somewhere in its name, line, kind, group or threads (the
+     registry's line for each, read once the first word is typed); the rest fade as a state chip fades them */
+  function hay(c) {
+    return [c.id, c.label, c.line, c.kind, c.group].concat(c.threads.map(t => '#' + t.n + ' ' + (registry && registry.get(t.n) || '') + ' ' + t.waits.join(' ')))
+      .join(' ').toLowerCase();
+  }
+  function matches(c) { return !query || query.split(/\s+/).every(w => hay(c).includes(w)); }
+  function findCount() {
+    const n = query ? cards.filter(matches).length : 0;
+    $('find-n').textContent = query ? (n ? (n === 1 ? 'one found' : n + ' found') : 'none found') : '';
+  }
+  /* what waits on you, at the top: each card whose threads wait on the one reading, a tap to open it */
+  function paintWaits() {
+    const box = $('waits');
+    if (!viewer) { box.hidden = true; return; }
+    const yours = cards.filter(c => c.state === 'you');
+    box.hidden = false; box.replaceChildren();
+    const h = document.createElement('b'); h.textContent = 'WAITS ON YOU' + (yours.length ? ' · ' + yours.length : ''); box.appendChild(h);
+    if (!yours.length) { const sp = document.createElement('span'); sp.className = 'none'; sp.textContent = 'nothing just now'; box.appendChild(sp); return; }
+    for (const c of yours) { const b = document.createElement('button'); b.type = 'button'; b.textContent = c.label; b.addEventListener('click', () => open(c.id)); box.appendChild(b); }
+  }
+  function shown(n) { return !faded.has(n.c.state) && matches(n.c); }
   function refresh() {
     if (!cSel) return;
     const touch = picked.size ? new Set(picked) : (opened ? new Set([opened]) : null);
@@ -545,6 +585,7 @@
     if (opened) renderDetail(opened);
   }
   function chips() {
+    paintWaits();
     const counts = {}; for (const c of cards) counts[c.state] = (counts[c.state] || 0) + 1;
     for (const s of [...faded]) if (!counts[s]) faded.delete(s);
     const S = STATE(), box = $('filters'); box.replaceChildren();
@@ -593,7 +634,7 @@
   function readRegistry() {
     if (registry) return;
     registry = new Map();
-    getBlock('spine:thread').then(b => { if (b) for (const [n, node] of entries(b)) registry.set(String(n), textOf(node)); if (opened) renderDetail(opened); });
+    getBlock('spine:thread').then(b => { if (b) for (const [n, node] of entries(b)) registry.set(String(n), textOf(node)); if (opened) renderDetail(opened); if (query) { refresh(); findCount(); } });
   }
   function kindTags(e) {
     const out = [];
@@ -732,6 +773,11 @@
     LS.set('corkboard:board', mine);
     paint(); chips(); settleTo(false); refresh();
     $('loading').remove();
+    $('find').addEventListener('input', () => { query = $('find').value.trim().toLowerCase(); if (query) readRegistry(); refresh(); findCount(); });
+    $('find').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { const first = cards.find(c => query && matches(c)); if (first) open(first.id); }
+      if (e.key === 'Escape') { $('find').value = ''; query = ''; refresh(); findCount(); }
+    });
     requestAnimationFrame(() => fit(false, false));
     window.addEventListener('resize', () => { if (!opened) fit(false, false); });
     if (added && added < cards.length) note(added === 1 ? 'One new proposal has landed on your board' : added + ' new proposals have landed on your board', 5000);
