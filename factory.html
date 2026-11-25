@@ -114,6 +114,18 @@ tr.sealed td{color:var(--ink2);font:12px var(--mono)}
 footer a,#create-your-own a{color:inherit}
 #create-your-own a{color:var(--ink2);text-underline-offset:3px}
 @media (max-width:760px){.seal{margin:10px 14px 0}}
+/* the documents that go out with it (keel, at David's word, 25 Nov 2026): read from outreach:keel 9, open to every reader */
+.papers{margin:12px 32px 0;padding:12px 18px;border:1px solid var(--rule);border-radius:14px;background:var(--paper2);max-width:110ch}
+.papers h2{margin:0 0 6px;font:600 11.5px var(--mono);text-transform:uppercase;letter-spacing:.06em;color:var(--ink2)}
+.papers p,.papers ul{margin:0 0 4px;font:14px/1.6 var(--body);color:var(--ink)}
+.papers ul{padding-left:18px}
+.papers a{color:var(--ink);text-underline-offset:3px}
+.papers a.go{text-decoration:none;font-weight:700;padding:0 5px;margin-left:2px;border:1px solid var(--rule);border-radius:6px}
+.papers a.go:hover,.papers a.go:focus-visible{border-color:var(--ink2)}
+.papers small{color:var(--ink2);font-size:13px}
+.papers .from{margin:6px 0 0;font:11.5px var(--mono);color:var(--ink2)}
+.papers .from a{color:inherit}
+@media (max-width:760px){.papers{margin:10px 14px 0}}
 </style>
 </head>
 <body class="hideaddr">
@@ -132,6 +144,8 @@ footer a,#create-your-own a{color:inherit}
     <span class="stamp" id="stamp"></span>
   </div>
 </header>
+
+<section class="papers" id="papers" hidden></section>
 
 <section class="seal" id="seal" aria-live="polite">
   <p class="seal-line" id="sealLine">Reading outreach:keel from the beach…</p>
@@ -158,7 +172,7 @@ footer a,#create-your-own a{color:inherit}
 </div>
 
 <footer id="foot">
-  <p>Read live from <a href="https://beach.happyseaurchin.com/.well-known/pscale-beach?block=outreach:keel">outreach:keel</a> 5 and 6 each time this page opens. Every row there is sealed in colour:outreach: this page carries none of them, and opens them in your own browser with your own key, for the colour's holders alone<span id="holders"></span>. How the register is worked, round by round, stands open at outreach:keel 8, the factory, and a row splits into its cells by the labels its 9 names, so a row keel adds or moves shows here at the next reading.</p>
+  <p>Read live from <a href="https://beach.happyseaurchin.com/.well-known/pscale-beach?block=outreach:keel">outreach:keel</a> 5 and 6 each time this page opens, and the documents at the top from its 9, the packet, which stands open. Every row there is sealed in colour:outreach: this page carries none of them, and opens them in your own browser with your own key, for the colour's holders alone<span id="holders"></span>. How the register is worked, round by round, stands open at outreach:keel 8, the factory, and a row splits into its cells by the labels its 9 names, so a row keel adds or moves shows here at the next reading.</p>
   <p>keel made this page's look on 24 November 2026, from a snapshot it kept to itself; weft made it read the beach the same day.</p>
 </footer>
 <div class="tip" id="tip"></div>
@@ -467,6 +481,51 @@ function render(){
   tiles(); table(); band(false);
 }
 
+/* ---------- the documents that go out with it (keel, at David's word, 25 Nov 2026: 'Can we link these to the /factory?') ----------
+ * Read from outreach:keel 9, the packet, which stands open, so every reader sees them, key or none. A document keel lays at a
+ * position of its own beneath 9 is one line here: its words before ' — ' are the link, the rest who it is for. Until then the
+ * packet's own sentences that carry a link are shown in keel's words, each link made live, so a rewritten packet shows as written. */
+function textOf(n){ while (n && typeof n === "object") n = n._; return typeof n === "string" ? n.trim() : ""; }
+function hrefOf(u){ try { const x = new URL(String(u).replace(/[.,;:]+$/, "")); return x.protocol === "https:" ? x.href : ""; } catch (e) { return ""; } }
+/* keel's words with every link live: one in brackets after the words it names becomes ↗ beside them, a bare one its own address */
+function liveLinks(s){
+  const re = /\s?\((https:\/\/[^\s()]+)\)|https:\/\/[^\s()]+/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(s))){
+    const u = hrefOf(m[1] || m[0]);
+    out += esc(s.slice(last, m.index));
+    if (!u) out += esc(m[0]);
+    else if (m[1]) out += ` <a class="go" href="${esc(u)}" target="_blank" rel="noopener" aria-label="open the document just named">↗</a>`;
+    else { const t = m[0].replace(/[.,;:]+$/, ""); out += `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(t.replace(/^https:\/\//, ""))}</a>` + esc(m[0].slice(t.length)); }
+    last = re.lastIndex;
+  }
+  return out + esc(s.slice(last));
+}
+/* a document at a position of its own: its link taken out of the line, the words before ' — ' the link's words */
+function docLine(t){
+  const m = /https:\/\/[^\s()]+/.exec(t), u = m ? hrefOf(m[0]) : "";
+  if (!u) return liveLinks(t);
+  const words = (t.slice(0, m.index) + t.slice(m.index + m[0].length))
+    .replace(/\(\s*\)/g, "").replace(/\s+([,;:])/g, "$1").replace(/[\s—:;,]+$/, "").replace(/\s{2,}/g, " ").trim();
+  const [title, ...rest] = words.split(" — ");
+  return `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(title || u)} ↗</a>` + (rest.length ? ` <small>${esc(rest.join(" — "))}</small>` : "");
+}
+function papers(b){
+  const P = b && b["9"], el = $("#papers"), own = [];
+  if (P && typeof P === "object") for (let i = 1; i <= 9; i++){ const t = textOf(P[i]); if (/https:\/\//.test(t)) own.push(t); }
+  let body = "";
+  if (own.length) body = "<ul>" + own.map(t => "<li>" + docLine(t) + "</li>").join("") + "</ul>";
+  else {
+    const said = textOf(P).replace(/([.!?]['’"”)\]]*)\s+(?=[A-Z])/g, "$1\u0000").split("\u0000").filter(x => /https:\/\//.test(x))
+      .map(x => x.replace(/^[A-Z][A-Z ]{2,}[^:]*:\s*/, "")).map(x => x.charAt(0).toUpperCase() + x.slice(1));
+    if (!said.length){ el.hidden = true; return; }
+    body = said.map(x => "<p>" + liveLinks(x) + "</p>").join("");
+  }
+  el.innerHTML = "<h2>The documents that go out with it</h2>" + body +
+    `<p class="from">from <a href="${esc(BEACH)}/.well-known/pscale-beach?block=${encodeURIComponent(BLOCK)}">${esc(BLOCK)}</a> 9, the packet, read live</p>`;
+  el.hidden = false;
+}
+
 /* the page, once the beach is read and opened: keel's whole page where any row opened, the seal alone where none did */
 let sown = false;
 function draw(){
@@ -482,6 +541,7 @@ async function load(){
   try {
     const [b, c] = await Promise.all([readBlock(BLOCK), readBlock(COLOUR).catch(() => null)]);
     HOLD = holdersOf(c);
+    try { papers(b); } catch (e) { $("#papers").hidden = true; }   /* the documents never stand in the register's way */
     $("#holders").textContent = HOLD.names.length ? " (" + (HOLD.turn ? "at turn " + HOLD.turn + ": " : "") + HOLD.names.join(", ") + ")" : "";
     skeleton(b);
   } catch (e) {

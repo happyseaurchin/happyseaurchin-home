@@ -4,7 +4,7 @@ The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who m
 
 **What it reads.** It reads the two blocks with plain `fetch`, which carries the pass:
 
-- **`outreach:keel`**: the headings stand open at 5.1–5.7 and 6.1–6.4, and every row (5.11 onward) is a colour envelope.
+- **`outreach:keel`**: the headings stand open at 5.1–5.7 and 6.1–6.4, and every row (5.11 onward) is a colour envelope. Its 9, the packet, stands open too, and gives the documents at the top of the page.
 - **`colour:outreach`**: its current turn and whose copies that turn keeps, said on the page as the beach has them.
 
 **How a row opens.** The first sealed row is opened on its own, so the colour's key is unwrapped once and then worn by the voice; the other rows then open with it. A row the reader cannot open stays sealed and shows its grey line, which names its turn but never its contents.
@@ -19,6 +19,13 @@ The Factory (24 Nov 2026, lane money.1), at `/factory`: keel's register of who m
 - Its 50 lines were sealed again in that turn, word for word.
 
 With that done, #801 was reverted. The page opens with the reader's own handle and key through the voice, like every other page. `passport:happyseaurchin-factory` still stands, but it opens nothing: no current turn of any colour keeps a copy for it.
+
+**The documents that go out with it** (25 Nov 2026, lane tidy.3, at keel's word in pool:weft 916, passing on David's 'Can we link these to the /factory?'). These are the public shares sent with the outreach: The AI wave has no business model, until now (for investors); What grows on the beach, and where you could help (for everyone, support organisations first); The pscale block and the beach (for commons funders such as NLnet). They stand in a box under the title, for every reader, key or none, because nothing in them is sealed. The page carries no link of its own. It reads them from `outreach:keel` 9 on every visit, as keel suggested, so a document keel changes shows at the next reading.
+
+- **The packet as it stands.** 9 is one paragraph, so the page shows its sentences that carry a link, in keel's words, with any leading label in capitals ('THE DOCUMENTS, public shares:') dropped. Each link in brackets becomes a ↗ beside the title it follows.
+- **Once keel lays each document at its own position beneath 9** (9.1, 9.2 …), the page lists one line for each instead. The line's link is taken out, the words before ' — ' become the link, and the rest says who it is for. A line with no ' — ' is linked whole.
+- **No link at 9.** The box stays hidden.
+- **A fault drawing it** hides the box and never stops the register.
 
 **How a line is split.** Each line splits on the labels `outreach:keel` 8.9 names: LEVEL, SECTOR, STANCE, CHURN, Door and Status, with the lead before them. From these it works out:
 
@@ -54,3 +61,9 @@ With that done, #801 was reverted. The page opens with the reader's own handle a
   - On this page, since the bar: 'options' holds 'addresses' and ◐, and both still work from inside it. 'go' stands beside it. The hand's own tab lists 'the factory' marked as here, from a list whose last rung is a bare line, as a point write leaves one. The outreach tab holds The Factory.
   - No sideways scroll on a phone, and no script error.
 - Against the live beach, unkeyed: 49 rows sealed under the same 11 headings, and the holders read from the colour.
+- The documents (25 Nov 2026): served from the branch in the built-in browser against the live beach, unkeyed.
+  - The box shows the packet's one sentence with a link: three ↗, each opening its artifact.
+  - The PS for the reader's AI, which carries no https link, stays out.
+  - A made-up packet with its documents at 9.1 and 9.2 lists two lines, titles linked and 'for investors' beside the first. A line with no link is left out.
+  - A packet with no link hides the box.
+  - No script error, and no sideways scroll on a phone (375 px).
