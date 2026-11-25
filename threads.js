@@ -271,7 +271,13 @@
     if (reads[family]) return reads[family];
     reads[family] = get('function:' + family).then(function (law) {
       var node = threadsNode(law), list = [];
-      if (node && typeof node === 'object') for (var d = 1; d <= 9; d++) { var t = parseThread(textOf(node[String(d)])); if (t) list.push(t); }
+      if (node && typeof node === 'object') for (var d = 1; d <= 9; d++) {
+        var nd = node[String(d)], t = parseThread(textOf(nd));
+        if (t) { list.push(t); continue; }
+        /* a digit that gathers a phase's threads beneath it, so the law's nine hold (function:o-page-unit 5.7, 25 November
+           2026, at David's 'combine a few into one and deepen pscale'): read one level down */
+        if (nd && typeof nd === 'object') for (var e = 1; e <= 9; e++) { var t2 = parseThread(textOf(nd[String(e)])); if (t2) list.push(t2); }
+      }
       return Promise.all(list.map(function (th) {
         if (th.registry) return readRegistry(th).then(function (t) { t.rungs = []; return t; }, function () { th.rungs = []; th.unread = true; return th; });
         /* a keeper's ladder is read only where the beach's index holds its blocks, so a thread a law names
