@@ -134,6 +134,9 @@ Each note is what a session needs before it touches that file: what the page is,
 | [waterline](waterline.md) | `waterline.html` | the waterline proposal (13 Nov 2026), at `/waterline`, its snazzy view, which its law names at 6 (`/proposal/waterline` is its standard view, drawn fr… |
 | [web-llm](web-llm.md) | `web-llm.html` | the web-llm proposal (9 Nov 2026, lane web-llm.1), at `/web-llm`, its snazzy view, which its law names at 6 (`/proposal/web-llm` is its standard view,… |
 | [webllm](webllm.md) | `webllm.html` + `webllm/` | a mind in your browser (6 Nov 2026, lane web-llm.1, at David's GO), at `/webllm`: |
+| [weigh-js](weigh-js.md) | `weigh.js` | the weightings, worked (25 Nov 2026, lane tidy.2): a family's four columns at a moment, a sum shared by them, a ledger run; pure, run by `/api/xp` on the beach's blocks and by `/weightings` on invented ones |
+| [weightings](weightings.md) | `weightings.html` | the weightings, run (25 Nov 2026, lane tidy.2), at `/weightings`: Shore's lab, a thousand £5 tickets for an invented game shared 80 · 10 · 5 · 5 through the reader's own working, and six experiments |
+| [weightings-world-js](weightings-world-js.md) | `weightings-world.js` | the weightings lab's invented month: a race game's people, shares, races and tickets as the blocks the beach would hold, seeded |
 | [who-answers](who-answers.md) | `who-answers.html` | the who-answers proposal (27 Oct 2026), at `/who-answers`, its snazzy view, which its law names at 6 (`/proposal/who-answers` is its standard view, dr… |
 | [who-owns-the-shell](who-owns-the-shell.md) | `who-owns-the-shell.html` | Who owns the shell? (24 Oct 2026), at `/who-owns-the-shell` (`/everyone` redirects there, `vercel.json`): |
 | [whole-system](whole-system.md) | `whole-system.html` | whole systems, as proposals are drawn (17 Nov 2026, evening, lane tranche.2, thread 49; |
