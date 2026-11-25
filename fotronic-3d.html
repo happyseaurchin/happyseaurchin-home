@@ -301,13 +301,16 @@ function saveSet() { try { localStorage.setItem('fotronic3d', JSON.stringify(SET
  * carried another way, on this page and the flat page alike: held in order, one word the beach's relay never delivers
  * (it keeps sixty unanswered words to a peer and drops the oldest) left every later word waiting behind it, and the
  * match stood still for good (seen live, two pages joined only through the beach). So every word carries its page's
- * presses of the last half second, each numbered, a press taken once by its number, and a word lost or overtaken costs
- * nothing: no page can be more than DELAY ticks behind another, so any word that lets a page ride past a press's tick
- * was sent while that press still rode in every word. A page that sends each press once (ev: a page from before the
- * window) is taken as it comes, so the two pages still play one match. ── */
+ * presses of the last quarter second, each numbered, a press taken once by its number, and a word lost or overtaken
+ * costs nothing: no page can be more than DELAY ticks behind another, so any word that lets a page ride past a press's
+ * tick was sent while that press still rode in every word. A page that sends each press once (ev: a page from before
+ * the window) is taken as it comes, so the two pages still play one match. ── */
 const DELAY = 15;   // ticks (an eighth of a second) between a press and the tick it acts on, online
-const KEEP = 4 * DELAY;   // ticks a press rides in every word its page sends after its tick has come
-function freshNet(on) { return { on, match: null, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, n: 0, said: [], maxN: {}, botAt: [] }; }
+/* ticks a press rides in every word its page sends after its tick has come: any length past DELAY carries every press
+ * (no page can ride past one before a word sent within DELAY ticks of it), and every byte of it rides in the relay's
+ * slot (flush), so twice DELAY, a quarter second, as Coil keeps it; until lane fotronic-slot.1 it was half a second */
+const KEEP = 2 * DELAY;
+function freshNet(on) { return { on, match: null, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, saidUpTo: -1, waiting: 0, mine: {}, theirs: {}, desync: false, n: 0, said: [], maxN: {}, botAt: [] }; }
 let NET = freshNet(false);
 function enqueue(ev) {
   const P = NET.pending;
@@ -321,8 +324,9 @@ function input(seat, action) {   // a person's press: now, at home; DELAY ticks 
   const ev = { tick: state.tick + DELAY, seat, action, n: ++NET.n };
   enqueue(ev); NET.out.push(ev); NET.said.push(ev);
 }
-/* what this page has pressed in the last half second, which rides in every word it sends */
-function recent() { NET.said = NET.said.filter(e => e.tick > state.tick - KEEP); return NET.said; }
+/* what this page has pressed in the last quarter second, which rides in every word it sends; a copy, since the beach's
+ * relay holds a word a moment before it writes it, and a later press must not slip into it */
+function recent() { NET.said = NET.said.filter(e => e.tick > state.tick - KEEP); return NET.said.slice(); }
 
 /* ── the start card ── */
 function fillSeats(sel, size, chosen) {
@@ -616,10 +620,15 @@ function startOnline(p) {
 /* everything I have said up to a tick, sent: my presses since the last send, and the tick I have spoken for */
 function flush(force) {
   if (!NET.on || !room) return;
-  const t = performance.now();
-  if (!force && !NET.out.length && t - NET.sentAt < 33) return;   // at most thirty a second when there is nothing new
-  try { room.send('fx', { m: NET.match, upTo: state.tick + DELAY - 1, ev: NET.out, win: recent() }, { reliable: true }); } catch (e) {}   // ev, each press once, for a page from before the window
-  NET.out = []; NET.sentAt = t;
+  const t = performance.now(), upTo = state.tick + DELAY - 1;
+  /* nothing new is said at most thirty times a second, and while this page waits (its upTo unchanged) four times a
+   * second, as Coil says it: the beach's relay writes every word a peer has not yet read into the page's one slot of
+   * the room's liquid, and an unlatched write may be 64 KB at most; with the half-second window said thirty times a
+   * second while a relayed page waited, three pages filled 91 to 120 KB and five up to 205 KB, and with the cap
+   * modelled the match froze, then split (24 Nov 2026, lane fotronic-slot.1, on the rig's models of the relay) */
+  if (!force && !NET.out.length && (t - NET.sentAt < 33 || (upTo === NET.saidUpTo && t - NET.sentAt < 250))) return;
+  try { room.send('fx', { m: NET.match, upTo, ev: NET.out, win: recent() }, { reliable: true }); } catch (e) {}   // ev, each press once, for a page from before the window
+  NET.out = []; NET.sentAt = t; NET.saidUpTo = upTo;
 }
 /* what arrives in the moment before this page's own start fires, kept for the match it names: by match, for ten seconds,
  * so the words of a match running elsewhere in the room, heard from the waiting room, never crowd out the next one's */

@@ -176,15 +176,18 @@ transport.onEvent(event => { if (state) sim.apply(state, event); });
  * page's own queue until its tick, never in the world's inbox, which a new round clears. Coil's three repairs, which
  * the 3D page carries too (24 Nov 2026, lane fotronic-3d.1; keel at pool:weft 832 and 833): what arrives for a match
  * before this page's start fires is kept for it; every press, mine or another page's, joins the queue in order of
- * tick, then seat; and no word that comes late, or never, parts the worlds. Coil holds each page's words in the order
- * sent for that; here every word carries its page's presses of the last half second instead, each numbered and taken
- * once, because held in order, one word the beach's relay never delivers (it keeps sixty unanswered words to a peer
- * and drops the oldest) left every later word waiting behind it and the match stood still for good (seen live, two
- * pages joined only through the beach). No page can be more than DELAY ticks behind another, so any word that lets a
- * page ride past a press's tick was sent while that press still rode in every word. ── */
+ * tick, then seat; and no word that comes late, or never, parts the worlds. Coil held each page's words in the order
+ * sent for that; here every word carries its page's presses of the last quarter second instead (Coil's too since lane
+ * coil.2), each numbered and taken once, because held in order, one word the beach's relay never delivers (it keeps
+ * sixty unanswered words to a peer and drops the oldest) left every later word waiting behind it and the match stood
+ * still for good (seen live, two pages joined only through the beach). No page can be more than DELAY ticks behind
+ * another, so any word that lets a page ride past a press's tick was sent while that press still rode in every word. ── */
 const DELAY = 15;   // ticks (an eighth of a second) between a press and the tick it acts on, online
-const KEEP = 4 * DELAY;   // ticks a press rides in every word its page sends after its tick has come
-const NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: '', n: 0, said: [], maxN: {} };
+/* ticks a press rides in every word its page sends after its tick has come: any length past DELAY carries every press
+ * (no page can ride past one before a word sent within DELAY ticks of it), and every byte of it rides in the relay's
+ * slot (flush), so twice DELAY, a quarter second, as Coil keeps it; until lane fotronic-slot.1 it was half a second */
+const KEEP = 2 * DELAY;
+const NET = { on: false, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, saidUpTo: -1, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: '', n: 0, said: [], maxN: {} };
 let wasOnline = false, paused = false;
 const asking = () => !$('leave').classList.contains('hidden');
 /* in order of tick, then seat: a press appended unsorted could sit behind another page's later ones, and the loop that
@@ -200,8 +203,9 @@ function input(seat, action) {   // a person's press: now, at home; DELAY ticks 
   const ev = { tick: state.tick + DELAY, seat, action, n: ++NET.n };
   enqueue(ev); NET.out.push(ev); NET.said.push(ev);
 }
-/* what this page has pressed in the last half second, which rides in every word it sends */
-function recent() { NET.said = NET.said.filter(e => e.tick > state.tick - KEEP); return NET.said; }
+/* what this page has pressed in the last quarter second, which rides in every word it sends; a copy, since the beach's
+ * relay holds a word a moment before it writes it, and a later press must not slip into it */
+function recent() { NET.said = NET.said.filter(e => e.tick > state.tick - KEEP); return NET.said.slice(); }
 
 /* ── the start screen ── */
 function fillSeats(sel, size, chosen) {
@@ -425,7 +429,7 @@ function startOnline(p) {
     seats.push({ team, seat: n, bot: !q || gave.has(q.id), handle: q ? q.name : team + n });
   }
   state = sim.createMatch(law, seats, matchOf(p));
-  Object.assign(NET, { on: true, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: matchOf(p), n: 0, said: [], maxN: {} });
+  Object.assign(NET, { on: true, remote: [], upTo: {}, seatOf: {}, names: {}, pending: [], out: [], sentAt: 0, saidUpTo: -1, waiting: 0, mine: {}, theirs: {}, desync: false, botAt: [], match: matchOf(p), n: 0, said: [], maxN: {} });
   for (const q of p.players) {
     NET.seatOf[q.id] = state.seats.find(s => s.team === q.team && s.seat === q.seat).index; NET.names[q.id] = q.name;
     if (q.id !== me.id && !gave.has(q.id)) { NET.remote.push(q.id); NET.upTo[q.id] = -1; }
@@ -445,10 +449,15 @@ function startOnline(p) {
 /* everything I have said up to a tick, sent: my presses since the last send, and the tick I have spoken for */
 function flush(force) {
   if (!NET.on || !room) return;
-  const t = performance.now();
-  if (!force && !NET.out.length && t - NET.sentAt < 33) return;   // at most thirty a second when there is nothing new
-  room.send('fx', { m: NET.match, upTo: state.tick + DELAY - 1, ev: NET.out, win: recent() }, { reliable: true });   // ev, each press once, for a page from before the window
-  NET.out = []; NET.sentAt = t;
+  const t = performance.now(), upTo = state.tick + DELAY - 1;
+  /* nothing new is said at most thirty times a second, and while this page waits (its upTo unchanged) four times a
+   * second, as Coil says it: the beach's relay writes every word a peer has not yet read into the page's one slot of
+   * the room's liquid, and an unlatched write may be 64 KB at most; with the half-second window said thirty times a
+   * second while a relayed page waited, three pages filled 91 to 120 KB and five up to 205 KB, and with the cap
+   * modelled the match froze, then split (24 Nov 2026, lane fotronic-slot.1, on the rig's models of the relay) */
+  if (!force && !NET.out.length && (t - NET.sentAt < 33 || (upTo === NET.saidUpTo && t - NET.sentAt < 250))) return;
+  room.send('fx', { m: NET.match, upTo, ev: NET.out, win: recent() }, { reliable: true });   // ev, each press once, for a page from before the window
+  NET.out = []; NET.sentAt = t; NET.saidUpTo = upTo;
 }
 /* what arrives for a match before this page's own start fires, kept for it: a start fires a moment later on one page
  * than another, and the others' first words, a press stamped in the countdown among them, must not be lost (keel, 832).
@@ -480,7 +489,7 @@ function onNet(m) {
   if (!NET.on || !(m.from in NET.seatOf)) return;
   /* words are taken as they come: until a pair's direct channel opens the room plug carries a word through the beach,
    * and after that straight across, so a later word can overtake an earlier one (Coil's crossing, lane coil.1), and the
-   * beach's relay can drop one; every word carries the presses its page made in the last half second, so neither
+   * beach's relay can drop one; every word carries the presses its page made in the last quarter second, so neither
    * costs a press */
   if (m.kind === 'fx') { takePresses(m.from, m.body); NET.upTo[m.from] = Math.max(NET.upTo[m.from] == null ? -1 : NET.upTo[m.from], m.body.upTo | 0); }
   else if (m.kind === 'fh') checkStep(m.body.tick | 0, m.body.h | 0, m.from);
