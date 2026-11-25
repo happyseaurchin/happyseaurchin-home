@@ -13,7 +13,8 @@
  * brought that person, divided equally along the chain back (1.111, David's CHAIN); the makers' pot gives
  * each beat to the makers the family's own law names, equally (1.1111, David's GO); the beach's pot gives
  * each beat to the beach, as the family's law names it. A beat nobody can be named for in a pot goes to the
- * commons (1.1114). Agents count nothing, and an agent's making is its person's (1.15).
+ * commons (1.1114). Agents count nothing, and an agent's making is its person's (1.15): the agents are the handles named
+ * on an 'agents:' line in function:experience-points (2.11) or in the family's own law, never guessed from a passport.
  *
  * For a proposal (contract type two, a family's own four columns) the acts are what already stands, with no
  * new write: each line a person said in their own mirror <name>:<handle> (an answer, a reading at a part,
@@ -112,14 +113,17 @@ function lawOf(law, family) {
   };
 }
 
-/* ── agents count nothing (1.15): a handle whose passport says it is one ── */
-const AGENT = /\b(claude|claude-instance|an ai\b|ai agent|llm|language model|kimi|gpt|gemini)\b/i;
-async function agentsAmong(handles) {
+/* ── agents count nothing (1.15): the handles named on an 'agents:' line in the economy's own law
+ * (function:experience-points 2.11), and on one in the family's own law, never guessed from a passport's words, which
+ * misread both ways (a person who mentions their Claude, an agent that calls itself a helper: pool:experience-points 7) ── */
+const ECONOMY = 'function:experience-points';
+function agentsNamed(...laws) {
   const out = new Set();
-  await Promise.all([...handles].map(async (h) => {
-    const p = await readBlock('passport:' + h);
-    if (p && AGENT.test(textOf(p))) out.add(h);
-  }));
+  for (const b of laws) for (const l of linesOf(b || {})) {
+    const m = /^agents:\s*(.*)$/i.exec(l.text);
+    if (!m) continue;
+    for (const part of m[1].split(/\s[—–-]\s/)[0].split(/[,;]|\band\b/)) { const h = handleOf(part); if (h) out.add(h); }
+  }
   return out;
 }
 
@@ -153,7 +157,7 @@ function chainOf(h, firstBy, agents) {
 
 /* ── the four columns at a moment ── */
 export async function xpOf(family, at = new Date()) {
-  const law = await readBlock('function:' + family);
+  const [law, economy] = await Promise.all([readBlock('function:' + family), readBlock(ECONOMY)]);
   const L = lawOf(law, family);
   const atMs = at.getTime();
   const [fam, room, strings, threads] = await Promise.all([
@@ -180,8 +184,7 @@ export async function xpOf(family, at = new Date()) {
   const pages = new Set(['/' + family, '/proposal/' + family]);
   if (L.page) { try { pages.add(new URL(L.page).pathname.replace(/\.html$/, '').toLowerCase()); } catch { /* a page line with no address */ } }
   const brought = bringersOf(strings.mirrors || {}, pages);
-  const everyone = new Set([...Object.keys(acts), ...Object.values(brought.firstBy), ...L.makers, ...L.beach]);
-  const agents = await agentsAmong(everyone);
+  const agents = agentsNamed(economy, law);
 
   const columns = { players: {}, bringers: {}, makers: {}, beach: {} };
   const commons = { players: 0, bringers: 0, makers: 0, beach: 0 };
@@ -202,7 +205,7 @@ export async function xpOf(family, at = new Date()) {
   return {
     family, at: at.toISOString(), beat: momentToAddress(at), beats: total,
     law: { at: 'function:' + family, support: L.support, room: 'pool:' + L.room, threads: L.threads.map((n) => 'thread:' + n), makers: L.makers, beach: L.beach, weights: L.weights, supporter: L.supporter },
-    columns, commons, agents: [...agents].sort(),
+    columns, commons, agents: [...new Set([...Object.keys(acts), ...Object.values(brought.firstBy), ...L.makers, ...L.beach])].filter((h) => agents.has(h)).sort(),
     string: { shares: brought.shares, brought: Object.keys(brought.firstBy).length },
   };
 }

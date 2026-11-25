@@ -24,8 +24,10 @@ const BLOCKS = {
   'string:bob': { _: 'MIRROR — bob', 2: { _: { 2: { 6: { 4: { 2: { 4: { 4: { 6: { 9: 'yes, I came' } } } } } } } } } },
   'string:cy': { _: 'MIRROR — cy', 2: { _: { 2: { 6: { 4: { 2: { 4: { 4: { 6: { 8: 'SHARE https://happyseaurchin.com/proposal/fund' } } } } } } } } } },
   'thread:ann': { _: 'MIRROR — ann', 7: { _: 'built it · waits on bob', 1: 'an option' } },
-  'passport:kel': { _: 'kel — a Claude-instance pattern curated across sessions.' },
-  'passport:ann': { _: 'Ann — a person who builds things.' },
+  // the agents are named in the economy's own law, never guessed from a passport: ann mentions her Claude and is a person
+  'function:experience-points': { _: 'Operator for experience-points.', 2: { _: 'THE DECISIONS', 1: { _: 'WHO COUNTS NOTHING', 1: 'agents: kel, zed — each by its own passport' } } },
+  'passport:kel': { _: 'kel — a helper on the commons.' },
+  'passport:ann': { _: 'Ann — a person who builds things with her Claude, an AI agent of her own.' },
 };
 const BORN = { 'fund:ann': '2026-11-20T09:00:00Z', 'fund:bob': '2026-11-21T09:00:00Z', 'fund:kel': '2026-11-21T09:00:00Z', 'fund:dee': '2026-11-25T17:00:00Z' };
 globalThis.fetch = async (url) => {
@@ -49,8 +51,9 @@ check('the law is read: its room, its threads, its support line and the conditio
   xp.law.room === 'pool:fund' && xp.law.threads.join() === 'thread:7' && xp.law.support === '71' && xp.law.makers.join() === 'ann' && xp.law.beach.join() === 'bea,cy', xp.law);
 check('the players: ann 4 (two lines, the withdrawn one not, and a knot with its option), bob 3 (a NOT YET and a CHANGE, and two room lines in one beat)',
   xp.columns.players.ann === 4 && xp.columns.players.bob === 3, xp.columns.players);
-check('agents count nothing, a summary is no act, an anonymous line is nobody, and a mirror born after the moment is not read',
+check('agents count nothing (named in function:experience-points, whatever their passports say), a summary is no act, an anonymous line is nobody, and a mirror born after the moment is not read',
   !('kel' in xp.columns.players) && !('dee' in xp.columns.players) && xp.agents.join() === 'kel', xp);
+check('a person whose passport mentions her Claude still counts: the list decides, never the words', xp.columns.players.ann === 4, xp.columns.players);
 check('bob was brought by ann (he answered her share); ann was brought by nobody, so her beats go to the commons',
   xp.columns.bringers.ann === 3 && xp.commons.bringers === 4 && xp.string.shares === 2 && xp.string.brought === 1, { b: xp.columns.bringers, c: xp.commons, s: xp.string });
 check('the makers\' and the beach\'s columns give every beat to whom the law names, the beach split equally',
