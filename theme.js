@@ -3924,7 +3924,15 @@
       'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-pill,' +
       'html.aid-open .aid-share,body:has(dialog[open]) .aid-share,body:has(.pop-back:not([hidden]):not(.hidden)) .aid-share,' +
       'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-share{display:none}' +
-    '@media print{.aid-pill,.aid-share{display:none}}';
+    '.aid-passed{box-sizing:border-box;max-width:72rem;margin:22px auto;padding:14px 18px;border:1px solid rgba(91,63,207,.28);border-radius:14px;' +
+      'font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:inherit;overflow-wrap:anywhere}' +
+    '.aid-passed h3{margin:0 0 6px;font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;opacity:.75}' +
+    '.aid-passed ul{list-style:none;margin:0;padding:0;display:grid;gap:8px}' +
+    '.aid-passed .n{display:block;font-size:12.5px;opacity:.7}' +
+    '.aid-passed .more{margin:8px 0 0;font-size:12.5px;opacity:.7}' +
+    '.aid-passed a{color:inherit;text-decoration:underline;text-underline-offset:3px}' +
+    'html[data-theme="dark"] .aid-passed{border-color:rgba(171,152,255,.35)}' +
+    '@media print{.aid-pill,.aid-share,.aid-passed{display:none}}';
   var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 21V4.5A1.5 1.5 0 0 1 7.5 3h9A1.5 1.5 0 0 1 18 4.5V21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M3.5 21h17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><circle cx="14.6" cy="12.4" r="1.3" fill="currentColor"/></svg>';
 
   var styled = false;
@@ -3955,6 +3963,7 @@
     var s = sharePill(), g = window.siteBuilderPill ? window.siteBuilderPill() : null;   /* Builder, beside Share */
     keepClear(b, s, g);
     stepAway([b, s, g].filter(Boolean));
+    if (s) passedOn();
   }
 
   /* SHARE, beside the door — the share wall (spine:o-page-unit 1.11111111112; David's GO at 1.11111111118, 23 November
@@ -3996,11 +4005,81 @@
     return a;
   }
   /* Share alone in the corner; on a family page whose door stands in its own header, Builder beside it */
+
+  /* WHO CAME IN, the share wall's other half (spine:o-page-unit 1.11111111113; David's GO at 1.11111111118, with keel's
+   * CHANGE there: 'list each share with its why and how many came through it, and name a newcomer only where their own
+   * line says who brought them'; lane tidy.2, the scope at pool:o-page-unit 25, part 2). On a family page, once it has
+   * drawn: every share of this page on the String, newest first, each with its sharer, the one it was for and its why,
+   * then how many answered the share and how many of those answered the page too (a line in its family). Counts, never
+   * names, since the way on carries a number and never a name (function:string 5.4). Read from /api/mirrors for the
+   * String and for the family, nothing written, nothing kept; drawn only where the page has been shared: in an element
+   * marked data-shares, else after the page's room (#talk), else before its footer.
+   * ───────────────────────────────────────────────────────────────────────────── */
+  function passedOn(){
+    var fam = familyOf();
+    if (!fam || document.querySelector('.aid-passed') || document.documentElement.getAttribute('data-share') === 'off') return;
+    function norm(u){ try { var x = new URL(u, SITE); return x.pathname.replace(/\.html$/, '').replace(/(.)\/+$/, '$1').toLowerCase(); } catch(e){ return ''; } }
+    var here = norm(pageToShare()), mine = {};
+    mine[here] = 1; mine['/proposal/' + fam.name] = 1; mine['/' + fam.name] = 1;
+    function mirrorsOf(f){ return fetch('/api/mirrors?family=' + encodeURIComponent(f), { headers: { Accept: 'application/json' } }).then(function(r){ return r.ok ? r.json() : null; }).then(function(d){ return (d && d.mirrors) || {}; }, function(){ return {}; }); }
+    /* a clock's address runs through '_' for its zeros (2026… is 2, _, 2, 6): a '_' holding a subtree is the digit 0, a
+       string at '_' is the node's own line */
+    function textOf(n){ return typeof n === 'string' ? n.trim() : (n && typeof n === 'object' && typeof n._ === 'string') ? n._.trim() : ''; }
+    function walk(n, path, out){
+      var t = textOf(n);
+      if (t && /^SHARE\s/i.test(t)) out.push({ path: path, text: t });
+      if (!n || typeof n !== 'object') return;
+      for (var k in n){
+        if (/^[1-9]$/.test(k)) walk(n[k], path + k, out);
+        else if (k === '_' && n._ && typeof n._ === 'object') walk(n._, path + '0', out);
+      }
+    }
+    function at(b, path){ var n = b; for (var i = 0; i < path.length; i++){ if (!n || typeof n !== 'object') return ''; var c = path.charAt(i); n = n[c === '0' ? '_' : c]; } return textOf(n); }
+    function esc(v){ var d = document.createElement('span'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
+    Promise.all([mirrorsOf('string'), mirrorsOf(fam.name)]).then(function(got){
+      var strings = got[0], inFam = got[1], shares = [];
+      Object.keys(strings).forEach(function(h){
+        var found = []; walk(strings[h], '', found);
+        found.forEach(function(f){
+          var m = /^SHARE\s+(\S+)(?:\s+for\s+([A-Za-z0-9_-]+))?\s*(?:[—–-]\s*([\s\S]*))?$/i.exec(f.text);
+          if (!m || !mine[norm(m[1])]) return;
+          var answered = 0, here2 = 0;
+          Object.keys(strings).forEach(function(o){
+            if (o === h) return;
+            var a = at(strings[o], f.path);
+            if (!a || /^WITHDRAWN\b/i.test(a) || /^SHARE\s/i.test(a)) return;
+            answered++;
+            if (inFam[o]) here2++;
+          });
+          shares.push({ who: h, path: f.path, to: m[2] || '', why: (m[3] || '').trim(), answered: answered, here: here2 });
+        });
+      });
+      if (!shares.length) return;
+      shares.sort(function(a, b){ return b.path.localeCompare(a.path); });
+      var box = document.createElement('section');
+      box.className = 'aid-passed';
+      box.setAttribute('aria-label', 'Who passed this page on');
+      var shown = shares.slice(0, 6);
+      box.innerHTML = '<h3>Passed on</h3><ul>' + shown.map(function(x){
+        var why = x.why.length > 240 ? x.why.slice(0, 230).replace(/\s+\S*$/, '') + '…' : x.why;
+        var addr = x.path.length > 10 ? x.path.slice(0, 10) + '.' + x.path.slice(10) : x.path;
+        return '<li><b>' + esc(x.who) + '</b> passed it on' + (x.to ? ' for <b>' + esc(x.to) + '</b>' : '') + (why ? ': “' + esc(why) + '”' : '') +
+          '<span class="n">' + (x.answered ? x.answered + ' answered the share' + (x.here ? ', ' + x.here + ' of them answered here too' : '') : 'no answers to the share yet') +
+          ' · <a href="/string/' + esc(addr) + '">open it on the String</a></span></li>';
+      }).join('') + '</ul>' + (shares.length > shown.length ? '<p class="more">and ' + (shares.length - shown.length) + ' more on the String</p>' : '');
+      var slot = document.querySelector('[data-shares]'), talk = document.getElementById('talk'), foot = document.querySelector('footer');
+      if (slot) slot.appendChild(box);
+      else if (talk && talk.parentNode) talk.parentNode.insertBefore(box, talk.nextSibling);
+      else if (foot && foot.parentNode) foot.parentNode.insertBefore(box, foot);
+      else document.body.appendChild(box);
+    }).catch(function(){});
+  }
   function shareAlone(build){
     var s = sharePill(), g = build && familyOf() && window.siteBuilderPill ? window.siteBuilderPill() : null;
     if (!s && !g) return;
     keepClear(s || g, s ? g : null);
     stepAway([s, g].filter(Boolean));
+    if (build) passedOn();
   }
 
   /* THE CORNER IS SHARED: a page's own fixed control, or a sticky one while it stands stuck (a
