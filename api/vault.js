@@ -83,9 +83,11 @@ export default async function handler(req, res) {
   }
 
   // ── claude proxy ──
+  // The caller's own key, and only that: a server key here would answer for anyone who asked, unmetered. An answer
+  // for someone with no key of their own is the commons' to pay for (/api/commons, lane credits.apps.1, 25 Nov 2026).
   if (service === 'claude') {
     const cookies = parseCookies(req);
-    const apiKey = process.env.VAULT_KEY_CLAUDE || cookies.hsu_claude;
+    const apiKey = cookies.hsu_claude;
     if (!apiKey) return res.status(401).json({ error: 'No API key. Save one via the vault first.' });
 
     const isStream = body.stream === true;
