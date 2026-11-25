@@ -189,6 +189,15 @@
   .hint{font-size:0.92rem;min-height:1.1rem;margin:0;color:var(--vapour-dim)}
   .means{font-size:0.88rem;line-height:1.4;margin:0;color:var(--vapour-dim)}
   .hint.err{color:var(--err)} .hint.ok{color:var(--bud)}
+  /* the chain of phases under the title (spine:o-page-unit 1.111111112) */
+  .chain{display:flex;flex-wrap:wrap;align-items:center;gap:0.4rem 0.6rem;margin:0.2rem 0 0.9rem;font-family:var(--mono);font-size:12.5px;letter-spacing:0.03em}
+  .chain .ch-k{color:var(--vapour-dim);text-transform:uppercase;letter-spacing:0.1em;font-size:11.5px;margin-right:0.2rem}
+  .chain .ch-here{padding:0.15rem 0.6rem;border-radius:999px;border:1px solid var(--acc);color:var(--acc)}
+  .chain .ch-here a{color:inherit}
+  .chain .ch-link{padding:0.15rem 0.6rem;border-radius:999px;border:1px solid var(--line-strong);color:var(--foam);text-decoration:none}
+  .chain .ch-link:hover{border-color:var(--acc)}
+  .chain .ch-link.ch-none{opacity:0.55}
+  .chain .ch-w{color:var(--vapour-dim)}
   /* builder's layer (theme.js siteBuilder): what people have said about a part, shown only in builder mode */
   .build-under{margin:1rem 0 0.4rem;padding:0.75rem 0.9rem;border:1px dashed var(--line-strong);border-radius:var(--radius,8px);display:grid;gap:0.5rem}
   .build-under .bu-h{font-family:var(--mono);font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
@@ -574,7 +583,17 @@
       /* any word after 'phase:' is the family's kind: the form's own (proposal, project, complete, set aside, inquiry), or
          another kind laid out on the form, a walk, a recipe, an explainer, the rest of its line the family's own account
          of it (function:proposal 6, 17 Nov 2026) */
-      if (!L.phase && (m = /^phase:\s*(set aside|[a-z]+)\b\s*[—–:,-]?\s*([\s\S]*)$/i.exec(p[1]))) { L.phase = m[1].toLowerCase(); L.phaseSay = m[2].trim(); }
+      if (!L.phase && (m = /^phase:\s*(set aside|[a-z]+)\b\s*[—–:,-]?\s*([\s\S]*)$/i.exec(p[1]))) {
+        L.phase = m[1].toLowerCase(); L.phaseSay = m[2].trim();
+        /* the chain of phases, read from this law alone and never written back (spine:o-page-unit 1.111111112, with
+           keel's CHANGE at 1.111111118): 'after <family>' opening its account, 'next: <family>' anywhere in it, and a
+           phase opened down the same spine, 'phase two opened <date> at <address>' */
+        var af = /^after\s+([a-z0-9][a-z0-9-]*[a-z0-9])/i.exec(L.phaseSay), nx = /\bnext:\s*([a-z0-9][a-z0-9-]*[a-z0-9])/i.exec(L.phaseSay);
+        var op = /\b(phase\s+[a-z]+)\s+opened\b[^.;]*?\bat\s+(\d(?:\.\d+)?)/i.exec(L.phaseSay);
+        if (af) L.after = af[1].toLowerCase();
+        if (nx) L.next = nx[1].toLowerCase();
+        if (op) L.opened = { name: op[1].toLowerCase(), at: op[2] };
+      }
       if (p[0] === 9) L.provenance = p[1];
     });
     if (!L.room) L.room = name;
@@ -883,6 +902,7 @@
       var asks = DECS.length ? (DECS.length === 1 ? 'the ' + asked(1) : 'the ' + count(DECS.length) + ' ' + asked(2)) : '';
       $('bandText').innerHTML = '<div class="eyebrow">' + label + (when ? ' · ' + esc(when) : '') + '</div>' +
         '<h1><a href="/proposal/' + esc(FAM) + '">' + esc(TITLE) + '</a></h1>' +
+        chainHTML() +
         '<p class="lede">' + rich(lede) + '</p>' +
         (asks ? '<p class="sub">Read it, then answer ' + asks + '. Anyone can: each answer goes in your own mirror on the beach, under your own key, beside everyone else’s.</p>' : '') +
         '<div class="actions">' + (DECS.length ? '<a class="btn primary" href="#stands">See where it stands</a>' : '') +
@@ -892,6 +912,7 @@
           PHASE === 'inquiry' ? '<p class="phase"><b>An inquiry, not a proposal.</b> Nothing here is to be built: each step ends in an open question, and the answers say what is known, what is still open and what would settle it.</p>' :
           PHASE === 'set aside' ? '<p class="phase"><b>Set aside.</b> The work now lives in its own blocks; this is the proposal as it last stood.</p>' :
           PHASE === 'complete' ? '<p class="phase"><b>Complete.</b> The work it proposed is done; this page keeps the record of how it was decided and built.</p>' : '');
+      fillChain();
       /* a project leads with its trail and its threads, and so does one complete (function:proposal 6) */
       var built = PHASE === 'project' || PHASE === 'complete';
       var parts = [];
@@ -984,6 +1005,28 @@
     }
     /* builder's place under a part, filled by paintBuild and shown only in builder mode */
     function buildSlot(addr) { return '<div class="build-under" data-meta data-build-at="' + esc(addr) + '"></div>'; }
+    /* the chain of phases under the title: the phase before, this one, the one after, each a link to its own page, filled
+       in with its own phase word once its law is read; a phase opened down this spine links to the step it opened at */
+    function chainHTML() {
+      if (!L || !(L.after || L.next || L.opened)) return '';
+      var parts = [];
+      if (L.after) parts.push('<a class="ch-link" href="/proposal/' + esc(L.after) + '" data-chain="' + esc(L.after) + '">\u2190 ' + esc(L.after) + '</a>');
+      var st = L.opened ? STEPS.filter(function (x) { return x.addr === L.opened.at; })[0] : null;
+      parts.push('<span class="ch-here">' + (L.opened ? esc(cap(L.opened.name)) + (st ? ', from <a href="#' + esc(st.id) + '">step ' + esc(L.opened.at) + '</a>' : ', from ' + esc(L.opened.at)) : 'This phase') +
+        ' \u00b7 ' + esc(PHASE) + '</span>');
+      if (L.next) parts.push('<a class="ch-link" href="/proposal/' + esc(L.next) + '" data-chain="' + esc(L.next) + '">' + esc(L.next) + '<span class="ch-arr"> \u2192</span></a>');
+      return '<nav class="chain" aria-label="Its phases"><span class="ch-k">Phases</span>' + parts.join('') + '</nav>';
+    }
+    function fillChain() {
+      document.querySelectorAll('.chain [data-chain]').forEach(function (a) {
+        var name = a.getAttribute('data-chain');
+        readBlock('function:' + name).then(function (law) {
+          if (!law) { a.classList.add('ch-none'); a.title = 'No family of that name on the beach yet'; return; }
+          var l = lawOf(law, name), w = document.createElement('span');
+          w.className = 'ch-w'; w.textContent = ' \u00b7 ' + (l.phase || 'proposal'); a.insertBefore(w, a.querySelector('.ch-arr'));
+        }, function () {});
+      });
+    }
     function stepHTML(s, i) {
       var folds = s.sides.filter(function (r) { return !r.decision; }), open = s.sides.filter(function (r) { return r.decision; });
       return '<section class="step" id="' + s.id + '" data-at="' + esc(s.addr) + '">' +
