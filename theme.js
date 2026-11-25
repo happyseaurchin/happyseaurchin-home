@@ -3690,6 +3690,153 @@
 })();
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * BUILDER — the switch for a page's meta layer (spine:o-page-unit, phase two; lane tidy.2, the scope at
+ * pool:o-page-unit 25, part 1). David, 25 November 2026: 'a button at the bottom "builder" with a tool-tip that
+ * explains what it does … a pop-up which explains it and then toggle on/off -- and then the button is black/white …
+ * There may be other aspects which builder enables'; and 'Builder effectively is creating a mirror to anything -- its
+ * a commentary on any other piece of content'.
+ *
+ * Off, the default, a page keeps to its content and its decisions. On, it shows the layer beneath: what people have
+ * said about each part of it, with a place to add their own. A crafted page's 'Readings of this step' boxes
+ * (.step-readings) and anything a page marks data-meta stand only in builder mode; the plain page, /proposal/<name>,
+ * puts such a place under every step and side-room. The state is this device's, one word at 'site:builder' (a
+ * preference, never a key), the same on every page and in every tab; it is set on <html> as data-builder before the
+ * page draws, so nothing flashes. The switch stands in the corner beside Share on every family page (the door's
+ * pill() sets it there), light when off and dark when on, with a tool-tip; its first press explains it in a small
+ * window and asks, after that it turns at a tap. window.siteBuilder: on(), set(bool), toggle(); a 'site:builder'
+ * event on window carries { on } each time it turns.
+ * ───────────────────────────────────────────────────────────────────────────── */
+(function(){
+  'use strict';
+  var KEY = 'site:builder', TOLD = 'site:builder:told', h = document.documentElement;
+  function on(){ try { return localStorage.getItem(KEY) === 'on'; } catch(e){ return false; } }
+  function told(){ try { return localStorage.getItem(TOLD) === '1'; } catch(e){ return true; } }
+  h.setAttribute('data-builder', on() ? 'on' : 'off');
+  var CSS =
+    'html:not([data-builder="on"]) .step-readings,html:not([data-builder="on"]) [data-meta]{display:none!important}' +
+    '.aid-build{position:fixed;left:max(14px,env(safe-area-inset-left));bottom:max(14px,env(safe-area-inset-bottom));z-index:45;' +
+      'display:inline-flex;align-items:center;gap:7px;margin:0;padding:8px 14px 8px 11px;border-radius:999px;' +
+      'border:1px solid rgba(22,24,29,.38);background:#fbfaf7;color:#16181d;' +
+      'font:600 13px/1.1 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;letter-spacing:.01em;' +
+      'box-shadow:0 4px 18px rgba(20,10,60,.14);cursor:pointer;-webkit-tap-highlight-color:transparent;' +
+      'transition:opacity .2s ease,transform .2s ease,background-color .2s ease,color .2s ease}' +
+    '.aid-build:hover{border-color:#16181d}' +
+    '.aid-build[aria-pressed="true"]{background:#16181d;color:#fbfaf7;border-color:#16181d}' +
+    'html[data-theme="dark"] .aid-build{background:#1b1d22;color:#eceaf3;border-color:rgba(236,234,243,.42);box-shadow:0 4px 18px rgba(0,0,0,.45)}' +
+    'html[data-theme="dark"] .aid-build:hover{border-color:#eceaf3}' +
+    'html[data-theme="dark"] .aid-build[aria-pressed="true"]{background:#f4f2fa;color:#16181d;border-color:#f4f2fa}' +
+    '.aid-build:focus-visible{outline:2px solid #5b3fcf;outline-offset:3px}' +
+    '.aid-build svg{width:16px;height:16px;flex:none}' +
+    '.aid-build.aid-away{opacity:0;pointer-events:none;transform:translateY(10px)}' +
+    'html.aid-open .aid-build,body:has(dialog[open]) .aid-build,body:has(.pop-back:not([hidden]):not(.hidden)) .aid-build,' +
+      'body:has(.sheet-back:not([hidden]):not(.hidden)) .aid-build{display:none}' +
+    '@media (max-width:520px){.aid-build span{display:none}.aid-build{padding:8px 10px}}' +
+    '@media print{.aid-build{display:none}}' +
+    '.bld-dlg{box-sizing:border-box;width:min(440px,calc(100vw - 28px));border:1px solid rgba(22,24,29,.2);border-radius:16px;padding:20px 22px 16px;' +
+      'background:#fbfaf7;color:#16181d;font:15px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;box-shadow:0 18px 60px rgba(10,10,30,.35)}' +
+    'html[data-theme="dark"] .bld-dlg{background:#1b1d22;color:#eceaf3;border-color:rgba(236,234,243,.25)}' +
+    '.bld-dlg::backdrop{background:rgba(8,10,16,.42)}' +
+    '.bld-dlg h2{margin:0 0 8px;font-size:18px;font-weight:700;line-height:1.25}' +
+    '.bld-dlg p{margin:0 0 10px}' +
+    '.bld-dlg .bld-here{font-size:14px;opacity:.85}' +
+    '.bld-dlg a{color:inherit;text-decoration:underline;text-underline-offset:3px}' +
+    '.bld-acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}' +
+    '.bld-acts button{font-family:inherit;font-weight:600;font-size:14px;line-height:1;padding:10px 16px;border-radius:999px;cursor:pointer;border:1px solid currentColor;background:none;color:inherit}' +
+    '.bld-acts .bld-go{background:#16181d;color:#fbfaf7;border-color:#16181d}' +
+    'html[data-theme="dark"] .bld-acts .bld-go{background:#f4f2fa;color:#16181d;border-color:#f4f2fa}';
+  var styled = false;
+  function style(){
+    if (styled || !document.head) return;
+    styled = true;
+    var st = document.createElement('style');
+    st.textContent = CSS;
+    document.head.appendChild(st);
+  }
+  style();
+  if (!styled) document.addEventListener('DOMContentLoaded', style);
+
+  var ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 19.5h3.8L19 8.8a2 2 0 0 0 0-2.8l-1-1a2 2 0 0 0-2.8 0L4.5 15.7v3.8z" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/><path d="M13.6 6.6l3.8 3.8" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>';
+  var btn = null;
+  function tip(){ return on() ? 'Builder is on: what people have said about each part shows, with a place to add yours. Tap to turn it off.' :
+    'Builder: show what people have said about each part of this page, and add your own'; }
+  function paint(){
+    if (!btn) return;
+    btn.setAttribute('aria-pressed', String(on()));
+    btn.title = tip();
+    btn.setAttribute('aria-label', tip());
+  }
+  function set(v){
+    try { localStorage.setItem(KEY, v ? 'on' : 'off'); } catch(e){}
+    h.setAttribute('data-builder', v ? 'on' : 'off');
+    paint();
+    try { window.dispatchEvent(new CustomEvent('site:builder', { detail: { on: !!v } })); } catch(e){}
+  }
+  /* what this page carries for builder: its own meta parts, else (a proposal's crafted page) its plain page's */
+  function here(){
+    var n = document.querySelectorAll('.step-readings,[data-meta]').length;
+    if (n) return n === 1 ? 'On this page: one place for comments.' : 'On this page: ' + n + ' places, one under each part.';
+    var fam = window.siteDoorFamily ? window.siteDoorFamily() : null;
+    if (fam && !fam.kind && !/^\/proposal(\.html)?\//.test(location.pathname))
+      return 'This page carries no comments of its own yet. Its plain page has a place under every part: <a href="/proposal/' + fam.name + '">open the plain page</a>.';
+    return 'Nothing on this page carries comments yet.';
+  }
+  function explain(){
+    style();
+    var d = document.createElement('dialog');
+    d.className = 'bld-dlg';
+    d.setAttribute('aria-labelledby', 'bldTitle');
+    d.innerHTML = '<form method="dialog"><h2 id="bldTitle">Builder</h2>' +
+      '<p>Builder shows the layer beneath a page: what people have said about each of its parts, and a place to add your own, a comment or a change you would make to that part.</p>' +
+      '<p>Off, a page keeps to its content and its decisions. Your choice stays on this device, on every page, until you change it with this switch.</p>' +
+      '<p class="bld-here">' + here() + '</p>' +
+      '<div class="bld-acts">' + (on() ? '<button value="keep" class="bld-go">Keep it on</button><button value="off">Turn it off</button>'
+        : '<button value="on" class="bld-go">Turn builder on</button><button value="keep">Keep it off</button>') + '</div></form>';
+    document.body.appendChild(d);
+    /* acted on as the button is pressed, not on the dialog's close event, which can come late */
+    var settled = false;
+    function done(v){
+      if (settled) return;
+      settled = true;
+      try { localStorage.setItem(TOLD, '1'); } catch(e){}
+      if (v === 'on') set(true); else if (v === 'off') set(false);
+      if (d.open && d.close) d.close();
+      d.remove();
+      if (btn) btn.focus();
+    }
+    d.querySelector('form').addEventListener('submit', function(e){ e.preventDefault(); done(e.submitter ? e.submitter.value : 'keep'); });
+    d.addEventListener('cancel', function(e){ e.preventDefault(); done('keep'); });
+    if (d.showModal) d.showModal(); else { d.setAttribute('open', ''); }
+  }
+  function press(){
+    if (!told()) return explain();
+    var v = !on();
+    set(v);
+    if (v && !document.querySelector('.step-readings,[data-meta]')) explain();   /* nothing here to show: say where it is */
+  }
+  window.siteBuilder = { on: on, set: set, toggle: function(){ set(!on()); } };
+  /* the switch, made once for the corner; the door's pill() places it beside Share */
+  window.siteBuilderPill = function(){
+    if (btn || h.getAttribute('data-builder-switch') === 'off' || (document.body && document.body.getAttribute('data-builder-switch') === 'off')) return btn;
+    style();
+    btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'aid-build';
+    btn.innerHTML = ICON + '<span>Builder</span>';
+    btn.addEventListener('click', press);
+    paint();
+    document.body.appendChild(btn);
+    return btn;
+  };
+  /* another tab turned it: follow */
+  window.addEventListener('storage', function(e){
+    if (e.key !== KEY) return;
+    h.setAttribute('data-builder', on() ? 'on' : 'off');
+    paint();
+    try { window.dispatchEvent(new CustomEvent('site:builder', { detail: { on: on() } })); } catch(err){}
+  });
+})();
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * WITH YOUR AI — the door every page a person is handed carries (spine:o-page-unit
  * 1.1; David's GO at 1.18, 15 November 2026; thread:41).
  *
@@ -3805,9 +3952,9 @@
     b.innerHTML = ICON + '<span>with your AI</span>';
     b.addEventListener('click', function(){ window.siteDoorOpen(b); });
     document.body.appendChild(b);
-    var s = sharePill();
-    keepClear(b, s);
-    stepAway(s ? [b, s] : [b]);
+    var s = sharePill(), g = window.siteBuilderPill ? window.siteBuilderPill() : null;   /* Builder, beside Share */
+    keepClear(b, s, g);
+    stepAway([b, s, g].filter(Boolean));
   }
 
   /* SHARE, beside the door — the share wall (spine:o-page-unit 1.11111111112; David's GO at 1.11111111118, 23 November
@@ -3848,11 +3995,12 @@
     body.appendChild(a);
     return a;
   }
-  function shareAlone(){
-    var s = sharePill();
-    if (!s) return;
-    keepClear(s);
-    stepAway([s]);
+  /* Share alone in the corner; on a family page whose door stands in its own header, Builder beside it */
+  function shareAlone(build){
+    var s = sharePill(), g = build && familyOf() && window.siteBuilderPill ? window.siteBuilderPill() : null;
+    if (!s && !g) return;
+    keepClear(s || g, s ? g : null);
+    stepAway([s, g].filter(Boolean));
   }
 
   /* THE CORNER IS SHARED: a page's own fixed control, or a sticky one while it stands stuck (a
@@ -3868,9 +4016,9 @@
   }
   /* b keeps clear; f, where there is one (Share beside the door), stands just right of b wherever b goes, so the two
    * read as one pair and neither ever counts the other as a neighbour to step away from */
-  function keepClear(b, f){
+  function keepClear(b, f, g){
     var held = [], ticking = false;
-    function ours(el){ return el === b || b.contains(el) || (f && (el === f || f.contains(el))) || (el.closest && el.closest('.aid-back')); }
+    function ours(el){ return el === b || b.contains(el) || (f && (el === f || f.contains(el))) || (g && (el === g || g.contains(el))) || (el.closest && el.closest('.aid-back')); }
     function scan(){
       held = [];
       var all = document.body.getElementsByTagName('*');
@@ -3883,11 +4031,12 @@
       place();
     }
     function follow(){
-      if (!f) return;
+      if (!f && !g) return;
       var r = b.getBoundingClientRect();
-      if (!r.width) return;                                   /* b hidden (a sheet open): f is hidden with it */
-      f.style.left = Math.round(r.right + 8) + 'px';
-      f.style.bottom = Math.round(window.innerHeight - r.bottom) + 'px';
+      if (!r.width) return;                                   /* b hidden (a sheet open): f and g are hidden with it */
+      var x = r.right, y = Math.round(window.innerHeight - r.bottom) + 'px';
+      if (f){ f.style.left = Math.round(x + 8) + 'px'; f.style.bottom = y; x = f.getBoundingClientRect().right || x + 8; }
+      if (g){ g.style.left = Math.round(x + 8) + 'px'; g.style.bottom = y; }   /* Builder, last in the row */
     }
     function place(){
       ticking = false;
@@ -3912,7 +4061,7 @@
     window.addEventListener('scroll', soon, { passive: true });
     window.addEventListener('resize', function(){ setTimeout(scan, 150); });
     /* a sheet closing shows b again where it stood: f takes its place beside it as soon as it does */
-    if (f) document.addEventListener('click', function(){ setTimeout(soon, 50); }, true);
+    if (f || g) document.addEventListener('click', function(){ setTimeout(soon, 50); }, true);
     place();
     setTimeout(scan, 300); setTimeout(scan, 1500); setTimeout(scan, 4000);
   }
@@ -3928,7 +4077,7 @@
       e.preventDefault();
       window.siteDoorOpen(t, { family: t.getAttribute('data-ai-door') || undefined });
     });
-    if (document.querySelector('[data-ai-door]:not([data-ai-door="off"])')) return shareAlone();   /* the door set in the page's own header: Share takes the corner */
+    if (document.querySelector('[data-ai-door]:not([data-ai-door="off"])')) return shareAlone(true);   /* the door set in the page's own header: Share takes the corner */
     /* a page that is no family's face has no door; one that asks for Share (data-share="on", as /arcade and /games do)
        has Share alone in the corner */
     if (!familyOf()) return (h.getAttribute('data-share') === 'on' || body.getAttribute('data-share') === 'on') ? shareAlone() : undefined;

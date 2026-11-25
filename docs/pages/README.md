@@ -110,6 +110,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [talk-index](talk-index.md) | `talk-index.html` | the talk-index proposal (29 Oct 2026), at `/talk-index`, its snazzy view once its law names it at 6 (`/proposal/talk-index` is its standard view, draw… |
 | [the-ai-wave](the-ai-wave.md) | `the-ai-wave.html` | The AI wave (19 Nov 2026), at `/the-ai-wave`, its snazzy view once its law names it at 6 (`/proposal/the-ai-wave` is its standard view, drawn from its… |
 | [the-sea](the-sea.md) | `the-sea.html` | the sea proposal (12 Nov 2026), at `/the-sea`, its snazzy view, which its law names at 6, live from the same afternoon at David's word ('Pr and merge'… |
+| [theme-js-builder](theme-js-builder.md) | `theme.js` Builder | the switch for a page's meta layer (25 Nov 2026, lane tidy.2; |
 | [theme-js-colour-tabs](theme-js-colour-tabs.md) | `theme.js` colour tabs | a colour's own places in the go menu (23 Nov 2026, lane colour-key.1, the coloured dashboards' step 3; |
 | [theme-js-members-doors](theme-js-members-doors.md) | `theme.js` members' doors | a page served at a door of a members' beach (19 Nov 2026, lane salt.app.2; |
 | [theme-js-share](theme-js-share.md) | `theme.js` Share | Share, beside the door (23 Nov 2026, lane share-string.1; |

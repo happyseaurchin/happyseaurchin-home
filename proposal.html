@@ -189,6 +189,16 @@
   .hint{font-size:0.92rem;min-height:1.1rem;margin:0;color:var(--vapour-dim)}
   .means{font-size:0.88rem;line-height:1.4;margin:0;color:var(--vapour-dim)}
   .hint.err{color:var(--err)} .hint.ok{color:var(--bud)}
+  /* builder's layer (theme.js siteBuilder): what people have said about a part, shown only in builder mode */
+  .build-under{margin:1rem 0 0.4rem;padding:0.75rem 0.9rem;border:1px dashed var(--line-strong);border-radius:var(--radius,8px);display:grid;gap:0.5rem}
+  .build-under .bu-h{font-family:var(--mono);font-size:11.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--vapour-dim)}
+  .build-under .bu-at{margin-left:0.4rem;opacity:0.75}
+  .build-under .bu-lines{list-style:none;margin:0;padding:0;display:grid;gap:0.35rem;font-size:0.95rem;overflow-wrap:anywhere}
+  .build-under .bu-lines b{margin-right:0.35rem}
+  .build-under .bu-lines li.mine b{color:var(--acc)}
+  .build-under .bu-none{margin:0;font-size:0.9rem;color:var(--vapour-dim)}
+  .build-under .bu-add>summary{cursor:pointer;color:var(--acc);font-weight:600;font-size:0.95rem}
+  .build-under .form{display:grid;gap:0.5rem;margin-top:0.5rem}
 
   /* the room, and the lines for one's own AI */
   .talk{list-style:none;margin:0.4rem 0 1rem;padding:0;display:grid;gap:0.7rem}
@@ -972,6 +982,8 @@
         if (note && !(s.shown && s.shown.legacy)) note.remove();
       });
     }
+    /* builder's place under a part, filled by paintBuild and shown only in builder mode */
+    function buildSlot(addr) { return '<div class="build-under" data-meta data-build-at="' + esc(addr) + '"></div>'; }
     function stepHTML(s, i) {
       var folds = s.sides.filter(function (r) { return !r.decision; }), open = s.sides.filter(function (r) { return r.decision; });
       return '<section class="step" id="' + s.id + '" data-at="' + esc(s.addr) + '">' +
@@ -982,14 +994,15 @@
         noteHTML(s) +
         (folds.length ? '<div class="more">' + folds.map(function (r) {
           return '<details class="fold"><summary>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</summary><div class="in">' +
-            (r.rest && r.title ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + pointsHTML(r.points) + '</div></details>';
+            (r.rest && r.title ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + pointsHTML(r.points) + buildSlot(r.at) + '</div></details>';
         }).join('') + '</div>' : '') +
         (s.decision ? cardHTML(s.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') : '') +
         open.map(function (r) {
           return '<div class="sideopen" data-at="' + esc(r.at) + '" id="' + esc(r.at) + '"><div class="addr">beside it, at <b>' + esc(r.at) + '</b></div><h3>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</h3>' +
             (r.rest ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + (r.points.length ? '<div class="more"><details class="fold"><summary>What to know</summary><div class="in">' + pointsHTML(r.points) + '</div></details></div>' : '') +
-            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') + '</div>';
+            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') + buildSlot(r.at) + '</div>';
         }).join('') +
+        buildSlot(s.addr) +
         '<div class="runs-under" data-step="' + esc(s.addr) + '"></div>' +
         '<div class="th-under" data-step="' + esc(s.addr) + '"></div>' +
       '</section>';
@@ -1009,7 +1022,7 @@
         open.map(function (r) {
           return '<div class="sideopen" data-at="' + esc(r.at) + '" id="' + esc(r.at) + '"><div class="addr">around it, at <b>' + esc(r.at) + '</b></div><h3>' + esc(sentenceCase(r.title || clip(r.rest, 60))) + '</h3>' +
             (r.rest ? '<p>' + rich(cap(r.rest)) + '</p>' : '') + (r.points.length ? '<div class="more"><details class="fold"><summary>What to know</summary><div class="in">' + pointsHTML(r.points) + '</div></details></div>' : '') +
-            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') + '</div>';
+            cardHTML(r.decision, PHASE === 'inquiry' ? 'The question' : phaseKind(PHASE) ? 'The point' : '') + buildSlot(r.at) + '</div>';
         }).join('') + '</section>';
     }
     function talkHTML() {
@@ -1089,7 +1102,54 @@
       paintAs();
       drawQuipu();
       paintRuns();
+      paintBuild();
     }
+    /* BUILDER (theme.js siteBuilder; David, 25 November 2026: 'a commentary on any other piece of content'): under every
+       step and side-room, what people have said about that part, the reader's own first, and a box to add theirs, a line
+       in their own mirror at the part's own address; the whole layer stands only in builder mode (data-meta). The box
+       starts from the reader's own line there and keeps its draft (keepDraft) and takes dictation. */
+    function linesAtPart(addr) {
+      var out = [];
+      Object.keys(MIRRORS || {}).forEach(function (h) { var t = voiceOf(nodeAt(MIRRORS[h], addr)); if (t) out.push({ who: h, line: t }); });
+      return out.sort(function (a, b) { return (b.who === ME) - (a.who === ME) || a.who.localeCompare(b.who); });
+    }
+    function paintBuild() {
+      document.querySelectorAll('.build-under[data-build-at]').forEach(function (slot) {
+        var at = slot.getAttribute('data-build-at'), lines = linesAtPart(at);
+        var own = ME ? lines.filter(function (l) { return l.who === ME; })[0] : null, wasOpen = !!slot.querySelector('details[open]');
+        slot.innerHTML = '<div class="bu-h">Comments on this part <span class="bu-at">' + esc(at) + '</span></div>' +
+          (lines.length ? '<ul class="bu-lines">' + lines.map(function (l) {
+            return '<li' + (l.who === ME ? ' class="mine"' : '') + '><b>' + esc(l.who) + '</b> ' + esc(l.line) + '</li>';
+          }).join('') + '</ul>' : '<p class="bu-none">Nothing said about this part yet.</p>') +
+          '<details class="bu-add"' + (wasOpen ? ' open' : '') + '><summary>' + (own ? 'Change your comment on this part' : 'Add your comment on this part') + '</summary>' +
+          '<div class="form"><textarea maxlength="600" placeholder="A comment on this part, or a change you would make to it" aria-label="Your comment on this part"></textarea>' +
+          '<div class="as"></div><button type="button" class="send">' + (own ? 'Change my comment' : 'Say it') + '</button><p class="hint" aria-live="polite"></p></div></details>';
+        var box = slot.querySelector('textarea'), hint = slot.querySelector('.hint'), send = slot.querySelector('.send'), as = slot.querySelector('.as');
+        function say(cls, t) { hint.className = 'hint' + (cls ? ' ' + cls : ''); hint.textContent = t || ''; }
+        var clear = window.keepDraft ? window.keepDraft(box, FAM + ':part:' + at) : function () {};
+        if (!box.value && own) { box.value = own.line; slot.setAttribute('data-filled', own.line); }
+        if (window.dictate) window.dictate(box);
+        if (buttonShown()) as.textContent = 'Saying it through your beach button.';
+        else if (ME) {
+          as.innerHTML = 'Saying it as <b>' + esc(ME) + '</b> · <button type="button" class="linkish notme">not you?</button>';
+          as.querySelector('.notme').onclick = function () { ME = ''; store.del('render:who'); forgetOwn(); paintAnswers(); };
+        } else as.innerHTML = '<label>Your name on the beach<input class="me" autocomplete="username" spellcheck="false" autocapitalize="off" maxlength="32" placeholder="your handle"></label>';
+        send.addEventListener('click', function () {
+          var typed = as.querySelector('input'), me = ME || (typed ? clean(typed.value) : '');
+          var line = box.value.trim().replace(/\s+/g, ' ');
+          if (!line) { say('err', 'Write a line first.'); box.focus(); return; }
+          if (!me && !buttonShown()) { say('err', 'Give your name on the beach first.'); if (typed) typed.focus(); return; }
+          send.disabled = true; say('', 'Saying it on the beach…');
+          beachVoice.say({ field: FAM, at: at, text: line, name: me || undefined }).then(function (r) {
+            if (!r || !r.ok) { say(r && r.quiet ? '' : 'err', r && r.quiet ? '' : errText(r)); return; }
+            ME = clean(r.name || me); if (ME) store.set('render:who', ME);
+            clear(); slot.setAttribute('data-filled', line);
+            return readMirrors(FAM).then(function (m) { MIRRORS = m.mirrors || {}; FOLD = m.fold; TOUCHED = m.touched || {}; paintAnswers(); });
+          }, function (e) { say('err', 'Couldn’t reach the beach: ' + e.message); }).then(function () { send.disabled = false; });
+        });
+      });
+    }
+
     /* the runs: lines opening RUN in the runners' own mirrors, each shown in the step that holds the deepest place on
        the spine at or above it, the newest open and the rest a tap away, a chip per runner for that runner's series
        (runs.js; 20 Nov 2026, lane pscale.lab, at David's 'go for it', the o-page-unit showing what experiments find) */
