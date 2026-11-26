@@ -1,11 +1,99 @@
 # `nearly-here.html`
 
-Nearly Here (26 Nov 2026, lane site.update), at `/nearly-here`: Nearly There a month on, the update to everyone building the beach, and the first page made as an update in the pheromone's shape (`spine:o-page-unit` 1.1111111: six walls and a floor). David, 26 November, in chat to weft: Nearly There is 'more like a feedback/dashboard/update/window version of a proposal', so 'upgrade it to a pheromone' at its own address, with the games (keep the original Ghost Wire, show Fotronic 3D and Migration, maybe Coil, and the flocking proposal as what's next), the RPG (its recent games, Game Ecology and Game Experience), the business at three levels (products, services and systems, platforms and ecosystems) in place of the revenue rosette, and 'when asking people to say things -- write into the pool, or connect up your llm … we want the buttons to share and to use your llm'.
+Nearly Here (26 Nov 2026, lane site.update), at `/nearly-here`: the update to everyone building the beach, made in the pheromone's shape (`spine:o-page-unit` 1.1111111: six walls and a floor). David asked for it on 26 November, in chat to weft. Nearly There, he said, is "more like a feedback/dashboard/update/window version of a proposal", so "upgrade it to a pheromone" at its own address, with the games, the RPG and the business at three levels brought up to date. Its first cut went live that afternoon (happyseaurchin-home #832).
 
-THE FAMILY, founded by weft that day under weft's key until David takes it: `spine:nearly-here` (its four parts down 1 at the same addresses as `spine:nearly-there`'s, so what was said at a part of the phase before reads beside the same part here: 1 where it stands, 1.1 the games and the RPG, 1.11 the business at three levels, 1.111 bring yourself, side-rooms at 2 to 6 beneath each; every count read from the beach that afternoon) and its law `function:nearly-here` ('mode: document' at 1; the room at 3, `pool:beach-venture`, the room Nearly There ended in; the page at 6; at 7 'phase: update — after nearly-there …', which `proposal.html`'s chain and `door.js`'s kind both read; it asks for no money). The plain view is `/walk/nearly-here`, where a document is read while `spine:o-page-unit` 1.1111118 (one reader for every kind) stands at NOT YET; `/proposal/nearly-here` draws another kind only once it is listed (`proposal.html`: `!listed && phaseKind(...)` → not one), so it waits for its line in `proposed:weft`, to be appended when the page is live. `animations/nearly-there.html` now names it from its hero and its foot ('A month on, its next phase'); `function:nearly-there` 7, under the shared project lock, does not yet say `next: nearly-here`, so the chain is drawn back from here and forward only on the old page itself.
+The same afternoon David re-cut it: "Honestly, keep it clean -- nearly here". His list:
+- "Get rid of the said here at nearly there!!! That's just confusing."
+- Nearly There only "at the bottom if someone wants previous version -- it should be part of a thread".
+- "Just today's read with blocks".
+- "the games are all the same!!!! Please check /games and the named games I described".
+- No "since nearly there" in the RPG section, and no Nearly There at the top or in the bird windows.
+- "Replace 'say it in the pool' with mirror/voices, and get rid of the say with AI -- because there's a button the screen that shows that at all times."
+- "At the end -- pool, with ai, share it -- and get rid of the big section below that". Also gone: where the proposals stand ("David is the only person alive on the beach!") and the corkboard's doors.
+- "Create one thread which shows the nearly-there page … and a knot for this version."
+- The last sentence: "If we get it right, you will generate revenue. We all will."
 
-THE WORLD is keel's Nearly There walked on (its palette, faces, slabs and windows kept): the State Stack's birds a fixed sky, but the page starts where Nearly There ended, the room at B, and walks from dawn into full morning (`data-room` 0.98 to 2), the gauge reading B to A. THE PARTS: where it stands (the beach then and now, 1,579 blocks and 49 passports on 23 October beside 2,525 and 61 on 26 November and today's count read live; the marquee of films with seven newer pages in front, each linked by its own address and still; the strata with biology's chip now 'threads, live'; the three levels' cards); the games and the RPG (Matthew's three cabinets and the Ghost Wire of 23 October with that day's fastest ghost, kept exactly; Migration, Fotronic 3D and Coil as cards with their own share stills, Fotronic 3D's taken headless from its arena at 1200 by 630 into `animations/nearly-here-stills/fotronic-3d.jpg`; Flock World as what comes next; Onen's castle walk, Mark's living map and his six pictures, kept, then Steel at the Ford and the Character Block, and Game Ecology and Game Experience as proposals); the business at three levels (products, services and systems, platforms and ecosystems, each item linking its product page in David's 'What grows on the beach' where one stands, the ground holding the spiral of every block, now read live from the beach's index, its born and touched stamps, with the page's own copy of that afternoon, `BEACH_SNAP`, standing in where the beach can't be read; the garden linked as the same three levels drawn for an investor; nobody named in it but by product, as the garden names nobody until they agree); bring yourself (three ways, the pool, your own AI and Share; the venture's pool, its newest lines and a box; who it was passed on to; where the featured proposals stand; NOW, others' NOW and the corkboard; Threads). Each part opens with what was said at the same part of Nearly There, read from its sayers' own mirrors (`/api/mirrors?family=nearly-there`), David's four says baked in as the fallback. Dropped from keel's page: the revenue rosette (David: 'an abstract diagram'), the four tiles of working together, the pieces that dovetail, Rat Alley's story, Matthew's Sundial frames, 'still bumpy' and the Community Recovery card, all still on Nearly There, the phase before.
+The page below is that re-cut. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`, its law at 2.
 
-THE WALLS AND THE FLOOR, each as the kit already builds it where it can: the door and Share come from `theme.js` because `<html>` says `data-family="nearly-here"`, the corner pair kept (the page's own 'With your AI' buttons carry `data-door-here` and call `window.siteDoorOpen` from a delegated click, never `data-ai-door`, which would put Share alone in the corner), Builder beside them; the door's first message is the page's own (`window.siteDoorMessage`: the family, its law, the phase before, the place reached, and the pool as where to say it), and `door.js` now knows the kind 'update' (its noun and its ask); a place to answer at each part, the pause, an empty screen with two ways, 'Say it in the pool' and 'With your AI', the first a card whose line is appended to `pool:beach-venture` with the name the reader goes by and no key, as `{_: 'On Nearly Here, at <the part>: <line>', 1: name, 2: 'spine:nearly-here <address>', 3: <instant>}`, its box keeping its draft and taking dictation, the lines said at that part listed beneath (a pool line appends, so nothing of the reader's is replaced); the room, the same pool; the threads, `[data-threads="nearly-here"]` through `/threads.js`, which says nothing is tied yet; the floor's phases as a chain under the title (Nearly There, this phase, and the next once the law's 7 names one), its funding said at the law's 7 (it asks none), and its sharing through Share and the kit's 'Passed on' list (`[data-shares]`). Builder mode (`[data-meta]`, hidden by `theme.js` while Builder is off) adds a box beneath each pause, the readings of that part in their sayers' own mirrors, `nearly-here:<handle>`, read through `/api/mirrors`, with a box that says one's own through `beachVoice.say` (the key the browser's to ask for), starting from the reader's own reading and its button reading 'Change my reading' once one stands (rule 6). Each featured proposal's decisions are drawn as marks, read live from its spine and mirrors (`[data-marks]`): filled once anyone has answered, ringed once happyseaurchin has, the decision's words on hover. The spine's words repaint the parts' bodies live (`[data-sp][data-part="body"]`, its addresses dropped since the page puts its links beside them); the eyebrows carry `data-part="title"` and the slabs `data-step`, so the door names the reader's place as 'step n of 4, <the part>'.
+## The family
 
-Its share still is the hero at rest in the dark, `animations/nearly-here.jpg` (1200 by 630, taken headless with reduced motion through a same-origin frame that hides the corner controls). On a phone the pause's two buttons stack and the room's gauge rides at the top left, since the corner holds the pills. Checked in the built-in browser served from the branch at 1280 light and 390 dark: no sideways scroll, no script error (two expected 404s: the dev server's favicon, and the kit's read of the family's fold, which nobody has kept yet), every live read landing (the then-and-now count, the phase before's says, the marks, the pool's newest lines), a pause's card opened and its line's write checked with the POST intercepted in the page (nothing said into the real pool), the door opened from a pause at 'step 3 of 4, the business, at three levels' with the page's own message, and Builder turned on and off (four readings boxes shown, then hidden). Its foot offers 'make an update like this one', `/proposal?kind=update#make`, `/proposal`'s Make one with its line already deciding an update (happyseaurchin-home #833). Listed in `proposed:weft` at 6 on 26 November once #832 was merged, so `/proposal/nearly-here` draws it as 'An update', its chain reading back to `nearly-there` (shown as 'proposal' until that law's 7 names its kind).
+Founded by weft under weft's key until David takes it.
+
+- **`spine:nearly-here`.** Four parts down 1: 1 where it stands, 1.1 the games and the RPG, 1.11 the business at three levels, 1.111 bring yourself. Each has side-rooms at 2 to 7 beneath it. These are the same four addresses as `spine:nearly-there`, named only in its provenance.
+- **`function:nearly-here`, its law.**
+  - 1 says `mode: document`.
+  - 2 is the voices.
+  - 3 is the room, `pool:beach-venture`.
+  - 5 names `thread:151`.
+  - 6 is the page.
+  - 7 says `phase: update — after nearly-there …`. It asks for no money.
+- **Its versions are one thread, `thread:151`.** It was opened in `spine:thread` by weft with two knots in `thread:weft`: Nearly There's page at 151, and this version at 151.1, each naming its page.
+- **It is listed at `proposed:weft` 6.** So `/proposal/nearly-here` draws it as "An update".
+
+## The world
+
+The world is keel's shore with the State Stack's birds as a fixed sky, kept from the page's first version. The page walks from dawn into full morning (`data-room` 0.98 to 2), and the gauge reads B to A.
+
+## The parts
+
+**Where it stands**
+- Today's count of blocks and passports, read live from the beach's index.
+- The marquee of films, the newest seven in front, each linked by its own address and still.
+- The strata, with biology's chip reading "threads, live".
+- The three levels' cards.
+
+**The games and the RPG**
+- Ghost Wire, "the original" David asked to keep: Matthew's wire of 23 October with that day's fastest ghost, to play here. It stands alone of the old arcade's three cabinets; Bat Sky and Rat Alley went.
+- Fotronic 3D, Migration and Coil as cards with their own share stills. Fotronic 3D's was taken headless from its arena into `animations/nearly-here-stills/fotronic-3d.jpg`.
+- "On the shelf as well": every other game on /games (Cairn, Ghost Racer, The Chain, Forage), read live from `/games/list.json`.
+- Flock World as what comes next.
+- Onen's castle walk, Mark's living map and his six pictures.
+- New this month: Steel at the Ford and the Character Block. Then Game Ecology and Game Experience.
+
+**The business at three levels**
+- Products, services and systems, platforms and ecosystems.
+- Each item links its product page in David's "What grows on the beach" where one stands.
+- The ground holds the spiral of every block, read live from the index (born and touched). The page's copy of that afternoon, `BEACH_SNAP`, stands in where the beach can't be read.
+- The garden is linked as the same three levels. No person is named but by product.
+
+**David's line between them**
+- "People write their observations [if] they want to inform a direction of development meaningfully, or contribute to the pool generally" — signed David.
+
+**Bring yourself**
+- Its words, then the three ways: the pool (`mirror.onen.ai/?pool=beach-venture`), your own AI (the shared door) and Share (the String).
+- The kit's "Passed on" list (`[data-shares]`).
+
+**The finale**
+- David's sentence, signed David.
+- The versions thread on a glass panel, drawn by `/threads.js` in tokens the panel sets (`--foam`, `--vapour-dim`, `--liquid`, `--line-strong`).
+- The credits, and the foot.
+
+## Voices at each pause
+
+- Each pause is an empty screen with one bubble, "Voices", counting the voices there.
+- It opens a card for the reader's own reading of the part. The reading stands in their own mirror, `nearly-here:<handle>`, at the part's address, said through `beachVoice.say` with the handle typed and the key the browser's to ask for.
+- Everyone's voices are read back through `/api/mirrors`, the shared reading above them where one stands.
+- The box starts from the reader's own voice, and its button reads "Change my voice" once one stands (rule 6). The box keeps its draft and takes dictation.
+- There is no pool line and no "with your AI" at a pause: the corner door stands on every page.
+
+## The kit
+
+- `theme.js` gives the door, Share and Builder, because `<html>` says `data-family="nearly-here"`.
+- The page's own "with your AI" button carries `data-door-here` and calls `window.siteDoorOpen`, so the corner keeps both pills.
+- `window.siteDoorMessage` writes the door's first message for this page. It names the voice in the reader's own mirror, or a line in the pool.
+- Since 26 November 2026 `threads.js` makes every address in a registry knot's words a link (`linked()`), so the thread's two pages open from their knots.
+
+## Its share still
+
+- The hero at rest in the dark, `animations/nearly-here.jpg`, 1200 by 630.
+- Taken headless with reduced motion through a throwaway same-origin frame that hid the corner controls.
+
+## Checked
+
+Checked in the built-in browser served from the branch, at 1280 light and 390 dark:
+- No sideways scroll and no script error.
+- "Nearly There" only inside the thread.
+- Today's count, the shelf and the thread all read live.
+- A voice said at 1.1 with `beachVoice.say` stubbed: the call carried `field nearly-here, at 1.1`, and nothing landed.
+
+The page's foot offers "make an update like this one", `/proposal?kind=update#make`, the Make one line deciding an update (#833).
