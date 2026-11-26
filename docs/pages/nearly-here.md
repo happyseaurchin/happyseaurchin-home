@@ -18,7 +18,12 @@ That re-cut went live as #834. That evening David left his own voices on the pag
 - At bringing yourself: "This section... seems a bit thin. Maybe this is where we do the silo-buster business method". He named line of sight in the first meeting, the minimum viable experience, and where to start: NOW's walk view, the recency sunburst, the globe, a passport, and "reaching out to me, David Pinto".
 - In chat, a new section forked off the business: the AI upgrades (lossless, logarithmic memory; lanes; genus-one agents and doormen), split from what they do between people (the meld, meetings arranged wherever you are, the grain network, "a solution (not advice) within 24 hours"). "Yes, this deserves a section."
 
-The page below is that amendment. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`. The re-cut's stand at `archive:spine:nearly-here:2026-11-26b`, each with the spine at 1 and the law at 2.
+Later that evening, before it went live, David moved three things, in chat:
+- "Move the 'start now' to the social section above -- the right people meet section."
+- Silo Buster's steps into its card, then: "Actually they won't fit -- so just point them to the silo-buster animation".
+- "add the -- connect up your llm button -- or trigger a highlight around the 'with your AI' button when this section is scrolled over". Weft chose the highlight, the one door every page carries, since David had already taken out the page's extra AI buttons that afternoon.
+
+The page below is that amendment with those moves. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`, the re-cut's at `archive:spine:nearly-here:2026-11-26b`, and the amendment's before the moves at `archive:spine:nearly-here:2026-11-26c`, each with the spine at 1 and the law at 2.
 
 ## The family
 
@@ -30,7 +35,7 @@ Founded by weft under weft's key until David takes it.
   - 1.11 the business, ready to roll.
   - 1.111 bring yourself.
 
-  The business forks at its 6 and 7. **1.116 your AI, upgraded** holds memory, lanes, genus-one agents and doormen at 1.1161 to 1.1164. **1.117 between people** holds the meld, wherever you are, the grain network and the 24-hour promise at 1.1171 to 1.1174. Bring yourself carries Silo Buster's method at 1.1116, its four steps at 1.11161 to 1.11164, and five ways to start now at 1.1117, at 1.11171 to 1.11175. The four parts down 1 keep `spine:nearly-there`'s addresses, named only in its provenance.
+  The business forks at its 6 and 7. **1.116 your AI, upgraded** holds memory, lanes, genus-one agents and doormen at 1.1161 to 1.1164. **1.117 between people** holds the meld, wherever you are, the grain network and the 24-hour promise at 1.1171 to 1.1174, and five ways to start now at 1.1175, at 1.11751 to 1.11755. Silo Buster's path is a line of its card at 1.113, pointing to its film. The four parts down 1 keep `spine:nearly-there`'s addresses, named only in its provenance.
 - **`function:nearly-here`, its law.**
   - 1 says `mode: document`.
   - 2 is the voices, six places: the four parts and the fork's two.
@@ -68,7 +73,7 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
   - Community Recovery, Matthew's LERO app, linked to the app itself: https://phenomemental.github.io/community-recovery/.
   - The State Stack, live, at /stack.
   - Availability, at /availability.
-- Silo Buster links `/silo-buster`. Met stands as an item without a link, since `/met` needs a meeting's name.
+- Silo Buster's card points to its film, `/animations/silo-buster-path` ("watch the path →"): its whole path, from the first room to ten days and on into other companies, in thirteen scenes. Met stands as an item without a link, since `/met` needs a meeting's name.
 - The ground adds the proposal and links /proposal, and keeps the spiral of every block, read live from the index. The page's copy of that afternoon, `BEACH_SNAP`, stands in where the beach can't be read.
 - For an investor: the tranche and the garden as cards.
 - David's line, quoted as he wrote it: "Confronting legacy-model with experience-validation IS ESSENTIAL — in first meetings". It links Experience first.
@@ -80,6 +85,7 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
   - Lanes: three lanes of beads meeting the now line. Links /lanes.
   - Genus-one agents: three blocks and a pulse. Links /proposal/genus-one.
   - Doormen: a door with someone at it, and requests coming in. Links /models.
+- A cue beneath them: connect your own AI with the button in the corner. While the section crosses the middle of the screen, the corner's "with your AI" pill (theme.js's `.aid-pill`) carries the class `nh-lit`, a purple ring that pulses, still under reduced motion. The page looks the pill up at each check, since theme.js lays it after the page. There is no second AI button.
 
 **Between people** (`#between`, 1.117)
 - Four cards in amber:
@@ -87,23 +93,18 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
   - Wherever you are (a conference, a business block, a new town), linking the globe and availability.
   - The grain network, linking `/explain?block=ways:grain`.
   - The promise, "24h": a solution, not advice, within 24 hours, signed David.
-
-**David's line between them**
-- "People write their observations [if] they want to inform a direction of development meaningfully, or contribute to the pool generally" — signed David.
-
-**Bring yourself** (1.111)
-- Its words are line of sight, from David's voice.
-- Silo Buster, the method, as four steps:
-  1. The first meeting, linking /first-meeting.
-  2. The sonar ping, linking the AI wave, where it is described.
-  3. The group meet.
-  4. Ten days to a revenue win, linking /silo-buster.
-- Start now, five ways:
+- Start now, five ways, hovering amber here:
   - Now, at /walk/now.
   - Recency, at /recency.
   - The globe, at /globe.
   - Your passport, at /welcome.
   - David Pinto, through /mind-meld.
+
+**David's line between them**
+- "People write their observations [if] they want to inform a direction of development meaningfully, or contribute to the pool generally" — signed David.
+
+**Bring yourself** (1.111)
+- Its words are line of sight, from David's voice, naming Silo Buster's method and its film above.
 - Then the three ways: the pool (`mirror.onen.ai/?pool=beach-venture`), your own AI (the shared door) and Share (the String), and the kit's "Passed on" list (`[data-shares]`).
 
 **The finale**
@@ -147,5 +148,10 @@ The amendment was checked the same way:
 - No sideways scroll at 390 dark.
 - A voice at 1.117 with `beachVoice.say` stubbed: the call carried `field nearly-here, at 1.117`, and nothing landed.
 - `/proposal/nearly-here` draws the fork's and the method's side-rooms.
+
+After the moves:
+- Start now sits under Between people, and the method's steps are gone from Bring yourself.
+- The corner pill is lit only while "Your AI, upgraded" is on screen: off at the business, Between people and Bring yourself, at 1280 light and 390 dark.
+- No sideways scroll, and the beach's text read back byte for byte.
 
 The page's foot offers "make an update like this one", `/proposal?kind=update#make`, the Make one line deciding an update (#833).
