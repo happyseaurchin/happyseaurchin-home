@@ -123,6 +123,20 @@
     return null;
   }
 
+  /* a knot's own words with every address it names made a link in place (26 Nov 2026, lane site.update: a thread of
+     versions, nearly-here's thread:151, names each version's page, and its reader goes there from the knot), the beach's
+     own reads (.well-known, /api) left as words, a trailing stop kept outside the link */
+  function linked(text) {
+    var t = String(text || ''), out = '', last = 0, m;
+    var URLS = /\bhttps?:\/\/[^\s'"<>()\[\]{}]+/gi;
+    while ((m = URLS.exec(t))) {
+      var u = m[0].replace(/[.,;:!?'’)]+$/, '');
+      if (/\.well-known\/|\/api\//.test(u)) continue;
+      out += esc(t.slice(last, m.index)) + '<a href="' + esc(u) + '">' + esc(u.replace(/^https?:\/\/(?:www\.)?/, '').replace(/\/$/, '')) + '</a>';
+      last = m.index + u.length;
+    }
+    return out + esc(t.slice(last));
+  }
   /* what an act made, lifted from its own words: a pull request, a page, a document */
   function linksIn(text) {
     var out = [], seen = {}, m;
@@ -644,7 +658,7 @@
     function act(n, l) {
       var p = partsOf(l);
       return '<p class="th-act"><span class="th-kaddr">' + esc(n.addr) + '</span><b class="th-khand" style="color:' + handColour(l.who) + '">' + esc(l.who) + '</b> ' +
-        esc(capFirst(p.words)) + (n.live && p.ending ? ' <span class="th-ending">' + esc(p.ending) + '</span>' : '') +
+        linked(capFirst(p.words)) + (n.live && p.ending ? ' <span class="th-ending">' + esc(p.ending) + '</span>' : '') +
         (n.crosses && n.crosses.length ? ' <span class="th-cross">⨯ thread:' + esc(n.crosses[0]) + '</span>' : '') +
         (n.live && p.reads ? '<span class="th-reads">read: ' + esc(p.reads) + '</span>' : '') + '</p>';
     }
