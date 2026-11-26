@@ -160,7 +160,7 @@
     proposal: 'the proposal', inquiry: 'the inquiry', explainer: 'the explainer', recipe: 'the recipe', project: 'the project',
     reference: 'the reference',
     complete: 'the finished proposal', 'set aside': 'the set-aside proposal', meeting: 'the meeting',
-    schematic: 'the schematic', document: 'the document', premiere: 'the premiere', game: 'the game'
+    schematic: 'the schematic', document: 'the document', premiere: 'the premiere', game: 'the game', update: 'the update'
   };
   var ASK = {
     proposal: 'Take me through it from there, then help me answer its decisions',
@@ -173,7 +173,9 @@
     meeting: 'Tell me what was said and what comes next, then help me answer it',
     schematic: 'Explain this part and how it fits the whole, then help me comment where it does not fit',
     premiere: 'Tell me what it is and how to take part',
-    game: "Tell me how it is played and what today's board and its room show, then help me play it better"
+    game: "Tell me how it is played and what today's board and its room show, then help me play it better",
+    /* an update ('phase: update', Nearly Here): a word to everyone, its parts answered in its room or in a reading */
+    update: 'Take me through it from there, then help me say what I make of it'
   };
   /* the page's public address: its canonical where it names one, so a preview or a local copy
    * still hands the reader's AI the page as everyone else finds it */
