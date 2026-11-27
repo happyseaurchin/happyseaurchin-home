@@ -129,6 +129,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [tranche](tranche.md) | `tranche.html` | the tranche proposal (12 Nov 2026), at `/tranche`, its snazzy view, which its law names at 6 (`/proposal/tranche` is its standard view, drawn from its… |
 | [tronic-glass](tronic-glass.md) | `tronic-glass.html` | the TRONIC project's human front (22 Oct 2026), at `/tronic-glass`: |
 | [two-spines](two-spines.md) | `two-spines.html` | the two-spines proposal (26 Oct 2026), at `/two-spines`: |
+| [value-weightings](value-weightings.md) | `value-weightings.html` | Value Weightings (27 Nov 2026, lane tidy.2), at `/value-weightings`, its snazzy view, which its law names at 6: Shore's money with no credits, a hydraulic calculator whose till, bores, tap and rate each run the worked case, and three decisions with weft's recommendations |
 | [vault-js](vault-js.md) | `vault.js` | the vault in the page, two keys (5 Nov 2026, the doors' battery §8 item 21; |
 | [verso](verso.md) | `verso.html` | verso (5 Nov 2026, lane verso.1), at `/verso`: |
 | [verso-schematic](verso-schematic.md) | `verso-schematic.html` | verso's schematic's crafted page (9 Nov 2026, lane verso.2), at `/verso-schematic`, its Snazzy view once its law names it at 6 (`/schematic/verso` is … |
