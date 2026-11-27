@@ -131,7 +131,11 @@
       '<p class="gw-till-h gw-split-h">Where it would go now</p><ul class="gw-split"></ul>' +
       '<p class="gw-acts"><button type="button" class="gw-btn gw-main gw-put">Put £5 in, a test</button></p>' +
       '<p class="gw-status gw-put-said" aria-live="polite"></p>' +
-      '<div class="gw-pot" hidden><p class="gw-till-h gw-pot-h"></p><ul class="gw-split gw-values"></ul>' +
+      '<p class="gw-note gw-sw" hidden></p>' +
+      '<div class="gw-pot" hidden><p class="gw-till-h gw-pot-h"></p>' +
+      '<p class="gw-till-h">Each part, if asked for now: weightings, as things stand now</p><ul class="gw-split gw-values"></ul>' +
+      '<p class="gw-till-h">Each part as credits: each ticket shared as the game stood when it landed</p><ul class="gw-split gw-credits"></ul>' +
+      '<p class="gw-note">The two differ once play moves after a ticket lands: weightings follow who plays now, credits keep each ticket\'s shares as they were when it was paid.</p>' +
       '<p class="gw-note">A part is taken out by asking for it at <a href="/shore" target="_blank" rel="noopener">Shore</a>: the keeper checks it against the weightings as they stand and pays by hand. <a href="/value-weightings" target="_blank" rel="noopener">How a part is worked out →</a></p></div></section>' +
     '<section class="gw-room" hidden><h3>The room <code>pool:' + esc(GAME) + '</code></h3><ul class="gw-lines"></ul>' +
       '<form class="gw-say"><div class="gw-box"><textarea rows="2" maxlength="2000" placeholder="Say something about ' + esc(TITLE) + '"></textarea></div>' +
@@ -175,26 +179,50 @@
    * Where it would go is read live from /api/xp (the game's four columns, the law's weights, a credit a penny). A TEST:
    * nothing is charged; the line goes into an open test ledger, ledger:test-flock-world, never Shore's. Shown only for a
    * game whose law carries a SUPPORT line. ── */
-  var LEDGER = 'ledger:test-flock-world', AMT = 500, tillOn = false;
+  /* each game its own open test ledger, ledger:test-<game>, so each game's run stands apart; and ONE SWITCH for every
+   * game, the keeper's own block, till:happyseaurchin (David, 27 Nov 2026: 'I need a way to switch it on/off centrally,
+   * or to effectively pay for it myself'): its 1 'till: off | keeper | on', who sees the till, and its 2 'paid by: player
+   * | <handle>', whose money a ticket is. Where the switch cannot be read the till stays shut. */
+  var KEEPER = 'happyseaurchin', LEDGER = 'ledger:test-' + GAME, AMT = 500, tillOn = false, SW = { till: 'off', paidBy: 'player' };
+  function switchNow() {
+    return fetch(BEACH + '?block=' + encodeURIComponent('till:' + KEEPER), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; }).then(function (b) {
+        var voice = function (n) { while (n && typeof n === 'object') n = n._; return typeof n === 'string' ? n : ''; };
+        var t = /^\s*till:\s*(off|keeper|on)\b/i.exec(voice(b && b['1'])), p = /^\s*paid by:\s*([A-Za-z0-9_-]{2,64})\b/i.exec(voice(b && b['2']));
+        return { till: t ? t[1].toLowerCase() : 'off', paidBy: p ? p[1] : 'player' };
+      }, function () { return { till: 'off', paidBy: 'player' }; });
+  }
+  /* the keeper's own device: the name the site signs with here, or the name this game is played under */
+  function keeperHere() {
+    var site = ''; try { site = clean(localStorage.getItem('render:who')); } catch (e) {}
+    return [site, ownName()].some(function (n) { return n && n.toLowerCase() === KEEPER; });
+  }
+  function payer() { return SW.paidBy && SW.paidBy.toLowerCase() !== 'player' ? SW.paidBy : ''; }
   var LAYER = { players: 'playing it', bringers: 'bringing players', makers: 'making it', beach: 'keeping the beach' };
   function money(p) { p = Math.round(p); return '£' + (p % 100 ? (p / 100).toFixed(2) : String(p / 100)); }
   function xpOf(pence) {
     return fetch('/api/xp?family=' + encodeURIComponent(GAME) + '&credits=' + Math.max(0, Math.round(pence)), { headers: { Accept: 'application/json' } })
       .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
   }
-  function splitItems(xp) {
-    var by = (xp && xp.shares && xp.shares.by) || [], rows = by.filter(function (r) { return r.credits > 0; }).map(function (r) {
+  function rowsOf(list, key, commons) {
+    var rows = (list || []).filter(function (r) { return r[key] > 0; }).map(function (r) {
       var f = r.from || {}, top = Object.keys(f).sort(function (a, b) { return (f[b] || 0) - (f[a] || 0); })[0];
-      return { name: r.handle, p: r.credits, why: LAYER[top] || '' };
+      return { name: r.handle, p: r[key], why: LAYER[top] || '' };
     });
-    var c = (xp && xp.shares && xp.shares.commons) || (xp && xp.split && xp.split.commons) || 0;
     rows.sort(function (a, b) { return b.p - a.p; });
-    if (c > 0) rows.push({ name: 'the commons', p: c, why: 'the parts nobody can be named for yet' });
+    if (commons > 0) rows.push({ name: 'the commons', p: commons, why: 'the parts nobody can be named for yet' });
     return rows.map(function (r) { return '<li><span>' + esc(r.name) + (r.why ? '<span class="gw-why">' + esc(r.why) + '</span>' : '') + '</span><span class="gw-amt">' + money(r.p) + '</span></li>'; }).join('');
+  }
+  /* weightings: the sum shared as the game stands now (the reader's split of it) */
+  function splitItems(xp) { return rowsOf(xp && xp.shares && xp.shares.by, 'credits', (xp && xp.shares && xp.shares.commons) || (xp && xp.split && xp.split.commons) || 0); }
+  /* credits: the reader's run of the ledger, each ticket shared as the game stood when it landed */
+  function creditItems(run) {
+    if (!run || !run.by) return '<li><span class="gw-why">The credits reading could not be had just now.</span><span></span></li>';
+    return rowsOf(run.by, 'earned', run.commons || 0) || '<li><span class="gw-why">Nothing has been shared as credits yet.</span><span></span></li>';
   }
   function drawSplit() {
     $('.gw-split-h').textContent = 'Where ' + money(AMT) + ' would go now';
-    $('.gw-put').textContent = 'Put ' + money(AMT) + ' in, a test';
+    $('.gw-put').textContent = 'Put ' + money(AMT) + ' in' + (payer() ? ', paid by ' + payer() : '') + ', a test';
     return xpOf(AMT).then(function (xp) {
       if (!xp || !xp.law || !xp.law.support) { $('.gw-till').hidden = true; return false; }
       $('.gw-till').hidden = false; $('.gw-points').hidden = true;   // the till says what Experience Points' card said, as it now stands
@@ -218,15 +246,27 @@
       .then(function (r) { return r.ok ? r.json() : null; }).then(function (b) {
         var lines = b ? potLines(b) : [], pot = lines.reduce(function (s, p) { return s + p; }, 0);
         if (!pot) { $('.gw-pot').hidden = true; return; }
-        return xpOf(pot).then(function (xp) {
-          $('.gw-pot-h').textContent = 'In the pot for ' + TITLE + ': ' + money(pot) + ' from ' + lines.length + (lines.length === 1 ? ' ticket' : ' tickets') + '. Each part, if asked for now:';
-          $('.gw-values').innerHTML = splitItems(xp);
+        var run = fetch('/api/xp?ledger=' + encodeURIComponent(LEDGER.replace(/^ledger:/, '')), { headers: { Accept: 'application/json' } })
+          .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
+        return Promise.all([xpOf(pot), run]).then(function (got) {
+          $('.gw-pot-h').textContent = 'In the pot for ' + TITLE + ': ' + money(pot) + ' from ' + lines.length + (lines.length === 1 ? ' ticket' : ' tickets') + '.';
+          $('.gw-values').innerHTML = splitItems(got[0]);
+          $('.gw-credits').innerHTML = creditItems(got[1]);
           $('.gw-pot').hidden = false;
         });
       }, function () {});
   }
   function till() {
-    drawSplit().then(function (on) { tillOn = on; if (on) drawPot(); });
+    switchNow().then(function (sw) {
+      SW = sw;
+      var show = sw.till === 'on' || (sw.till === 'keeper' && keeperHere());
+      if (!show) { $('.gw-till').hidden = true; $('.gw-points').hidden = false; tillOn = false; return; }
+      var by = payer();
+      $('.gw-sw').hidden = !(sw.till === 'keeper' || by);
+      $('.gw-sw').textContent = (sw.till === 'keeper' ? 'Shown only to you, as the keeper: nobody else sees this till until it is switched on. ' : '') +
+        (by ? 'Every ticket is paid by ' + by + ': no money from the player, who chooses the game and the sum.' : '');
+      return drawSplit().then(function (on) { tillOn = on; if (on) drawPot(); });
+    });
   }
   Array.prototype.forEach.call(dlg.querySelectorAll('.gw-amounts button'), function (b) {
     b.addEventListener('click', function () {
@@ -239,12 +279,15 @@
     var btn = $('.gw-put'), said = $('.gw-put-said'), amt = AMT;
     btn.disabled = true; said.textContent = 'Putting it in…';
     loadKit().then(nameNow).then(function (n) {
-      var name = clean(who.value) || n || 'a visitor';
-      var entry = { _: 'IN — ' + money(amt) + ' · from ' + name + ' · for ' + GAME + ' · a test, nothing charged', 1: name, 2: day, 3: new Date().toISOString(), 4: GAME, 5: String(amt) };
+      var name = clean(who.value) || n || 'a visitor', by = payer();
+      /* paid by the keeper (the switch's 2): the money is theirs, the player still choosing the game and the sum */
+      var entry = { _: 'IN — ' + money(amt) + ' · from ' + (by || name) + ' · for ' + GAME + (by ? ' · chosen by ' + name : '') + ' · a test, nothing charged',
+        1: by || name, 2: day, 3: new Date().toISOString(), 4: GAME, 5: String(amt) };
+      if (by) entry[6] = name;
       return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: LEDGER, append: true, content: entry }) })
         .then(function (r) { return r.json().catch(function () { return null; }).then(function (d) { if (!r.ok || (d && d.error)) throw new Error((d && (d.error || d.message)) || 'the beach answered ' + r.status); }); });
     }).then(function () {
-      said.textContent = 'Thank you: ' + money(amt) + ' is in ' + TITLE + '\'s pot, as a test. Nothing was charged.';
+      said.textContent = 'Thank you: ' + money(amt) + (payer() ? ' from ' + payer() : '') + ' is in ' + TITLE + '\'s pot, as a test. Nothing was charged.';
       return drawPot();
     }, function (err) {
       said.textContent = 'That didn\'t reach the beach: ' + err.message + '. Nothing was charged; try again.';
