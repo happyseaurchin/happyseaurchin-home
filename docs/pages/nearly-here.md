@@ -23,7 +23,14 @@ Later that evening, before it went live, David moved three things, in chat:
 - Silo Buster's steps into its card, then: "Actually they won't fit -- so just point them to the silo-buster animation".
 - "add the -- connect up your llm button -- or trigger a highlight around the 'with your AI' button when this section is scrolled over". Weft chose the highlight, the one door every page carries, since David had already taken out the page's extra AI buttons that afternoon.
 
-The page below is that amendment with those moves. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`, the re-cut's at `archive:spine:nearly-here:2026-11-26b`, and the amendment's before the moves at `archive:spine:nearly-here:2026-11-26c`, each with the spine at 1 and the law at 2.
+The next morning, 27 November, David asked in chat for the business's first two levels to be redone:
+- "We need more coverage of RC, silo-buster". RC is Community Recovery.
+- "We need at least a small visual of a snazzy page. Or a snapshot of RC website -- it has its own beach and app!!"
+- "The games are done as a major section above."
+- Silo Buster "has the status-stack app, availability, met, proposal, now-catalyst etc bundle which is shared in the group/team meeting".
+- "They need graphic buttons like the games section. So section 1 and section 2 need redone please."
+
+The page below is that amendment with those moves, its products and its services and systems redrawn. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`, the re-cut's at `archive:spine:nearly-here:2026-11-26b`, the amendment's before the moves at `archive:spine:nearly-here:2026-11-26c`, and the moves' before the redraw at `archive:spine:nearly-here:2026-11-27`, each with the spine at 1 and the law at 2.
 
 ## The family
 
@@ -35,7 +42,7 @@ Founded by weft under weft's key until David takes it.
   - 1.11 the business, ready to roll.
   - 1.111 bring yourself.
 
-  The business forks at its 6 and 7. **1.116 your AI, upgraded** holds memory, lanes, genus-one agents and doormen at 1.1161 to 1.1164. **1.117 between people** holds the meld, wherever you are, the grain network and the 24-hour promise at 1.1171 to 1.1174, and five ways to start now at 1.1175, at 1.11751 to 1.11755. Silo Buster's path is a line of its card at 1.113, pointing to its film. The four parts down 1 keep `spine:nearly-there`'s addresses, named only in its provenance.
+  The business forks at its 6 and 7. **1.116 your AI, upgraded** holds memory, lanes, genus-one agents and doormen at 1.1161 to 1.1164. **1.117 between people** holds the meld, wherever you are, the grain network and the 24-hour promise at 1.1171 to 1.1174, and five ways to start now at 1.1175, at 1.11751 to 1.11755. The products stand at 1.112 and the services and systems at 1.113, each thing named with its own page; Silo Buster's path is a line of 1.113, pointing to its film. The four parts down 1 keep `spine:nearly-there`'s addresses, named only in its provenance.
 - **`function:nearly-here`, its law.**
   - 1 says `mode: document`.
   - 2 is the voices, six places: the four parts and the fork's two.
@@ -68,12 +75,18 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
 
 **The business, ready to roll** (`#business`, 1.11)
 - What is happening: The AI wave and AI churn, the two explainers, as cards with their own stills.
-- What we bring, at three levels. Products, services and systems, and platforms and ecosystems, each item marked "Try it now" where it opens something to use:
-  - The games, at /arcade.
-  - Community Recovery, Matthew's LERO app, linked to the app itself: https://phenomemental.github.io/community-recovery/.
-  - The State Stack, live, at /stack.
-  - Availability, at /availability.
-- Silo Buster's card points to its film, `/animations/silo-buster-path` ("watch the path →"): its whole path, from the first room to ten days and on into other companies, in thirteen scenes. Met stands as an item without a link, since `/met` needs a meeting's name.
+- What we bring, at three levels, each a band with its head across the top. Only what can be used now is marked "Try it now"; the rest say what they are, a proposal or a film.
+- **1 Products.** A line points up to the games and Onen, the RPG, which stand above as products too. Then the beach in your hand, four cards with pictures as the games have:
+  - the magic eye, `/eye`, live;
+  - the magic mirror, `/magic-mirror`, a proposal of 16 November;
+  - the pocket beach, `/pocket-beach`, Matthew's proposal of 28 October;
+  - the bobble, `/animations/the-beach-bobble`, a film, not built yet.
+- **2 Services and systems.**
+  - Silo Buster as a feature card: a snapshot of its page beside its words, with three ways in (the programme at `/silo-buster`; its path, the film in thirteen scenes; the first meeting, modelled, at `/first-meeting`).
+  - What it brings into the room, five cards: the State Stack (`/stack`), availability (`/availability`), the now-catalyst (`/now`), Met (`/met`, every meeting held, its picture the ring of David and Sam's hour) and the proposal (`/proposal`).
+  - Community Recovery, the RC of David's word, as a feature card: a snapshot of its own website, www.communityrecovery.life, with its own beach walked in the magic eye as an inset (`/eye?beach=https://beach.communityrecovery.life&block=journey`). Its words: a website for anyone new, an app for its members, and a beach of its own holding every block its pages read and write; Matthew built it as a kit, which another recovery organisation takes by naming its own beach and its own name (the site's `config.js` says so). Its ways in: its website, members' sign-in (`#back`), its beach in the eye, and its next phase (`/leros-phase-three`).
+  - Agents and consultancy last, as words.
+- The one-sheet product pages (David's Google Docs) are no longer linked here; the garden keeps them.
 - The ground adds the proposal and links /proposal, and keeps the spiral of every block, read live from the index. The page's copy of that afternoon, `BEACH_SNAP`, stands in where the beach can't be read.
 - For an investor: the tranche and the garden as cards.
 - David's line, quoted as he wrote it: "Confronting legacy-model with experience-validation IS ESSENTIAL — in first meetings". It links Experience first.
@@ -129,6 +142,14 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
 - The lead body of each part is repainted from the spine (`data-sp`, `data-part="body"`) with its links dropped. Since the evening's amendment, that covers a parenthesised list of links too, as at the business, "(https://…/the-ai-wave, https://…/ai-churn)".
 - Since 26 November 2026 `threads.js` makes every address in a registry knot's words a link (`linked()`), so the thread's two pages open from their knots.
 
+## The cards' stills
+
+The products' and services' cards use each page's own share still where it has one (`/animations/magic-mirror.jpg`, `pocket-beach.jpg`, `the-beach-bobble.jpg`, `the-state-stack.jpg`, `/silo-buster.jpg`). The rest were taken on 27 November into `animations/nearly-here-stills/`: `eye.jpg`, `availability.jpg`, `now.jpg`, `met.jpg`, `proposals.jpg`, `community-recovery.jpg` and `community-recovery-beach.jpg`.
+- Each is the live page, opened headless through the DevTools protocol at 1200 by 630, dark, with reduced motion and the site's corner controls hidden.
+- The eye's is cropped to its centre, and Community Recovery's beach in the eye to 720 by 380.
+- Met's is `/ring/sam-6-nov`, zoomed so the whole ring shows.
+- The proposals' is `/proposal` scrolled to its gallery.
+
 ## Its share still
 
 - The hero at rest in the dark, `animations/nearly-here.jpg`, 1200 by 630, retaken that evening so it carries the new lede.
@@ -153,5 +174,13 @@ After the moves:
 - Start now sits under Between people, and the method's steps are gone from Bring yourself.
 - The corner pill is lit only while "Your AI, upgraded" is on screen: off at the business, Between people and Bring yourself, at 1280 light and 390 dark.
 - No sideways scroll, and the beach's text read back byte for byte.
+
+After the redraw (27 November), in the built-in browser served from the branch, at 1280 light and dark and 390 dark:
+- Four cards at products and five at services, with two feature cards; every picture loads.
+- The feature pictures keep their left edge, where each page's title stands.
+- No sideways scroll.
+- The repainted business line matches the spine.
+- `/proposal/nearly-here` carries the new words in its Products and Services side-rooms.
+- The only 404 is the reader's own mirror.
 
 The page's foot offers "make an update like this one", `/proposal?kind=update#make`, the Make one line deciding an update (#833).
