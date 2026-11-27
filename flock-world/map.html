@@ -15,6 +15,7 @@
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
 <script src="/games/world.js"></script>
+<script src="/games/census.js"></script>
 <style>
   /* THE FLOCK WORLD'S MAP (27 Nov 2026, lane coil.1, at David's 'core, flock world … build out a whole system'):
      the world itself, drawn from games/world.js exactly as each game draws it, so what this page shows is what every
@@ -65,6 +66,9 @@
   .rooms .live{color:var(--bud);font-family:var(--mono);font-size:12px;margin-left:6px}
   .rooms .g{font-family:var(--mono);font-size:12px;letter-spacing:0.06em;text-transform:uppercase}
   .rooms .g.f{color:var(--solid)} .rooms .g.m{color:var(--liquid)}
+  .rooms .now{display:block;color:var(--bud);font-family:var(--mono);font-size:12px;margin-top:3px}
+  .census{font-family:var(--mono);font-size:12.5px;color:var(--vapour);margin:6px 0 0}
+  .census b{color:var(--bud)}
   .foot{margin-top:28px;color:var(--vapour-dim);font-size:15px;max-width:66ch}
   .stamp{font-family:var(--mono);font-size:12px;color:var(--vapour-dim);margin:10px 0 0}
 </style>
@@ -98,6 +102,7 @@
 
   <h2>Today's crossings</h2>
   <p class="lede" style="margin-bottom:0" id="rooms-sub">Each room flies its own crossing, 300 km from its start (▲) to its roost (●), north in spring and summer and south in autumn and winter.</p>
+  <p class="census" id="census" aria-live="polite"></p>
   <ul class="rooms" id="rooms"></ul>
 
   <h2>The ground</h2>
@@ -144,6 +149,11 @@ async function hereIn(room){
   } catch (e) { return []; }
 }
 let here = {};
+/* THE COUNT (games/census.js, world:flock-world 4): every room's host keeps one line in the census block of the region
+   its flock is over now, every half minute, so the map draws each live room's flock where it is, as the beach has it */
+let census = [], censusRead = false;
+async function readCensus(){ try { census = window.FlockCensus && W ? await FlockCensus.read(W) : []; } catch (e) { census = []; } censusRead = true; }
+const lineOf = (g, r) => census.find(l => l.game === g && String(l.room) === String(r)) || null;
 
 /* ── the ground, drawn once per world at the canvas's own resolution, a sample per cell ── */
 const cv = $('map'), ctx = cv.getContext('2d');
@@ -201,7 +211,7 @@ function draw(){
   GAMES.forEach(G => {
     if (!G.show()) return;
     ROOMS.forEach(r => {
-      const c = W.crossing(day, G.game, r), live = (here[roomName(G.game, r)] || []).length > 0;
+      const c = W.crossing(day, G.game, r), live = (here[roomName(G.game, r)] || []).length > 0 || (offset === 0 && !!lineOf(G.game, r));
       ctx.strokeStyle = css(G.col); ctx.lineWidth = live ? 4 : 2.2; ctx.globalAlpha = live || r === 1 ? 1 : 0.7;
       ctx.setLineDash(r === 1 ? [] : [8, 6]);
       crossingPath(c).forEach(seg => { if (seg.length < 2) return; ctx.beginPath(); ctx.moveTo(seg[0][0], seg[0][1]); seg.slice(1).forEach(q => ctx.lineTo(q[0], q[1])); ctx.stroke(); });
@@ -213,6 +223,22 @@ function draw(){
       ctx.globalAlpha = 1;
       label(G.name + (r === 1 ? '' : ' ' + r), b[0] + 8, b[1] - 8, css(G.col), true);
     });
+  });
+  // the flocks now, from the census: today only, each where its host last said, sized by its birds, its heading drawn
+  if (offset === 0) census.forEach(l => {
+    const G = GAMES.find(g => g.game === l.game); if (!G || !G.show()) return;
+    if (ROOMS.indexOf(l.room) < 0) {   // a room beyond the three: its flyway, faint
+      const c = W.crossing(day, G.game, l.room);
+      ctx.strokeStyle = css(G.col); ctx.lineWidth = 1.6; ctx.globalAlpha = 0.6; ctx.setLineDash([3, 5]);
+      crossingPath(c).forEach(seg => { if (seg.length < 2) return; ctx.beginPath(); ctx.moveTo(seg[0][0], seg[0][1]); seg.slice(1).forEach(q => ctx.lineTo(q[0], q[1])); ctx.stroke(); });
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+    }
+    const q = toPx(l.x, l.y), n = l.flying + (l.home || 0), rad = (4 + 2.2 * Math.sqrt(Math.max(1, n))) * S / 720;
+    ctx.globalAlpha = 0.85; ctx.fillStyle = css(G.col); ctx.strokeStyle = css('--foam'); ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(q[0], q[1], rad, 0, Math.PI * 2); if (l.flying) ctx.fill(); ctx.stroke();
+    if (l.flying) { const a = l.heading * Math.PI / 180; ctx.beginPath(); ctx.moveTo(q[0], q[1]); ctx.lineTo(q[0] + Math.sin(a) * rad * 2.2, q[1] - Math.cos(a) * rad * 2.2); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    label(String(l.flying || l.home || 0), q[0] + rad + 4, q[1] - rad - 2, css('--foam'), true);
   });
   if (pin) { const q = toPx(pin.x, pin.y); ctx.strokeStyle = css('--foam'); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(q[0], q[1], 7, 0, Math.PI * 2); ctx.stroke(); }
 }
@@ -238,12 +264,18 @@ cv.addEventListener('click', e => {
 
 function rooms(){
   const day = dayOf(), list = $('rooms'); list.innerHTML = '';
-  GAMES.forEach(G => ROOMS.forEach(r => {
-    const c = W.crossing(day, G.game, r), names = here[roomName(G.game, r)] || [];
+  const s = window.FlockCensus ? FlockCensus.sum(offset === 0 ? census : []) : { rooms: 0 };
+  $('census').innerHTML = offset !== 0 ? 'The flocks flying now are drawn on today’s map.' : !censusRead ? 'Reading the beach’s census for the flocks flying now…' : s.rooms
+    ? '● <b>' + s.rooms + (s.rooms === 1 ? ' room' : ' rooms') + ' flying now</b>: ' + s.flying + (s.flying === 1 ? ' bird' : ' birds') + ' in the air' + (s.home ? ', ' + s.home + ' home' : '') + ', each drawn where its host last said, as the beach’s census keeps it.'
+    : 'No room is flying just now. When one is, its host counts its flock into the beach’s census every half minute, and it is drawn here where it is.';
+  const extra = offset === 0 ? census.filter(l => ROOMS.indexOf(l.room) < 0).map(l => [GAMES.find(g => g.game === l.game), l.room]).filter(x => x[0]) : [];
+  GAMES.forEach(G => ROOMS.map(r => [G, r]).concat(extra.filter(x => x[0] === G)).forEach(([G, r]) => {
+    const c = W.crossing(day, G.game, r), names = here[roomName(G.game, r)] || [], cl = offset === 0 ? lineOf(G.game, r) : null;
     const sp = W.patchOf(c.start.x, c.start.y), rp = W.patchOf(c.roost.x, c.roost.y);
     const li = document.createElement('li');
-    li.innerHTML = '<span class="g ' + G.cls + '">' + esc(G.name) + (r === 1 ? ' · its open room' : ' · room ' + r) + '</span>' +
-      (names.length ? '<span class="live">● ' + names.length + ' flying now: ' + esc(names.slice(0, 3).join(', ')) + (names.length > 3 ? ' and ' + (names.length - 3) + ' more' : '') + '</span>' : '') +
+    li.innerHTML = '<span class="g ' + G.cls + '">' + esc(G.name) + (r === 1 ? ' · its open room' : typeof r === 'number' ? ' · room ' + r : ' · ' + r + '’s room') + '</span>' +
+      (names.length ? '<span class="live">● ' + names.length + (names.length === 1 ? ' player' : ' players') + ' in it now: ' + esc(names.slice(0, 3).join(', ')) + (names.length > 3 ? ' and ' + (names.length - 3) + ' more' : '') + '</span>' : '') +
+      (cl ? '<span class="now">' + esc(cl.words) + ' · over ' + esc(W.place(W.patchOf(cl.x, cl.y).px, W.patchOf(cl.x, cl.y).py)) + (W.rung ? ' (patch ' + esc(cl.region) + ')' : '') + '</span>' : '') +
       '<br>From <b>' + esc(W.place(sp.px, sp.py)) + '</b>' + (W.rung ? ' (patch ' + esc(W.addrOf(sp.px, sp.py)) + ')' : '') +
       ' heading ' + heading(c.dir) + ' to roost in <b>' + esc(W.place(rp.px, rp.py)) + '</b>' + (W.rung ? ' (patch ' + esc(W.addrOf(rp.px, rp.py)) + ')' : '') + '.';
     list.appendChild(li);
@@ -277,8 +309,9 @@ async function start(){
   sayDay(); legend(); fit(); rooms(); draw();
   const rs = []; GAMES.forEach(G => ROOMS.forEach(r => rs.push(roomName(G.game, r))));
   const got = await Promise.all(rs.map(hereIn)); rs.forEach((n, i) => { here[n] = got[i]; });
+  await readCensus();
   rooms(); draw();
-  setInterval(async () => { if (document.hidden) return; const g2 = await Promise.all(rs.map(hereIn)); rs.forEach((n, i) => { here[n] = g2[i]; }); rooms(); draw(); }, 30000);
+  setInterval(async () => { if (document.hidden) return; const g2 = await Promise.all(rs.map(hereIn)); rs.forEach((n, i) => { here[n] = g2[i]; }); await readCensus(); rooms(); draw(); }, 30000);
 }
 start();
 </script>

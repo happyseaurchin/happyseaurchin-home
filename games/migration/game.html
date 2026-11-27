@@ -3,6 +3,7 @@
 <head>
 <script src="/games/bridge.js"></script>
 <script src="/games/world.js"></script>
+<script src="/games/census.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#161c2b">
@@ -190,6 +191,7 @@ body.night .pace button[aria-pressed="true"]{background:#eef0f6;color:#14161b}
     <label class="who" for="tName">flying as <input id="tName" maxlength="16" autocomplete="off" spellcheck="false"></label>
     <div class="birds" id="tBirds" role="group" aria-label="Birds in the sky"><span>birds</span></div>
     <div class="best" id="tBest"></div>
+    <div class="best" id="tElse" hidden></div>
   </div>
 </div>
 
@@ -607,10 +609,15 @@ function makeParams(key, room, Wd) {
    (spine:flock-world 1.1111118: each meeple's flock one tuned piece). Checked on 24 days through the year, the sky
    flown alone: 55 per cent of the flock home placed, 55 with the same seeds unplaced, 52 on the day's own country as it
    was, a bad day as likely either way (27 Nov 2026). */
+/* a place in the sky's frame to the world's km: the start at the sky's origin, the crossing's heading up the screen */
+function skyToWorld(cr, Wd, x, y) {
+  const U = cr.len / ROUTE, fx = cr.dir.x, fy = cr.dir.y, rx = fy, ry = -fx;
+  return { x: Wd.wrap(cr.start.x + fx * (-y * U) + rx * (x * U)), y: Wd.wrap(cr.start.y + fy * (-y * U) + ry * (x * U)) };
+}
 function placeOnWorld(P, Wd, rm) {
   const cr = Wd.crossing(P.key, 'migration', rm), U = cr.len / ROUTE;
   const fx = cr.dir.x, fy = cr.dir.y, rx = fy, ry = -fx;
-  const toW = (x, y) => ({ x: Wd.wrap(cr.start.x + fx * (-y * U) + rx * (x * U)), y: Wd.wrap(cr.start.y + fy * (-y * U) + ry * (x * U)) });
+  const toW = (x, y) => skyToWorld(cr, Wd, x, y);
   const g = {}, at = (x, y) => { const q = toW(x, y); return Wd.ground(q.x, q.y, g); };
   const lineX = (y) => P.start.x + (P.roost.x - P.start.x) * (y - P.start.y) / (P.roost.y - P.start.y);
   /* each ridge at the world's highest place within the very band the sky was tuned for (its first 27 to 32 per cent of the
@@ -1743,7 +1750,7 @@ const Net = {
     try { let ps = R.peers ? R.peers() : []; if (ps && typeof ps.then === 'function') ps = await ps; if (ps && !Array.isArray(ps) && typeof ps === 'object') ps = Object.values(ps); for (const p of ps || []) this.addPeer(p); } catch (e) {}
     return true;
   },
-  leave() { if (!this.on) return; this.on = false; try { this.R && this.R.leave && this.R.leave(); } catch (e) {} this.peers.clear(); this.id = 'me'; },
+  leave() { if (!this.on) return; this.on = false; Census.leave(); try { this.R && this.R.leave && this.R.leave(); } catch (e) {} this.peers.clear(); this.id = 'me'; },
   addPeer(p) { const id = this.pid(p); if (!id || id === this.id) return; if (!this.peers.has(id)) this.peers.set(id, { id, name: (p && p.name) || '' }); this.silent.delete(id); },
   dropPeer(p) { const id = this.pid(p); if (!id || !this.peers.has(id)) return; this.peers.delete(id); this.silent.delete(id); onPeerGone(id); },
   host() { let h = this.id; for (const id of this.peers.keys()) { if (this.silent.has(id)) continue; if (this.cmp(id, h) < 0) h = id; } return h; },
@@ -1937,6 +1944,41 @@ function netPump(dt) {
     if (W.host && W.P) sendWorld();
   }
 }
+/* THE COUNT (games/census.js, world:flock-world 4; spine:flock-world 1.11113): a live sky's host keeps its room's line
+   in the census of the region its flock is over now, every half minute: how many fly and which way, how many are home,
+   and who, where few do. You connect only to the birds in your room; the rest of the world reaches you as counts. */
+const Census = {
+  k: null,
+  tick() {
+    const FC = window.FlockCensus;
+    if (!FC || !Net.on || !W.live || !W.host || !W.adopted || !W.P || !W.P.cross || !CW) return;
+    if (!this.k) this.k = FC.keeper();
+    let n = 0, sx = 0, sy = 0, home = 0; const names = [];
+    for (const b of W.birds) { if (b.st === 0) { n++; sx += b.x; sy += b.y; } else if (b.st === 1) home++; if (b.own !== 'ai' && b.name) names.push(b.name); }
+    const at = skyToWorld(W.P.cross, CW, n ? sx / n : W.P.roost.x, n ? sy / n : W.P.roost.y);
+    this.k.put({ W: CW, room: 'pool:' + ROOM + (String(W.P.room) === '1' ? '' : ':' + W.P.room), day: W.P.key, x: at.x, y: at.y, heading: FC.degOf(W.P.cross.dir), flying: n, home, names });
+  },
+  leave() { if (this.k) { const k = this.k; this.k = null; k.leave(); } }
+};
+/* the title says how many fly elsewhere now, read from the census every half minute while it shows */
+const Elsewhere = {
+  at: 0, busy: false,
+  tick() {
+    const FC = window.FlockCensus, el = $('tElse');
+    if (!FC || !el || S.mode !== 'title' || document.hidden || this.busy) return;
+    const t = performance.now(); if (this.at && t - this.at < 30000) return;
+    const Wd = worldNow(); if (!Wd) return;
+    this.at = t; this.busy = true;
+    FC.read(Wd).then((lines) => {
+      this.busy = false;
+      const mine = FC.sum(lines, ROOM), all = FC.sum(lines);
+      if (!all.rooms) { el.hidden = true; return; }
+      el.textContent = mine.rooms ? 'Flying now: ' + mine.rooms + (mine.rooms === 1 ? ' sky, ' : ' skies, ') + mine.flying + (mine.flying === 1 ? ' bird' : ' birds') + ' in the air' + (all.rooms > mine.rooms ? ', and ' + (all.flying - mine.flying) + ' over the world in other games' : '')
+        : (all.flying + (all.flying === 1 ? ' bird is' : ' birds are') + ' flying the world now, in other games');
+      el.hidden = false;
+    }, () => { this.busy = false; });
+  }
+};
 function freshLiveWorld() {
   W.host = true; W.adopted = true; W.live = true;
   setCountry(dayKey(), Net.room || 1); W.run = 1; spawnFlock(FILL); W.t = 0; W.phase = 'fly'; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0;   // the run first: the first day's characters are drawn from it
@@ -2016,10 +2058,11 @@ function loadGhosts() {
 // =====================================================================
 //  Runs: dawn, landing, nightfall
 // =====================================================================
+let CW = null;   // the world the country stands on, for the count
 function setCountry(key, room, mark) {
   const Wd = mark ? worldOf(mark) : worldNow(), rm = Wd ? String(room == null ? 1 : room) : '';
   if (W.P && W.P.key === String(key) && (W.P.room || '') === rm && (W.P.wm || '') === (Wd ? Wd.mark : '')) return;
-  W.P = makeParams(key, rm, Wd); W.F = FieldLib(W.P);
+  W.P = makeParams(key, rm, Wd); W.F = FieldLib(W.P); CW = Wd;
   Tiles.reset(W.P, W.F); buildLabels(W.P); prepWeather(W.P);
 }
 function newTrainingRun(room) {   // a flight alone flies the open room's crossing; a check may name another room
@@ -2988,7 +3031,7 @@ function frame(now) {
   Tiles.pump();
   if (S.mode === 'title' && (FRAME & 1)) FRAME++; else draw(now);
   hudUpdate(dt);
-  netPump(dt);
+  netPump(dt); Census.tick(); Elsewhere.tick();
   const me = myBird();
   if (me && me.st === 0 && S.mode === 'fly') { W.F.env(me.x, me.y, W.t, PL); const fl = flockOf(me); Sound.update(dt, me.drag, PL.storm, me.sp / V, fl ? fl.size : 1); }
   else Sound.update(dt, 0.1, 0, 0.5, 0);
@@ -3024,7 +3067,7 @@ function start(data) {
   requestAnimationFrame((t) => { lastT = t; frame(t); });
   const hot = window.claude && window.claude.hot;
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ view: cam.mode, muted: Sound.muted, rm: S.rmUser })); } catch (e) {} }
-  window.__migration = { W, cam, S, Net, sim: simFor, tick, newTrainingRun, spawnFlock, setCountry, makeParams, encodeProof, decodeProof, startFly, myBird, setView, myFollow, myTakeFront, myUp, myPeel, setPace, cyclePace, spareOf, yoursWith, yoursHome, drawNow: () => draw(performance.now()) };
+  window.__migration = { W, cam, S, Net, sim: simFor, tick, newTrainingRun, spawnFlock, setCountry, makeParams, encodeProof, decodeProof, skyToWorld, Census, Elsewhere, startFly, myBird, setView, myFollow, myTakeFront, myUp, myPeel, setPace, cyclePace, spareOf, yoursWith, yoursHome, drawNow: () => draw(performance.now()) };
 }
 function simFor(seconds) { // headless check of a whole day with computer birds only
   const n = Math.round(seconds / STEP); for (let k = 0; k < n; k++) tick(STEP);

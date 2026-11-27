@@ -3,6 +3,7 @@
 <head>
 <script src="/games/bridge.js"></script>
 <script src="/games/world.js"></script>
+<script src="/games/census.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Forage</title>
@@ -97,6 +98,7 @@
   #roster li { display: flex; justify-content: space-between; gap: 8px; padding: 7px 2px; border-top: 1px solid var(--line); }
   #roster li span:last-child { color: var(--dim); font-size: 13px; }
   #wire { font-size: 13px; color: var(--dim); margin: 4px 0 8px; line-height: 1.4; }
+  .elsewhere { font-size: 13px; color: var(--dim); margin: 6px 0 4px; line-height: 1.4; }
   .small h2 { margin-bottom: 14px; }
   @media (max-height: 560px) { .panel h1 { font-size: 46px; } .lede { margin-bottom: 8px; } .big { font-size: 54px; } }
   @media (prefers-reduced-motion: reduce) { #banner, #hint, #store i { transition: none; } #store.low i { animation: none; } }
@@ -121,6 +123,7 @@
   <h1>Forage</h1>
   <p class="lede">Stay in the flock and starve, or dart out to feed and race back before the hawk finds you.</p>
   <div class="go"><button id="fly" class="primary">Fly</button><button id="together" class="secondary" hidden>Fly together</button></div>
+  <p id="tElse" class="elsewhere" hidden></p>
   <div class="opts"><button id="optView"></button><button id="optSound"></button><button id="optTheme"></button></div>
   <div id="today" class="board"></div>
 </section>
@@ -146,6 +149,7 @@
   </div>
   <ul id="roster"></ul>
   <p id="wire"></p>
+  <p id="lElse" class="elsewhere" hidden></p>
   <div class="go"><button id="liveGo" class="primary">Fly</button><button id="liveBack" class="secondary">Back</button></div>
 </section>
 
@@ -2105,7 +2109,7 @@ var ENGINE = (function () {
     });
   }
   function leaveRoom() {
-    var Rm = hub(); clearInterval(helloTimer);
+    var Rm = hub(); clearInterval(helloTimer); Census.leave();
     if (Rm && R.joined) Rm.leave();
     R.joined = false; R.peers = {}; R.host = false; R.live = false;
   }
@@ -2190,6 +2194,39 @@ var ENGINE = (function () {
     if (pi < 0) return;
     if (!R.acks[from] || b.q > R.acks[from]) { R.acks[from] = b.q; E.order(w, pi, String(b.c || '').slice(0, 1), b.a | 0, b.a2 | 0); }
   }
+  /* THE COUNT (games/census.js, world:flock-world 4; spine:flock-world 1.11113): a live room's host keeps its line in the
+     census of the region its flock is over now, every half minute: how many fly and which way, and who, where few do */
+  var Census = { k: null,
+    tick: function () {
+      var FC = window.FlockCensus;
+      if (!FC || mode !== 'live' || !R.host || !w || !w.c || !w.c.W || !w.c.cr) return;
+      if (!this.k) this.k = FC.keeper();
+      var n = 0, lead = null, names = [], i;
+      for (i = 0; i < w.birds.length; i++) { var st = w.birds[i].st; if (st === E.IN || st === E.OUT) n++; }
+      for (i = 0; i < w.flocks.length; i++) { var f = w.flocks[i]; if (!f.end && (!lead || f.dist > lead.dist)) lead = f; }
+      for (i = 0; i < w.pl.length; i++) if (w.pl[i].name) names.push(w.pl[i].name);
+      var at = w.c.cr.at((lead ? lead.dist : 0) * E.M_PER_U / 1000);
+      this.k.put({ W: w.c.W, room: 'pool:forage' + (String(w.c.room) === '1' ? '' : ':' + w.c.room), day: w.c.day, x: at.x, y: at.y, heading: FC.degOf(w.c.cr.dir), flying: n, names: names });
+    },
+    leave: function () { if (this.k) { var k = this.k; this.k = null; k.leave(); } }
+  };
+  /* the title and the lobby say how many fly elsewhere now, read from the census every half minute while they show */
+  var elseAt = 0, elseBusy = false;
+  function elsewhere() {
+    var FC = window.FlockCensus, a = $('tElse'), b = $('lElse');
+    if (!FC || !a || !b || document.hidden || elseBusy || ($('title').hidden && $('lobby').hidden)) return;
+    var t = now(); if (elseAt && t - elseAt < 30000) return;
+    var Wd = onWorld(R.room || 1); Wd = Wd && Wd.W; if (!Wd) return;
+    elseAt = t; elseBusy = true;
+    FC.read(Wd).then(function (lines) {
+      elseBusy = false;
+      var mine = FC.sum(lines, GAME), all = FC.sum(lines), say = '';
+      if (all.rooms) say = mine.rooms ? 'Flying now: ' + mine.rooms + (mine.rooms === 1 ? ' room, ' : ' rooms, ') + mine.flying + (mine.flying === 1 ? ' bird' : ' birds') + ' in the air' + (all.rooms > mine.rooms ? ', and ' + (all.flying - mine.flying) + ' over the world in other games' : '') + '.'
+        : all.flying + (all.flying === 1 ? ' bird is' : ' birds are') + ' flying the world now, in other games.';
+      a.textContent = b.textContent = say; a.hidden = b.hidden = !say;
+    }, function () { elseBusy = false; });
+  }
+  setInterval(elsewhere, 2000);
   function liveBeforeStep() {}
   function liveAfterStep() {
     var Rm = hub(); if (!Rm) return;
@@ -2202,6 +2239,7 @@ var ENGINE = (function () {
         if (!snapNow) snapNow = E.snap(w);
         Rm.send('s', { run: R.run, ack: R.acks[p.id] || 0, snap: snapNow }, { to: p.id, reliable: p.direct ? false : true });
       }
+      Census.tick();
       // the world's own rebirths: a player who fell out comes back as the hawk
       for (var k = 0; k < w.pl.length; k++) { var pl = w.pl[k]; if (pl.kind === 'b' && pl.end && !pl.reborn && w.frame - pl.fr > 45) { pl.reborn = true; var np = E.rebirth(w, k); if (np !== false && np >= 0 && pl.pid === R.id) { me = np; R.myPi = np; } else if (np !== false && np >= 0) Rm.send('own', { run: R.run, pi: np }, { to: pl.pid }); } }
     }
@@ -2251,6 +2289,7 @@ var ENGINE = (function () {
   }
   function liveEnd() {
     if (mode !== 'live') return;
+    Census.leave();
     var p = null; for (var i = 0; i < w.pl.length; i++) if (w.pl[i].pid === R.id && w.pl[i].kind === 'b') p = w.pl[i];
     $('livebar').hidden = true;
     if (p && p.end) {
@@ -2345,7 +2384,8 @@ var ENGINE = (function () {
     look: function (x, y, z) { lookAt = x == null ? null : { x: x, y: y, z: z }; cam.ready = false; },
     routeX: function (y) { return E.routeX(w.c, y); },
     prof: function (on) { var r = PROF; PROF = on ? { ground: 0, things: 0, rest: 0, n: 0 } : null; return r; },
-    setView: function (v) { S.view = v; opts(); }, engine: E
+    setView: function (v) { S.view = v; opts(); }, engine: E,
+    census: Census, elsewhere: elsewhere, asLiveHost: function (on) { mode = on ? 'live' : 'title'; R.host = !!on; }   // a check's way to stand as a live room's host
   };
 
   try { var td = today(); for (var ki = localStorage.length - 1; ki >= 0; ki--) { var key = localStorage.key(ki); if (key && key.indexOf(GAME + ':best:') === 0 && key !== GAME + ':best:' + td) localStorage.removeItem(key); } } catch (e) {}

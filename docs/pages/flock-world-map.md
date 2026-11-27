@@ -7,7 +7,8 @@ WHAT IT SHOWS:
 - **Today's crossings** for Forage and Migration, rooms 1 to 3 each: a solid line for the open room and dashed for the next two, ▲ at the start and ● at the roost. A line leaving one edge comes in at the other. A room with players in it now is drawn heavier and marked live in the list.
 - **A tap on the map** names the place: its patch's address and name, its ground, how high, how wet, its cover, and the rooms that fly within 25 km of it that day.
 - **The day** steps back and forward a day at a time from the beach's own clock (`X-Pscale-Now`, the day address as the games compute it).
-- **The list of today's crossings** gives each room's start and roost by patch name and address, and its heading.
+- **The flocks now** (27 Nov 2026, `games-census-js.md`): every live room's line in the world's census, read with the liquids every half minute, drawn where its host last said, in its game's colour and sized by its birds, with its heading. A room beyond the three is drawn with its flyway, faint and dotted. A line above the list sums them ('2 rooms flying now: 39 birds in the air, 3 home'). On another day the flocks are not drawn, and until the census answers it says it is reading.
+- **The list of today's crossings** gives each room's start and roost by patch name and address, and its heading, and for a room flying now its census line and the patch it is over; a room beyond the three that is flying now is listed too.
 - **The legend** of the nine kinds and the rivers.
 
 WHO IS FLYING NOW: read as the games shelf reads it (`games.md`): each room's liquid, `liquid:pool:<game>` and `:2`, `:3`, a slot counting while it is under 25 seconds old by the beach's clock, re-read every half minute while the page is in view. It writes nothing.
@@ -20,3 +21,5 @@ CHECKED (scratchpad `map-check.mjs`), served as Vercel serves the repository and
 - a tap at the middle names patch 5 and its ground;
 - the next day flies other crossings;
 - nothing is thrown and nothing is written.
+
+And with the census answered in memory (scratchpad `census-check.mjs`): two rooms flying now summed and a silent one left out, the open room's words and patch, a room 4 beyond the three listed, no flocks on another day, nothing written.

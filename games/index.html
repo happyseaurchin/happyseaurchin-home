@@ -14,6 +14,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Space+Mono:wght@400;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/theme.css">
 <script src="/theme.js"></script>
+<script src="/games/world.js"></script>
+<script src="/games/census.js"></script>
 <style>
   /* GAMES PLAYED HERE (27 Oct 2026, lane plug.1; the kit at ways:plug, David's GO for plug-and-play): the shelf of games
      handed in by makers with no hosting of their own (ways:plug 7) and plugged by the service (ways:plug 8). The shelf is
@@ -151,7 +153,7 @@ function card(g, b){
     '<h2><a href="' + page + '">' + esc(g.title || g.game) + '</a></h2>' +
     (g.what ? '<p class="what">' + esc(cap(g.what)) + '</p>' : '') +
     '<a class="play" href="' + page + '">' + (daily ? '▶ Play today’s' : '▶ Play') + '</a>' +
-    '<p class="here" hidden></p>';
+    '<p class="here" hidden></p><p class="here census" hidden></p>';
   if (!daily) html += '<p class="none">It keeps no daily level and no board on the beach: it is played on its page.</p>';
   else if (!b || b.error) html += '<p class="none">Its board can’t be read just now' + (b && b.error ? ': ' + esc(b.error) : '') + '.</p>';
   else {
@@ -192,6 +194,24 @@ function sayHere(el, g, names){
     : 'Plays live with others: nobody in its room just now, so the next to open it finds you.';
   el.hidden = false;
 }
+/* ACROSS THE FLOCK WORLD NOW (27 Nov 2026, lane coil.1; games/census.js, world:flock-world 4): every live room of a game
+   that flies the flock world has its host keep one line in the census of the region its flock is over, every half
+   minute, so a card sums them: how many rooms fly now, how many birds are in the air and home. A game with no line in
+   the census says nothing. Writes nothing. */
+let WORLD = null;
+async function lookWorld(list){
+  if (!window.FlockCensus || !window.FlockWorld) return;
+  try { if (!WORLD) WORLD = FlockWorld.make(await FlockWorld.load()); } catch (e) { return; }
+  const lines = await FlockCensus.read(WORLD).catch(() => []);
+  list.forEach((g, i) => {
+    const el = $('shelf').children[i] && $('shelf').children[i].querySelector('.census'); if (!el) return;
+    const s = FlockCensus.sum(lines, g.game);
+    if (!s.rooms) { el.hidden = true; return; }
+    el.className = 'here census on';
+    el.innerHTML = '◉ Across the flock world now: ' + s.rooms + (s.rooms === 1 ? ' room' : ' rooms') + ' flying, ' + s.flying + (s.flying === 1 ? ' bird' : ' birds') + ' in the air' + (s.home ? ', ' + s.home + ' home' : '') + ' · <a href="/flock-world/map">see them on the map</a>';
+    el.hidden = false;
+  });
+}
 function lookIn(list){
   list.forEach((g, i) => { const el = $('shelf').children[i] && $('shelf').children[i].querySelector('.here'); if (el) hereIn(g).then(names => sayHere(el, g, names), () => {}); });
 }
@@ -202,8 +222,8 @@ async function init(){
   const board = boards.find(b => b && b.date) || null, read = (board && board.read) || new Date().toISOString();
   $('today').textContent = (list.length ? list.length + (list.length === 1 ? ' game' : ' games') + ' · ' : '') + (board ? board.date + ' · the beach’s day ' + board.day + ' · ' : '') + 'read live, ' + clock(read);
   list.forEach((g, i) => $('shelf').appendChild(card(g, boards[i])));
-  lookIn(list);
-  setInterval(() => { if (!document.hidden) lookIn(list); }, 30000);
+  lookIn(list); lookWorld(list);
+  setInterval(() => { if (!document.hidden) { lookIn(list); lookWorld(list); } }, 30000);
   if (!list.length){ const li = document.createElement('li'); li.className = 'game'; li.innerHTML = '<p class="kind">The shelf</p><h2>No game here yet</h2><p class="none">The first one handed in will stand here.</p>'; $('shelf').appendChild(li); }
   $('foot').innerHTML = 'The shelf is this site’s own list of the games it hosts, <code>games/list.json</code>; each game’s best three today come from the beach, through <code>/api/board</code>, as on <a href="/arcade">the arcade’s door</a>, which shows every game whose maker lists it. ' +
     'A game here plays at <code>/games/&lt;game&gt;</code> inside a frame sandboxed without this site’s origin: what it keeps (its player’s name and key) is kept for it under its own name, and it can reach the beach and nothing else. How a game plugs in: <code>ways:arcade</code> and <code>ways:plug</code> on the beach, and <a href="/game-arcade">the proposal</a>.';
