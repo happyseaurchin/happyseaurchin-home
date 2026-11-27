@@ -96,6 +96,12 @@
       'background:rgba(var(--well-rgb),.55);border:1px solid var(--line);border-radius:50%;color:var(--vapour-dim);cursor:pointer;line-height:1;user-select:none}' +
     '.gw-sheet .dictate svg{width:13px;height:13px;fill:currentColor;display:block}.gw-sheet .dictate:hover{color:var(--foam);border-color:var(--line-strong)}' +
     '.gw-sheet .dictate.on{color:var(--liquid);border-color:rgba(var(--liquid-rgb),.55);box-shadow:0 0 0 3px rgba(var(--liquid-rgb),.3)}.gw-sheet .dictate[hidden]{display:none}' +
+    /* the till: three amounts, where a sum would go now, the pot and each part if asked for now */
+    '.gw-amounts{display:flex;gap:8px;margin:10px 0 0}.gw-amounts button{min-height:40px;min-width:56px;border-radius:999px;border:1px solid var(--gw-rule);background:transparent;' +
+      'color:var(--gw-ink);font:600 15px/1 inherit;font-family:inherit;cursor:pointer}.gw-amounts button[aria-pressed="true"]{background:var(--gw-acc);color:var(--gw-acc-ink);border-color:var(--gw-acc)}' +
+    '.gw-till-h{margin:12px 0 2px;font-size:13px;color:var(--gw-mute)}' +
+    '.gw-split{list-style:none;margin:0;padding:0}.gw-split li{display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-top:1px solid var(--gw-rule);font-size:14.5px}' +
+    '.gw-split .gw-why{display:block;font-size:12px;color:var(--gw-mute)}.gw-split .gw-amt{font-variant-numeric:tabular-nums}' +
     '@media print{.gw-tab,.gw-sheet{display:none}}';
   var st = document.createElement('style'); st.textContent = CSS; document.head.appendChild(st);
 
@@ -119,6 +125,14 @@
       '<button type="button" class="gw-btn" data-gw="ai">Ask your AI about it</button></p>' +
     '<p class="gw-status gw-said" aria-live="polite"></p>' +
     '<section class="gw-today" hidden><h3>Today</h3><p class="gw-here" hidden></p><p class="gw-count"></p><ol class="gw-top"></ol></section>' +
+    '<section class="gw-till" hidden><h3>A ticket for ' + esc(TITLE) + '</h3>' +
+      '<p class="gw-note">Money put in is shared by everyone who made this game what it is: its players, the people who brought them, its makers and the beach. Nothing is held for anyone: a person\'s part is worked out when they ask to take it out. <b>This is a test: nothing is charged.</b></p>' +
+      '<p class="gw-amounts" role="group" aria-label="How much"><button type="button" data-amt="100" aria-pressed="false">£1</button><button type="button" data-amt="500" aria-pressed="true">£5</button><button type="button" data-amt="1000" aria-pressed="false">£10</button></p>' +
+      '<p class="gw-till-h gw-split-h">Where it would go now</p><ul class="gw-split"></ul>' +
+      '<p class="gw-acts"><button type="button" class="gw-btn gw-main gw-put">Put £5 in, a test</button></p>' +
+      '<p class="gw-status gw-put-said" aria-live="polite"></p>' +
+      '<div class="gw-pot" hidden><p class="gw-till-h gw-pot-h"></p><ul class="gw-split gw-values"></ul>' +
+      '<p class="gw-note">A part is taken out by asking for it at <a href="/shore" target="_blank" rel="noopener">Shore</a>: the keeper checks it against the weightings as they stand and pays by hand. <a href="/value-weightings" target="_blank" rel="noopener">How a part is worked out →</a></p></div></section>' +
     '<section class="gw-room" hidden><h3>The room <code>pool:' + esc(GAME) + '</code></h3><ul class="gw-lines"></ul>' +
       '<form class="gw-say"><div class="gw-box"><textarea rows="2" maxlength="2000" placeholder="Say something about ' + esc(TITLE) + '"></textarea></div>' +
       '<div class="gw-row"><input type="text" maxlength="32" placeholder="your name" aria-label="your name" autocomplete="nickname"><button type="submit" class="gw-btn gw-main">Leave a line</button></div>' +
@@ -151,7 +165,91 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (b) { if (!b || b.error) return; board = b; day = String(b.day || ''); drawToday(b); drawRoom(b.recent || []); }, function () {});
     hereNow();
+    till();
   }
+
+  /* ── THE TILL (27 Nov 2026, lane coil.1, at David's 'work out how to enable moneyflow through tickets so that we have
+   * an example'; thread:155): a ticket for this game, money in for its four layers, the line its law's SUPPORT names
+   * (weights, makers, the beach), as spine:value-weightings has it: the sum waits in the game's pot, nothing is held for
+   * anyone, and a part is worked out only when someone asks to take it out, from the weightings as they stand then.
+   * Where it would go is read live from /api/xp (the game's four columns, the law's weights, a credit a penny). A TEST:
+   * nothing is charged; the line goes into an open test ledger, ledger:test-flock-world, never Shore's. Shown only for a
+   * game whose law carries a SUPPORT line. ── */
+  var LEDGER = 'ledger:test-flock-world', AMT = 500, tillOn = false;
+  var LAYER = { players: 'playing it', bringers: 'bringing players', makers: 'making it', beach: 'keeping the beach' };
+  function money(p) { p = Math.round(p); return '£' + (p % 100 ? (p / 100).toFixed(2) : String(p / 100)); }
+  function xpOf(pence) {
+    return fetch('/api/xp?family=' + encodeURIComponent(GAME) + '&credits=' + Math.max(0, Math.round(pence)), { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.ok ? r.json() : null; }, function () { return null; });
+  }
+  function splitItems(xp) {
+    var by = (xp && xp.shares && xp.shares.by) || [], rows = by.filter(function (r) { return r.credits > 0; }).map(function (r) {
+      var f = r.from || {}, top = Object.keys(f).sort(function (a, b) { return (f[b] || 0) - (f[a] || 0); })[0];
+      return { name: r.handle, p: r.credits, why: LAYER[top] || '' };
+    });
+    var c = (xp && xp.shares && xp.shares.commons) || (xp && xp.split && xp.split.commons) || 0;
+    rows.sort(function (a, b) { return b.p - a.p; });
+    if (c > 0) rows.push({ name: 'the commons', p: c, why: 'the parts nobody can be named for yet' });
+    return rows.map(function (r) { return '<li><span>' + esc(r.name) + (r.why ? '<span class="gw-why">' + esc(r.why) + '</span>' : '') + '</span><span class="gw-amt">' + money(r.p) + '</span></li>'; }).join('');
+  }
+  function drawSplit() {
+    $('.gw-split-h').textContent = 'Where ' + money(AMT) + ' would go now';
+    $('.gw-put').textContent = 'Put ' + money(AMT) + ' in, a test';
+    return xpOf(AMT).then(function (xp) {
+      if (!xp || !xp.law || !xp.law.support) { $('.gw-till').hidden = true; return false; }
+      $('.gw-till').hidden = false; $('.gw-points').hidden = true;   // the till says what Experience Points' card said, as it now stands
+      $('.gw-till .gw-split:not(.gw-values)').innerHTML = splitItems(xp) +
+        (xp.beats ? '' : '<li><span class="gw-why">Nobody has played it on the beach yet, so it waits in the commons: a run kept or a line in its room, and the parts begin to have names.</span><span></span></li>');
+      return true;
+    });
+  }
+  /* the pot: every IN line of the test ledger for this game, wherever the beach's appends nested it */
+  function potLines(block) {
+    var out = [];
+    (function walk(n) {
+      if (!n || typeof n !== 'object') return;
+      if (typeof n._ === 'string' && /^IN\b/.test(n._) && n['4'] === GAME && /^\d+$/.test(String(n['5'] || ''))) out.push(+n['5']);
+      Object.keys(n).forEach(function (k) { if (/^[1-9]$/.test(k) && n[k] && typeof n[k] === 'object') walk(n[k]); });
+    })(block);
+    return out;
+  }
+  function drawPot() {
+    return fetch(BEACH + '?block=' + encodeURIComponent(LEDGER), { headers: { Accept: 'application/json' }, cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; }).then(function (b) {
+        var lines = b ? potLines(b) : [], pot = lines.reduce(function (s, p) { return s + p; }, 0);
+        if (!pot) { $('.gw-pot').hidden = true; return; }
+        return xpOf(pot).then(function (xp) {
+          $('.gw-pot-h').textContent = 'In the pot for ' + TITLE + ': ' + money(pot) + ' from ' + lines.length + (lines.length === 1 ? ' ticket' : ' tickets') + '. Each part, if asked for now:';
+          $('.gw-values').innerHTML = splitItems(xp);
+          $('.gw-pot').hidden = false;
+        });
+      }, function () {});
+  }
+  function till() {
+    drawSplit().then(function (on) { tillOn = on; if (on) drawPot(); });
+  }
+  Array.prototype.forEach.call(dlg.querySelectorAll('.gw-amounts button'), function (b) {
+    b.addEventListener('click', function () {
+      AMT = +b.getAttribute('data-amt') || 500;
+      Array.prototype.forEach.call(dlg.querySelectorAll('.gw-amounts button'), function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+      drawSplit();
+    });
+  });
+  $('.gw-put').addEventListener('click', function () {
+    var btn = $('.gw-put'), said = $('.gw-put-said'), amt = AMT;
+    btn.disabled = true; said.textContent = 'Putting it in…';
+    loadKit().then(nameNow).then(function (n) {
+      var name = clean(who.value) || n || 'a visitor';
+      var entry = { _: 'IN — ' + money(amt) + ' · from ' + name + ' · for ' + GAME + ' · a test, nothing charged', 1: name, 2: day, 3: new Date().toISOString(), 4: GAME, 5: String(amt) };
+      return fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: LEDGER, append: true, content: entry }) })
+        .then(function (r) { return r.json().catch(function () { return null; }).then(function (d) { if (!r.ok || (d && d.error)) throw new Error((d && (d.error || d.message)) || 'the beach answered ' + r.status); }); });
+    }).then(function () {
+      said.textContent = 'Thank you: ' + money(amt) + ' is in ' + TITLE + '\'s pot, as a test. Nothing was charged.';
+      return drawPot();
+    }, function (err) {
+      said.textContent = 'That didn\'t reach the beach: ' + err.message + '. Nothing was charged; try again.';
+    }).then(function () { btn.disabled = false; });
+  });
   function drawToday(b) {
     $('.gw-today').hidden = false;
     $('.gw-count').textContent = b.runs ? b.runs + (b.runs === 1 ? ' run' : ' runs') + ' by ' + b.players + (b.players === 1 ? ' player' : ' players') + ' today' : 'No runs today yet: the first is yours to make.';
