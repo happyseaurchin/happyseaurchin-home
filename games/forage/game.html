@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/games/bridge.js"></script>
+<script src="/games/world.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Forage</title>
@@ -162,7 +163,7 @@
 // energy, spent all the time and won back only by eating. Food is energy, and each kind gives it differently.
 var ENGINE = (function () {
   'use strict';
-  var VERSION = 'fg3', HZ = 30, DT = 1 / HZ, M_PER_U = 4;
+  var VERSION = 'fg3', VERSION4 = 'fg4', HZ = 30, DT = 1 / HZ, M_PER_U = 4;
   // a unit is four metres; speeds are units a second
   var V_CRUISE = 5, V_EX = 4.4, V_SPRINT = 9, V_MIN = 2.2, V_EAT = 0.4;
   var A_IN = 14, A_BIRD = 22, A_DODGE = 32;
@@ -228,16 +229,26 @@ var ENGINE = (function () {
   }
 
   // ── the country: a day's route north, its bands and its patches ──
-  function country(day, nf) {
-    var seed = strHash('forage ' + day);
-    return { day: String(day), seed: seed, nf: nf === 2 ? 2 : 1, lat: nf === 2 ? [-14, 14] : [0], bk: {} };
+  /* ON THE FLOCK WORLD (27 Nov 2026, lane coil.1, thread:155; /games/world.js, world:flock-world): given a world and
+   * a room, the flight's bands are the world's own ground along the room's crossing, a band at every 1.2 km of it,
+   * and the room joins the seed, so two rooms on one day fly two countries. With no world, the country is the day's
+   * alone, as every fg3 proof was flown, and re-runs as it always did. */
+  function country(day, nf, wo) {
+    var room = wo && wo.W ? String(wo.room == null ? 1 : wo.room) : '';
+    var seed = strHash('forage ' + day + (room ? ' ' + room : ''));
+    var C = { day: String(day), seed: seed, nf: nf === 2 ? 2 : 1, lat: nf === 2 ? [-14, 14] : [0], bk: {} };
+    if (room) { C.W = wo.W; C.room = room; C.mark = wo.W.mark; C.cr = wo.W.crossing(day, 'forage', room); C.g = {}; }
+    return C;
   }
+  /* the world's nine kinds as Forage's seven lands: woods give cover as the hedges do, the high ridge is heath */
+  var WKIND = { stubble: 0, hedges: 1, meadow: 2, plough: 3, orchard: 4, heath: 5, marsh: 6, woods: 1, ridge: 5 };
   function routeX(C, y) { return 36 * n1(y / 360, (C.seed ^ 0x5bd1) | 0) + 10 * n1(y / 100, (C.seed ^ 0x2c9f) | 0); }
   function routeDir(C, y, o) { var dx = (routeX(C, y + 3) - routeX(C, y - 3)) / 6, l = Math.sqrt(dx * dx + 1); o.x = dx / l; o.y = 1 / l; return o; }
   function bandAt(y) { return y < 0 ? 0 : Math.floor(y / BAND_LEN); }
   function bandKind(C, k) {
     if (k <= 0) return 0;
     var c = C.bk[k]; if (c !== undefined) return c;
+    if (C.W) { var at = C.cr.at((k * BAND_LEN + BAND_LEN / 2) * M_PER_U / 1000); return (C.bk[k] = WKIND[C.W.ground(at.x, at.y, C.g).key]); }
     var cyc = Math.floor((k - 1) / 6), a = [1, 2, 3, 4, 5, 6];
     for (var i = 5; i > 0; i--) { var j = Math.floor(h01(C.seed, cyc, 40 + i) * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t; }
     return (C.bk[k] = a[(k - 1) % 6]);
@@ -286,8 +297,8 @@ var ENGINE = (function () {
   }
   function create(o) {
     o = o || {};
-    var nf = o.flocks === 2 ? 2 : 1, C = country(o.day, nf);
-    var w = { v: VERSION, day: C.day, seed: C.seed, c: C, frame: 0, t: 0, rs: (C.seed ^ 0x2545f491) | 0, flocks: [], birds: [], hawks: [], food: [], fmap: {},
+    var nf = o.flocks === 2 ? 2 : 1, C = country(o.day, nf, o.world);
+    var w = { v: C.W ? VERSION4 : VERSION, day: C.day, seed: C.seed, c: C, frame: 0, t: 0, rs: (C.seed ^ 0x2545f491) | 0, flocks: [], birds: [], hawks: [], food: [], fmap: {},
       nr: 0, hc: 0, nh: 32, hn: 0, pl: [], ev: [], fx: [], over: false, attract: !!o.attract, nohawk: !!o.nohawk };
     for (var i = 0; i < nf; i++) {
       var f = { i: i, lat: C.lat[i], dist: 0, ate: 0, nIn: 0, outN: 0, cx: 0, cy: 0, mvx: 0, mvy: V_CRUISE, rad: 3,
@@ -912,11 +923,19 @@ var ENGINE = (function () {
       else if (e[2] === 'P') s += b36(e[3]) + '_' + b36(e[4]);
       out.push(s); last = e[0];
     }
-    return VERSION + '~' + w.day + '~' + out.join('.');
+    /* a flight on the flock world names its room and the world it was flown in: fg4~<day>~<room>~<world>~<orders> */
+    return (w.c.W ? VERSION4 + '~' + w.day + '~' + w.c.room + '~' + w.c.mark : VERSION + '~' + w.day) + '~' + out.join('.');
   }
+  /* the world a proof or a room's world names, made again from its mark (/games/world.js), where this page has it */
+  function worldOf(mark) { return typeof FlockWorld !== 'undefined' && FlockWorld.fromMark ? FlockWorld.fromMark(mark) : null; }
   function decode(proof) {
-    var m = /^fg3~(\d{6,12})~([0-9a-zFDHPS._-]*)$/.exec(String(proof || '').trim());
-    if (!m) return null;
+    var s = String(proof || '').trim(), room = '', mark = '';
+    var m = /^fg3~(\d{6,12})~([0-9a-zFDHPS._-]*)$/.exec(s);
+    if (!m) {
+      var m4 = /^fg4~(\d{6,12})~([0-9a-z][0-9a-z-]{0,31})~(w1r\d+p\d+c\d+s\d+)~([0-9a-zFDHPS._-]*)$/.exec(s);
+      if (!m4) return null;
+      m = [m4[0], m4[1], m4[4]]; room = m4[2]; mark = m4[3];
+    }
     var evs = [], at = 0, parts = m[2] ? m[2].split('.') : [];
     for (var i = 0; i < parts.length; i++) {
       var p = /^([0-9a-z]+)([FDHP])(-?[0-9a-z]+)?(?:_(-?[0-9a-z]+))?$/.exec(parts[i]);
@@ -926,12 +945,14 @@ var ENGINE = (function () {
       if (isNaN(at) || isNaN(a) || isNaN(a2)) return null;
       evs.push([at, p[2], a, a2]);
     }
-    return { day: m[1], ev: evs };
+    return { day: m[1], ev: evs, room: room, mark: mark };
   }
   /* re-run a solo proof: the day's world, one player, their orders at their steps, to the end of their flight */
   function rerun(proof, opt) {
     var P = decode(proof); if (!P) return { ok: false, error: 'not a proof' };
-    var w = create({ day: P.day, players: [{ name: 'p', kind: 'b' }] }), ei = 0, cap = 20 * 60 * HZ, trace = opt && opt.trace ? [] : null, me = w.pl[0];
+    var wo = null;
+    if (P.mark) { var Wd = worldOf(P.mark); if (!Wd) return { ok: false, error: 'the world it was flown in cannot be drawn here' }; wo = { W: Wd, room: P.room }; }
+    var w = create({ day: P.day, players: [{ name: 'p', kind: 'b' }], world: wo }), ei = 0, cap = 20 * 60 * HZ, trace = opt && opt.trace ? [] : null, me = w.pl[0];
     while (!me.end && w.frame < cap) {
       while (ei < P.ev.length && P.ev[ei][0] === w.frame) { var e = P.ev[ei++]; order(w, 0, e[1], e[2], e[3]); }
       if (ei < P.ev.length && P.ev[ei][0] < w.frame) return { ok: false, error: 'orders out of step' };
@@ -939,7 +960,7 @@ var ENGINE = (function () {
       if (trace && w.frame % 3 === 0) { var b = w.birds[me.id]; trace.push(b.x, b.y, b.st === IN ? 0 : b.st === OUT ? 1 : 2, b.eat > 0 ? 1 : 0); }
     }
     if (!me.end) return { ok: false, error: 'the flight never ended' };
-    return { ok: true, day: P.day, km: me.km, ate: me.ate, band: me.band, end: me.end, by: me.by, frames: w.frame, trace: trace, orders: P.ev.length };
+    return { ok: true, day: P.day, room: P.room, mark: P.mark, km: me.km, ate: me.ate, band: me.band, end: me.end, by: me.by, frames: w.frame, trace: trace, orders: P.ev.length };
   }
 
   // ── the room's world: what the host sends, so any page can take it up and fly on ──
@@ -957,13 +978,15 @@ var ENGINE = (function () {
     for (i = 0; i < w.birds.length; i++) { var b = w.birds[i]; B.push(b.st === IN || b.st === OUT || w.frame - (b.gone || 0) < 90 ? pack(b, BIRD_F, BIRD_Q) : 0); }
     for (i = 0; i < w.hawks.length; i++) { var h = w.hawks[i]; H.push(h.st === H_GONE ? 0 : pack(h, HAWK_F, HAWK_Q)); }
     for (i = 0; i < w.food.length; i++) { var it = w.food[i]; if (it.st || it.tg >= 0) Fd.push([it.id, it.st, it.tg, it.tb]); }
-    return { v: VERSION, day: w.day, nf: w.flocks.length, fr: w.frame, rs: w.rs, hc: Math.round(w.hc * 100), nh: Math.round(w.nh * 100), hn: w.hn, nr: w.nr,
+    return { v: w.v, day: w.day, room: w.c.room || '', wm: w.c.mark || '', nf: w.flocks.length, fr: w.frame, rs: w.rs, hc: Math.round(w.hc * 100), nh: Math.round(w.nh * 100), hn: w.hn, nr: w.nr,
       fl: w.flocks.map(function (f) { return pack(f, FLOCK_F, FLOCK_Q).concat([f.end]); }), b: B, h: H, fd: Fd,
       pl: w.pl.map(function (p) { return PL_F.map(function (k) { return p[k]; }); }) };
   }
   function adopt(s) {
-    if (!s || s.v !== VERSION) return null;
-    var w = create({ day: s.day, flocks: s.nf, size: 0 }), i;
+    if (!s || (s.v !== VERSION && s.v !== VERSION4)) return null;
+    var wo = null;
+    if (s.v === VERSION4) { var Wd = worldOf(s.wm); if (!Wd) return null; wo = { W: Wd, room: s.room }; }
+    var w = create({ day: s.day, flocks: s.nf, size: 0, world: wo }), i;
     w.frame = s.fr; w.t = s.fr * DT; w.rs = s.rs | 0; w.hc = s.hc / 100; w.nh = s.nh / 100; w.hn = s.hn | 0;
     s.fl.forEach(function (a, k) { var f = w.flocks[k]; if (!f) return; unpack(f, a, FLOCK_F, FLOCK_Q); f.end = a[FLOCK_F.length] || ''; });
     w.birds = []; w.hawks = [];
@@ -1025,7 +1048,7 @@ var ENGINE = (function () {
   }
 
   return {
-    VERSION: VERSION, HZ: HZ, DT: DT, M_PER_U: M_PER_U, V_CRUISE: V_CRUISE, EN_WEAK: EN_WEAK, R_LOST: R_LOST, R_JOIN: R_JOIN, BAND_LEN: BAND_LEN, ROW: ROW, ROW0: ROW0,
+    VERSION: VERSION, VERSION4: VERSION4, worldOf: worldOf, HZ: HZ, DT: DT, M_PER_U: M_PER_U, V_CRUISE: V_CRUISE, EN_WEAK: EN_WEAK, R_LOST: R_LOST, R_JOIN: R_JOIN, BAND_LEN: BAND_LEN, ROW: ROW, ROW0: ROW0,
     IN: IN, OUT: OUT, LOST: LOST, CAUGHT: CAUGHT, FOLLOW: FOLLOW, DART: DART, HOME: HOME, FLYTO: FLYTO,
     H_ARRIVE: H_ARRIVE, H_CIRCLE: H_CIRCLE, H_STOOP: H_STOOP, H_PULL: H_PULL, H_CARRY: H_CARRY, H_LEAVE: H_LEAVE, H_GONE: H_GONE, H_FREE: H_FREE,
     FOOD: FOOD, KIND: KIND, HAWK: HAWK,
@@ -1058,6 +1081,16 @@ var ENGINE = (function () {
   function dayAddress(d) { var y = d.getUTCFullYear(), m0 = d.getUTCMonth(), dd = d.getUTCDate(); return String(y) + (Math.floor(m0 / 3) + 1) + (m0 % 3 + 1) + (Math.floor((dd - 1) / 7) + 1) + ((dd - 1) % 7 + 1) + '00'; }
   function today() { var p = plug(); if (p && p.today) { try { var a = String(p.today()); if (/^\d{10}$/.test(a)) return a; } catch (e) {} } return dayAddress(new Date()); }
   function sameDay(a, b) { return String(a || '').replace(/0+$/, '') === String(b || '').replace(/0+$/, ''); }
+
+  // ── the flock world (/games/world.js, world:flock-world; 27 Nov 2026, lane coil.1, thread:155): its size as the
+  //    beach keeps it, read once, the code's own until then (the same today); a flight alone flies the open room's
+  //    crossing, so the day's board is one ride for everyone, and a live room flies its own ──
+  var WORLD = null;
+  function worldNow() { if (WORLD) return WORLD; try { if (typeof FlockWorld !== 'undefined') WORLD = FlockWorld.make({}); } catch (e) {} return WORLD; }
+  try { if (typeof FlockWorld !== 'undefined') FlockWorld.load().then(function (c) { if (c && c.source === 'beach') WORLD = FlockWorld.make(c); }, function () {}); } catch (e) {}
+  function onWorld(room) { var Wd = worldNow(); return Wd ? { W: Wd, room: room == null ? 1 : room } : null; }
+  /* the room the plug seated this page in: the open room 1, pool:forage:2 room 2, a friends' room its word */
+  function roomNo(r) { var m = /^pool:forage(?::([0-9a-z][0-9a-z-]*))?$/.exec(String(r || '')); return m ? (m[1] ? (/^\d+$/.test(m[1]) ? +m[1] : m[1]) : 1) : 1; }
 
   // ── settings ──
   var S = { view: get('view') === 'bird' ? 'bird' : 'sky', sound: get('sound') !== 'off', theme: get('theme') || 'auto', name: clean(get('name')), side: +(get('side') || 0) || 0 };
@@ -1424,7 +1457,7 @@ var ENGINE = (function () {
 
   function attract() {
     var day = today();
-    w = E.create({ day: day, attract: true }); me = -1; useCountry(w.c);
+    w = E.create({ day: day, attract: true, world: onWorld(1) }); me = -1; useCountry(w.c);
     for (var i = 0; i < 90; i++) E.step(w);
     cam.ready = false;
   }
@@ -1455,7 +1488,7 @@ var ENGINE = (function () {
   function startSolo() {
     audioInit();
     runDay = today(); runName = S.name;
-    w = E.create({ day: runDay, players: [{ name: runName || 'you', kind: 'b' }] }); me = 0; useCountry(w.c);
+    w = E.create({ day: runDay, players: [{ name: runName || 'you', kind: 'b' }], world: onWorld(1) }); me = 0; useCountry(w.c);
     pending = []; fxs = []; endShown = false; endAt = 0; paused = false; mode = 'run'; lastProof = ''; lastLine = '';
     cam.ready = false; screen('run'); hud(true);
     prepareGhost();
@@ -1492,7 +1525,7 @@ var ENGINE = (function () {
     $('endBrought').textContent = ateText(p.ate) + (f ? '; the flock, ' + f.ate + '.' : '.');
     $('again').textContent = live ? 'Back to the room' : 'Again';
   }
-  function bestToday() { try { var b = JSON.parse(get('best:' + today()) || 'null'); return b && typeof b.km === 'number' && /^fg3~/.test(b.proof || '') ? b : null; } catch (e) { return null; } }
+  function bestToday() { try { var b = JSON.parse(get('best:' + today()) || 'null'); return b && typeof b.km === 'number' && /^fg[34]~/.test(b.proof || '') ? b : null; } catch (e) { return null; } }
 
   /* the other side: a bird that fell out comes back as the hawk, for forty seconds over the flock it left */
   function asHawk() {
@@ -1961,7 +1994,7 @@ var ENGINE = (function () {
   window.forageCheck = function (p) {
     var proof = String(p && p.proof || ''), line = String(p && p.line || '');
     if (!proof) return null;
-    if (/^fg3L~/.test(proof)) return null;          // a flight in the room: kept as a claim, nobody can re-run it alone
+    if (/^fg[34]L~/.test(proof)) return null;       // a flight in the room: kept as a claim, nobody can re-run it alone
     var m = /^\s*FLEW\s+(\d+(?:\.\d+)?)\s*km\b.*?\bate\s+(\d+)/i.exec(line);
     if (!m) return false;
     var r = verified[proof] || (verified[proof] = E.rerun(proof));
@@ -1975,7 +2008,8 @@ var ENGINE = (function () {
     if (!pick) { var b = bestToday(); if (b && b.proof && get('ghost') !== 'off') pick = { name: 'your best', proof: b.proof, km: b.km, day: runDay }; }
     if (!pick) return;
     var r = E.rerun(pick.proof, { trace: true });
-    if (r.ok && sameDay(r.day, runDay)) ghost = { name: pick.name + ' ' + r.km.toFixed(1), trace: r.trace, km: r.km };
+    /* a ghost flies beside you only over the ground you fly: the same day, the same world and the same room */
+    if (r.ok && sameDay(r.day, runDay) && (r.mark || '') === (w.c.mark || '') && String(r.room || '') === String(w.c.room || '')) ghost = { name: pick.name + ' ' + r.km.toFixed(1), trace: r.trace, km: r.km };
   }
 
   // ── the day's board ──
@@ -2060,9 +2094,11 @@ var ENGINE = (function () {
     }
     $('wire').textContent = 'Opening the room…';
     var name = clean($('lobbyName').value) || S.name || undefined;
-    Rm.join({ name: name }).then(function (j) {
+    /* a room holds a dozen: the room plug seats the thirteenth in the next, pool:forage:2, and on, each its own crossing
+       of the flock world (spine:flock-world 1.113) */
+    Rm.join({ name: name, max: 12 }).then(function (j) {
       if (!j || !j.ok) { $('wire').textContent = 'The room can’t be opened just now' + (j && j.error ? ': ' + j.error : '') + '.'; return; }
-      R.joined = true; R.id = j.id; R.name = j.name; R.wire = j.wire;
+      R.joined = true; R.id = j.id; R.name = j.name; R.wire = j.wire; R.room = roomNo(j.room);
       if (!S.name && !/^guest-\d+$/.test(j.name)) { S.name = clean(j.name); }
       roster(); hello();
       clearInterval(helloTimer); helloTimer = setInterval(function () { hello(); if (mode === 'live') electHost(); }, 2500);
@@ -2118,7 +2154,7 @@ var ENGINE = (function () {
     var two = list.some(function (x) { return x.side === 1; });
     var run = R.id + '-' + Date.now().toString(36), day = today();
     var players = list.map(function (x) { return { pid: x.pid, name: x.name, kind: x.side === 2 ? 'h' : 'b', fl: x.side === 1 ? 1 : 0 }; });
-    var w0 = E.create({ day: day, flocks: two ? 2 : 1, players: players });
+    var w0 = E.create({ day: day, flocks: two ? 2 : 1, players: players, world: onWorld(R.room) });
     var body = { run: run, snap: E.snap(w0) };
     Rm.send('start', body);
     beginLive(body, R.id, w0);
@@ -2219,7 +2255,7 @@ var ENGINE = (function () {
     $('livebar').hidden = true;
     if (p && p.end) {
       fillEnd(p, true);
-      lastProof = 'fg3L~' + w.day + '~' + (p.km.toFixed(1)) + '_' + p.ate; lastLine = 'FLEW ' + p.km.toFixed(1) + ' km · ' + p.band + ' · ate ' + p.ate + ' · together'; runDay = w.day;
+      lastProof = (w.c.W ? 'fg4L~' + w.day + '~' + w.c.room + '~' + w.c.mark : 'fg3L~' + w.day) + '~' + (p.km.toFixed(1)) + '_' + p.ate; lastLine = 'FLEW ' + p.km.toFixed(1) + ' km · ' + p.band + ' · ate ' + p.ate + ' · together'; runDay = w.day;
       $('keep').hidden = !(plug() && p.km > 0); $('keepState').textContent = ''; $('made').hidden = true;
     } else {
       $('endWhy').textContent = 'The flight is over.'; $('endKm').textContent = '–'; $('endLand').textContent = ''; $('endBrought').textContent = '';

@@ -135,7 +135,8 @@
 
     /* THE GROUND at a place: a river where the river field crosses its middle, its valley either side; high ground
      * as ridge and heath; wet low ground as marsh; woods where the wood field is deep; and the rest farmland, each
-     * field three kilometres across choosing its kind by the farm kinds' shares */
+     * field a kilometre and a half across choosing its kind by the farm kinds' shares (about a band of Forage's
+     * flight, so a flock crosses a field or two a minute) */
     function ground(x, y, o) {
       o = o || {};
       fields(x, y, tmp);
@@ -150,7 +151,7 @@
       else if (valley > 0.55) kind = 3;
       else {
         var wx = wrap(x), wy = wrap(y);
-        kind = FARM[hash3(Math.floor(wx / 3), Math.floor(wy / 3), S + 6) % FARM.length];
+        kind = FARM[hash3(Math.floor(wx / 1.5), Math.floor(wy / 1.5), S + 6) % FARM.length];
       }
       o.kind = kind; o.key = KINDS[kind].key; o.name = KINDS[kind].name; o.cover = KINDS[kind].cover;
       o.elev = elev; o.wet = tmp.w; o.wood = tmp.wood; o.river = river; o.valley = valley;
@@ -245,9 +246,16 @@
       wrap: wrap, dx: dx, dist: dist, fields: fields, ground: ground,
       patchOf: patchOf, addrOf: addrOf, addrAt: addrAt, patchAt: patchAt, place: place, towns: towns,
       crossing: crossing, storm: storm, fronts: frontsOf, monthOf: monthOf, southOf: southOf,
-      /* what a proof names: the world it was flown in */
-      mark: VERSION + 'r' + rung + 'p' + P + 'c' + CROSS
+      /* what a proof names: the world it was flown in, every measure that draws its ground and its crossings */
+      mark: VERSION + 'r' + rung + 'p' + P + 'c' + CROSS + 's' + SEAM
     };
+  }
+  /* the world a proof names, made again: 'w1r1p400c300s24' → the same world, wherever the proof is checked */
+  var worlds = {};
+  function fromMark(mark) {
+    var m = /^w1r(\d+)p(\d+)c(\d+)s(\d+)$/.exec(String(mark || ''));
+    if (!m) return null;
+    return worlds[mark] || (worlds[mark] = make({ rung: +m[1], patch: +m[2], cross: +m[3], seam: +m[4] }));
   }
 
   /* THE WORLD AS THE BEACH KEEPS IT: world:flock-world, its 1 the rung ('rung: 1') and its 2 the measures ('patch: 400
@@ -265,7 +273,7 @@
       }, function () { return { rung: DEF.rung, source: 'default' }; });
   }
 
-  var API = { make: make, load: load, version: VERSION, defaults: DEF, kinds: KINDS, strHash: strHash, hash3: hash3, n2: n2 };
+  var API = { make: make, load: load, fromMark: fromMark, version: VERSION, defaults: DEF, kinds: KINDS, strHash: strHash, hash3: hash3, n2: n2 };
   if (typeof module === 'object' && module.exports) module.exports = API;
   else root.FlockWorld = API;
 })(typeof self !== 'undefined' ? self : this);
