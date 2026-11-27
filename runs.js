@@ -4,7 +4,8 @@
  * and of the o-page-unit showing what experiments find, "go for it").
  *
  * A run is a line in a runner's own mirror, <family>:<handle>, that opens RUN (its number or not) and a dash; the lines
- * beneath it that are not runs are its findings. A runner's runs stand side by side (run k at the step's address and
+ * beneath it that are not runs are its findings, and a finding's own lines beneath it (each cell's answer word for
+ * word, say) open with it. A runner's runs stand side by side (run k at the step's address and
  * then k, as pscale-lab keeps them) or chained (each at the 1 beneath the one before, as health-check keeps them): this
  * reads either, and which a family uses is its law's to say. A run belongs to the deepest place on the spine at or above
  * it, so pscale-lab's runs at 1.11121 show at its lane, 1.1112, and health-check's at 1.11111 and 1.111111 at its step,
@@ -55,10 +56,16 @@
         if (n == null) return;
         var head = textOf(n), m = ds && RUN.exec(head);
         if (m && !isDecision(ds, spine)) {
-          var at = belongs(ds, spine), finds = [];
+          var at = belongs(ds, spine), finds = [], subs = [];
           seq[at] = (seq[at] || 0) + 1;
-          if (typeof n === 'object') for (var j = 1; j <= 9; j++) { var f = textOf(n[String(j)]); if (f && !RUN.test(f)) finds.push(f); }
-          out.push({ who: who, ds: ds, addr: fmt(ds), at: fmt(at), n: +m[1] || seq[at], ord: ++ord, head: head, finds: finds, day: dayOf(head), touched: String(touched[who] || '') });
+          if (typeof n === 'object') for (var j = 1; j <= 9; j++) {
+            var fn = n[String(j)], f = textOf(fn), under = [];
+            if (!f || RUN.test(f)) continue;
+            /* a finding's own lines beneath it (each cell's answer word for word, say) open with it */
+            if (fn && typeof fn === 'object') for (var q = 1; q <= 9; q++) { var u = textOf(fn[String(q)]); if (u) under.push(u); }
+            finds.push(f); subs.push(under);
+          }
+          out.push({ who: who, ds: ds, addr: fmt(ds), at: fmt(at), n: +m[1] || seq[at], ord: ++ord, head: head, finds: finds, subs: subs, day: dayOf(head), touched: String(touched[who] || '') });
         }
         if (typeof n === 'object') for (var k = 1; k <= 9; k++) if (n[String(k)] != null) walk(n[String(k)], ds + String(k));
       })(mirrors[who], '');
@@ -80,11 +87,14 @@
         continue;
       }
       if (/^Table\b[^—–-]*[—–-]/.test(l)) html += '<p class="br-cap">' + esc(l.replace(/^Table\b[^—–-]*[—–-]\s*/, '')) + '</p>';
-      else if (l.trim()) html += '<p>' + esc(l) + '</p>';
+      else if (/^\s*[-*•]\s+/.test(l)) html += '<p class="br-li">' + bold(esc(l.replace(/^\s*[-*•]\s+/, ''))) + '</p>';
+      else if (l.trim()) html += '<p>' + bold(esc(l)) + '</p>';
       i++;
     }
     return html;
   }
+  /* **words** as an AI's answer writes them, drawn bold */
+  function bold(h) { return h.replace(/\*\*([^*\n]+?)\*\*/g, '<b>$1</b>'); }
   function table(rows) {
     var cells = rows.map(function (r) { return r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(function (c) { return c.trim(); }); })
       .filter(function (c) { return !c.every(function (x) { return /^:?-{2,}:?$/.test(x) || x === ''; }); });
@@ -106,10 +116,11 @@
   }
   function findings(r) {
     if (!r.finds.length) return '';
-    return '<div class="br-finds">' + r.finds.map(function (f) {
-      var s = split(f), body = cap(s.body);
-      if (body.length <= 320 && body.indexOf('\n') < 0) return '<div class="br-find"><b>' + esc(s.title) + '</b><span>' + esc(body) + '</span></div>';
-      return '<details class="br-find br-long"><summary><b>' + esc(s.title || 'More') + '</b><span>' + esc(gist(body.split('\n')[0], 150)) + '</span></summary><div class="br-rich">' + rich(body) + '</div></details>';
+    return '<div class="br-finds">' + r.finds.map(function (f, i) {
+      var s = split(f), body = cap(s.body), under = (r.subs && r.subs[i]) || [];
+      if (!under.length && body.length <= 320 && body.indexOf('\n') < 0) return '<div class="br-find"><b>' + esc(s.title) + '</b><span>' + esc(body) + '</span></div>';
+      return '<details class="br-find br-long"><summary><b>' + esc(s.title || 'More') + '</b><span>' + esc(gist(body.split('\n')[0], 150)) + '</span></summary><div class="br-rich">' + rich(body) +
+        under.map(function (u) { var us = split(u); return '<div class="br-sub">' + (us.title ? '<b>' + esc(us.title) + '</b>' : '') + rich(cap(us.body)) + '</div>'; }).join('') + '</div></details>';
     }).join('') + '</div>';
   }
   function where(r) { return esc(r.who) + '’s mirror, at ' + esc(r.addr); }
@@ -128,7 +139,7 @@
     opts = opts || {};
     css();
     runs = runs || [];
-    var sig = runs.map(function (r) { return r.who + '@' + r.ds + ':' + r.head.length + '/' + r.finds.join('').length; }).join('|') + '#' + (opts.label || '');
+    var sig = runs.map(function (r) { return r.who + '@' + r.ds + ':' + r.head.length + '/' + r.finds.join('').length + '/' + (r.subs || []).map(function (u) { return u.join('').length; }).join(','); }).join('|') + '#' + (opts.label || '');
     if (el.getAttribute('data-runs-sig') === sig) return;   /* nothing new: an open dropdown stays open */
     el.setAttribute('data-runs-sig', sig);
     if (!runs.length) { el.innerHTML = ''; return; }
@@ -184,6 +195,9 @@
       '.br-rich{padding:0.3rem 0 0.2rem;min-width:0}' +
       '.br-rich p{margin:0.35rem 0;overflow-wrap:anywhere;color:var(--foam)}' +
       '.br-rich .br-cap{font-family:var(--mono);font-size:0.78rem;color:var(--vapour-dim);margin-top:0.7rem}' +
+      '.br-rich .br-li{padding-left:1.1em;text-indent:-0.8em}.br-rich .br-li::before{content:"\\2022";display:inline-block;width:0.8em;text-indent:0;color:var(--vapour-dim)}' +
+      '.br-sub{margin:0.7rem 0 0;padding:0.55rem 0 0 0.75rem;border-left:2px solid var(--line-strong)}' +
+      '.br-sub>b{display:block;font-family:var(--mono);font-size:0.7rem;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--bud,var(--liquid))}' +
       '.br-table{overflow-x:auto;margin:0.2rem 0 0.5rem}' +
       '.br-table table{border-collapse:collapse;font-size:0.84rem;min-width:24rem}' +
       '.br-table th,.br-table td{border-bottom:1px solid var(--line);padding:0.3rem 0.5rem;text-align:left;vertical-align:top}' +
