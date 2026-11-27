@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <script src="/games/bridge.js"></script>
+<script src="/games/world.js"></script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#161c2b">
@@ -254,7 +255,7 @@ const hash1 = (i) => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; retur
    drawn from the day, the bird and the moment (and, in a live sky, the run every phone in it shares), never from the
    phone's own Math.random, so two phones flying the same day fly the same flock, and a host handed the sky carries on
    the birds as they were. Sounds, wing-beats and names stay free. */
-function skyR(i, why, tick) { return mulberry32(hashStr('sky|' + (W.P ? W.P.key : '') + '|' + (W.live ? W.run : 0) + '|' + i + '|' + (tick === undefined ? Math.round(W.t * 60) : tick) + '|' + why)); }
+function skyR(i, why, tick) { return mulberry32(hashStr('sky|' + (W.P ? W.P.key + (W.P.room ? '|r' + W.P.room : '') : '') + '|' + (W.live ? W.run : 0) + '|' + i + '|' + (tick === undefined ? Math.round(W.t * 60) : tick) + '|' + why)); }
 function monthOfKey(key) {   // the season comes from the day flown, never the phone's own month
   const k = String(key); let m = /^\d{4}(\d)(\d)\d{4}$/.exec(k);   // the beach's day address: 2026424300 is the year, then the season 4 (Oct to Dec) and its month 2
   if (m && +m[1] >= 1 && +m[1] <= 4 && +m[2] >= 1 && +m[2] <= 3) return (+m[1] - 1) * 3 + (+m[2] - 1);
@@ -539,8 +540,18 @@ const TOWN = ['by','ton','ham','wick','ford','thorpe','ley','stow'];
 const BIRD_NAMES = ['Sedge','Teasel','Bramble','Sorrel','Yarrow','Tansy','Hazel','Rowan','Alder','Willow','Furze','Heather','Bracken','Fern','Thistle','Nettle','Clover','Barley','Flax','Reed','Rush','Briar','Holly','Ivy','Linden','Aspen','Birch','Elder','Juniper','Myrtle','Thyme','Mallow','Campion','Vetch','Burnet','Cress','Fennel','Madder','Woad','Lovage','Pebble','Flint','Shale','Slate','Loam','Cinder','Rime','Haze','Mist','Tarn','Ghyll','Beck','Scree','Bryony','Speedwell','Sloe','Rosehip','Hawthorn','Kale','Moss','Lichen','Burdock','Dock','Sage'];
 const PLAYER_NAMES = ['Skein','Wisp','Drift','Gale','Quill','Brook','Dune','Fallow','Hollow','Tern','Kite','Plover','Gleam','Ember','Sparrow','Cairn'];
 
-function makeParams(key) {
-  const seed = hashStr('migration|' + key);
+/* ON THE FLOCK WORLD (27 Nov 2026, lane coil.1, thread:155; /games/world.js, world:flock-world): given a world and a
+   room, the country is this room's crossing of the one world, and the room and the world join the seed, so two rooms on
+   one day fly two countries; with no world, the country is the day's alone, as it always was. */
+let WORLD = null;
+function worldNow() { if (WORLD) return WORLD; try { if (window.FlockWorld) WORLD = window.FlockWorld.make({}); } catch (e) {} return WORLD; }
+try { if (window.FlockWorld) window.FlockWorld.load().then((c) => { if (c && c.source === 'beach') WORLD = window.FlockWorld.make(c); }, () => {}); } catch (e) {}
+function worldOf(mark) { try { return mark && window.FlockWorld && window.FlockWorld.fromMark ? window.FlockWorld.fromMark(mark) : null; } catch (e) { return null; } }
+/* the room the plug seated this page in: the open room 1, migration:2 room 2, a friends' room its word */
+function roomNo(r) { const m = /^pool:migration(?::([0-9a-z][0-9a-z-]*))?$/.exec(String(r || '')); return m ? (m[1] ? (/^\d+$/.test(m[1]) ? +m[1] : m[1]) : 1) : 1; }
+function makeParams(key, room, Wd) {
+  const rm = Wd ? String(room == null ? 1 : room) : '';
+  const seed = hashStr('migration|' + key + (Wd ? '|' + rm + '|' + Wd.mark : ''));
   const R = mulberry32(seed);
   const rr = (a, b) => a + (b - a) * R();
   const sgn = () => (R() < 0.5 ? -1 : 1);
@@ -585,7 +596,63 @@ function makeParams(key) {
     towns: P.towns.map(() => np() + pick(TOWN))
   };
   for (let k = 0; k < P.ridges.length; k++) { const n = np(); P.names.ridges.push(n + ' ' + pick(HILL)); P.names.passes.push(n + ' ' + pick(PASS)); }
+  if (Wd) placeOnWorld(P, Wd, rm);
   return P;
+}
+/* the country as the world has it along this room's crossing, in the sky's own frame (the start at its origin, the roost
+   ROUTE units up the screen, a unit a 300th of the crossing's kilometres a ROUTE): the world says where in its tuned band
+   each ridge stands (the world's highest place there), where along its band each marsh lies (the wettest low ground
+   there), which towns stand near, and what the start and the roost are called. Every shape stays the sky's own, its
+   ridges' widths and passes, its marshes' sizes and sides, its rivers and its weather, so the flight keeps its tuning
+   (spine:flock-world 1.1111118: each meeple's flock one tuned piece). Checked on 24 days through the year, the sky
+   flown alone: 55 per cent of the flock home placed, 55 with the same seeds unplaced, 52 on the day's own country as it
+   was, a bad day as likely either way (27 Nov 2026). */
+function placeOnWorld(P, Wd, rm) {
+  const cr = Wd.crossing(P.key, 'migration', rm), U = cr.len / ROUTE;
+  const fx = cr.dir.x, fy = cr.dir.y, rx = fy, ry = -fx;
+  const toW = (x, y) => ({ x: Wd.wrap(cr.start.x + fx * (-y * U) + rx * (x * U)), y: Wd.wrap(cr.start.y + fy * (-y * U) + ry * (x * U)) });
+  const g = {}, at = (x, y) => { const q = toW(x, y); return Wd.ground(q.x, q.y, g); };
+  const lineX = (y) => P.start.x + (P.roost.x - P.start.x) * (y - P.start.y) / (P.roost.y - P.start.y);
+  /* each ridge at the world's highest place within the very band the sky was tuned for (its first 27 to 32 per cent of the
+     way, its second 63 to 69), so the world says where and the sky keeps its pace: wider bands let a second ridge stand
+     at 73 per cent, against the roost, and a whole day's flock came down short (27 Nov 2026, checked on five days) */
+  const ridgeBands = [[0.27, 0.32], [0.63, 0.69]];
+  P.ridges.forEach((rg, i) => {
+    const b = ridgeBands[i]; if (!b) return;
+    let best = null;
+    for (let k = Math.round(b[0] * 100); k <= Math.round(b[1] * 100); k++) { const f = k / 100, y = -f * ROUTE, e = at(lineX(y), y).elev; if (!best || e > best.e) best = { f, e }; }
+    const off = rg.px - lineX(rg.y0); rg.y0 = -best.f * ROUTE; rg.px = lineX(rg.y0) + off;
+  });
+  const bands = [[0.44, 0.5], [0.78, 0.84], [0.13, 0.18]];
+  P.marshes.forEach((m, i) => {
+    const b = bands[i]; if (!b) return;
+    /* each marsh keeps the side and the distance from the line the sky gave it (a flock tuned to fly out to its food and
+       back), and the world says where along its band it lies: the wettest low ground there. Searching the distance too
+       sent marshes to the far edge and flocks home short (27 Nov 2026: a mean of 23 home against 28, on twelve days) */
+    let best = null;
+    const off = m.x - lineX(m.y);
+    for (let k = Math.round(b[0] * 200); k <= Math.round(b[1] * 200); k++) {
+      const y = -(k / 200) * ROUTE, x = lineX(y) + off, gr = at(x, y), v = gr.wet - 0.5 * gr.elev;
+      if (!best || v > best.v) best = { v, x, y };
+    }
+    if (best) { m.x = best.x; m.y = best.y; }
+  });
+  // the towns that stand near, from the world's own patches, nearest the line first
+  const near = [];
+  const half = (Wd.side - 1) / 2;
+  for (let px = -half; px <= half; px++) for (let py = -half; py <= half; py++) for (const t of Wd.towns(px, py)) {
+    const dx = Wd.wrap(t.x - cr.start.x), dy = Wd.wrap(t.y - cr.start.y), along = dx * fx + dy * fy, lat = dx * rx + dy * ry;
+    const x = lat / U, y = -along / U;
+    if (x >= -4800 && x <= 4800 && y >= -ROUTE - 1700 && y <= 2000) near.push({ x, y, name: t.name, d: Math.abs(x - lineX(y)) });
+  }
+  near.sort((a, b) => a.d - b.d || a.name.localeCompare(b.name));
+  near.slice(0, P.towns.length).forEach((t, i) => { P.towns[i].x = t.x; P.towns[i].y = t.y; P.names.towns[i] = t.name; });
+  const closest = (x, y) => near.slice().sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0];
+  const word = (n) => String(n).split(' ').pop();
+  const sT = closest(P.start.x, P.start.y), rT = closest(P.roost.x, P.roost.y);
+  if (sT) P.names.start = sT.name + ' ' + word(P.names.start);
+  if (rT && (!sT || rT.name !== sT.name)) P.names.roost = rT.name + ' ' + word(P.names.roost);
+  P.room = rm; P.wm = Wd.mark; P.cross = { start: cr.start, dir: cr.dir, len: cr.len, roost: cr.roost };   // plain data: the country is posted to the tile worker
 }
 
 // =====================================================================
@@ -1665,8 +1732,10 @@ const Net = {
     let res = null;
     try { res = await Promise.race([Promise.resolve(R.join({ room: ROOM, name, max: SKY_HOLDS })), new Promise((r) => setTimeout(() => r(null), 9000))]); } catch (e) { res = null; }
     if (!res || res.ok === false || res.id == null) return false;
-    this.on = true; this.id = String(res.id); this.name = res.name || name; this.peers.clear(); this.silent.clear(); this.lastW = 0; this.joinAt = performance.now(); this.hostId = null;
+    this.on = true; this.id = String(res.id); this.name = res.name || name; this.room = roomNo(res.room); this.peers.clear(); this.silent.clear(); this.lastW = 0; this.joinAt = performance.now(); this.hostId = null;
     const safe = (fn) => (...a) => { try { fn(...a); } catch (e) { console.warn('migration', e); } };
+    if (this.wired) { try { let ps = R.peers ? R.peers() : []; if (ps && typeof ps.then === 'function') ps = await ps; if (ps && !Array.isArray(ps) && typeof ps === 'object') ps = Object.values(ps); for (const p of (ps || [])) this.addPeer(p); } catch (e) {} return true; }
+    this.wired = true;
     try { R.on('peer', safe((p) => this.addPeer(p))); } catch (e) {}
     try { R.on('gone', safe((p) => this.dropPeer(p))); } catch (e) {}
     try { R.on('message', safe((...a) => this.recv(a))); } catch (e) {}
@@ -1710,7 +1779,7 @@ function netSet(b, a, k) {
 function sendWorld() {
   const a = [], o = [];
   for (const b of W.birds) { if (b.own === 'ai') a.push(...stateArr(b)); else o.push([b.i, b.own]); }
-  const body = { f: Net.id, k: W.P.key, r: W.run, ph: W.phase === 'night' ? 'night' : 'fly', t: Math.round(W.t * 100) / 100, n: W.birds.length, a, o };
+  const body = { f: Net.id, k: W.P.key, rm: W.P.room || '', wm: W.P.wm || '', r: W.run, ph: W.phase === 'night' ? 'night' : 'fly', t: Math.round(W.t * 100) / 100, n: W.birds.length, a, o };
   if ((Net.nameTick % 16) === 0) body.nm = W.birds.map((b) => b.name);
   body.nd = W.nDawn; body.kn = W.keen;
   if ((Net.nameTick % 4) === 0) { body.g = [...W.gath]; body.gb = W.birds.map((b) => b.gby); }
@@ -1724,7 +1793,7 @@ function onWorld(m, from) {
     if (!same) { const me = myBird(); if (me) me.own = 'ai'; W.me = -1; Net.wantBird = true; Net.helloAt = 0; Net.fresh = true; }
   }
   Net.hostId = from; Net.lastW = performance.now(); Net.silent.delete(from);
-  if (!W.P || W.P.key !== String(m.k)) setCountry(String(m.k));
+  if (!W.P || W.P.key !== String(m.k) || (W.P.room || '') !== String(m.rm || '') || (W.P.wm || '') !== String(m.wm || '')) setCountry(String(m.k), m.rm, m.wm);
   if (!W.adopted && (m.n | 0) > 0 && W.birds.length > (m.n | 0)) { // the host's sky sets the count
     W.birds.length = m.n | 0; W.pend = []; W.args.clear(); W.tallies.clear(); W.stayLead.clear();
     for (const b of W.birds) if (b.tg >= W.birds.length) b.tg = -1;
@@ -1870,7 +1939,7 @@ function netPump(dt) {
 }
 function freshLiveWorld() {
   W.host = true; W.adopted = true; W.live = true;
-  setCountry(dayKey()); W.run = 1; spawnFlock(FILL); W.t = 0; W.phase = 'fly';   // the run first: the first day's characters are drawn from it W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0;
+  setCountry(dayKey(), Net.room || 1); W.run = 1; spawnFlock(FILL); W.t = 0; W.phase = 'fly'; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0;   // the run first: the first day's characters are drawn from it
   chooseKeen(-1);
   hostAssign(Net.id, S.name);
 }
@@ -1881,7 +1950,7 @@ function freshLiveWorld() {
 const A64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 function encodeProof(score, landT) {
   const pts = W.rec; if (pts.length < 2) return '';
-  let s = 'mig4;' + W.P.key + ';' + score + ';' + Math.round(landT) + ';' + Math.round(pts[0][0]) + ',' + Math.round(pts[0][1]) + ';';
+  let s = (W.P.wm ? 'mig5;' + W.P.key + ';' + W.P.room + ';' + W.P.wm : 'mig4;' + W.P.key) + ';' + score + ';' + Math.round(landT) + ';' + Math.round(pts[0][0]) + ',' + Math.round(pts[0][1]) + ';';
   let px = Math.round(pts[0][0]), py = Math.round(pts[0][1]);
   for (let k = 1; k < pts.length; k++) {
     const dx = clamp(Math.round((pts[k][0] - px) / 6), -31, 32), dy = clamp(Math.round((pts[k][1] - py) / 6), -31, 32);
@@ -1891,8 +1960,10 @@ function encodeProof(score, landT) {
   return s;
 }
 function decodeProof(s) {
-  if (typeof s !== 'string' || s.slice(0, 5) !== 'mig4;') return null;
-  const parts = s.split(';'); if (parts.length < 6) return null;
+  if (typeof s !== 'string' || (s.slice(0, 5) !== 'mig4;' && s.slice(0, 5) !== 'mig5;')) return null;
+  let parts = s.split(';'), room = '', wm = '';
+  if (parts[0] === 'mig5') { if (parts.length < 8) return null; room = parts[2]; wm = parts[3]; parts = [parts[0], parts[1]].concat(parts.slice(4)); }
+  if (parts.length < 6) return null;
   const key = parts[1], score = parts[2] | 0, landT = +parts[3], xy = parts[4].split(','), data = parts.slice(5).join(';');
   let x = +xy[0], y = +xy[1]; if (!isFinite(x) || !isFinite(y)) return null;
   const path = [[x, y, 1]];
@@ -1901,7 +1972,7 @@ function decodeProof(s) {
     if (dx < -31 || dy < -31 || n < 0) return null;
     x += dx * 6; y += dy * 6; path.push([x, y, n]);
   }
-  return { key, score, landT, path };
+  return { key, room, wm, score, landT, path };
 }
 const Board = {
   ok() { const G = window.beachGame; return !!(G && typeof G.result === 'function'); },
@@ -1927,13 +1998,14 @@ function loadGhosts() {
   W.ghosts = [];
   const key = W.P.key;
   const mineB = store.d.best && store.d.best[key];
-  if (mineB && mineB.proof) { const g = decodeProof(mineB.proof); if (g && g.key === key) W.ghosts.push({ name: 'your best', score: g.score, path: g.path }); }
+  const same = (g) => g && g.key === key && g.room === (W.P.room || '') && g.wm === (W.P.wm || '');
+  if (mineB && mineB.proof) { const g = decodeProof(mineB.proof); if (same(g)) W.ghosts.push({ name: 'your best', score: g.score, path: g.path }); }
   if (Board.ok()) {
     Board.top(10).then((list) => {
       W.board = list;
       if (!list || !W.P || W.P.key !== key) return;
       const gs = [];
-      for (const e of list) { const g = decodeProof(typeof e.proof === 'string' ? e.proof : (e.proof && (e.proof.text || e.proof.proof))); if (g && g.key === key) gs.push({ name: e.who || 'best today', score: g.score, path: g.path }); }
+      for (const e of list) { const g = decodeProof(typeof e.proof === 'string' ? e.proof : (e.proof && (e.proof.text || e.proof.proof))); if (same(g)) gs.push({ name: e.who || 'best today', score: g.score, path: g.path }); }
       gs.sort((a, b) => b.score - a.score);
       for (const g of gs.slice(0, 2)) if (!W.ghosts.some((x) => x.score === g.score && x.path.length === g.path.length)) W.ghosts.push(g);
       updateTitleBest();
@@ -1944,16 +2016,17 @@ function loadGhosts() {
 // =====================================================================
 //  Runs: dawn, landing, nightfall
 // =====================================================================
-function setCountry(key) {
-  if (W.P && W.P.key === String(key)) return;
-  W.P = makeParams(key); W.F = FieldLib(W.P);
+function setCountry(key, room, mark) {
+  const Wd = mark ? worldOf(mark) : worldNow(), rm = Wd ? String(room == null ? 1 : room) : '';
+  if (W.P && W.P.key === String(key) && (W.P.room || '') === rm && (W.P.wm || '') === (Wd ? Wd.mark : '')) return;
+  W.P = makeParams(key, rm, Wd); W.F = FieldLib(W.P);
   Tiles.reset(W.P, W.F); buildLabels(W.P); prepWeather(W.P);
 }
-function newTrainingRun() {
+function newTrainingRun(room) {   // a flight alone flies the open room's crossing; a check may name another room
   Net.leave(); W.live = false; W.host = true; W.adopted = true; Net.id = 'me';
-  setCountry(dayKey());
+  setCountry(dayKey(), typeof room === 'number' || typeof room === 'string' ? room : 1);
   spawnFlock(FILL);
-  const Y = skyR(-1, 'yours', 0), sz = dawnSizes(W.birds.length), f = sz.length >= 3 ? 1 + Math.floor(Y() * 2) : 0;
+  const Y = skyR(-1, 'yours', 0), sz = dawnSizes(W.nDawn || W.birds.length), f = sz.length >= 3 ? 1 + Math.floor(Y() * 2) : 0;
   let base = 0; for (let k = 0; k < f; k++) base += sz[k];
   const mine = base + Math.min(sz[f] - 1, 2 + Math.floor(Y() * 3));
   W.me = mine; const me = W.birds[mine]; me.own = 'me'; me.name = S.name; me.b = 0.96;
@@ -2703,7 +2776,7 @@ function showTitle() {
   S.mode = 'title'; showHud(false); hideEnd(); closeMenu();
   $('title').classList.remove('off');
   Net.leave(); W.live = false; W.host = true; Net.id = 'me';
-  setCountry(dayKey()); spawnFlock(FILL); W.me = -1; W.t = 12; W.phase = 'fly'; W.run++; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0; W.ghosts = []; W.rec = [];
+  setCountry(dayKey(), 1); spawnFlock(FILL); W.me = -1; W.t = 12; W.phase = 'fly'; W.run++; W.pend = []; W.args.clear(); W.argGate = 0; W.peelGate = 0; W.ghosts = []; W.rec = [];
   const sv = store.d.view; cam.mode = 'sky'; store.d.view = sv; fillTitle();
   if (Board.ok()) Board.top(10).then((l) => { W.board = l; updateTitleBest(); });
 }
@@ -2951,7 +3024,7 @@ function start(data) {
   requestAnimationFrame((t) => { lastT = t; frame(t); });
   const hot = window.claude && window.claude.hot;
   if (hot && typeof hot.snapshot === 'function') { try { hot.snapshot(() => ({ view: cam.mode, muted: Sound.muted, rm: S.rmUser })); } catch (e) {} }
-  window.__migration = { W, cam, S, Net, sim: simFor, tick, newTrainingRun, spawnFlock, setCountry, makeParams, startFly, myBird, setView, myFollow, myTakeFront, myUp, myPeel, setPace, cyclePace, spareOf, yoursWith, yoursHome, drawNow: () => draw(performance.now()) };
+  window.__migration = { W, cam, S, Net, sim: simFor, tick, newTrainingRun, spawnFlock, setCountry, makeParams, encodeProof, decodeProof, startFly, myBird, setView, myFollow, myTakeFront, myUp, myPeel, setPace, cyclePace, spareOf, yoursWith, yoursHome, drawNow: () => draw(performance.now()) };
 }
 function simFor(seconds) { // headless check of a whole day with computer birds only
   const n = Math.round(seconds / STEP); for (let k = 0; k < n; k++) tick(STEP);
