@@ -30,7 +30,15 @@ The next morning, 27 November, David asked in chat for the business's first two 
 - Silo Buster "has the status-stack app, availability, met, proposal, now-catalyst etc bundle which is shared in the group/team meeting".
 - "They need graphic buttons like the games section. So section 1 and section 2 need redone please."
 
-The page below is that amendment with those moves, its products and its services and systems redrawn. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`, the re-cut's at `archive:spine:nearly-here:2026-11-26b`, the amendment's before the moves at `archive:spine:nearly-here:2026-11-26c`, and the moves' before the redraw at `archive:spine:nearly-here:2026-11-27`, each with the spine at 1 and the law at 2.
+That afternoon David found the two sections of the fork dull, and asked in chat for more:
+- "bolster the AI agent-upgrade one with links to under-the-hood work on 'biology' level LLM improvements": Convo from the Middle Point, the Run-up, determinacy, the negative space and the new Curiosity proposal.
+- Also "some tools like recency or mindflow", the pocket beach and WebLLM, and the torus ("apart from /reflection and other tools to seeing context window (mindflow?)").
+- "We want the technical side bleeding edge agent environment."
+- "is decision-block and pscale-lab connected? power-with? And health-check for the technical to go with".
+- In the social section: "the-sea", "experience-first", "more colourful renditions of the now (walk view), recency, globe", the 'connect your llm' to create a passport, the "string app, and perhaps link to SALT app or bringingtheflavour beach".
+- "Have we got experience-points linked in the game section?" It was not.
+
+The page below is that amendment with those moves, its products and its services and systems redrawn, and its fork bolstered. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`, the re-cut's at `archive:spine:nearly-here:2026-11-26b`, the amendment's before the moves at `archive:spine:nearly-here:2026-11-26c`, the moves' before the redraw at `archive:spine:nearly-here:2026-11-27`, and the redraw's before the fork was bolstered at `archive:spine:nearly-here:2026-11-27b`, each with the spine at 1 and the law at 2.
 
 ## The family
 
@@ -69,7 +77,7 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
 - Ghost Wire, "the original" David asked to keep: Matthew's wire of 23 October with that day's fastest ghost, to play here. It stands alone of the old arcade's three cabinets; Bat Sky and Rat Alley went.
 - Fotronic 3D, Migration and Coil as cards with their own share stills. Fotronic 3D's was taken headless from its arena into `animations/nearly-here-stills/fotronic-3d.jpg`.
 - "On the shelf as well": every other game on /games (Cairn, Ghost Racer, The Chain, Forage), read live from `/games/list.json`.
-- Flock World as what comes next.
+- Flock World as what comes next, and beside it Experience Points (`/experience-points`, a proposal of 23 November: a game paid for by the time people spend with it), both as next-cards; Experience Points' words repaint from 1.18.
 - Onen's castle walk, Mark's living map and his six pictures.
 - New this month: Steel at the Ford and the Character Block. Then Game Ecology and Game Experience.
 
@@ -98,6 +106,22 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
   - Lanes: three lanes of beads meeting the now line. Links /lanes.
   - Genus-one agents: three blocks and a pulse. Links /proposal/genus-one.
   - Doormen: a door with someone at it, and requests coming in. Links /models.
+- The heading reads "One connector, four upgrades, and the lab beneath."
+- **Under the hood**, eight cards with pictures, each a proposal, an inquiry or a lab:
+  - the Middle Point (`/middle-point`, in Convo);
+  - Curiosity (`/curiosity`, in Convo);
+  - the Run-up (`/run-up`);
+  - the Decision Block (`/decision-block`);
+  - Determinacy (`/determinacy`);
+  - the Negative Space (`/negative-space`);
+  - Power-with (`/power-with`);
+  - Pscale Lab (`/pscale-lab`).
+- **Check it, run it anywhere, watch it work**, four more cards:
+  - the Health Check (`/health-check`);
+  - the beach for WebLLM (`/web-llm`);
+  - the reflection (`/mindflow/reflection`, every call through the connector, live);
+  - Mindflow (`/mindflow/`, whose Filmstrip 3D and Semantic Flow show a context window as it is compiled).
+  - Its line links the pocket beach (in products) and the torus (`/mindflow/torus`), whose page draws too faintly for a still.
 - A cue beneath them: connect your own AI with the button in the corner. While the section crosses the middle of the screen, the corner's "with your AI" pill (theme.js's `.aid-pill`) carries the class `nh-lit`, a purple ring that pulses, still under reduced motion. The page looks the pill up at each check, since theme.js lays it after the page. There is no second AI button.
 
 **Between people** (`#between`, 1.117)
@@ -106,12 +130,18 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
   - Wherever you are (a conference, a business block, a new town), linking the globe and availability.
   - The grain network, linking `/explain?block=ways:grain`.
   - The promise, "24h": a solution, not advice, within 24 hours, signed David.
-- Start now, five ways, hovering amber here:
-  - Now, at /walk/now.
-  - Recency, at /recency.
-  - The globe, at /globe.
-  - Your passport, at /welcome.
+- The Sea (`/the-sea`, David's, made a proposal by keel on 12 November) as a feature card in amber, with its plain page.
+- Start now, six cards with pictures, amber here:
+  - Experience first, at /experience-first;
+  - Now, walked, at /walk/now;
+  - Recency, at /recency;
+  - the globe, at /globe;
+  - your passport with your AI, at /welcome;
   - David Pinto, through /mind-meld.
+- Passed on, and beaches of their own:
+  - the String (`/string`) and SALT (www.bringingtheflavour.com) as two cards;
+  - a line beneath them: SALT's String at `/salt`, its app at `/salt-app` (a proposal), and its beach walked in the eye at its lighthouse block.
+- In the spine: the Sea at 1.1176, the six ways at 1.11751 to 1.11756, and the String and SALT at 1.1177. The lab is at 1.1165 and 1.1166.
 
 **David's line between them**
 - "People write their observations [if] they want to inform a direction of development meaningfully, or contribute to the pool generally" — signed David.
@@ -144,7 +174,11 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
 
 ## The cards' stills
 
-The products' and services' cards use each page's own share still where it has one (`/animations/magic-mirror.jpg`, `pocket-beach.jpg`, `the-beach-bobble.jpg`, `the-state-stack.jpg`, `/silo-buster.jpg`). The rest were taken on 27 November into `animations/nearly-here-stills/`: `eye.jpg`, `availability.jpg`, `now.jpg`, `met.jpg`, `proposals.jpg`, `community-recovery.jpg` and `community-recovery-beach.jpg`.
+The products' and services' cards use each page's own share still where it has one (`/animations/magic-mirror.jpg`, `pocket-beach.jpg`, `the-beach-bobble.jpg`, `the-state-stack.jpg`, `/silo-buster.jpg`). The rest were taken on 27 November into `animations/nearly-here-stills/`:
+- that morning: `eye.jpg`, `availability.jpg`, `now.jpg`, `met.jpg`, `proposals.jpg`, `community-recovery.jpg` and `community-recovery-beach.jpg`;
+- that afternoon: `walk-now.jpg` (the rows), `recency.jpg` (the sunburst), `globe.jpg`, `passport.jpg` (`/welcome`), `reflection.jpg` (zoomed), `mindflow.jpg` (Filmstrip 3D) and `salt.jpg`.
+
+The fork's research and tools cards use each page's own share still.
 - Each is the live page, opened headless through the DevTools protocol at 1200 by 630, dark, with reduced motion and the site's corner controls hidden.
 - The eye's is cropped to its centre, and Community Recovery's beach in the eye to 720 by 380.
 - Met's is `/ring/sam-6-nov`, zoomed so the whole ring shows.
@@ -181,6 +215,12 @@ After the redraw (27 November), in the built-in browser served from the branch, 
 - No sideways scroll.
 - The repainted business line matches the spine.
 - `/proposal/nearly-here` carries the new words in its Products and Services side-rooms.
+- The only 404 is the reader's own mirror.
+
+After the fork was bolstered (that afternoon), the same way:
+- Twelve cards under your AI and six at Start now; every picture loads.
+- No sideways scroll at 1280 or 390.
+- The repainted leads at 1.1, 1.116, 1.117 and 1.18 match the spine.
 - The only 404 is the reader's own mirror.
 
 The page's foot offers "make an update like this one", `/proposal?kind=update#make`, the Make one line deciding an update (#833).
