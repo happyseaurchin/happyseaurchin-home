@@ -5,6 +5,11 @@
  *     { family, at, beat, law, columns: { players, bringers, makers, beach }, commons, agents,
  *       shares?: { credits, supporter: { handle, credits } | null, columns, by: [{ handle, credits, from: { players, bringers,
  *       makers, beach } }], commons, commonsFrom }, split?: { <handle>: credits, commons } }
+ *   GET /api/xp?ledger=<name>&read=now|landed[&surface=<thing>,<thing>]   the value at exit (spine:value-weightings 1.11):
+ *     each sum in its scope's pot (a line 'for <thing>', a point 'for <thing> · <layer>', the surface 'for anything'),
+ *     every person's part as the weightings stand now, or as each sum landed (what a credit would hold), less what
+ *     they were paid: { unit, read, at, things, given, paid, held, pots, by: [{ handle, value, paid, could, from }], commons }
+ *   GET /api/xp?quote=<pence>&for=<thing|anything>[&layer=<pot>][&surface=…]   where a sum would go if it landed now
  *   GET /api/xp?ledger=<name>      the weightings, run over ledger:<name> (spine:shore 1.1112), all sums in pence
  *     { ledger, at, lines, unit, method, read, given, shared, anything, paid, held, families: { <family>: { sums, pence } },
  *       by: [{ handle, earned, paid, could, from: { players, bringers, makers, beach } }], commons, commonsFrom }
@@ -96,6 +101,34 @@ export async function ledgerRun(name, now = new Date()) {
   return { ledger: 'ledger:' + name, at: now.toISOString(), lines: lines.length, ...run };
 }
 
+/* ── the value at exit (weigh.exitValues): the ledger's lines, every thing they name and every thing the surface spans
+ * prepared once, read now or as each sum landed; and a quote, one sum read as if it landed now ── */
+const THING = /^[a-z0-9][a-z0-9-]{0,63}$/;
+function thingsOf(q) { return String(q || '').split(',').map((t) => t.trim().toLowerCase()).filter((t) => THING.test(t)).slice(0, MOST_FAMILIES); }
+async function preparedAll(names) {
+  const economy = names.length ? await readBlock(ECONOMY) : null;
+  const once = {}, preps = {};
+  await Promise.all(names.map(async (f) => {
+    const law = await readBlock('function:' + f);
+    if (law) preps[f] = await prepared(f, law, economy, once);    // a word that names no thing's law: held, shared by nobody
+  }));
+  return preps;
+}
+export async function exitRun(name, read, surface, now = new Date()) {
+  const block = await readBlock('ledger:' + name);
+  if (!block) return null;
+  const lines = weigh.ledgerLines(block);
+  const named = [...new Set([...lines.filter((l) => l.kind === 'in' && l.family).map((l) => l.family), ...surface])].slice(0, MOST_FAMILIES);
+  const preps = await preparedAll(named);
+  return { ledger: 'ledger:' + name, lines: lines.length, ...weigh.exitValues(lines, preps, { read, now, surface }) };
+}
+export async function quoteOf(pence, forWhat, layer, surface, now = new Date()) {
+  const anything = forWhat === 'anything';
+  const preps = await preparedAll(anything ? surface : [forWhat]);
+  const line = { kind: 'in', amount: pence / 100, family: anything ? '' : forWhat, layer: anything ? '' : layer, surface: anything, when: now.toISOString() };
+  return { quote: pence, for: forWhat, layer: line.layer, ...weigh.exitValues([line], preps, { read: 'now', now, surface }) };
+}
+
 /* ── the door ── */
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -103,11 +136,24 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(204).end();
   if (req.method !== 'GET' && req.method !== 'HEAD') return res.status(405).json({ error: 'GET only' });
   const q = req.query || {}, family = String(q.family || '').trim().toLowerCase();
+  if (q.quote !== undefined) {
+    const pence = Number(q.quote), forWhat = String(q.for || '').trim().toLowerCase(), layer = String(q.layer || '').trim().toLowerCase();
+    if (!(Number.isInteger(pence) && pence >= 0 && pence <= 1e9)) return res.status(400).json({ error: 'quote is not a whole number of pence' });
+    if (forWhat !== 'anything' && !THING.test(forWhat)) return res.status(400).json({ error: 'for is not a thing, or anything' });
+    if (layer && !weigh.POTS.includes(layer)) return res.status(400).json({ error: 'layer is not players, bringers, makers or beach' });
+    try {
+      res.setHeader('Vercel-CDN-Cache-Control', 'max-age=15, stale-while-revalidate=45');
+      return res.status(200).json(await quoteOf(pence, forWhat, layer, thingsOf(q.surface)));
+    } catch (e) {
+      return res.status(502).json({ error: 'the beach could not be read: ' + String(e && e.message ? e.message : e).slice(0, 200) });
+    }
+  }
   if (q.ledger !== undefined) {
     const name = String(q.ledger).trim().toLowerCase();
     if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(name)) return res.status(400).json({ error: 'not a ledger name' });
     try {
-      const run = await ledgerRun(name);
+      const read = q.read === 'now' || q.read === 'landed' ? q.read : '';
+      const run = read ? await exitRun(name, read, thingsOf(q.surface)) : await ledgerRun(name);
       if (!run) return res.status(404).json({ error: 'no ledger stands at ledger:' + name });
       res.setHeader('Vercel-CDN-Cache-Control', 'max-age=15, stale-while-revalidate=45');
       return res.status(200).json(run);

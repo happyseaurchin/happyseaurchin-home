@@ -133,6 +133,31 @@ check('the door reads a ledger by name, refuses a name that is no name, and says
   (await call({ ledger: 'Not One' })).code === 400 && (await call({ ledger: 'none-here' })).code === 404, rl.body);
 
 
+console.log('\nthe value at exit (weigh.exitValues, spine:value-weightings 1.11): a line, a point, the surface, read now and as landed');
+const near = (a, b) => Math.abs(a - b) < 1e-6;
+const ev = weigh.exitValues(lines, preps, { read: 'now', now: NOW, surface: ['race'] });
+const evr = (h) => ev.by.find((r) => r.handle === h) || {};
+check('read now: the two £5 tickets and the £20 for anything share by race as it stands, pia two beats and quin one: mo 2400, ann 200, the cup 150, tide 150, the commons 100',
+  near(evr('mo').value, 2400) && near(evr('ann').value, 200) && near(evr('race-cup').value, 150) && near(evr('tide').value, 150) && near(ev.commons, 100), ev.by);
+check('…mo was paid £3, so could ask 2100; £5 for a word no law stands under is held, shared by nobody; values and the commons sum to what is shared',
+  evr('mo').paid === 300 && near(evr('mo').could, 2100) && ev.pots.held === 500 && ev.given === 3500 && ev.held === 3200 &&
+  near(ev.by.reduce((a, r) => a + r.value, 0) + ev.commons, 3000) && ev.pots.line.race === 1000 && ev.pots.surface === 2000, ev.pots);
+const el = weigh.exitValues(lines, preps, { read: 'landed', now: NOW, surface: ['race'] });
+const elr = (h) => el.by.find((r) => r.handle === h) || {};
+check('read as each sum landed, as a credit would hold it: the first ticket landed when ann had brought everyone, so ann 216.67 and the commons 83.33, against 200 and 100 now',
+  near(elr('ann').value, 650 / 3) && near(el.commons, 250 / 3) && near(elr('mo').value, 2400), el.by);
+const pts = [weigh.parseLine('IN — £1 · from mo · for race · makers', '2026-11-25T12:00:00Z'), weigh.parseLine('IN — £1 · for race · bringers', '2026-11-25T12:00:00Z')];
+const ep = weigh.exitValues(pts, preps, { read: 'now', now: NOW });
+check('a point is one pot alone: £1 for race\'s makers is mo\'s 100; £1 for its bringers is ann\'s 66.67 and the commons\' 33.33',
+  pts[0].layer === 'makers' && pts[1].layer === 'bringers' && near(ep.by.find((r) => r.handle === 'mo').value, 100) &&
+  near(ep.by.find((r) => r.handle === 'ann').value, 200 / 3) && near(ep.commons, 100 / 3) && ep.pots.point['race · makers'] === 100, ep);
+const rn = await call({ ledger: 'shore', read: 'now', surface: 'race' });
+const q1 = await call({ quote: '100', for: 'race', layer: 'makers' }), q2 = await call({ quote: '100', for: 'anything', surface: 'race' });
+check('the door: a ledger read now, a quote for a point and a quote for anything, and a layer or a thing that is none refused',
+  rn.code === 200 && rn.body.read === 'now' && near(rn.body.commons, 100) && q1.code === 200 && near(q1.body.by[0].value, 100) && q1.body.by[0].handle === 'mo' &&
+  q2.code === 200 && near(q2.body.by.find((r) => r.handle === 'mo').value, 80) && (await call({ quote: '100', for: 'race', layer: 'cooks' })).code === 400 &&
+  (await call({ quote: '100', for: 'No Thing' })).code === 400 && (await call({ quote: '1.5', for: 'race' })).code === 400, { rn: rn.body.by, q1: q1.body, q2: q2.body.by });
+
 console.log('\nthe lab\'s invented month (weightings-world.js): the index agrees with the run sum by sum');
 const world = (await import('../weightings-world.js')).default;
 const month = world.inventMonth({ tickets: 400 });
