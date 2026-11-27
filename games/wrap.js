@@ -99,7 +99,7 @@
     /* the till: three amounts, where a sum would go now, the pot and each part if asked for now */
     '.gw-seg{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 0}.gw-seg[hidden]{display:none}.gw-seg button{min-height:40px;min-width:56px;padding:0 12px;border-radius:999px;border:1px solid var(--gw-rule);background:transparent;' +
       'color:var(--gw-ink);font:600 14.5px/1 inherit;font-family:inherit;cursor:pointer}.gw-seg button[aria-pressed="true"]{background:var(--gw-acc);color:var(--gw-acc-ink);border-color:var(--gw-acc)}' +
-    '.gw-keyrow{margin:10px 0 0}.gw-keyrow input{box-sizing:border-box;width:100%;min-height:44px;font:15px/1.45 inherit;font-family:inherit;color:var(--gw-ink);background:var(--gw-well);border:1px solid var(--gw-rule);border-radius:10px;padding:9px 11px}' +
+    '.gw-keyrow,.gw-swrow{margin:10px 0 0}.gw-keyrow input,.gw-swrow input{box-sizing:border-box;width:100%;min-height:44px;font:15px/1.45 inherit;font-family:inherit;color:var(--gw-ink);background:var(--gw-well);border:1px solid var(--gw-rule);border-radius:10px;padding:9px 11px}' +
     '.gw-till-h{margin:12px 0 2px;font-size:13px;color:var(--gw-mute)}' +
     '.gw-split{list-style:none;margin:0;padding:0}.gw-split li{display:grid;grid-template-columns:1fr auto;gap:10px;padding:6px 0;border-top:1px solid var(--gw-rule);font-size:14.5px}' +
     '.gw-split .gw-why{display:block;font-size:12px;color:var(--gw-mute)}.gw-split .gw-amt{font-variant-numeric:tabular-nums}' +
@@ -141,6 +141,13 @@
       '<p class="gw-till-h">Each part as credits: each sum shared as things stood when it landed</p><ul class="gw-split gw-credits"></ul>' +
       '<p class="gw-note">The two differ once play moves after a sum lands: weightings follow who plays now, credits keep each sum\'s shares as they were when it was paid.</p>' +
       '<p class="gw-note">A part is taken out by asking for it at <a href="/shore" target="_blank" rel="noopener">Shore</a>: the keeper checks it against the weightings as they stand and pays by hand. <a href="/value-weightings" target="_blank" rel="noopener">How a part is worked out →</a></p></div></section>' +
+    '<section class="gw-switch" hidden><h3>Your switch</h3>' +
+      '<p class="gw-note">As the keeper, you set the till for every game here. It is <code>till:' + esc(KEEPER) + '</code> on the beach, changed with your key.</p>' +
+      '<p class="gw-till-h">Who sees the till</p><p class="gw-seg gw-sw-till" role="group" aria-label="Who sees the till"><button type="button" data-gw-sw="till" data-gw-v="off" aria-pressed="false">Nobody</button><button type="button" data-gw-sw="till" data-gw-v="keeper" aria-pressed="false">Only me</button><button type="button" data-gw-sw="till" data-gw-v="on" aria-pressed="false">Everyone</button></p>' +
+      '<p class="gw-till-h">Money</p><p class="gw-seg gw-sw-money" role="group" aria-label="Test or real money"><button type="button" data-gw-sw="money" data-gw-v="test" aria-pressed="false">A test</button><button type="button" data-gw-sw="money" data-gw-v="real" aria-pressed="false">Real</button></p>' +
+      '<p class="gw-till-h">Who pays</p><p class="gw-seg gw-sw-paid" role="group" aria-label="Who pays"><button type="button" data-gw-sw="paid" data-gw-v="player" aria-pressed="false">The player</button><button type="button" data-gw-sw="paid" data-gw-v="keeper" aria-pressed="false">Me</button></p>' +
+      '<div class="gw-swrow" hidden><input type="password" class="gw-swkey" autocomplete="current-password" placeholder="your beach key, kept on this device" aria-label="Your beach key, kept on this device"></div>' +
+      '<p class="gw-status gw-sw-said" aria-live="polite"></p></section>' +
     '<section class="gw-room" hidden><h3>The room <code>pool:' + esc(GAME) + '</code></h3><ul class="gw-lines"></ul>' +
       '<form class="gw-say"><div class="gw-box"><textarea rows="2" maxlength="2000" placeholder="Say something about ' + esc(TITLE) + '"></textarea></div>' +
       '<div class="gw-row"><input type="text" maxlength="32" placeholder="your name" aria-label="your name" autocomplete="nickname"><button type="submit" class="gw-btn gw-main">Leave a line</button></div>' +
@@ -194,13 +201,14 @@
    *                                  device keeps (siteKeys), asked for once where it keeps none;
    *   4 'things: <thing>, …'         the things that take money, which Everyone spans.
    * A switch that cannot be read, or says nothing it knows, keeps the till shut. ── */
-  var KEEPER = 'happyseaurchin', AMT = 500, SCOPE = 'line', LAYER_ON = 'makers', tillOn = false, supportOK = null;
+  var KEEPER = 'happyseaurchin', AMT = 500, SCOPE = 'line', LAYER_ON = 'makers', tillOn = false, supportOK = null, SWRAW = null;
   var SW = { till: 'off', paidBy: 'player', money: 'test', things: [GAME] };
   var LAYER = { players: 'playing it', bringers: 'bringing players', makers: 'making it', beach: 'keeping the beach' };
   function voiceOf(n) { while (n && typeof n === 'object') n = n._; return typeof n === 'string' ? n : ''; }
   function switchNow() {
     return fetch(BEACH + '?block=' + encodeURIComponent('till:' + KEEPER), { headers: { Accept: 'application/json' }, cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; }).then(function (b) {
+        SWRAW = b;
         var t = /^\s*till:\s*(off|keeper|on)\b/i.exec(voiceOf(b && b['1'])), p = /^\s*paid by:\s*([A-Za-z0-9_-]{2,64})\b/i.exec(voiceOf(b && b['2']));
         var m = /^\s*money:\s*(test|real)\b/i.exec(voiceOf(b && b['3'])), th = /^\s*things:\s*([a-z0-9 ,-]+)/i.exec(voiceOf(b && b['4']));
         var things = th ? th[1].split(',').map(function (x) { return x.trim().toLowerCase(); }).filter(function (x) { return /^[a-z0-9][a-z0-9-]{0,63}$/.test(x); }) : [];
@@ -272,9 +280,44 @@
     $('.gw-keyrow').hidden = !keyNeeded;
     $('.gw-put').hidden = real() && !keeperHere();
   }
+  /* THE KEEPER'S SWITCH (27 Nov 2026, lane coil.1, at David's 'operational for me (as owner of the game) to flick it to
+     financial'): on the keeper's own device the drawer carries the switch itself, shown even while the till is off. Each
+     choice rewrites its one line of till:<keeper>, the word changed and the line's own words kept, with the keeper's key
+     (kept on this device as the till keeps it, given once where none is), and every game's till follows. */
+  function keyFor() { return (window.siteKeys && window.siteKeys.forName && window.siteKeys.forName(KEEPER)) || ''; }
+  function swPaint() {
+    if (!keeperHere()) { $('.gw-switch').hidden = true; return; }
+    $('.gw-switch').hidden = false;
+    pick('.gw-sw-till', 'data-gw-v', SW.till); pick('.gw-sw-money', 'data-gw-v', SW.money); pick('.gw-sw-paid', 'data-gw-v', payer() ? 'keeper' : 'player');
+    $('.gw-swrow').hidden = !!keyFor();
+  }
+  var SW_RE = [null, /^(\s*till:\s*)(off|keeper|on)\b/i, /^(\s*paid by:\s*)([A-Za-z0-9_-]{2,64})\b/i, /^(\s*money:\s*)(test|real)\b/i];
+  var SW_SAY = { 'till off': 'Switched off: no game shows a till, yours included. This switch stays here for you.', 'till keeper': 'Switched to you alone: the till shows only on your device.',
+    'till on': 'Switched on: every player sees the till.', 'money real': 'Real money: each sum you put in is written in the beach\'s own ledger, ledger:till, under your key. Nothing is charged on the page.',
+    'money test': 'Back to a test: sums go into the open test ledger, and nothing is charged.', 'paid keeper': 'You pay: every sum is yours, and the player chooses what it is for.', 'paid player': 'The player pays: each sum is theirs.' };
+  function flip(which, val) {
+    var n = which === 'till' ? 1 : which === 'paid' ? 2 : 3, word = which === 'paid' ? (val === 'keeper' ? KEEPER : 'player') : val;
+    var said = $('.gw-sw-said'), typed = String(($('.gw-swkey') || {}).value || ''), key = keyFor() || typed;
+    if (!key) { said.textContent = 'Your beach key is needed to change the switch: give it once, and this device keeps it.'; $('.gw-swrow').hidden = false; return; }
+    var v = voiceOf(SWRAW && SWRAW[String(n)]), re = SW_RE[n];
+    var content = v && re.test(v) ? v.replace(re, function (m, a) { return a + word; }) : ['', 'till: ', 'paid by: ', 'money: '][n] + word;
+    said.textContent = 'Switching…';
+    Array.prototype.forEach.call(dlg.querySelectorAll('.gw-switch button'), function (b) { b.disabled = true; });
+    fetch(BEACH, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ block: 'till:' + KEEPER, spindle: String(n), content: content, secret: key }) })
+      .then(function (r) { return r.json().catch(function () { return null; }).then(function (d) { if (!r.ok || (d && d.error)) throw new Error((d && (d.error || d.message)) || 'the beach answered ' + r.status); }); })
+      .then(function () {
+        if (typed && !keyFor() && window.siteKeys && window.siteKeys.set) window.siteKeys.set('beach-key:till:' + KEEPER, typed);
+        $('.gw-swkey').value = '';
+        said.textContent = SW_SAY[which + ' ' + val] || 'Switched.';
+        till();
+      }, function (err) { said.textContent = 'The switch didn\'t change: ' + err.message + '.'; })
+      .then(function () { Array.prototype.forEach.call(dlg.querySelectorAll('.gw-switch button'), function (b) { b.disabled = false; }); });
+  }
+  Array.prototype.forEach.call(dlg.querySelectorAll('.gw-switch button'), function (b) { b.addEventListener('click', function () { flip(b.getAttribute('data-gw-sw'), b.getAttribute('data-gw-v')); }); });
   function till() {
     switchNow().then(function (sw) {
       SW = sw;
+      (window.siteKeys && window.siteKeys.ready ? window.siteKeys.ready() : Promise.resolve()).then(swPaint, swPaint);
       var show = sw.till === 'on' || (sw.till === 'keeper' && keeperHere());
       if (!show) { $('.gw-till').hidden = true; $('.gw-points').hidden = false; tillOn = false; return; }
       /* the game's law must carry a SUPPORT line: read once, from its four columns */
