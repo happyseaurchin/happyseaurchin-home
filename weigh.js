@@ -300,17 +300,22 @@
     const m = /^(IN|PAID)\s*[—–-]\s*([−-])?\s*£\s*([\d,]+(?:\.\d{1,2})?)\s*([\s\S]*)$/i.exec(t);
     if (!m) return { kind: 'note', amount: 0, text: t, when: stamp || '' };
     const out = { kind: m[1].toUpperCase() === 'IN' ? 'in' : 'paid', amount: parseFloat(m[3].replace(/,/g, '')) * (m[2] ? -1 : 1),
-      to: '', from: '', what: '', family: '', text: t, when: stamp || '' };
+      to: '', from: '', what: '', family: '', layer: '', surface: false, text: t, when: stamp || '' };
     for (const p of m[4].replace(/^\s*·\s*/, '').split(/\s+·\s+/)) {
       let q;
       if ((q = /^to\s+(.+)$/i.exec(p))) out.to = q[1].trim();
       else if ((q = /^from\s+(.+)$/i.exec(p))) out.from = q[1].trim();
       else if ((q = /^for\s+([\s\S]+)$/i.exec(p))) out.what = q[1].trim();
+      // a POINT names its layer after the thing, 'for reef-run · makers' (spine:value-weightings 1.13)
+      else if ((q = /^(?:the\s+)?(players|bringers|makers|beach)$/i.exec(p.trim()))) out.layer = q[1].toLowerCase();
     }
     // the family a sum is for is the first word after 'for', where it is a family's name; whether a law stands under
     // that name is the reader's to find, and a sum for anything, or for a word that names no family, is shared by nobody
     const f = out.kind === 'in' && /^([a-z0-9][a-z0-9-]{1,63})(?=$|[\s,;.:—–(])/i.exec(out.what);
     if (f && !/^anything$/i.test(f[1])) out.family = f[1].toLowerCase();
+    // THE SURFACE: money for anything (1.13), shared among every thing by its time, then by each thing's own line
+    out.surface = out.kind === 'in' && /^anything\b/i.test(out.what);
+    if (!out.family) out.layer = '';
     return out;
   }
   function ledgerLines(b) {
@@ -504,6 +509,69 @@
     };
   }
 
+  /* ── THE VALUE AT EXIT (spine:value-weightings 1.11 and 1.111; 27 Nov 2026, lane coil.1, at David's 'trial with actual
+   * eg £1 delivering weightings to single product-point (game), or column (xp group), or everyone'; thread:155) ──
+   * Every sum waits in the pot of the scope its line names, nothing held for anyone, and a person's value is their part
+   * of every pot as the weightings stand when it is read: read 'now', as value-weightings has it (a part worked out when
+   * someone asks to take money out), or read 'landed', each sum as the weightings stood when it landed, which is what a
+   * credit made at payment would hold, so the two can be set side by side on the same lines (David: 'We need to test
+   * viability with xp and weightings versus credits').
+   *   a LINE, 'for <thing>': the thing's four pots by its law's weights, each pot by its people's time;
+   *   a POINT, 'for <thing> · <layer>': that one pot of the thing alone;
+   *   the SURFACE, 'for anything': first among the things by their time, each thing's share its beats over all things'
+   *     (its past value 1 until things are rated: 1.111's v[s]), then each thing's share by its own line.
+   * What a person was paid comes off their value (CLAIM, 1.1118, the simplest, while that decision stands open), never
+   * below nothing. A part nobody can be named for goes to the commons; a sum for a thing no law stands for is held,
+   * shared by nobody. Exact pence; whole pence only where it is shown. ── */
+  function exitValues(lines, preps, opts) {
+    opts = opts || {};
+    const read = opts.read === 'landed' ? 'landed' : 'now', now = opts.now || new Date();
+    const things = (opts.surface && opts.surface.length ? opts.surface : Object.keys(preps)).filter((f) => preps[f]);
+    const cache = {};
+    const xpWhen = (f, ms) => cache[f + '@' + ms] || (cache[f + '@' + ms] = xpAt(preps[f], new Date(ms)));
+    const value = {}, from = {}, paidTo = {}, commonsFrom = zero(), pots = { line: {}, point: {}, surface: 0, held: 0 };
+    let given = 0, paidOut = 0;
+    const add = (h, pot, x) => { if (h === COMMONS) { commonsFrom[pot] += x; return; } value[h] = (value[h] || 0) + x; (from[h] || (from[h] = zero()))[pot] += x; };
+    const share = (xp, pence, layer) => {
+      const W = layer ? POTS.map((p) => (p === layer ? 1 : 0)) : xp.law.weights, sumW = W.reduce((a, b) => a + b, 0) || 4;
+      POTS.forEach((pot, i) => {
+        const part = (pence * W[i]) / sumW;
+        if (!part) return;
+        const hold = holdersOf(xp, pot);
+        if (!hold) { commonsFrom[pot] += part; return; }
+        const weight = hold.reduce((a, [, v]) => a + v, 0);
+        for (const [h, v] of hold) add(h, pot, (part * v) / weight);
+      });
+    };
+    for (const l of lines) {
+      const pence = Math.round(l.amount * 100);
+      if (l.kind === 'paid') { paidOut += pence; const h = handleOf(l.to); if (h) paidTo[h.toLowerCase()] = (paidTo[h.toLowerCase()] || 0) + pence; continue; }
+      if (l.kind !== 'in') continue;
+      given += pence;
+      const ms = read === 'landed' ? (Date.parse(l.when) || now.getTime()) : now.getTime();
+      if (l.surface) {
+        pots.surface += pence;
+        const xs = things.map((f) => xpWhen(f, ms)), all = xs.reduce((a, x) => a + x.beats, 0);
+        if (!all) { pots.held += pence; continue; }
+        for (const x of xs) if (x.beats) share(x, (pence * x.beats) / all, '');
+        continue;
+      }
+      if (!l.family || !preps[l.family]) { pots.held += pence; continue; }
+      if (l.layer) { const k = l.family + ' · ' + l.layer; pots.point[k] = (pots.point[k] || 0) + pence; }
+      else pots.line[l.family] = (pots.line[l.family] || 0) + pence;
+      share(xpWhen(l.family, ms), pence, l.layer || '');
+    }
+    const lower = {};
+    for (const h of Object.keys(value)) lower[h.toLowerCase()] = h;
+    for (const h of Object.keys(paidTo)) if (!lower[h]) { lower[h] = h; value[h] = 0; }
+    const by = Object.keys(value).map((h) => {
+      const p = paidTo[h.toLowerCase()] || 0;
+      return { handle: h, value: value[h], paid: p, could: Math.max(0, value[h] - p), from: from[h] || zero() };
+    }).sort((a, b) => b.value - a.value || a.handle.localeCompare(b.handle));
+    const commons = POTS.reduce((a, p) => a + commonsFrom[p], 0);
+    return { unit: 'pence', read, at: now.toISOString(), things, given, paid: paidOut, held: given - paidOut, pots, by, commons, commonsFrom };
+  }
+
   return { SITE, COMMONS, POTS, textOf, linesOf, nodeAt, entriesOf, handleOf, lawOf, agentsNamed, bringersOf, chainOf,
-    beatOfMoment, prepare, tallyTo, columnsOf, xpAt, shareOut, whole, partsOf, parseLine, ledgerLines, runLedger };
+    beatOfMoment, prepare, tallyTo, columnsOf, xpAt, shareOut, whole, partsOf, parseLine, ledgerLines, runLedger, exitValues };
 }));
