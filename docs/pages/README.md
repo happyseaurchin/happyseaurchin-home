@@ -24,6 +24,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [character-block](character-block.md) | `character-block.html` | the character-block proposal (13 Nov 2026), at `/character-block`, its snazzy view, which its law names at 6 once keel re-says it, live from 14 Novemb… |
 | [character-sheets](character-sheets.md) | `character-sheets.html` | the character-sheets proposal (22 Oct 2026), at `/character-sheets`: |
 | [coloured-stigmergy](coloured-stigmergy.md) | `coloured-stigmergy.html` | the coloured-stigmergy proposal (26 Oct 2026), at `/coloured-stigmergy`: |
+| [colours](colours.md) | `colours.html` | what a reader's key opens (27 Nov 2026, lane go-menu.1), at `/colours`: every colour on the beach, lit where the key this device keeps opens a copy, grey where not; |
 | [common-ground](common-ground.md) | `common-ground.html` | the Common ground proposal (18 Nov 2026), at `/common-ground`, its snazzy view, which its law names at 6 (`/proposal/common-ground` is its standard vi… |
 | [components](components.md) | `components/` + `docs/components/` | numbered component inventory — HTML pages + source `.md` files, fed by the ingest pipeline |
 | [corkboard](corkboard.md) | `corkboard.html` | every proposal on one board, laid out by what it shares (20 Nov 2026, lane review.1), at `/corkboard`: the shared board is the block `corkboard`, each person's own `corkboard:<handle>` |
@@ -115,7 +116,7 @@ Each note is what a session needs before it touches that file: what the page is,
 | [the-ai-wave](the-ai-wave.md) | `the-ai-wave.html` | The AI wave (19 Nov 2026), at `/the-ai-wave`, its snazzy view once its law names it at 6 (`/proposal/the-ai-wave` is its standard view, drawn from its… |
 | [the-sea](the-sea.md) | `the-sea.html` | the sea proposal (12 Nov 2026), at `/the-sea`, its snazzy view, which its law names at 6, live from the same afternoon at David's word ('Pr and merge'… |
 | [theme-js-builder](theme-js-builder.md) | `theme.js` Builder | the switch for a page's meta layer (25 Nov 2026, lane tidy.2; |
-| [theme-js-colour-tabs](theme-js-colour-tabs.md) | `theme.js` colour tabs | a colour's own places in the go menu (23 Nov 2026, lane colour-key.1, the coloured dashboards' step 3; |
+| [theme-js-colour-tabs](theme-js-colour-tabs.md) | `theme.js` colour tabs | removed on 27 Nov 2026, for `/colours`: a colour's own places in the go menu (23 Nov 2026, lane colour-key.1, the coloured dashboards' step 3; |
 | [theme-js-members-doors](theme-js-members-doors.md) | `theme.js` members' doors | a page served at a door of a members' beach (19 Nov 2026, lane salt.app.2; |
 | [theme-js-share](theme-js-share.md) | `theme.js` Share | Share, beside the door (23 Nov 2026, lane share-string.1; |
 | [theme-js-site-pages](theme-js-site-pages.md) | `theme.js` site pages | the site's own pages on the beach (19 Nov 2026, lane eye.15, at David's 'Yes, go ahead' to weft's reading of his 'the go menu for the site and the per… |

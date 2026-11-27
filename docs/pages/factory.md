@@ -37,13 +37,13 @@ With that done, #801 was reverted. The page opens with the reader's own handle a
 
 - The page loads `theme.js` but not `theme.css`. Since 24 Nov 2026 (David: 'there's no top bar and go or options so I can't check') it carries the site's sticky bar above keel's header: 'the factory', then theme.js's ＋card, 'options' and 'go'. The bar's look is the page's own. theme.js draws its menus in theme.css's names (`--card`, `--foam`, `--vapour-dim`, `--line`, `--liquid`, `--solid`, `--well-rgb` and the rest), so the page gives those names keel's inks, light and dark.
 - keel's two controls, 'addresses' and ◐, stand in the bar, and theme.js gathers them under 'options' beside Share. The ◐ is the site's own switch, because theme.js wires a page's `#btn-theme`. The band's seeds are repainted whenever the register turns.
-- The page asks for go as the loom does: `siteDoors({ handle: null, here: 'factory', site: true })`. The menu opens on the site's tab, with the reader's own places (the hand this device knows) and a tab for each colour the device holds beside it.
+- The page asks for go as the loom does: `siteDoors({ handle: null, here: 'factory', site: true })`. The menu opens on the site's tab, with the reader's own places (the hand this device knows) beside it.
 - The tiles and rows answer the keyboard.
 - Head: `noindex`. The page is in neither the sitemap nor the gallery.
 
-**Plugged in.** Holders find the page two ways in the go menu:
+**Plugged in.** Holders find the page two ways:
 
-- **The colour's tab.** `lists:colour:outreach` 2 holds 'factory — The Factory', and theme.js shows that list as an 'outreach' tab, but only on a device that holds the colour.
+- **On /colours.** `lists:colour:outreach` 2 holds 'factory — The Factory …', so the outreach colour's card on `/colours` (`colours.md`) names this page as where its lines are read. Until 27 Nov 2026 theme.js showed that list as an 'outreach' tab in the go menu, to a device that held the colour; the menu draws no colour tabs now.
 - **A hand's own places.** 'the factory' is in the catalogue a hand chooses its places from (theme.js `WORK`, shape `bare`), off until chosen (`DOORS_OFF`), as the corkboard is. David's list, `lists:happyseaurchin` 2, names it at his word ('can you add this to my personal list for happyseaurchin go please', 24 Nov 2026), so his own tab shows it, marked as here on this page.
 
 **Checked:**
