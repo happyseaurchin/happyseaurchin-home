@@ -122,7 +122,7 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
   - the reflection (`/mindflow/reflection`, every call through the connector, live);
   - Mindflow (`/mindflow/`, whose Filmstrip 3D and Semantic Flow show a context window as it is compiled).
   - Its line links the pocket beach (in products) and the torus (`/mindflow/torus`), whose page draws too faintly for a still.
-- A cue beneath them: connect your own AI with the button in the corner. While the section crosses the middle of the screen, the corner's "with your AI" pill (theme.js's `.aid-pill`) carries the class `nh-lit`, a purple ring that pulses, still under reduced motion. The page looks the pill up at each check, since theme.js lays it after the page. There is no second AI button.
+- A cue beneath them: connect your own AI with the button in the corner, or step by step at `/connect-your-ai` (linked 28 November, once that page went live in happyseaurchin-home #850). While the section crosses the middle of the screen, the corner's "with your AI" pill (theme.js's `.aid-pill`) carries the class `nh-lit`, a purple ring that pulses, still under reduced motion. The page looks the pill up at each check, since theme.js lays it after the page. There is no second AI button.
 
 **Between people** (`#between`, 1.117)
 - Four cards in amber:
