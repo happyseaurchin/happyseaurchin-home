@@ -38,6 +38,14 @@ That afternoon David found the two sections of the fork dull, and asked in chat 
 - In the social section: "the-sea", "experience-first", "more colourful renditions of the now (walk view), recency, globe", the 'connect your llm' to create a passport, the "string app, and perhaps link to SALT app or bringingtheflavour beach".
 - "Have we got experience-points linked in the game section?" It was not.
 
+On the morning of 28 November David asked in chat for the edge (lane edge.1), with keel's answer of the evening before pasted in and its conversation's share link:
+- "add this content in a scrollable window in the section to do with the AI genus 1 under the hood", so a person gets "an insight into a snapshot of what I'm working on right now".
+- "it's under the hood, and it's on the edge of everything … So call it the edge if you want to", "with a specific date and time".
+- "make it a very small section, just with a tiny little … a sentence, maybe two".
+- "a button to expand it, so they can look at it as a whole, as a proper window", then "go and visit the actual discussion", and another "to go engage David … join in somehow, right, just join in".
+- "I will probably replace it so that it's embedded within the continued conversation."
+- "if anybody can assist in this regard, it would be very helpful. And I'm doing it alone."
+
 The page below is that amendment with those moves, its products and its services and systems redrawn, and its fork bolstered. The first cut's words stand at `archive:spine:nearly-here:2026-11-26`, the re-cut's at `archive:spine:nearly-here:2026-11-26b`, the amendment's before the moves at `archive:spine:nearly-here:2026-11-26c`, the moves' before the redraw at `archive:spine:nearly-here:2026-11-27`, and the redraw's before the fork was bolstered at `archive:spine:nearly-here:2026-11-27b`, each with the spine at 1 and the law at 2.
 
 ## The family
@@ -50,7 +58,7 @@ Founded by weft under weft's key until David takes it.
   - 1.11 the business, ready to roll.
   - 1.111 bring yourself.
 
-  The business forks at its 6 and 7. **1.116 your AI, upgraded** holds memory, lanes, genus-one agents and doormen at 1.1161 to 1.1164. **1.117 between people** holds the meld, wherever you are, the grain network and the 24-hour promise at 1.1171 to 1.1174, and five ways to start now at 1.1175, at 1.11751 to 1.11755. The products stand at 1.112 and the services and systems at 1.113, each thing named with its own page; Silo Buster's path is a line of 1.113, pointing to its film. The four parts down 1 keep `spine:nearly-there`'s addresses, named only in its provenance.
+  The business forks at its 6 and 7. **1.116 your AI, upgraded** holds memory, lanes, genus-one agents and doormen at 1.1161 to 1.1164. **1.117 between people** holds the meld, wherever you are, the grain network and the 24-hour promise at 1.1171 to 1.1174, and five ways to start now at 1.1175, at 1.11751 to 1.11755. **1.1165 under the hood** holds **1.11651 the edge** (28 November): its underscore the lede, and beneath it each snapshot at a digit, the newest the highest, its underscore 'WHEN — what was asked (the conversation's address)' and its 1 the answer word for word, keeping its own light marks (paragraphs, '- ' lists, `**bold**`, `[a link](https://…)`). The first stands at 1.116511 and 1.1165111. The products stand at 1.112 and the services and systems at 1.113, each thing named with its own page; Silo Buster's path is a line of 1.113, pointing to its film. The four parts down 1 keep `spine:nearly-there`'s addresses, named only in its provenance.
 - **`function:nearly-here`, its law.**
   - 1 says `mode: document`.
   - 2 is the voices, six places: the four parts and the fork's two.
@@ -116,6 +124,12 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
   - the Negative Space (`/negative-space`);
   - Power-with (`/power-with`);
   - Pscale Lab (`/pscale-lab`).
+- **The edge** (`#edge`, 1.11651), beneath the eight cards and beside the lab it speaks of: what David is working on right now, one exchange with his AI word for word.
+  - Its heading, with a coral dot, and its lede of two sentences, repainted from 1.11651 like every body on the page.
+  - A card with a coral edge down its left side: the snapshot's date and time, the line saying what was asked, then the answer in a box that scrolls (300px high, a fade at its foot, keyboard-scrollable, named for a screen reader).
+  - Three ways out: Read it whole, which opens the same words in a window (a `<dialog>` 860px wide, its own scroll, closed by Escape, the × or a tap outside, the reader put back on the button); The conversation, its claude.ai share link in a new tab; and Join in, filled in coral, to `/mind-meld`, the page's door to David as at Start now.
+  - The page reads the newest snapshot beneath 1.11651 at each opening and draws its date, line, link and words; today's copy stands inline where the beach can't be read. The coral is `--edge` in each of the page's three palettes (`#F07B6E` dark, `#B23A2E` light).
+  - To put up the next snapshot, a weft session appends it beneath the edge, `bsp(agent_id='https://beach.happyseaurchin.com', block='spine:nearly-here', spindle='1.11651', append=true, content={_: 'WHEN — what was asked (https://claude.ai/share/…)', 1: 'the answer word for word'})`, and the page shows it with no deploy; the ones before stay beneath it. To change only the link, to the conversation as it went on, rewrite that snapshot's underscore.
 - **Check it, run it anywhere, watch it work**, four more cards:
   - the Health Check (`/health-check`);
   - the beach for WebLLM (`/web-llm`);
@@ -141,7 +155,7 @@ The world is keel's shore with the State Stack's birds as a fixed sky, kept from
 - Passed on, and beaches of their own:
   - the String (`/string`) and SALT (www.bringingtheflavour.com) as two cards;
   - a line beneath them: SALT's String at `/salt`, its app at `/salt-app` (a proposal), and its beach walked in the eye at its lighthouse block.
-- In the spine: the Sea at 1.1176, the six ways at 1.11751 to 1.11756, and the String and SALT at 1.1177. The lab is at 1.1165 and 1.1166.
+- In the spine: the Sea at 1.1176, the six ways at 1.11751 to 1.11756, and the String and SALT at 1.1177. The lab is at 1.1165 and 1.1166, and the edge at 1.11651.
 
 **David's line between them**
 - "People write their observations [if] they want to inform a direction of development meaningfully, or contribute to the pool generally" — signed David.
@@ -222,5 +236,11 @@ After the fork was bolstered (that afternoon), the same way:
 - No sideways scroll at 1280 or 390.
 - The repainted leads at 1.1, 1.116, 1.117 and 1.18 match the spine.
 - The only 404 is the reader's own mirror.
+
+After the edge was added (28 November), headless from the branch at 1280 dark and light and 390 dark:
+- No sideways scroll and no script error.
+- The box scrolls to the paper's link; Read it whole opens the window with the asked line at its top, Escape closes it and the focus goes back to the button.
+- Served a spine with a second, newer snapshot beneath the edge, the page drew that one: its date, line, link and words, nested lists and bold; a `<script>` in its words stayed text, and a link with a quote in its address was not made a link.
+- The 404s were the local server's lack of `/api/mirrors` and the family's unwritten fold, `nearly-here`, both before the change.
 
 The page's foot offers "make an update like this one", `/proposal?kind=update#make`, the Make one line deciding an update (#833).
